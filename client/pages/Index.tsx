@@ -3,6 +3,7 @@ import { useQuote } from "@/context/QuoteContext";
 import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
 import Footer from "@/components/Footer";
+import ProcessingStatus from "@/components/ProcessingStatus";
 import Step1Upload from "@/components/steps/Step1Upload";
 import Step2Details from "@/components/steps/Step2Details";
 import Step3Review from "@/components/steps/Step3Review";
@@ -10,7 +11,14 @@ import Step4Contact from "@/components/steps/Step4Contact";
 
 export default function Index() {
   const navigate = useNavigate();
-  const { state, goToNextStep, goToPreviousStep, validateStep } = useQuote();
+  const {
+    state,
+    goToNextStep,
+    goToPreviousStep,
+    validateStep,
+    completeProcessing,
+    skipToEmail,
+  } = useQuote();
 
   const handleContinue = async () => {
     const isLastStep = state.currentStep === 4;
@@ -34,22 +42,33 @@ export default function Index() {
       {/* Main Content */}
       <main className="flex-1 w-full">
         <div className="max-w-[1536px] mx-auto px-4 sm:px-8 lg:px-12 py-8 sm:py-12 lg:py-16">
-          {/* Step Indicator */}
-          <StepIndicator currentStep={state.currentStep} />
+          {/* Step Indicator - Hide during processing */}
+          {!state.isProcessing && (
+            <StepIndicator currentStep={state.currentStep} />
+          )}
 
           {/* Content Container */}
           <div className="max-w-[896px] mx-auto">
+            {/* Show Processing Status */}
+            {state.isProcessing && (
+              <ProcessingStatus
+                quoteId={state.quoteId}
+                onComplete={completeProcessing}
+                onEmailInstead={skipToEmail}
+              />
+            )}
+
             {/* Conditional Step Rendering */}
-            {state.currentStep === 1 && <Step1Upload />}
-            {state.currentStep === 2 && <Step2Details />}
-            {state.currentStep === 3 && <Step3Review />}
-            {state.currentStep === 4 && <Step4Contact />}
+            {!state.isProcessing && state.currentStep === 1 && <Step1Upload />}
+            {!state.isProcessing && state.currentStep === 2 && <Step2Details />}
+            {!state.isProcessing && state.currentStep === 3 && <Step3Review />}
+            {!state.isProcessing && state.currentStep === 4 && <Step4Contact />}
           </div>
         </div>
       </main>
 
-      {/* Footer - Only show on steps 1-4 */}
-      {state.currentStep <= 4 && (
+      {/* Footer - Only show on steps 1-4 and not during processing */}
+      {!state.isProcessing && state.currentStep <= 4 && (
         <Footer
           onBack={handleBack}
           onContinue={handleContinue}
