@@ -199,9 +199,9 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     if (state.currentStep === 2) {
       if (state.quoteId) {
         await supabase.updateQuoteDetails(state.quoteId, {
-          sourceLanguage: state.sourceLanguage,
-          targetLanguage: state.targetLanguage,
-          intendedUse: state.intendedUse,
+          sourceLanguageId: state.sourceLanguageId,
+          targetLanguageId: state.targetLanguageId,
+          intendedUseId: state.intendedUseId,
           countryOfIssue: state.countryOfIssue,
           specialInstructions: state.specialInstructions,
         });
