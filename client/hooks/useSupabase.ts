@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase, Quote, QuoteFile, Customer } from '@/lib/supabase';
+import { supabase, isSupabaseEnabled, Quote, QuoteFile, Customer } from '@/lib/supabase';
 import { toast } from 'sonner';
 import type { UploadedFile } from '@/context/QuoteContext';
 
@@ -15,6 +15,12 @@ export function useSupabase() {
 
   // Step 1: Create quote and upload files
   const createQuoteWithFiles = async (files: UploadedFile[]): Promise<{ quoteId: string; quoteNumber: string } | null> => {
+    // Return early if Supabase is not configured
+    if (!isSupabaseEnabled() || !supabase) {
+      console.log('📝 Supabase not configured - skipping database operations');
+      return null;
+    }
+
     setLoading(true);
     setError(null);
 
