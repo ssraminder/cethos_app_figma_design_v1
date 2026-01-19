@@ -1,3 +1,5 @@
+import { Check } from "lucide-react";
+
 interface Step {
   number: number;
   label: string;
@@ -16,6 +18,9 @@ const steps: Step[] = [
 ];
 
 export default function StepIndicator({ currentStep }: StepIndicatorProps) {
+  const isCompleted = (stepNumber: number) => stepNumber < currentStep;
+  const isActive = (stepNumber: number) => stepNumber === currentStep;
+
   return (
     <div className="w-full max-w-[520px] mx-auto mb-8 px-4">
       <div className="flex items-center justify-between relative">
@@ -24,25 +29,35 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
             {/* Connector line */}
             {index < steps.length - 1 && (
               <div
-                className="absolute left-[calc(50%+16px)] top-4 right-[calc(-100%+16px)] h-0.5 bg-cethos-border z-0"
+                className={`absolute left-[calc(50%+16px)] top-4 right-[calc(-100%+16px)] h-0.5 z-0 ${
+                  isCompleted(step.number) ? "bg-green-500" : "bg-cethos-border"
+                }`}
               />
             )}
 
             {/* Step circle */}
             <div
               className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all relative z-10 ${
-                step.number === currentStep
+                isCompleted(step.number)
+                  ? "bg-green-500 text-white border-2 border-transparent"
+                  : isActive(step.number)
                   ? "bg-cethos-blue text-white border-2 border-transparent"
                   : "bg-white text-cethos-slate-light border-2 border-cethos-border"
               }`}
             >
-              {step.number}
+              {isCompleted(step.number) ? (
+                <Check className="w-4 h-4" />
+              ) : (
+                step.number
+              )}
             </div>
 
             {/* Step label */}
             <span
               className={`mt-2 text-xs font-normal text-center whitespace-nowrap ${
-                step.number === currentStep
+                isCompleted(step.number)
+                  ? "text-green-600 font-semibold"
+                  : isActive(step.number)
                   ? "text-cethos-navy font-semibold"
                   : "text-cethos-slate"
               }`}
