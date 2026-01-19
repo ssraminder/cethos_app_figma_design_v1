@@ -59,7 +59,7 @@ export default function Index() {
         onBack={handleBack}
         onContinue={handleContinue}
         canContinue={hasFiles}
-        showBack={currentStep > 1}
+        showBack={false}
       />
     </div>
   );
