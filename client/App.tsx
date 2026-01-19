@@ -36,7 +36,7 @@ const App = () => (
 const rootElement = document.getElementById("root")!;
 
 // Store root on the element itself to survive HMR
-const rootKey = '__react_root__';
+const rootKey = "__react_root__";
 if (!(rootElement as any)[rootKey]) {
   (rootElement as any)[rootKey] = createRoot(rootElement);
 }
