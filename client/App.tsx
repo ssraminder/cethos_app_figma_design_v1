@@ -1,7 +1,7 @@
 import "./global.css";
 
 import { Toaster } from "@/components/ui/toaster";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -33,20 +33,19 @@ const App = () => (
 
 const rootElement = document.getElementById("root")!;
 
-// Avoid creating multiple roots during hot module replacement
-if (!rootElement.hasAttribute('data-root-initialized')) {
-  rootElement.setAttribute('data-root-initialized', 'true');
-  const root = createRoot(rootElement);
-  root.render(<App />);
+// Store root instance to prevent creating multiple roots during HMR
+let root: Root;
 
-  // Store root for HMR
-  if (import.meta.hot) {
-    import.meta.hot.dispose(() => {
-      rootElement.removeAttribute('data-root-initialized');
-    });
+function render() {
+  if (!root) {
+    root = createRoot(rootElement);
   }
-} else {
-  // If root already exists, just re-render
-  const root = createRoot(rootElement);
   root.render(<App />);
+}
+
+render();
+
+// Handle HMR
+if (import.meta.hot) {
+  import.meta.hot.accept();
 }
