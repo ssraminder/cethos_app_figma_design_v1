@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useQuote } from "@/context/QuoteContext";
 import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
 import Footer from "@/components/Footer";
@@ -8,13 +9,17 @@ import HumanReviewNotice from "@/components/HumanReviewNotice";
 
 export default function Review() {
   const navigate = useNavigate();
+  const { state, goToNextStep, goToPreviousStep } = useQuote();
 
   const handleBack = () => {
+    goToPreviousStep();
     navigate("/details");
   };
 
   const handleContinue = () => {
-    navigate("/contact");
+    if (goToNextStep()) {
+      navigate("/contact");
+    }
   };
 
   const handleRequestReview = () => {
@@ -22,26 +27,18 @@ export default function Review() {
     // Handle human review request
   };
 
-  // Generate a random quote number
-  const quoteNumber = `QT-2026-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+  // Map uploaded files to document pricing data
+  const languagePair = state.sourceLanguage && state.targetLanguage
+    ? `${state.sourceLanguage} → ${state.targetLanguage}`
+    : "Language pair not set";
 
-  // Mock document data
-  const documents = [
-    {
-      filename: "passport-document.pdf",
-      languagePair: "German → English",
-      translationPrice: 65,
-      certificationPrice: 50,
-      pages: 1,
-    },
-    {
-      filename: "birth-certificate.pdf",
-      languagePair: "German → English",
-      translationPrice: 65,
-      certificationPrice: 50,
-      pages: 1,
-    },
-  ];
+  const documents = state.files.map((file) => ({
+    filename: file.name,
+    languagePair,
+    translationPrice: 65, // Base price per document
+    certificationPrice: 50, // Base certification price
+    pages: 1, // Default to 1 page (would need actual page detection)
+  }));
 
   // Calculate totals
   const translationTotal = documents.reduce(
