@@ -197,7 +197,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       return true;
     }
 
-    // Step 2 -> 3: Update quote details
+    // Step 2 -> 3: Update quote details and start processing
     if (state.currentStep === 2) {
       if (state.quoteId) {
         await supabase.updateQuoteDetails(state.quoteId, {
@@ -208,7 +208,8 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
           specialInstructions: state.specialInstructions,
         });
       }
-      updateState({ currentStep: 3 });
+      // Enable processing screen
+      updateState({ isProcessing: true });
       return true;
     }
 
