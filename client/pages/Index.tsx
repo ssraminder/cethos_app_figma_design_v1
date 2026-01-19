@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
 import FileUpload from "@/components/FileUpload";
@@ -6,19 +7,15 @@ import SaveForLater from "@/components/SaveForLater";
 import Footer from "@/components/Footer";
 
 export default function Index() {
-  const [currentStep, setCurrentStep] = useState(1);
+  const navigate = useNavigate();
   const [hasFiles, setHasFiles] = useState(false);
 
   const handleBack = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
+    // No back action on first step
   };
 
   const handleContinue = () => {
-    if (currentStep < 5) {
-      setCurrentStep(currentStep + 1);
-    }
+    navigate("/details");
   };
 
   return (
