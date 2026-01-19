@@ -161,24 +161,79 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const goToNextStep = (): boolean => {
+  const goToNextStep = async (): Promise<boolean> => {
     if (!validateStep(state.currentStep)) {
       return false;
     }
 
-    if (state.currentStep < 5) {
-      // Generate quote number when moving to step 5
-      if (state.currentStep === 4) {
-        const randomNum = Math.floor(Math.random() * 90000) + 10000;
-        updateState({
-          currentStep: state.currentStep + 1,
-          quoteNumber: `QT-2026-${randomNum}`,
-        });
-      } else {
-        updateState({ currentStep: state.currentStep + 1 });
+    if (state.currentStep >= 5) {
+      return false;
+    }
+
+    // Step 1 -> 2: Create quote and upload files
+    if (state.currentStep === 1) {
+      if (filesQueuedForUpload.current.length > 0) {
+        const result = await supabase.createQuoteWithFiles(filesQueuedForUpload.current);
+        if (result) {
+          filesQueuedForUpload.current = []; // Clear queue
+          updateState({
+            currentStep: 2,
+            quoteId: result.quoteId,
+            quoteNumber: result.quoteNumber,
+          });
+          return true;
+        } else {
+          // Failed to create quote - don't block navigation, localStorage is backup
+          updateState({ currentStep: 2 });
+          return true;
+        }
       }
+      updateState({ currentStep: 2 });
       return true;
     }
+
+    // Step 2 -> 3: Update quote details
+    if (state.currentStep === 2) {
+      if (state.quoteId) {
+        await supabase.updateQuoteDetails(state.quoteId, {
+          sourceLanguage: state.sourceLanguage,
+          targetLanguage: state.targetLanguage,
+          intendedUse: state.intendedUse,
+          countryOfIssue: state.countryOfIssue,
+          specialInstructions: state.specialInstructions,
+        });
+      }
+      updateState({ currentStep: 3 });
+      return true;
+    }
+
+    // Step 3 -> 4: Just navigation
+    if (state.currentStep === 3) {
+      updateState({ currentStep: 4 });
+      return true;
+    }
+
+    // Step 4 -> 5: Create/update customer and finalize quote
+    if (state.currentStep === 4) {
+      if (state.quoteId) {
+        const customerSaved = await supabase.createOrUpdateCustomer(state.quoteId, {
+          email: state.email,
+          firstName: state.firstName,
+          lastName: state.lastName,
+          phone: state.phone,
+          customerType: state.customerType,
+          companyName: state.companyName,
+        });
+
+        if (customerSaved) {
+          await supabase.finalizeQuote(state.quoteId, state.files.length);
+        }
+      }
+
+      updateState({ currentStep: 5 });
+      return true;
+    }
+
     return false;
   };
 
