@@ -17,10 +17,14 @@ export default function Step4Contact() {
       {/* Page Title */}
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold font-jakarta text-cethos-navy mb-2">
-          Contact Information
+          {state.emailQuoteMode
+            ? "Where should we send your quote?"
+            : "Contact Information"}
         </h1>
         <p className="text-base text-cethos-slate">
-          How should we reach you about your order?
+          {state.emailQuoteMode
+            ? "Enter your details and we'll email your quote when it's ready."
+            : "How should we reach you about your order?"}
         </p>
       </div>
 
