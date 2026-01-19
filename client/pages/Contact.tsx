@@ -1,42 +1,32 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Lock } from "lucide-react";
+import { useQuote } from "@/context/QuoteContext";
 import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
 import Footer from "@/components/Footer";
 
 export default function Contact() {
   const navigate = useNavigate();
-  const [customerType, setCustomerType] = useState<"individual" | "business">(
-    "individual",
-  );
-  const [formData, setFormData] = useState({
-    companyName: "",
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-  });
+  const { state, updateState, goToNextStep, goToPreviousStep, validateStep } = useQuote();
 
   const handleBack = () => {
+    goToPreviousStep();
     navigate("/review");
   };
 
   const handleContinue = () => {
-    navigate("/success");
+    if (goToNextStep()) {
+      navigate("/success");
+    }
   };
 
   const updateField = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    updateState({ [field]: value });
   };
 
-  // Validation
-  const isFormValid =
-    formData.firstName &&
-    formData.lastName &&
-    formData.email &&
-    formData.phone &&
-    (customerType === "individual" || formData.companyName);
+  const handleCustomerTypeChange = (type: "individual" | "business") => {
+    updateState({ customerType: type });
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
