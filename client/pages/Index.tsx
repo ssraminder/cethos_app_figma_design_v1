@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuote } from "@/context/QuoteContext";
 import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
 import FileUpload from "@/components/FileUpload";
@@ -8,14 +8,12 @@ import Footer from "@/components/Footer";
 
 export default function Index() {
   const navigate = useNavigate();
-  const [hasFiles, setHasFiles] = useState(false);
-
-  const handleBack = () => {
-    // No back action on first step
-  };
+  const { state, goToNextStep, validateStep } = useQuote();
 
   const handleContinue = () => {
-    navigate("/details");
+    if (goToNextStep()) {
+      navigate("/details");
+    }
   };
 
   return (
@@ -27,7 +25,7 @@ export default function Index() {
       <main className="flex-1 w-full">
         <div className="max-w-[1536px] mx-auto px-4 sm:px-8 lg:px-12 py-8 sm:py-12 lg:py-16">
           {/* Step Indicator */}
-          <StepIndicator currentStep={1} />
+          <StepIndicator currentStep={state.currentStep} />
 
           {/* Content Container */}
           <div className="max-w-[896px] mx-auto">
@@ -56,9 +54,9 @@ export default function Index() {
 
       {/* Footer */}
       <Footer
-        onBack={handleBack}
+        onBack={() => {}}
         onContinue={handleContinue}
-        canContinue={hasFiles}
+        canContinue={validateStep(1)}
         showBack={false}
       />
     </div>
