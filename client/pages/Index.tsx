@@ -13,10 +13,11 @@ export default function Index() {
   const { state, goToNextStep, goToPreviousStep, validateStep } = useQuote();
 
   const handleContinue = async () => {
+    const isLastStep = state.currentStep === 4;
     const success = await goToNextStep();
 
-    // Navigate to success page only when reaching step 5
-    if (success && state.currentStep === 4) {
+    // Navigate to success page if we were on step 4 and successfully moved to step 5
+    if (success && isLastStep) {
       navigate("/success");
     }
   };
