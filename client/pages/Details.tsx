@@ -22,8 +22,7 @@ export default function Details() {
   };
 
   const handleContinue = () => {
-    // Navigate to step 3 (Review) when implemented
-    console.log("Form data:", formData);
+    navigate("/review");
   };
 
   const isFormValid =
