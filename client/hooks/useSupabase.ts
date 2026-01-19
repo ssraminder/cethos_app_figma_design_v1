@@ -117,6 +117,12 @@ export function useSupabase() {
       specialInstructions: string;
     }
   ): Promise<boolean> => {
+    // Return early if Supabase is not configured
+    if (!isSupabaseEnabled() || !supabase) {
+      console.log('📝 Supabase not configured - skipping database operations');
+      return true; // Don't block navigation
+    }
+
     setLoading(true);
     setError(null);
 
@@ -162,6 +168,12 @@ export function useSupabase() {
       companyName?: string;
     }
   ): Promise<boolean> => {
+    // Return early if Supabase is not configured
+    if (!isSupabaseEnabled() || !supabase) {
+      console.log('📝 Supabase not configured - skipping database operations');
+      return true; // Don't block navigation
+    }
+
     setLoading(true);
     setError(null);
 
