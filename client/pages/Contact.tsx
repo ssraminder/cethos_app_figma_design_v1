@@ -61,9 +61,9 @@ export default function Contact() {
                 <div className="grid grid-cols-2 gap-4">
                   <button
                     type="button"
-                    onClick={() => setCustomerType("individual")}
+                    onClick={() => handleCustomerTypeChange("individual")}
                     className={`h-12 rounded-lg font-semibold text-base transition-all ${
-                      customerType === "individual"
+                      state.customerType === "individual"
                         ? "bg-cethos-blue text-white"
                         : "bg-white border border-cethos-border text-cethos-slate hover:border-cethos-blue"
                     }`}
@@ -72,9 +72,9 @@ export default function Contact() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCustomerType("business")}
+                    onClick={() => handleCustomerTypeChange("business")}
                     className={`h-12 rounded-lg font-semibold text-base transition-all ${
-                      customerType === "business"
+                      state.customerType === "business"
                         ? "bg-cethos-blue text-white"
                         : "bg-white border border-cethos-border text-cethos-slate hover:border-cethos-blue"
                     }`}
@@ -85,14 +85,14 @@ export default function Contact() {
               </div>
 
               {/* Company Name (Conditional) */}
-              {customerType === "business" && (
+              {state.customerType === "business" && (
                 <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                   <label className="block text-cethos-slate-dark font-semibold text-sm mb-2">
                     Company Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    value={formData.companyName}
+                    value={state.companyName}
                     onChange={(e) => updateField("companyName", e.target.value)}
                     placeholder="Your company name"
                     className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm"
@@ -108,7 +108,7 @@ export default function Contact() {
                   </label>
                   <input
                     type="text"
-                    value={formData.firstName}
+                    value={state.firstName}
                     onChange={(e) => updateField("firstName", e.target.value)}
                     placeholder="John"
                     className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm"
@@ -120,7 +120,7 @@ export default function Contact() {
                   </label>
                   <input
                     type="text"
-                    value={formData.lastName}
+                    value={state.lastName}
                     onChange={(e) => updateField("lastName", e.target.value)}
                     placeholder="Smith"
                     className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm"
@@ -135,7 +135,7 @@ export default function Contact() {
                 </label>
                 <input
                   type="email"
-                  value={formData.email}
+                  value={state.email}
                   onChange={(e) => updateField("email", e.target.value)}
                   placeholder="your.email@example.com"
                   className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm"
@@ -152,7 +152,7 @@ export default function Contact() {
                 </label>
                 <input
                   type="tel"
-                  value={formData.phone}
+                  value={state.phone}
                   onChange={(e) => updateField("phone", e.target.value)}
                   placeholder="(555) 123-4567"
                   className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm"
