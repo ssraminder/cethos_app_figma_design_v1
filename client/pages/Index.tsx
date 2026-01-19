@@ -92,8 +92,8 @@ export default function Index() {
         </div>
       </main>
 
-      {/* Footer - Only show on steps 1-4 and not during processing */}
-      {!state.isProcessing && state.currentStep <= 4 && (
+      {/* Footer - Only show on steps 1-4 and not during processing or email confirmation */}
+      {!state.isProcessing && !state.emailQuoteSent && state.currentStep <= 4 && (
         <Footer
           onBack={handleBack}
           onContinue={handleContinue}
