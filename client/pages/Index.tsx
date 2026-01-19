@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
 import Footer from "@/components/Footer";
 import ProcessingStatus from "@/components/ProcessingStatus";
+import EmailQuoteConfirmation from "@/components/EmailQuoteConfirmation";
 import Step1Upload from "@/components/steps/Step1Upload";
 import Step2Details from "@/components/steps/Step2Details";
 import Step3Review from "@/components/steps/Step3Review";
