@@ -16,10 +16,10 @@ export default function Step2Details() {
     if (!state.targetLanguageId && languages.length > 0) {
       const english = languages.find((l) => l.code === "en");
       if (english) {
-        updateField("targetLanguageId", english.id);
+        updateState({ targetLanguageId: english.id });
       }
     }
-  }, [languages, state.targetLanguageId]);
+  }, [languages.length, state.targetLanguageId, updateState]);
 
   if (loading) {
     return (
