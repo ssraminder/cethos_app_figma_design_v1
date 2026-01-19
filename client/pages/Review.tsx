@@ -59,24 +59,16 @@ export default function Review() {
       <main className="flex-1 w-full">
         <div className="max-w-[1536px] mx-auto px-4 sm:px-8 lg:px-12 py-8 sm:py-12 lg:py-16">
           {/* Step Indicator */}
-          <StepIndicator currentStep={3} />
+          <StepIndicator currentStep={state.currentStep} />
 
           {/* Content Container */}
           <div className="max-w-[896px] mx-auto">
-            {/* Page Title & Quote Badge */}
+            {/* Page Title */}
             <div className="mb-6 sm:mb-8">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-2">
+              <div className="mb-2">
                 <h1 className="text-2xl sm:text-3xl font-bold font-jakarta text-cethos-navy">
                   Review Your Quote
                 </h1>
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-white border border-cethos-border text-cethos-slate-dark font-mono text-sm">
-                    {quoteNumber}
-                  </span>
-                  <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-amber-100 text-amber-800 text-xs font-medium">
-                    Valid for 30 days
-                  </span>
-                </div>
               </div>
               <p className="text-base text-cethos-slate">
                 Here's an estimate based on your documents
