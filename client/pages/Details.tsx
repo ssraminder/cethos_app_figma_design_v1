@@ -9,16 +9,16 @@ import CountrySelect from "@/components/CountrySelect";
 
 export default function Details() {
   const navigate = useNavigate();
-  const { state, updateState, goToNextStep, goToPreviousStep, validateStep } =
-    useQuote();
+  const { state, updateState, goToNextStep, goToPreviousStep, validateStep } = useQuote();
 
   const handleBack = () => {
     goToPreviousStep();
     navigate("/");
   };
 
-  const handleContinue = () => {
-    if (goToNextStep()) {
+  const handleContinue = async () => {
+    const success = await goToNextStep();
+    if (success) {
       navigate("/review");
     }
   };
