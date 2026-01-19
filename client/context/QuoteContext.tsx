@@ -49,6 +49,7 @@ interface QuoteContextType {
 
 const initialState: QuoteState = {
   currentStep: 1,
+  quoteId: "",
   files: [],
   sourceLanguage: "",
   targetLanguage: "",
