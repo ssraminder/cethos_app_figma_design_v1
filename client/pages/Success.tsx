@@ -7,7 +7,7 @@ import StepIndicator from "@/components/StepIndicator";
 
 export default function Success() {
   const navigate = useNavigate();
-  const { state, resetQuote } = useQuote();
+  const { state, resetQuote, goToStep } = useQuote();
   const [copied, setCopied] = useState(false);
 
   const handleCopyQuote = async () => {
@@ -27,6 +27,7 @@ export default function Success() {
 
   const handleViewDetails = () => {
     // Go back to review step (step 3)
+    goToStep(3);
     navigate("/");
   };
 
