@@ -7,9 +7,7 @@ import Footer from "@/components/Footer";
 
 export default function Contact() {
   const navigate = useNavigate();
-  const [customerType, setCustomerType] = useState<"individual" | "business">(
-    "individual",
-  );
+  const [customerType, setCustomerType] = useState<"individual" | "business">("individual");
   const [formData, setFormData] = useState({
     companyName: "",
     firstName: "",
@@ -23,8 +21,7 @@ export default function Contact() {
   };
 
   const handleContinue = () => {
-    // Navigate to step 5 (Checkout) when implemented
-    console.log("Form data:", { customerType, ...formData });
+    navigate("/success");
   };
 
   const updateField = (field: string, value: string) => {
