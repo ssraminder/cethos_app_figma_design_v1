@@ -2,19 +2,27 @@ import { useNavigate } from "react-router-dom";
 import { useQuote } from "@/context/QuoteContext";
 import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
-import FileUpload from "@/components/FileUpload";
-import SaveForLater from "@/components/SaveForLater";
 import Footer from "@/components/Footer";
+import Step1Upload from "@/components/steps/Step1Upload";
+import Step2Details from "@/components/steps/Step2Details";
+import Step3Review from "@/components/steps/Step3Review";
+import Step4Contact from "@/components/steps/Step4Contact";
 
 export default function Index() {
   const navigate = useNavigate();
-  const { state, goToNextStep, validateStep } = useQuote();
+  const { state, goToNextStep, goToPreviousStep, validateStep } = useQuote();
 
   const handleContinue = async () => {
     const success = await goToNextStep();
-    if (success) {
-      navigate("/details");
+
+    // Navigate to success page only when reaching step 5
+    if (success && state.currentStep === 4) {
+      navigate("/success");
     }
+  };
+
+  const handleBack = () => {
+    goToPreviousStep();
   };
 
   return (
@@ -30,36 +38,24 @@ export default function Index() {
 
           {/* Content Container */}
           <div className="max-w-[896px] mx-auto">
-            {/* Page Title */}
-            <div className="mb-6 sm:mb-8">
-              <h1 className="text-2xl sm:text-3xl font-bold font-jakarta text-cethos-navy mb-2">
-                Upload Your Documents
-              </h1>
-              <p className="text-base text-cethos-slate">
-                Select the documents you need translated and certified
-              </p>
-            </div>
-
-            {/* File Upload Section */}
-            <div className="mb-6">
-              <FileUpload />
-            </div>
-
-            {/* Save for Later Section */}
-            <div>
-              <SaveForLater />
-            </div>
+            {/* Conditional Step Rendering */}
+            {state.currentStep === 1 && <Step1Upload />}
+            {state.currentStep === 2 && <Step2Details />}
+            {state.currentStep === 3 && <Step3Review />}
+            {state.currentStep === 4 && <Step4Contact />}
           </div>
         </div>
       </main>
 
-      {/* Footer */}
-      <Footer
-        onBack={() => {}}
-        onContinue={handleContinue}
-        canContinue={validateStep(1)}
-        showBack={false}
-      />
+      {/* Footer - Only show on steps 1-4 */}
+      {state.currentStep <= 4 && (
+        <Footer
+          onBack={handleBack}
+          onContinue={handleContinue}
+          canContinue={validateStep(state.currentStep)}
+          showBack={state.currentStep > 1}
+        />
+      )}
     </div>
   );
 }
