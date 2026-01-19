@@ -1,17 +1,31 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase environment variables are not set. Database features will be disabled.');
+// Check if credentials are provided
+const hasCredentials = supabaseUrl && supabaseAnonKey &&
+  supabaseUrl !== 'your_supabase_url_here' &&
+  supabaseAnonKey !== 'your_supabase_anon_key_here';
+
+if (!hasCredentials) {
+  console.warn('⚠️ Supabase credentials not configured. Database features disabled. App will use localStorage only.');
+  console.warn('To enable Supabase: Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: false, // We're not using auth in Phase 1
-  },
-});
+// Only create client if we have valid credentials
+export const supabase: SupabaseClient | null = hasCredentials
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: false, // We're not using auth in Phase 1
+      },
+    })
+  : null;
+
+// Helper to check if Supabase is available
+export const isSupabaseEnabled = (): boolean => {
+  return supabase !== null;
+};
 
 // Database types
 export interface Quote {
