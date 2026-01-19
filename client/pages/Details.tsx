@@ -35,7 +35,7 @@ export default function Details() {
       <main className="flex-1 w-full">
         <div className="max-w-[1536px] mx-auto px-4 sm:px-8 lg:px-12 py-8 sm:py-12 lg:py-16">
           {/* Step Indicator */}
-          <StepIndicator currentStep={2} />
+          <StepIndicator currentStep={state.currentStep} />
 
           {/* Content Container */}
           <div className="max-w-[896px] mx-auto">
@@ -57,7 +57,7 @@ export default function Details() {
                   Source Language <span className="text-red-500">*</span>
                 </label>
                 <LanguageSelect
-                  value={formData.sourceLanguage}
+                  value={state.sourceLanguage}
                   onChange={(value) => updateField("sourceLanguage", value)}
                   placeholder="Select source language"
                 />
@@ -69,7 +69,7 @@ export default function Details() {
                   Target Language <span className="text-red-500">*</span>
                 </label>
                 <LanguageSelect
-                  value={formData.targetLanguage}
+                  value={state.targetLanguage}
                   onChange={(value) => updateField("targetLanguage", value)}
                   placeholder="Select target language"
                 />
@@ -81,8 +81,8 @@ export default function Details() {
                   Purpose of Translation <span className="text-red-500">*</span>
                 </label>
                 <PurposeSelect
-                  value={formData.purpose}
-                  onChange={(value) => updateField("purpose", value)}
+                  value={state.intendedUse}
+                  onChange={(value) => updateField("intendedUse", value)}
                 />
               </div>
 
@@ -92,8 +92,8 @@ export default function Details() {
                   Country of Issue <span className="text-red-500">*</span>
                 </label>
                 <CountrySelect
-                  value={formData.country}
-                  onChange={(value) => updateField("country", value)}
+                  value={state.countryOfIssue}
+                  onChange={(value) => updateField("countryOfIssue", value)}
                 />
               </div>
 
@@ -103,7 +103,7 @@ export default function Details() {
                   Special Instructions (Optional)
                 </label>
                 <textarea
-                  value={formData.specialInstructions}
+                  value={state.specialInstructions}
                   onChange={(e) => {
                     const value = e.target.value.slice(0, 500);
                     updateField("specialInstructions", value);
@@ -113,7 +113,7 @@ export default function Details() {
                   maxLength={500}
                 />
                 <div className="mt-2 text-xs text-cethos-slate text-right">
-                  {formData.specialInstructions.length}/500 characters
+                  {state.specialInstructions.length}/500 characters
                 </div>
               </div>
             </div>
@@ -125,7 +125,7 @@ export default function Details() {
       <Footer
         onBack={handleBack}
         onContinue={handleContinue}
-        canContinue={isFormValid}
+        canContinue={validateStep(2)}
         showBack={true}
       />
     </div>
