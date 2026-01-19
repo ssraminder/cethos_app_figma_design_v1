@@ -290,7 +290,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
   };
 
   const skipToEmail = () => {
-    updateState({ isProcessing: false, currentStep: 4 });
+    updateState({ isProcessing: false, currentStep: 4, emailQuoteMode: true });
   };
 
   return (
