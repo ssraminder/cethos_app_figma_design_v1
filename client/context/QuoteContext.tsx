@@ -85,6 +85,9 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     return initialState;
   });
 
+  const supabase = useSupabase();
+  const filesQueuedForUpload = useRef<UploadedFile[]>([]);
+
   // Save to localStorage whenever state changes
   useEffect(() => {
     try {
@@ -105,6 +108,9 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       ...prev,
       files: [...prev.files, file],
     }));
+
+    // Queue file for upload (will be uploaded when moving to step 2)
+    filesQueuedForUpload.current.push(file);
   };
 
   const removeFile = (fileId: string) => {
@@ -112,6 +118,11 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       ...prev,
       files: prev.files.filter((f) => f.id !== fileId),
     }));
+
+    // Remove from upload queue
+    filesQueuedForUpload.current = filesQueuedForUpload.current.filter(
+      (f) => f.id !== fileId
+    );
   };
 
   const validateStep = (step: number): boolean => {
