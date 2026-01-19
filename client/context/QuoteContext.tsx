@@ -38,7 +38,7 @@ export interface QuoteState {
 interface QuoteContextType {
   state: QuoteState;
   updateState: (updates: Partial<QuoteState>) => void;
-  goToNextStep: () => boolean;
+  goToNextStep: () => Promise<boolean>;
   goToPreviousStep: () => void;
   goToStep: (step: number) => void;
   validateStep: (step: number) => boolean;
