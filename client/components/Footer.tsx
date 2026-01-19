@@ -42,7 +42,7 @@ export default function Footer({
                 : "bg-secondary cursor-not-allowed"
             }`}
           >
-            <span>Continue</span>
+            <span>{continueText}</span>
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
