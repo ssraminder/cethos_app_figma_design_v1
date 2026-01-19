@@ -1,11 +1,9 @@
 import { Check } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { useQuote } from "@/context/QuoteContext";
 
 interface Step {
   number: number;
   label: string;
-  route: string;
 }
 
 interface StepIndicatorProps {
@@ -13,15 +11,13 @@ interface StepIndicatorProps {
 }
 
 const steps: Step[] = [
-  { number: 1, label: "Upload", route: "/" },
-  { number: 2, label: "Details", route: "/details" },
-  { number: 3, label: "Review", route: "/review" },
-  { number: 4, label: "Contact", route: "/contact" },
-  { number: 5, label: "Checkout", route: "/success" },
+  { number: 1, label: "Upload" },
+  { number: 2, label: "Details" },
+  { number: 3, label: "Review" },
+  { number: 4, label: "Contact" },
 ];
 
 export default function StepIndicator({ currentStep }: StepIndicatorProps) {
-  const navigate = useNavigate();
   const { goToStep, validateStep } = useQuote();
 
   const isCompleted = (stepNumber: number) => stepNumber < currentStep;
@@ -41,7 +37,6 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
 
       if (canNavigate) {
         goToStep(step.number);
-        navigate(step.route);
       }
     }
   };
