@@ -21,9 +21,9 @@ export interface QuoteState {
   currentStep: number;
   quoteId: string;
   files: UploadedFile[];
-  sourceLanguage: string;
-  targetLanguage: string;
-  intendedUse: string;
+  sourceLanguageId: string;
+  targetLanguageId: string;
+  intendedUseId: string;
   countryOfIssue: string;
   specialInstructions: string;
   customerType: "individual" | "business";
@@ -51,9 +51,9 @@ const initialState: QuoteState = {
   currentStep: 1,
   quoteId: "",
   files: [],
-  sourceLanguage: "",
-  targetLanguage: "",
-  intendedUse: "",
+  sourceLanguageId: "",
+  targetLanguageId: "",
+  intendedUseId: "",
   countryOfIssue: "",
   specialInstructions: "",
   customerType: "individual",
@@ -132,9 +132,10 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
 
       case 2: // Details
         return !!(
-          state.sourceLanguage &&
-          state.targetLanguage &&
-          state.intendedUse &&
+          state.sourceLanguageId &&
+          state.targetLanguageId &&
+          state.sourceLanguageId !== state.targetLanguageId &&
+          state.intendedUseId &&
           state.countryOfIssue
         );
 
