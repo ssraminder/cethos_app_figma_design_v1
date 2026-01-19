@@ -180,7 +180,7 @@ export default function Contact() {
       <Footer
         onBack={handleBack}
         onContinue={handleContinue}
-        canContinue={isFormValid}
+        canContinue={validateStep(4)}
         showBack={true}
       />
     </div>
