@@ -281,6 +281,14 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const completeProcessing = () => {
+    updateState({ isProcessing: false, currentStep: 3 });
+  };
+
+  const skipToEmail = () => {
+    updateState({ isProcessing: false, currentStep: 4 });
+  };
+
   return (
     <QuoteContext.Provider
       value={{
@@ -293,6 +301,8 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
         resetQuote,
         addFile,
         removeFile,
+        completeProcessing,
+        skipToEmail,
       }}
     >
       {children}
