@@ -64,10 +64,12 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
             )}
 
             {/* Step circle */}
-            <div
+            <button
+              onClick={() => handleStepClick(step)}
+              disabled={!isCompleted(step.number)}
               className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all relative z-10 ${
                 isCompleted(step.number)
-                  ? "bg-green-500 text-white border-2 border-transparent"
+                  ? "bg-green-500 text-white border-2 border-transparent cursor-pointer hover:bg-green-600"
                   : isActive(step.number)
                     ? "bg-cethos-blue text-white border-2 border-transparent"
                     : "bg-white text-cethos-slate-light border-2 border-cethos-border"
@@ -78,7 +80,7 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
               ) : (
                 step.number
               )}
-            </div>
+            </button>
 
             {/* Step label */}
             <span
