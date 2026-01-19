@@ -35,19 +35,11 @@ const App = () => (
 
 const rootElement = document.getElementById("root")!;
 
-// Store root instance to prevent creating multiple roots during HMR
-let appRoot: Root;
-
-function render() {
-  if (!appRoot) {
-    appRoot = createRoot(rootElement);
-  }
-  appRoot.render(<App />);
+// Store root on the element itself to survive HMR
+const rootKey = '__react_root__';
+if (!(rootElement as any)[rootKey]) {
+  (rootElement as any)[rootKey] = createRoot(rootElement);
 }
 
-render();
-
-// Handle HMR
-if (import.meta.hot) {
-  import.meta.hot.accept();
-}
+const root = (rootElement as any)[rootKey] as Root;
+root.render(<App />);
