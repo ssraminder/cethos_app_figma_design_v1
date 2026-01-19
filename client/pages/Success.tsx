@@ -38,7 +38,7 @@ export default function Success() {
       <main className="flex-1 w-full pb-8">
         <div className="max-w-[1536px] mx-auto px-4 sm:px-8 lg:px-12 py-8 sm:py-12 lg:py-16">
           {/* Step Indicator */}
-          <StepIndicator currentStep={5} />
+          <StepIndicator currentStep={state.currentStep} />
 
           {/* Success Content - Centered */}
           <div className="max-w-[600px] mx-auto text-center">
@@ -57,7 +57,7 @@ export default function Success() {
             {/* Quote Number with Copy */}
             <div className="flex items-center justify-center gap-3 mb-6">
               <span className="text-2xl font-mono text-cethos-slate-dark font-semibold">
-                {quoteNumber}
+                {state.quoteNumber}
               </span>
               <button
                 onClick={handleCopyQuote}
@@ -79,7 +79,7 @@ export default function Success() {
                 We've sent a confirmation to:
               </p>
               <p className="text-sm font-semibold text-cethos-slate-dark">
-                {userEmail}
+                {state.email}
               </p>
             </div>
 
