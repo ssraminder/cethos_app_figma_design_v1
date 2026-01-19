@@ -34,6 +34,8 @@ export interface QuoteState {
   phone: string;
   quoteNumber: string;
   isProcessing: boolean;
+  emailQuoteMode: boolean;
+  emailQuoteSent: boolean;
 }
 
 interface QuoteContextType {
