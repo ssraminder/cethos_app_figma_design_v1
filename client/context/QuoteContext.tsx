@@ -46,6 +46,8 @@ interface QuoteContextType {
   resetQuote: () => void;
   addFile: (file: UploadedFile) => void;
   removeFile: (fileId: string) => void;
+  completeProcessing: () => void;
+  skipToEmail: () => void;
 }
 
 const initialState: QuoteState = {
