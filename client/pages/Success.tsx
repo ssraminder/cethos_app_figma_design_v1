@@ -26,7 +26,8 @@ export default function Success() {
   };
 
   const handleViewDetails = () => {
-    navigate("/review");
+    // Go back to review step (step 3)
+    navigate("/");
   };
 
   return (
