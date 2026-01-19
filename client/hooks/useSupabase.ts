@@ -250,6 +250,12 @@ export function useSupabase() {
 
   // Step 5: Finalize quote with pricing
   const finalizeQuote = async (quoteId: string, fileCount: number): Promise<boolean> => {
+    // Return early if Supabase is not configured
+    if (!isSupabaseEnabled() || !supabase) {
+      console.log('📝 Supabase not configured - skipping database operations');
+      return true; // Don't block navigation
+    }
+
     setLoading(true);
     setError(null);
 
@@ -293,6 +299,12 @@ export function useSupabase() {
     quoteId: string,
     file: UploadedFile
   ): Promise<boolean> => {
+    // Return early if Supabase is not configured
+    if (!isSupabaseEnabled() || !supabase) {
+      console.log('📝 Supabase not configured - skipping file retry');
+      return false;
+    }
+
     setLoading(true);
     setError(null);
 
