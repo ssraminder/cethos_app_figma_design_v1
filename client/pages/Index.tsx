@@ -14,6 +14,7 @@ export default function Index() {
   const navigate = useNavigate();
   const {
     state,
+    updateState,
     goToNextStep,
     goToPreviousStep,
     validateStep,
@@ -23,6 +24,18 @@ export default function Index() {
 
   const handleContinue = async () => {
     const isLastStep = state.currentStep === 4;
+
+    // Special handling for email quote mode on Step 4
+    if (isLastStep && state.emailQuoteMode) {
+      const success = await goToNextStep();
+      if (success) {
+        // Show confirmation instead of navigating to success page
+        updateState({ emailQuoteSent: true });
+      }
+      return;
+    }
+
+    // Normal flow
     const success = await goToNextStep();
 
     // Navigate to success page if we were on step 4 and successfully moved to step 5
