@@ -4,7 +4,9 @@ interface HumanReviewNoticeProps {
   onRequestReview?: () => void;
 }
 
-export default function HumanReviewNotice({ onRequestReview }: HumanReviewNoticeProps) {
+export default function HumanReviewNotice({
+  onRequestReview,
+}: HumanReviewNoticeProps) {
   return (
     <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 sm:p-5">
       <div className="flex items-start gap-3">
@@ -14,7 +16,8 @@ export default function HumanReviewNotice({ onRequestReview }: HumanReviewNotice
             Something doesn't look right?
           </h4>
           <p className="text-cethos-slate text-sm mb-4">
-            Request a human review and our team will check your documents within 4 hours
+            Request a human review and our team will check your documents within
+            4 hours
           </p>
           <button
             onClick={onRequestReview}

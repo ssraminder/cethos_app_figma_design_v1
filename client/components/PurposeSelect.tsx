@@ -67,7 +67,9 @@ export default function PurposeSelect({ value, onChange }: PurposeSelectProps) {
                 onClick={() => handleSelect(purpose)}
                 className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-background transition-colors text-left"
               >
-                <span className="text-sm text-cethos-slate-dark">{purpose}</span>
+                <span className="text-sm text-cethos-slate-dark">
+                  {purpose}
+                </span>
                 {value === purpose && (
                   <Check className="w-4 h-4 text-cethos-blue" />
                 )}

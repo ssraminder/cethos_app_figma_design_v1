@@ -25,7 +25,10 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
     <div className="w-full max-w-[520px] mx-auto mb-8 px-4">
       <div className="flex items-center justify-between relative">
         {steps.map((step, index) => (
-          <div key={step.number} className="flex flex-col items-center relative flex-1">
+          <div
+            key={step.number}
+            className="flex flex-col items-center relative flex-1"
+          >
             {/* Connector line */}
             {index < steps.length - 1 && (
               <div
@@ -41,8 +44,8 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
                 isCompleted(step.number)
                   ? "bg-green-500 text-white border-2 border-transparent"
                   : isActive(step.number)
-                  ? "bg-cethos-blue text-white border-2 border-transparent"
-                  : "bg-white text-cethos-slate-light border-2 border-cethos-border"
+                    ? "bg-cethos-blue text-white border-2 border-transparent"
+                    : "bg-white text-cethos-slate-light border-2 border-cethos-border"
               }`}
             >
               {isCompleted(step.number) ? (
@@ -58,8 +61,8 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
                 isCompleted(step.number)
                   ? "text-green-600 font-semibold"
                   : isActive(step.number)
-                  ? "text-cethos-navy font-semibold"
-                  : "text-cethos-slate"
+                    ? "text-cethos-navy font-semibold"
+                    : "text-cethos-slate"
               }`}
             >
               {step.label}

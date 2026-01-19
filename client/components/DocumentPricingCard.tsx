@@ -48,7 +48,9 @@ export default function DocumentPricingCard({
           </span>
         </div>
         <div className="flex justify-between items-center text-sm">
-          <span className="text-cethos-slate">Certification (Notarization)</span>
+          <span className="text-cethos-slate">
+            Certification (Notarization)
+          </span>
           <span className="text-cethos-slate-dark font-medium">
             ${certificationPrice.toFixed(2)}
           </span>

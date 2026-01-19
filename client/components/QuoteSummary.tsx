@@ -51,7 +51,9 @@ export default function QuoteSummary({
 
       {/* Tax */}
       <div className="flex justify-between items-center text-sm mb-4">
-        <span className="text-cethos-slate">GST ({(taxRate * 100).toFixed(0)}%)</span>
+        <span className="text-cethos-slate">
+          GST ({(taxRate * 100).toFixed(0)}%)
+        </span>
         <span className="text-cethos-slate-dark font-medium">
           ${tax.toFixed(2)}
         </span>

@@ -60,7 +60,10 @@ export default function SaveForLater() {
         </div>
 
         {/* Email Input Form */}
-        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col sm:flex-row gap-3"
+        >
           <input
             type="email"
             value={email}

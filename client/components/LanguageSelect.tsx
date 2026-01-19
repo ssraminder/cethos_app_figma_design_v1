@@ -50,7 +50,7 @@ export default function LanguageSelect({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const filteredLanguages = languages.filter((lang) =>
-    lang.toLowerCase().includes(searchQuery.toLowerCase())
+    lang.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   useEffect(() => {

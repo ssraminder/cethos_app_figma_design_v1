@@ -65,7 +65,7 @@ export default function CountrySelect({ value, onChange }: CountrySelectProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const filteredCountries = countries.filter((country) =>
-    country.toLowerCase().includes(searchQuery.toLowerCase())
+    country.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   useEffect(() => {
