@@ -35,7 +35,7 @@ export default function ProcessingStatus({
         }
         // Increment progress
         const newProgress = prev + 5;
-        
+
         // Update step statuses based on progress
         if (newProgress >= 50 && newProgress < 80) {
           setSteps([
@@ -80,7 +80,7 @@ export default function ProcessingStatus({
   //       .select('processing_status, processing_progress')
   //       .eq('id', quoteId)
   //       .single();
-  //     
+  //
   //     if (data?.processing_status === 'completed') {
   //       onComplete();
   //     } else {
@@ -164,9 +164,7 @@ export default function ProcessingStatus({
 
         {/* Email Option */}
         <div className="text-center">
-          <p className="text-sm text-cethos-slate mb-3">
-            Don't want to wait?
-          </p>
+          <p className="text-sm text-cethos-slate mb-3">Don't want to wait?</p>
           <button
             onClick={onEmailInstead}
             className="inline-flex items-center gap-2 px-6 py-3 bg-white border-2 border-cethos-blue text-cethos-blue rounded-lg hover:bg-blue-50 transition-colors font-semibold text-sm"
@@ -180,7 +178,8 @@ export default function ProcessingStatus({
       {/* Footer Note */}
       <div className="mt-6 text-center">
         <p className="text-xs text-cethos-slate">
-          We're analyzing your documents to provide accurate pricing. This typically takes just a few seconds.
+          We're analyzing your documents to provide accurate pricing. This
+          typically takes just a few seconds.
         </p>
       </div>
     </div>

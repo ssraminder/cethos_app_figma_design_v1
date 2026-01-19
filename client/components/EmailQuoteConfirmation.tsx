@@ -51,8 +51,8 @@ export default function EmailQuoteConfirmation() {
         {/* Estimated Time */}
         <div className="text-center mb-8">
           <p className="text-sm text-cethos-slate">
-            Usually ready in{" "}
-            <span className="font-semibold">5-10 minutes</span>.
+            Usually ready in <span className="font-semibold">5-10 minutes</span>
+            .
           </p>
         </div>
 

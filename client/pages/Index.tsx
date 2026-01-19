@@ -93,19 +93,21 @@ export default function Index() {
       </main>
 
       {/* Footer - Only show on steps 1-4 and not during processing or email confirmation */}
-      {!state.isProcessing && !state.emailQuoteSent && state.currentStep <= 4 && (
-        <Footer
-          onBack={handleBack}
-          onContinue={handleContinue}
-          canContinue={validateStep(state.currentStep)}
-          showBack={state.currentStep > 1}
-          continueText={
-            state.currentStep === 4 && state.emailQuoteMode
-              ? "Send My Quote"
-              : "Continue"
-          }
-        />
-      )}
+      {!state.isProcessing &&
+        !state.emailQuoteSent &&
+        state.currentStep <= 4 && (
+          <Footer
+            onBack={handleBack}
+            onContinue={handleContinue}
+            canContinue={validateStep(state.currentStep)}
+            showBack={state.currentStep > 1}
+            continueText={
+              state.currentStep === 4 && state.emailQuoteMode
+                ? "Send My Quote"
+                : "Continue"
+            }
+          />
+        )}
     </div>
   );
 }
