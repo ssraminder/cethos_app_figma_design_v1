@@ -33,6 +33,7 @@ export interface QuoteState {
   email: string;
   phone: string;
   quoteNumber: string;
+  isProcessing: boolean;
 }
 
 interface QuoteContextType {
@@ -63,6 +64,7 @@ const initialState: QuoteState = {
   email: "",
   phone: "",
   quoteNumber: "",
+  isProcessing: false,
 };
 
 const QuoteContext = createContext<QuoteContextType | undefined>(undefined);
