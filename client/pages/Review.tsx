@@ -14,8 +14,7 @@ export default function Review() {
   };
 
   const handleContinue = () => {
-    // Navigate to step 4 (Contact) when implemented
-    console.log("Proceeding to Contact step");
+    navigate("/contact");
   };
 
   const handleRequestReview = () => {
@@ -45,14 +44,8 @@ export default function Review() {
   ];
 
   // Calculate totals
-  const translationTotal = documents.reduce(
-    (sum, doc) => sum + doc.translationPrice,
-    0,
-  );
-  const certificationTotal = documents.reduce(
-    (sum, doc) => sum + doc.certificationPrice,
-    0,
-  );
+  const translationTotal = documents.reduce((sum, doc) => sum + doc.translationPrice, 0);
+  const certificationTotal = documents.reduce((sum, doc) => sum + doc.certificationPrice, 0);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
