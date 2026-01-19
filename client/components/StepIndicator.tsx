@@ -17,15 +17,14 @@ const steps: Step[] = [
 
 export default function StepIndicator({ currentStep }: StepIndicatorProps) {
   return (
-    <div className="w-full max-w-[520px] mx-auto mb-8">
+    <div className="w-full max-w-[520px] mx-auto mb-8 px-4">
       <div className="flex items-center justify-between relative">
         {steps.map((step, index) => (
-          <div key={step.number} className="flex flex-col items-center relative z-10">
+          <div key={step.number} className="flex flex-col items-center relative flex-1">
             {/* Connector line */}
             {index < steps.length - 1 && (
               <div
-                className="absolute left-[50%] top-4 h-0.5 bg-cethos-border"
-                style={{ width: "calc(100vw / 5 - 32px)", minWidth: "64px" }}
+                className="absolute left-[calc(50%+16px)] top-4 right-[calc(-100%+16px)] h-0.5 bg-cethos-border z-0"
               />
             )}
 
