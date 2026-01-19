@@ -32,5 +32,21 @@ const App = () => (
 );
 
 const rootElement = document.getElementById("root")!;
-const root = createRoot(rootElement);
-root.render(<App />);
+
+// Avoid creating multiple roots during hot module replacement
+if (!rootElement.hasAttribute('data-root-initialized')) {
+  rootElement.setAttribute('data-root-initialized', 'true');
+  const root = createRoot(rootElement);
+  root.render(<App />);
+
+  // Store root for HMR
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      rootElement.removeAttribute('data-root-initialized');
+    });
+  }
+} else {
+  // If root already exists, just re-render
+  const root = createRoot(rootElement);
+  root.render(<App />);
+}
