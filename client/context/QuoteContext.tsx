@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 
 // Types
 export interface UploadedFile {
@@ -17,7 +23,7 @@ export interface QuoteState {
   intendedUse: string;
   countryOfIssue: string;
   specialInstructions: string;
-  customerType: 'individual' | 'business';
+  customerType: "individual" | "business";
   companyName: string;
   firstName: string;
   lastName: string;
@@ -41,23 +47,23 @@ interface QuoteContextType {
 const initialState: QuoteState = {
   currentStep: 1,
   files: [],
-  sourceLanguage: '',
-  targetLanguage: '',
-  intendedUse: '',
-  countryOfIssue: '',
-  specialInstructions: '',
-  customerType: 'individual',
-  companyName: '',
-  firstName: '',
-  lastName: '',
-  email: '',
-  phone: '',
-  quoteNumber: '',
+  sourceLanguage: "",
+  targetLanguage: "",
+  intendedUse: "",
+  countryOfIssue: "",
+  specialInstructions: "",
+  customerType: "individual",
+  companyName: "",
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  quoteNumber: "",
 };
 
 const QuoteContext = createContext<QuoteContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'cethos_quote_draft';
+const STORAGE_KEY = "cethos_quote_draft";
 
 export function QuoteProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<QuoteState>(() => {
@@ -70,7 +76,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
         return { ...parsed, files: [] };
       }
     } catch (error) {
-      console.error('Error loading quote draft:', error);
+      console.error("Error loading quote draft:", error);
     }
     return initialState;
   });
@@ -82,25 +88,25 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       const { files, ...persistableState } = state;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(persistableState));
     } catch (error) {
-      console.error('Error saving quote draft:', error);
+      console.error("Error saving quote draft:", error);
     }
   }, [state]);
 
   const updateState = (updates: Partial<QuoteState>) => {
-    setState(prev => ({ ...prev, ...updates }));
+    setState((prev) => ({ ...prev, ...updates }));
   };
 
   const addFile = (file: UploadedFile) => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       files: [...prev.files, file],
     }));
   };
 
   const removeFile = (fileId: string) => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
-      files: prev.files.filter(f => f.id !== fileId),
+      files: prev.files.filter((f) => f.id !== fileId),
     }));
   };
 
@@ -108,7 +114,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     switch (step) {
       case 1: // Upload
         return state.files.length > 0;
-      
+
       case 2: // Details
         return !!(
           state.sourceLanguage &&
@@ -116,20 +122,25 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
           state.intendedUse &&
           state.countryOfIssue
         );
-      
+
       case 3: // Review
         return true; // Always valid
-      
+
       case 4: // Contact
-        const baseValid = !!(state.firstName && state.lastName && state.email && state.phone);
-        if (state.customerType === 'business') {
+        const baseValid = !!(
+          state.firstName &&
+          state.lastName &&
+          state.email &&
+          state.phone
+        );
+        if (state.customerType === "business") {
           return baseValid && !!state.companyName;
         }
         return baseValid;
-      
+
       case 5: // Success
         return true; // Always valid
-      
+
       default:
         return false;
     }
@@ -173,7 +184,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
           break;
         }
       }
-      
+
       if (canNavigate) {
         updateState({ currentStep: step });
       }
@@ -185,7 +196,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch (error) {
-      console.error('Error clearing quote draft:', error);
+      console.error("Error clearing quote draft:", error);
     }
   };
 
@@ -211,7 +222,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
 export function useQuote() {
   const context = useContext(QuoteContext);
   if (!context) {
-    throw new Error('useQuote must be used within a QuoteProvider');
+    throw new Error("useQuote must be used within a QuoteProvider");
   }
   return context;
 }

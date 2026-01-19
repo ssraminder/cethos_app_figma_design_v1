@@ -9,7 +9,8 @@ import CountrySelect from "@/components/CountrySelect";
 
 export default function Details() {
   const navigate = useNavigate();
-  const { state, updateState, goToNextStep, goToPreviousStep, validateStep } = useQuote();
+  const { state, updateState, goToNextStep, goToPreviousStep, validateStep } =
+    useQuote();
 
   const handleBack = () => {
     goToPreviousStep();
