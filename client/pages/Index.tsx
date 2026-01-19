@@ -74,6 +74,11 @@ export default function Index() {
           onContinue={handleContinue}
           canContinue={validateStep(state.currentStep)}
           showBack={state.currentStep > 1}
+          continueText={
+            state.currentStep === 4 && state.emailQuoteMode
+              ? "Send My Quote"
+              : "Continue"
+          }
         />
       )}
     </div>
