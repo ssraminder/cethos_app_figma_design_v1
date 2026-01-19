@@ -69,6 +69,8 @@ const initialState: QuoteState = {
   phone: "",
   quoteNumber: "",
   isProcessing: false,
+  emailQuoteMode: false,
+  emailQuoteSent: false,
 };
 
 const QuoteContext = createContext<QuoteContextType | undefined>(undefined);
