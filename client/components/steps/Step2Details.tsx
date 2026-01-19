@@ -116,7 +116,8 @@ export default function Step2Details() {
         {/* Country of Issue */}
         <div>
           <label className="block text-cethos-slate-dark font-semibold text-sm mb-2">
-            Country where document was issued <span className="text-red-500">*</span>
+            Country where document was issued{" "}
+            <span className="text-red-500">*</span>
           </label>
           <select
             value={state.countryOfIssue || ""}
