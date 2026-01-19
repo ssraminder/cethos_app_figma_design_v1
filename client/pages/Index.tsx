@@ -10,8 +10,9 @@ export default function Index() {
   const navigate = useNavigate();
   const { state, goToNextStep, validateStep } = useQuote();
 
-  const handleContinue = () => {
-    if (goToNextStep()) {
+  const handleContinue = async () => {
+    const success = await goToNextStep();
+    if (success) {
       navigate("/details");
     }
   };
