@@ -190,11 +190,16 @@ export function useSupabase() {
       const fullName = `${customerData.firstName} ${customerData.lastName}`;
 
       // Check if customer exists
-      const { data: existingCustomer } = await supabase
+      const { data: existingCustomer, error: lookupError } = await supabase
         .from("customers")
         .select("id")
         .eq("email", customerData.email)
-        .single();
+        .maybeSingle();
+
+      // Ignore "no rows" errors, but throw other errors
+      if (lookupError && lookupError.code !== "PGRST116") {
+        throw lookupError;
+      }
 
       let customerId: string;
 
