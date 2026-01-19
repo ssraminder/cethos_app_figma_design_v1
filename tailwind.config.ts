@@ -13,7 +13,21 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ["Inter", "sans-serif"],
+        jakarta: ["Plus Jakarta Sans", "sans-serif"],
+      },
       colors: {
+        cethos: {
+          navy: "hsl(var(--cethos-navy))",
+          blue: "hsl(var(--cethos-blue))",
+          "slate-dark": "hsl(var(--cethos-slate-dark))",
+          slate: "hsl(var(--cethos-slate))",
+          "slate-light": "hsl(var(--cethos-slate-light))",
+          border: "hsl(var(--cethos-border))",
+          bg: "hsl(var(--cethos-bg))",
+          "bg-alt": "hsl(var(--cethos-bg-alt))",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
