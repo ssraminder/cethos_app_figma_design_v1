@@ -34,13 +34,13 @@ const App = () => (
 const rootElement = document.getElementById("root")!;
 
 // Store root instance to prevent creating multiple roots during HMR
-let root: Root;
+let appRoot: Root;
 
 function render() {
-  if (!root) {
-    root = createRoot(rootElement);
+  if (!appRoot) {
+    appRoot = createRoot(rootElement);
   }
-  root.render(<App />);
+  appRoot.render(<App />);
 }
 
 render();
