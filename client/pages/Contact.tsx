@@ -7,7 +7,9 @@ import Footer from "@/components/Footer";
 
 export default function Contact() {
   const navigate = useNavigate();
-  const [customerType, setCustomerType] = useState<"individual" | "business">("individual");
+  const [customerType, setCustomerType] = useState<"individual" | "business">(
+    "individual",
+  );
   const [formData, setFormData] = useState({
     companyName: "",
     firstName: "",
