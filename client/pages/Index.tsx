@@ -63,8 +63,11 @@ export default function Index() {
 
           {/* Content Container */}
           <div className="max-w-[896px] mx-auto">
+            {/* Show Email Quote Confirmation */}
+            {state.emailQuoteSent && <EmailQuoteConfirmation />}
+
             {/* Show Processing Status */}
-            {state.isProcessing && (
+            {!state.emailQuoteSent && state.isProcessing && (
               <ProcessingStatus
                 quoteId={state.quoteId}
                 onComplete={completeProcessing}
@@ -73,10 +76,18 @@ export default function Index() {
             )}
 
             {/* Conditional Step Rendering */}
-            {!state.isProcessing && state.currentStep === 1 && <Step1Upload />}
-            {!state.isProcessing && state.currentStep === 2 && <Step2Details />}
-            {!state.isProcessing && state.currentStep === 3 && <Step3Review />}
-            {!state.isProcessing && state.currentStep === 4 && <Step4Contact />}
+            {!state.emailQuoteSent &&
+              !state.isProcessing &&
+              state.currentStep === 1 && <Step1Upload />}
+            {!state.emailQuoteSent &&
+              !state.isProcessing &&
+              state.currentStep === 2 && <Step2Details />}
+            {!state.emailQuoteSent &&
+              !state.isProcessing &&
+              state.currentStep === 3 && <Step3Review />}
+            {!state.emailQuoteSent &&
+              !state.isProcessing &&
+              state.currentStep === 4 && <Step4Contact />}
           </div>
         </div>
       </main>
