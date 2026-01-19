@@ -1,20 +1,27 @@
 import { useQuote } from "@/context/QuoteContext";
+import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 import DocumentPricingCard from "@/components/DocumentPricingCard";
 import QuoteSummary from "@/components/QuoteSummary";
 import HumanReviewNotice from "@/components/HumanReviewNotice";
+import { Loader2 } from "lucide-react";
 
 export default function Step3Review() {
   const { state } = useQuote();
+  const { languages, loading } = useDropdownOptions();
 
   const handleRequestReview = () => {
     console.log("Human review requested");
     // Handle human review request
   };
 
+  // Get language names from IDs
+  const sourceLanguage = languages.find((l) => l.id === state.sourceLanguageId);
+  const targetLanguage = languages.find((l) => l.id === state.targetLanguageId);
+
   // Map uploaded files to document pricing data
   const languagePair =
-    state.sourceLanguage && state.targetLanguage
-      ? `${state.sourceLanguage} → ${state.targetLanguage}`
+    sourceLanguage && targetLanguage
+      ? `${sourceLanguage.name} → ${targetLanguage.name}`
       : "Language pair not set";
 
   const documents = state.files.map((file) => ({
@@ -34,6 +41,15 @@ export default function Step3Review() {
     (sum, doc) => sum + doc.certificationPrice,
     0,
   );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-cethos-blue" />
+        <span className="ml-3 text-cethos-slate">Loading quote details...</span>
+      </div>
+    );
+  }
 
   return (
     <>
