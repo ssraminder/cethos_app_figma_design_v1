@@ -5,6 +5,7 @@ interface FooterProps {
   onContinue?: () => void;
   canContinue?: boolean;
   showBack?: boolean;
+  continueText?: string;
 }
 
 export default function Footer({
@@ -12,6 +13,7 @@ export default function Footer({
   onContinue,
   canContinue = false,
   showBack = true,
+  continueText = "Continue",
 }: FooterProps) {
   return (
     <footer className="w-full border-t border-cethos-border bg-white shadow-lg sticky bottom-0">
