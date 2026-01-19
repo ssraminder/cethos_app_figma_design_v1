@@ -122,7 +122,8 @@ export default function Success() {
               <div className="flex items-start gap-3">
                 <Info className="w-5 h-5 text-blue-700 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-blue-900 text-left">
-                  Online payment coming soon! Our team will contact you to complete your order.
+                  Online payment coming soon! Our team will contact you to
+                  complete your order.
                 </p>
               </div>
             </div>
