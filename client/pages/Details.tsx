@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuote } from "@/context/QuoteContext";
 import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
 import Footer from "@/components/Footer";
@@ -9,30 +9,21 @@ import CountrySelect from "@/components/CountrySelect";
 
 export default function Details() {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    sourceLanguage: "",
-    targetLanguage: "English",
-    purpose: "",
-    country: "",
-    specialInstructions: "",
-  });
+  const { state, updateState, goToNextStep, goToPreviousStep, validateStep } = useQuote();
 
   const handleBack = () => {
+    goToPreviousStep();
     navigate("/");
   };
 
   const handleContinue = () => {
-    navigate("/review");
+    if (goToNextStep()) {
+      navigate("/review");
+    }
   };
 
-  const isFormValid =
-    formData.sourceLanguage &&
-    formData.targetLanguage &&
-    formData.purpose &&
-    formData.country;
-
   const updateField = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    updateState({ [field]: value });
   };
 
   return (
