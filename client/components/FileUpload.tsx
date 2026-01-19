@@ -1,9 +1,10 @@
 import { useState, useRef } from "react";
-import { FileText } from "lucide-react";
+import { X } from "lucide-react";
+import { useQuote } from "@/context/QuoteContext";
 
 export default function FileUpload() {
   const [isDragging, setIsDragging] = useState(false);
-  const [files, setFiles] = useState<File[]>([]);
+  const { state, addFile, removeFile } = useQuote();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -21,18 +22,40 @@ export default function FileUpload() {
     setIsDragging(false);
 
     const droppedFiles = Array.from(e.dataTransfer.files);
-    setFiles((prev) => [...prev, ...droppedFiles]);
+    droppedFiles.forEach((file) => {
+      addFile({
+        id: `${file.name}-${Date.now()}-${Math.random()}`,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        file,
+      });
+    });
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const selectedFiles = Array.from(e.target.files);
-      setFiles((prev) => [...prev, ...selectedFiles]);
+      selectedFiles.forEach((file) => {
+        addFile({
+          id: `${file.name}-${Date.now()}-${Math.random()}`,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          file,
+        });
+      });
     }
   };
 
   const handleBrowseClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / 1048576).toFixed(1) + " MB";
   };
 
   return (
