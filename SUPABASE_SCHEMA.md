@@ -244,6 +244,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ## Next Steps
 
 For Phase 2, consider adding:
+
 - User authentication with Supabase Auth
 - Stricter RLS policies based on user roles
 - File size limits and validation

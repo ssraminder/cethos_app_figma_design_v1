@@ -121,7 +121,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
 
     // Remove from upload queue
     filesQueuedForUpload.current = filesQueuedForUpload.current.filter(
-      (f) => f.id !== fileId
+      (f) => f.id !== fileId,
     );
   };
 
@@ -173,7 +173,9 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     // Step 1 -> 2: Create quote and upload files
     if (state.currentStep === 1) {
       if (filesQueuedForUpload.current.length > 0) {
-        const result = await supabase.createQuoteWithFiles(filesQueuedForUpload.current);
+        const result = await supabase.createQuoteWithFiles(
+          filesQueuedForUpload.current,
+        );
         if (result) {
           filesQueuedForUpload.current = []; // Clear queue
           updateState({
@@ -216,14 +218,17 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     // Step 4 -> 5: Create/update customer and finalize quote
     if (state.currentStep === 4) {
       if (state.quoteId) {
-        const customerSaved = await supabase.createOrUpdateCustomer(state.quoteId, {
-          email: state.email,
-          firstName: state.firstName,
-          lastName: state.lastName,
-          phone: state.phone,
-          customerType: state.customerType,
-          companyName: state.companyName,
-        });
+        const customerSaved = await supabase.createOrUpdateCustomer(
+          state.quoteId,
+          {
+            email: state.email,
+            firstName: state.firstName,
+            lastName: state.lastName,
+            phone: state.phone,
+            customerType: state.customerType,
+            companyName: state.companyName,
+          },
+        );
 
         if (customerSaved) {
           await supabase.finalizeQuote(state.quoteId, state.files.length);

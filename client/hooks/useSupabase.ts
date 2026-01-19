@@ -1,7 +1,13 @@
-import { useState } from 'react';
-import { supabase, isSupabaseEnabled, Quote, QuoteFile, Customer } from '@/lib/supabase';
-import { toast } from 'sonner';
-import type { UploadedFile } from '@/context/QuoteContext';
+import { useState } from "react";
+import {
+  supabase,
+  isSupabaseEnabled,
+  Quote,
+  QuoteFile,
+  Customer,
+} from "@/lib/supabase";
+import { toast } from "sonner";
+import type { UploadedFile } from "@/context/QuoteContext";
 
 export function useSupabase() {
   const [loading, setLoading] = useState(false);
@@ -14,10 +20,12 @@ export function useSupabase() {
   };
 
   // Step 1: Create quote and upload files
-  const createQuoteWithFiles = async (files: UploadedFile[]): Promise<{ quoteId: string; quoteNumber: string } | null> => {
+  const createQuoteWithFiles = async (
+    files: UploadedFile[],
+  ): Promise<{ quoteId: string; quoteNumber: string } | null> => {
     // Return early if Supabase is not configured
     if (!isSupabaseEnabled() || !supabase) {
-      console.log('📝 Supabase not configured - skipping database operations');
+      console.log("📝 Supabase not configured - skipping database operations");
       return null;
     }
 
@@ -29,16 +37,16 @@ export function useSupabase() {
 
       // Create quote record
       const { data: quote, error: quoteError } = await supabase
-        .from('quotes')
+        .from("quotes")
         .insert({
           quote_number: quoteNumber,
-          status: 'draft',
+          status: "draft",
         })
         .select()
         .single();
 
       if (quoteError) throw quoteError;
-      if (!quote) throw new Error('Failed to create quote');
+      if (!quote) throw new Error("Failed to create quote");
 
       // Upload files and create file records
       const uploadPromises = files.map(async (file) => {
@@ -46,9 +54,9 @@ export function useSupabase() {
           // Upload to storage
           const storagePath = `${quote.id}/${file.name}`;
           const { error: uploadError } = await supabase.storage
-            .from('quote-files')
+            .from("quote-files")
             .upload(storagePath, file.file, {
-              cacheControl: '3600',
+              cacheControl: "3600",
               upsert: false,
             });
 
@@ -60,18 +68,21 @@ export function useSupabase() {
 
           // Create file record in database
           const { error: fileRecordError } = await supabase
-            .from('quote_files')
+            .from("quote_files")
             .insert({
               quote_id: quote.id,
               original_filename: file.name,
               storage_path: storagePath,
               file_size: file.size,
               mime_type: file.type,
-              upload_status: 'uploaded',
+              upload_status: "uploaded",
             });
 
           if (fileRecordError) {
-            console.error(`Failed to create file record for ${file.name}:`, fileRecordError);
+            console.error(
+              `Failed to create file record for ${file.name}:`,
+              fileRecordError,
+            );
             return null;
           }
 
@@ -87,11 +98,11 @@ export function useSupabase() {
       const successCount = results.filter(Boolean).length;
 
       if (successCount === 0) {
-        toast.error('Failed to upload any files');
+        toast.error("Failed to upload any files");
       } else if (successCount < files.length) {
         toast.warning(`Uploaded ${successCount} of ${files.length} files`);
       } else {
-        toast.success('All files uploaded successfully');
+        toast.success("All files uploaded successfully");
       }
 
       setLoading(false);
@@ -100,8 +111,8 @@ export function useSupabase() {
       const error = err as Error;
       setError(error);
       setLoading(false);
-      toast.error('Failed to create quote');
-      console.error('Create quote error:', error);
+      toast.error("Failed to create quote");
+      console.error("Create quote error:", error);
       return null;
     }
   };
@@ -115,11 +126,11 @@ export function useSupabase() {
       intendedUse: string;
       countryOfIssue: string;
       specialInstructions: string;
-    }
+    },
   ): Promise<boolean> => {
     // Return early if Supabase is not configured
     if (!isSupabaseEnabled() || !supabase) {
-      console.log('📝 Supabase not configured - skipping database operations');
+      console.log("📝 Supabase not configured - skipping database operations");
       return true; // Don't block navigation
     }
 
@@ -130,28 +141,28 @@ export function useSupabase() {
       // In a real implementation, you'd look up language and intended_use IDs
       // For now, we'll store the names directly
       const { error: updateError } = await supabase
-        .from('quotes')
+        .from("quotes")
         .update({
           source_language_id: details.sourceLanguage,
           target_language_id: details.targetLanguage,
           intended_use_id: details.intendedUse,
           country_of_issue: details.countryOfIssue,
           special_instructions: details.specialInstructions,
-          status: 'details_pending',
+          status: "details_pending",
         })
-        .eq('id', quoteId);
+        .eq("id", quoteId);
 
       if (updateError) throw updateError;
 
-      toast.success('Quote details saved');
+      toast.success("Quote details saved");
       setLoading(false);
       return true;
     } catch (err) {
       const error = err as Error;
       setError(error);
       setLoading(false);
-      toast.error('Failed to save quote details');
-      console.error('Update quote details error:', error);
+      toast.error("Failed to save quote details");
+      console.error("Update quote details error:", error);
       return false;
     }
   };
@@ -164,13 +175,13 @@ export function useSupabase() {
       firstName: string;
       lastName: string;
       phone: string;
-      customerType: 'individual' | 'business';
+      customerType: "individual" | "business";
       companyName?: string;
-    }
+    },
   ): Promise<boolean> => {
     // Return early if Supabase is not configured
     if (!isSupabaseEnabled() || !supabase) {
-      console.log('📝 Supabase not configured - skipping database operations');
+      console.log("📝 Supabase not configured - skipping database operations");
       return true; // Don't block navigation
     }
 
@@ -182,9 +193,9 @@ export function useSupabase() {
 
       // Check if customer exists
       const { data: existingCustomer } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('email', customerData.email)
+        .from("customers")
+        .select("id")
+        .eq("email", customerData.email)
         .single();
 
       let customerId: string;
@@ -192,22 +203,22 @@ export function useSupabase() {
       if (existingCustomer) {
         // Update existing customer
         const { error: updateError } = await supabase
-          .from('customers')
+          .from("customers")
           .update({
             full_name: fullName,
             phone: customerData.phone,
             customer_type: customerData.customerType,
             company_name: customerData.companyName || null,
           })
-          .eq('id', existingCustomer.id);
+          .eq("id", existingCustomer.id);
 
         if (updateError) throw updateError;
         customerId = existingCustomer.id;
-        toast.success('Customer information updated');
+        toast.success("Customer information updated");
       } else {
         // Create new customer
         const { data: newCustomer, error: createError } = await supabase
-          .from('customers')
+          .from("customers")
           .insert({
             email: customerData.email,
             full_name: fullName,
@@ -219,20 +230,20 @@ export function useSupabase() {
           .single();
 
         if (createError) throw createError;
-        if (!newCustomer) throw new Error('Failed to create customer');
-        
+        if (!newCustomer) throw new Error("Failed to create customer");
+
         customerId = newCustomer.id;
-        toast.success('Customer created');
+        toast.success("Customer created");
       }
 
       // Update quote with customer ID
       const { error: quoteUpdateError } = await supabase
-        .from('quotes')
+        .from("quotes")
         .update({
           customer_id: customerId,
-          status: 'quote_ready',
+          status: "quote_ready",
         })
-        .eq('id', quoteId);
+        .eq("id", quoteId);
 
       if (quoteUpdateError) throw quoteUpdateError;
 
@@ -242,17 +253,20 @@ export function useSupabase() {
       const error = err as Error;
       setError(error);
       setLoading(false);
-      toast.error('Failed to save customer information');
-      console.error('Create/update customer error:', error);
+      toast.error("Failed to save customer information");
+      console.error("Create/update customer error:", error);
       return false;
     }
   };
 
   // Step 5: Finalize quote with pricing
-  const finalizeQuote = async (quoteId: string, fileCount: number): Promise<boolean> => {
+  const finalizeQuote = async (
+    quoteId: string,
+    fileCount: number,
+  ): Promise<boolean> => {
     // Return early if Supabase is not configured
     if (!isSupabaseEnabled() || !supabase) {
-      console.log('📝 Supabase not configured - skipping database operations');
+      console.log("📝 Supabase not configured - skipping database operations");
       return true; // Don't block navigation
     }
 
@@ -268,28 +282,28 @@ export function useSupabase() {
       const total = subtotal + certificationTotal + taxAmount;
 
       const { error: updateError } = await supabase
-        .from('quotes')
+        .from("quotes")
         .update({
           subtotal,
           certification_total: certificationTotal,
           tax_rate: taxRate,
           tax_amount: taxAmount,
           total,
-          status: 'awaiting_payment',
+          status: "awaiting_payment",
         })
-        .eq('id', quoteId);
+        .eq("id", quoteId);
 
       if (updateError) throw updateError;
 
-      toast.success('Quote finalized');
+      toast.success("Quote finalized");
       setLoading(false);
       return true;
     } catch (err) {
       const error = err as Error;
       setError(error);
       setLoading(false);
-      toast.error('Failed to finalize quote');
-      console.error('Finalize quote error:', error);
+      toast.error("Failed to finalize quote");
+      console.error("Finalize quote error:", error);
       return false;
     }
   };
@@ -297,11 +311,11 @@ export function useSupabase() {
   // Retry failed file upload
   const retryFileUpload = async (
     quoteId: string,
-    file: UploadedFile
+    file: UploadedFile,
   ): Promise<boolean> => {
     // Return early if Supabase is not configured
     if (!isSupabaseEnabled() || !supabase) {
-      console.log('📝 Supabase not configured - skipping file retry');
+      console.log("📝 Supabase not configured - skipping file retry");
       return false;
     }
 
@@ -310,12 +324,12 @@ export function useSupabase() {
 
     try {
       const storagePath = `${quoteId}/${file.name}`;
-      
+
       // Upload to storage
       const { error: uploadError } = await supabase.storage
-        .from('quote-files')
+        .from("quote-files")
         .upload(storagePath, file.file, {
-          cacheControl: '3600',
+          cacheControl: "3600",
           upsert: true, // Allow overwrite on retry
         });
 
@@ -323,10 +337,10 @@ export function useSupabase() {
 
       // Update file record status
       const { error: updateError } = await supabase
-        .from('quote_files')
-        .update({ upload_status: 'uploaded' })
-        .eq('quote_id', quoteId)
-        .eq('original_filename', file.name);
+        .from("quote_files")
+        .update({ upload_status: "uploaded" })
+        .eq("quote_id", quoteId)
+        .eq("original_filename", file.name);
 
       if (updateError) throw updateError;
 
@@ -338,7 +352,7 @@ export function useSupabase() {
       setError(error);
       setLoading(false);
       toast.error(`Failed to upload ${file.name}`);
-      console.error('Retry upload error:', error);
+      console.error("Retry upload error:", error);
       return false;
     }
   };

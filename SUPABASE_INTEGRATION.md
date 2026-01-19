@@ -7,26 +7,31 @@ The CETHOS quote wizard now integrates with Supabase for backend data persistenc
 ## Features Implemented
 
 ### ✅ Step 1: File Upload & Quote Creation
+
 - Files are uploaded to Supabase Storage bucket `quote-files`
 - Quote record created in `quotes` table with status: "draft"
 - Each file tracked in `quote_files` table
 - Automatic quote number generation (QT-2026-XXXXX)
 
 ### ✅ Step 2: Translation Details
+
 - Quote updated with language preferences
 - Intended use and country of issue saved
 - Status updated to "details_pending"
 
 ### ✅ Step 3: Review
+
 - No database operations (review only)
 - Data pulled from context state
 
 ### ✅ Step 4: Contact Information
+
 - Customer created/updated in `customers` table
 - Quote linked to customer via `customer_id`
 - Status updated to "quote_ready"
 
 ### ✅ Step 5: Finalize Quote
+
 - Pricing calculated and saved:
   - Subtotal: $65 per file
   - Certification: $50 per file
@@ -106,16 +111,19 @@ pnpm dev
 The integration includes robust error handling:
 
 ### Toast Notifications
+
 - ✅ Success messages for completed operations
 - ⚠️ Warnings for partial failures
 - ❌ Error messages with retry options
 
 ### Graceful Degradation
+
 - If Supabase is unavailable, the app continues to work using localStorage
 - Navigation is never blocked by database errors
 - Failed file uploads can be retried
 
 ### Retry Logic
+
 - Files that fail to upload are queued for retry
 - Use `retryFileUpload()` function to retry individual files
 
@@ -153,11 +161,13 @@ The integration includes robust error handling:
 ### Verify in Supabase Dashboard
 
 **Table Editor:**
+
 - `quotes` table should have 1 row
 - `customers` table should have 1 row
 - `quote_files` table should have rows for each file
 
 **Storage:**
+
 - `quote-files` bucket should contain uploaded files
 - Files organized by quote ID: `{quote_id}/{filename}`
 
@@ -180,24 +190,29 @@ const {
 #### Methods
 
 **createQuoteWithFiles(files: UploadedFile[])**
+
 - Creates quote record and uploads files
 - Returns: `{ quoteId, quoteNumber }` or `null`
 
 **updateQuoteDetails(quoteId, details)**
+
 - Updates quote with translation preferences
 - Returns: `boolean` (success/failure)
 
 **createOrUpdateCustomer(quoteId, customerData)**
+
 - Creates new customer or updates existing
 - Links customer to quote
 - Returns: `boolean`
 
 **finalizeQuote(quoteId, fileCount)**
+
 - Calculates and saves pricing
 - Updates status to "awaiting_payment"
 - Returns: `boolean`
 
 **retryFileUpload(quoteId, file)**
+
 - Retries failed file upload
 - Updates file status to "uploaded"
 - Returns: `boolean`
@@ -206,47 +221,47 @@ const {
 
 ### quotes Table
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| quote_number | TEXT | Unique quote number (QT-2026-XXXXX) |
-| status | TEXT | Current quote status |
-| customer_id | UUID | Foreign key to customers |
-| source_language_id | TEXT | Source language |
-| target_language_id | TEXT | Target language |
-| intended_use_id | TEXT | Purpose of translation |
-| country_of_issue | TEXT | Document country |
-| special_instructions | TEXT | Additional notes |
-| subtotal | DECIMAL | Translation subtotal |
-| certification_total | DECIMAL | Certification fees |
-| tax_rate | DECIMAL | Tax percentage |
-| tax_amount | DECIMAL | Calculated tax |
-| total | DECIMAL | Final total |
-| created_at | TIMESTAMP | Creation time |
-| updated_at | TIMESTAMP | Last update |
+| Column               | Type      | Description                         |
+| -------------------- | --------- | ----------------------------------- |
+| id                   | UUID      | Primary key                         |
+| quote_number         | TEXT      | Unique quote number (QT-2026-XXXXX) |
+| status               | TEXT      | Current quote status                |
+| customer_id          | UUID      | Foreign key to customers            |
+| source_language_id   | TEXT      | Source language                     |
+| target_language_id   | TEXT      | Target language                     |
+| intended_use_id      | TEXT      | Purpose of translation              |
+| country_of_issue     | TEXT      | Document country                    |
+| special_instructions | TEXT      | Additional notes                    |
+| subtotal             | DECIMAL   | Translation subtotal                |
+| certification_total  | DECIMAL   | Certification fees                  |
+| tax_rate             | DECIMAL   | Tax percentage                      |
+| tax_amount           | DECIMAL   | Calculated tax                      |
+| total                | DECIMAL   | Final total                         |
+| created_at           | TIMESTAMP | Creation time                       |
+| updated_at           | TIMESTAMP | Last update                         |
 
 ### customers Table
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| email | TEXT | Customer email (unique) |
-| full_name | TEXT | Full name |
-| phone | TEXT | Phone number |
+| Column        | Type | Description                |
+| ------------- | ---- | -------------------------- |
+| id            | UUID | Primary key                |
+| email         | TEXT | Customer email (unique)    |
+| full_name     | TEXT | Full name                  |
+| phone         | TEXT | Phone number               |
 | customer_type | TEXT | 'individual' or 'business' |
-| company_name | TEXT | Company name (if business) |
+| company_name  | TEXT | Company name (if business) |
 
 ### quote_files Table
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| quote_id | UUID | Foreign key to quotes |
-| original_filename | TEXT | Original file name |
-| storage_path | TEXT | Path in storage bucket |
-| file_size | BIGINT | File size in bytes |
-| mime_type | TEXT | File MIME type |
-| upload_status | TEXT | 'pending', 'uploaded', or 'failed' |
+| Column            | Type   | Description                        |
+| ----------------- | ------ | ---------------------------------- |
+| id                | UUID   | Primary key                        |
+| quote_id          | UUID   | Foreign key to quotes              |
+| original_filename | TEXT   | Original file name                 |
+| storage_path      | TEXT   | Path in storage bucket             |
+| file_size         | BIGINT | File size in bytes                 |
+| mime_type         | TEXT   | File MIME type                     |
+| upload_status     | TEXT   | 'pending', 'uploaded', or 'failed' |
 
 ## Troubleshooting
 
@@ -254,6 +269,7 @@ const {
 
 **Symptom:** Files don't appear in Storage
 **Solution:**
+
 1. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 2. Verify storage bucket exists and is named `quote-files`
 3. Check storage policies are applied
@@ -263,6 +279,7 @@ const {
 
 **Symptom:** Toast error messages appear
 **Solution:**
+
 1. Verify tables exist in Supabase
 2. Check RLS policies are configured
 3. Ensure anon key has proper permissions
@@ -272,6 +289,7 @@ const {
 
 **Symptom:** Console warning about missing Supabase credentials
 **Solution:**
+
 1. Ensure `.env` file exists in project root
 2. Variables must start with `VITE_` for Vite to expose them
 3. Restart dev server after changing `.env`
@@ -279,11 +297,13 @@ const {
 ## Security Considerations
 
 ### Current Setup (Phase 1)
+
 - Uses Supabase anon key
 - Public access to all tables
 - No user authentication
 
 ### Recommended for Production (Phase 2)
+
 - Implement Supabase Auth
 - Add RLS policies based on user ID
 - Use service role key for admin operations

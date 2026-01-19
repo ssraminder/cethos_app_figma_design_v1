@@ -78,12 +78,14 @@ pnpm dev
 ### Verify in Supabase:
 
 **Check Tables:**
+
 1. Go to **Table Editor** in Supabase
 2. Click on `quotes` table → you should see 1 row
 3. Click on `customers` table → you should see 1 row
 4. Click on `quote_files` table → you should see rows for your files
 
 **Check Storage:**
+
 1. Go to **Storage** → `quote-files`
 2. You should see a folder with your quote ID
 3. Inside should be your uploaded files
@@ -97,20 +99,24 @@ Your quote wizard is now backed by Supabase!
 ### Common Issues
 
 **"Supabase environment variables are not set"**
+
 - Check `.env` has the correct variable names (`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`)
 - Restart dev server after changing `.env`
 
 **Files not uploading**
+
 - Make sure storage bucket is named exactly `quote-files`
 - Verify storage policies are set up
 - Check browser console for errors
 
 **Database errors**
+
 - Make sure you ran ALL the SQL from `SUPABASE_SCHEMA.md`
 - Check that RLS policies are enabled
 - Verify anon key is correct
 
 **Still stuck?**
+
 - Check the detailed guide: `SUPABASE_INTEGRATION.md`
 - Review database schema: `SUPABASE_SCHEMA.md`
 - Look for errors in:
@@ -121,6 +127,7 @@ Your quote wizard is now backed by Supabase!
 ## What's Next?
 
 Your app now:
+
 - ✅ Saves quotes to database
 - ✅ Uploads files to cloud storage
 - ✅ Tracks customers
@@ -128,6 +135,7 @@ Your app now:
 - ✅ Has localStorage backup
 
 For production deployment, consider:
+
 - Adding user authentication
 - Implementing payment processing
 - Setting up email notifications

@@ -1,16 +1,22 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
 // Check if credentials are provided
-const hasCredentials = supabaseUrl && supabaseAnonKey &&
-  supabaseUrl !== 'your_supabase_url_here' &&
-  supabaseAnonKey !== 'your_supabase_anon_key_here';
+const hasCredentials =
+  supabaseUrl &&
+  supabaseAnonKey &&
+  supabaseUrl !== "your_supabase_url_here" &&
+  supabaseAnonKey !== "your_supabase_anon_key_here";
 
 if (!hasCredentials) {
-  console.warn('⚠️ Supabase credentials not configured. Database features disabled. App will use localStorage only.');
-  console.warn('To enable Supabase: Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
+  console.warn(
+    "⚠️ Supabase credentials not configured. Database features disabled. App will use localStorage only.",
+  );
+  console.warn(
+    "To enable Supabase: Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file",
+  );
 }
 
 // Only create client if we have valid credentials
@@ -31,7 +37,14 @@ export const isSupabaseEnabled = (): boolean => {
 export interface Quote {
   id: string;
   quote_number: string;
-  status: 'draft' | 'details_pending' | 'quote_ready' | 'awaiting_payment' | 'paid' | 'in_progress' | 'completed';
+  status:
+    | "draft"
+    | "details_pending"
+    | "quote_ready"
+    | "awaiting_payment"
+    | "paid"
+    | "in_progress"
+    | "completed";
   customer_id?: string;
   source_language_id?: string;
   target_language_id?: string;
@@ -54,7 +67,7 @@ export interface QuoteFile {
   storage_path: string;
   file_size: number;
   mime_type: string;
-  upload_status: 'pending' | 'uploaded' | 'failed';
+  upload_status: "pending" | "uploaded" | "failed";
   created_at: string;
 }
 
@@ -63,7 +76,7 @@ export interface Customer {
   email: string;
   full_name: string;
   phone: string;
-  customer_type: 'individual' | 'business';
+  customer_type: "individual" | "business";
   company_name?: string;
   created_at: string;
   updated_at: string;
