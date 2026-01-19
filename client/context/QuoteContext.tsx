@@ -4,7 +4,9 @@ import React, {
   useState,
   useEffect,
   ReactNode,
+  useRef,
 } from "react";
+import { useSupabase } from "@/hooks/useSupabase";
 
 // Types
 export interface UploadedFile {
@@ -17,6 +19,7 @@ export interface UploadedFile {
 
 export interface QuoteState {
   currentStep: number;
+  quoteId: string;
   files: UploadedFile[];
   sourceLanguage: string;
   targetLanguage: string;
