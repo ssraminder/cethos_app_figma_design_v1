@@ -16,8 +16,9 @@ export default function Review() {
     navigate("/details");
   };
 
-  const handleContinue = () => {
-    if (goToNextStep()) {
+  const handleContinue = async () => {
+    const success = await goToNextStep();
+    if (success) {
       navigate("/contact");
     }
   };
@@ -28,10 +29,9 @@ export default function Review() {
   };
 
   // Map uploaded files to document pricing data
-  const languagePair =
-    state.sourceLanguage && state.targetLanguage
-      ? `${state.sourceLanguage} → ${state.targetLanguage}`
-      : "Language pair not set";
+  const languagePair = state.sourceLanguage && state.targetLanguage
+    ? `${state.sourceLanguage} → ${state.targetLanguage}`
+    : "Language pair not set";
 
   const documents = state.files.map((file) => ({
     filename: file.name,
