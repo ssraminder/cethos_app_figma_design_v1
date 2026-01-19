@@ -1,8 +1,11 @@
 import { Check } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useQuote } from "@/context/QuoteContext";
 
 interface Step {
   number: number;
   label: string;
+  route: string;
 }
 
 interface StepIndicatorProps {
@@ -10,16 +13,38 @@ interface StepIndicatorProps {
 }
 
 const steps: Step[] = [
-  { number: 1, label: "Upload" },
-  { number: 2, label: "Details" },
-  { number: 3, label: "Review" },
-  { number: 4, label: "Contact" },
-  { number: 5, label: "Checkout" },
+  { number: 1, label: "Upload", route: "/" },
+  { number: 2, label: "Details", route: "/details" },
+  { number: 3, label: "Review", route: "/review" },
+  { number: 4, label: "Contact", route: "/contact" },
+  { number: 5, label: "Checkout", route: "/success" },
 ];
 
 export default function StepIndicator({ currentStep }: StepIndicatorProps) {
+  const navigate = useNavigate();
+  const { goToStep, validateStep } = useQuote();
+
   const isCompleted = (stepNumber: number) => stepNumber < currentStep;
   const isActive = (stepNumber: number) => stepNumber === currentStep;
+
+  const handleStepClick = (step: Step) => {
+    // Only allow navigation to completed steps
+    if (isCompleted(step.number)) {
+      // Check if all previous steps are valid
+      let canNavigate = true;
+      for (let i = 1; i < step.number; i++) {
+        if (!validateStep(i)) {
+          canNavigate = false;
+          break;
+        }
+      }
+
+      if (canNavigate) {
+        goToStep(step.number);
+        navigate(step.route);
+      }
+    }
+  };
 
   return (
     <div className="w-full max-w-[520px] mx-auto mb-8 px-4">
