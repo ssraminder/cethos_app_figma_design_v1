@@ -1,20 +1,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, Copy, Info } from "lucide-react";
+import { useQuote } from "@/context/QuoteContext";
 import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
 
 export default function Success() {
   const navigate = useNavigate();
+  const { state, resetQuote } = useQuote();
   const [copied, setCopied] = useState(false);
-
-  // Generate quote number
-  const quoteNumber = `QT-2026-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-  const userEmail = "john@example.com"; // This would come from form data
 
   const handleCopyQuote = async () => {
     try {
-      await navigator.clipboard.writeText(quoteNumber);
+      await navigator.clipboard.writeText(state.quoteNumber);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -23,6 +21,7 @@ export default function Success() {
   };
 
   const handleNewQuote = () => {
+    resetQuote();
     navigate("/");
   };
 
