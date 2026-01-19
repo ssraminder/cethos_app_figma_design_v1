@@ -7,16 +7,16 @@ import Footer from "@/components/Footer";
 
 export default function Contact() {
   const navigate = useNavigate();
-  const { state, updateState, goToNextStep, goToPreviousStep, validateStep } =
-    useQuote();
+  const { state, updateState, goToNextStep, goToPreviousStep, validateStep } = useQuote();
 
   const handleBack = () => {
     goToPreviousStep();
     navigate("/review");
   };
 
-  const handleContinue = () => {
-    if (goToNextStep()) {
+  const handleContinue = async () => {
+    const success = await goToNextStep();
+    if (success) {
       navigate("/success");
     }
   };
