@@ -56,8 +56,8 @@ export default function Index() {
       {/* Main Content */}
       <main className="flex-1 w-full">
         <div className="max-w-[1536px] mx-auto px-4 sm:px-8 lg:px-12 py-8 sm:py-12 lg:py-16">
-          {/* Step Indicator - Hide during processing */}
-          {!state.isProcessing && (
+          {/* Step Indicator - Hide during processing and email confirmation */}
+          {!state.isProcessing && !state.emailQuoteSent && (
             <StepIndicator currentStep={state.currentStep} />
           )}
 
