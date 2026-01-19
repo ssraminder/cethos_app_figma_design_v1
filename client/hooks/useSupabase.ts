@@ -121,9 +121,9 @@ export function useSupabase() {
   const updateQuoteDetails = async (
     quoteId: string,
     details: {
-      sourceLanguage: string;
-      targetLanguage: string;
-      intendedUse: string;
+      sourceLanguageId: string;
+      targetLanguageId: string;
+      intendedUseId: string;
       countryOfIssue: string;
       specialInstructions: string;
     },
@@ -138,14 +138,12 @@ export function useSupabase() {
     setError(null);
 
     try {
-      // In a real implementation, you'd look up language and intended_use IDs
-      // For now, we'll store the names directly
       const { error: updateError } = await supabase
         .from("quotes")
         .update({
-          source_language_id: details.sourceLanguage,
-          target_language_id: details.targetLanguage,
-          intended_use_id: details.intendedUse,
+          source_language_id: details.sourceLanguageId,
+          target_language_id: details.targetLanguageId,
+          intended_use_id: details.intendedUseId,
           country_of_issue: details.countryOfIssue,
           special_instructions: details.specialInstructions,
           status: "details_pending",
