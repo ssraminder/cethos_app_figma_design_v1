@@ -374,10 +374,31 @@ export default function HITLReviewDetail() {
   };
 
   const saveCorrections = async () => {
-    if (!review || !session?.staffId || !corrections.reason.trim()) {
+    // Read fresh session from storage
+    const stored = sessionStorage.getItem("staffSession");
+    if (!stored) {
+      alert("Session expired. Please login again.");
+      navigate("/admin/login");
+      return;
+    }
+
+    const sessionData = JSON.parse(stored);
+    if (!sessionData.staffId) {
+      alert("Session expired. Please login again.");
+      navigate("/admin/login");
+      return;
+    }
+
+    if (!review || !corrections.reason.trim()) {
       alert("Please provide a reason for the corrections.");
       return;
     }
+
+    if (!reviewId) {
+      alert("Review ID missing");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const correctionsToSave = [];
@@ -389,7 +410,7 @@ export default function HITLReviewDetail() {
         correctionsToSave.push({
           field: "document_type",
           learningType: "document_type",
-          aiValue: review.ai_analysis?.document_type,
+          originalValue: review.ai_analysis?.document_type,
           correctedValue: corrections.documentType,
           confidence: review.ai_analysis?.document_type_confidence,
         });
@@ -401,7 +422,7 @@ export default function HITLReviewDetail() {
         correctionsToSave.push({
           field: "detected_language",
           learningType: "language",
-          aiValue: review.ai_analysis?.detected_language,
+          originalValue: review.ai_analysis?.detected_language,
           correctedValue: corrections.detectedLanguage,
           confidence: review.ai_analysis?.language_confidence,
         });
@@ -413,7 +434,7 @@ export default function HITLReviewDetail() {
         correctionsToSave.push({
           field: "complexity",
           learningType: "complexity",
-          aiValue: review.ai_analysis?.complexity_assessment,
+          originalValue: review.ai_analysis?.complexity_assessment,
           correctedValue: corrections.complexity,
           confidence: review.ai_analysis?.complexity_confidence,
         });
@@ -425,35 +446,40 @@ export default function HITLReviewDetail() {
         correctionsToSave.push({
           field: "word_count",
           learningType: "word_count",
-          aiValue: review.ai_analysis?.word_count?.toString(),
+          originalValue: review.ai_analysis?.word_count?.toString(),
           correctedValue: corrections.wordCount,
           confidence: null,
         });
       }
 
-      // Save corrections to hitl_corrections table (existing flow)
+      // Save corrections to hitl_corrections table via Edge Function
       for (const correction of correctionsToSave) {
         const response = await fetch(
           `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
           {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
               "Content-Type": "application/json",
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
             },
             body: JSON.stringify({
-              reviewId: review.review_id,
-              analysisId: review.ai_analysis?.id,
-              staffId: session.staffId,
+              reviewId: reviewId,
+              staffId: sessionData.staffId,
               field: correction.field,
-              aiValue: correction.aiValue,
+              originalValue: correction.originalValue,
               correctedValue: correction.correctedValue,
-              reason: corrections.reason,
+              fileId: null, // Optional - can be added if needed per file
             }),
           },
         );
-        if (!response.ok)
-          throw new Error(`Failed to save ${correction.field} correction`);
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          console.error(`Save correction failed for ${correction.field}:`, result.error);
+          alert(result.error || `Failed to save ${correction.field} correction`);
+          return;
+        }
       }
 
       // Log patterns to ai_learning_log for pattern tracking
