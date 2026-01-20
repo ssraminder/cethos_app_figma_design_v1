@@ -1791,14 +1791,15 @@ export default function HITLReviewDetail() {
                               Reset All
                             </button>
                             <button
-                              onClick={() =>
-                                alert(
-                                  "Save functionality coming soon. Check console for debug info.",
-                                )
-                              }
-                              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                              onClick={saveAllCorrections}
+                              disabled={isSaving}
+                              className={`px-4 py-2 rounded text-white ${
+                                isSaving
+                                  ? 'bg-gray-400 cursor-not-allowed'
+                                  : 'bg-blue-600 hover:bg-blue-700'
+                              }`}
                             >
-                              Save All Corrections
+                              {isSaving ? 'Saving...' : 'Save All Corrections'}
                             </button>
                           </div>
                         )}
