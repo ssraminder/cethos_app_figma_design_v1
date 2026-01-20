@@ -24,7 +24,11 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   const [branding, setBranding] = useState<Branding>(defaultBranding);
 
   useEffect(() => {
-    fetchBranding();
+    // Delay fetch slightly to avoid blocking initial render
+    const timer = setTimeout(() => {
+      fetchBranding();
+    }, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   async function fetchBranding() {
