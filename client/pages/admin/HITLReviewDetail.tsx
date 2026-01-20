@@ -331,7 +331,7 @@ export default function HITLReviewDetail() {
   };
 
   const saveCorrections = async () => {
-    if (!review || !corrections.reason.trim()) {
+    if (!review || !session?.staffId || !corrections.reason.trim()) {
       alert('Please provide a reason for the corrections.');
       return;
     }
@@ -373,7 +373,7 @@ export default function HITLReviewDetail() {
             body: JSON.stringify({
               reviewId: review.review_id,
               analysisId: review.ai_analysis?.id,
-              staffId: staffEmail,
+              staffId: session.staffId,
               field: correction.field,
               aiValue: correction.aiValue,
               correctedValue: correction.correctedValue,
