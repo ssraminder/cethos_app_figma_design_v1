@@ -481,6 +481,7 @@ export default function HITLReviewDetail() {
       setShowCorrections(false);
       setCorrections({
         documentType: "",
+        detectedLanguage: "",
         complexity: "",
         wordCount: "",
         reason: "",
