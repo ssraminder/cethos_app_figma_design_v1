@@ -1,10 +1,4 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  ReactNode,
-} from "react";
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 interface Branding {
   companyName: string;
@@ -16,11 +10,11 @@ interface Branding {
 }
 
 const defaultBranding: Branding = {
-  companyName: "Cethos",
-  logoUrl: "",
-  logoDarkUrl: "",
-  supportEmail: "support@cethos.com",
-  primaryColor: "#3B82F6",
+  companyName: 'Cethos',
+  logoUrl: '',
+  logoDarkUrl: '',
+  supportEmail: 'support@cethos.com',
+  primaryColor: '#3B82F6',
   loading: true,
 };
 
@@ -36,8 +30,16 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   async function fetchBranding() {
     try {
       const response = await fetch(
-        "https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/get-branding",
+        'https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/get-branding'
       );
+
+      // If the function doesn't exist yet (404), just use defaults
+      if (!response.ok) {
+        console.warn('Branding Edge Function not found, using default branding');
+        setBranding(prev => ({ ...prev, loading: false }));
+        return;
+      }
+
       const result = await response.json();
       if (result.success) {
         setBranding({
@@ -45,11 +47,12 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
           loading: false,
         });
       } else {
-        setBranding((prev) => ({ ...prev, loading: false }));
+        setBranding(prev => ({ ...prev, loading: false }));
       }
     } catch (error) {
-      console.error("Failed to fetch branding:", error);
-      setBranding((prev) => ({ ...prev, loading: false }));
+      // Silently fallback to default branding (Edge Function not deployed yet)
+      console.warn('Branding fetch failed, using default branding');
+      setBranding(prev => ({ ...prev, loading: false }));
     }
   }
 
