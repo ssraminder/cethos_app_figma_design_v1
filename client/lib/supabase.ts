@@ -32,9 +32,20 @@ if (!hasCredentials) {
 export const supabase: SupabaseClient | null = hasCredentials
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
-        persistSession: true, // Enable auth session persistence
+        persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        flowType: 'pkce',
+      },
+      global: {
+        headers: {
+          'X-Client-Info': 'cethos-staff-portal',
+        },
+      },
+      realtime: {
+        params: {
+          eventsPerSecond: 2,
+        },
       },
     })
   : null;
