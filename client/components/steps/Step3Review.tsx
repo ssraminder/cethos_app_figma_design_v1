@@ -121,29 +121,53 @@ export default function Step3Review() {
           </h1>
         </div>
         <p className="text-base text-cethos-slate">
-          Here's an estimate based on your documents
+          AI-powered analysis of your documents
         </p>
       </div>
 
-      {/* Document Pricing Cards */}
+      {/* AI Analysis Results - Document Cards */}
       <div className="space-y-4 mb-6">
-        {documents.map((doc, index) => (
-          <DocumentPricingCard
-            key={index}
-            filename={doc.filename}
-            languagePair={doc.languagePair}
-            translationPrice={doc.translationPrice}
-            certificationPrice={doc.certificationPrice}
-            pages={doc.pages}
-          />
+        {documents.map((doc) => (
+          <div key={doc.id} className="bg-white border-2 border-cethos-border rounded-xl p-6">
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex-1">
+                <h3 className="font-semibold text-cethos-navy mb-1">{doc.filename}</h3>
+                <p className="text-sm text-cethos-slate">
+                  {DOC_TYPE_LABELS[doc.documentType] || doc.documentType} • {doc.languageName} → English
+                </p>
+              </div>
+              <span className="text-lg font-bold text-cethos-navy">${doc.lineTotal.toFixed(2)}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-cethos-slate">Word Count:</span>
+                <span className="ml-2 font-medium text-cethos-navy">{doc.wordCount}</span>
+              </div>
+              <div>
+                <span className="text-cethos-slate">Pages:</span>
+                <span className="ml-2 font-medium text-cethos-navy">{doc.pageCount}</span>
+              </div>
+              <div>
+                <span className="text-cethos-slate">Billable Pages:</span>
+                <span className="ml-2 font-medium text-cethos-navy">{doc.billablePages}</span>
+              </div>
+              <div>
+                <span className="text-cethos-slate">Complexity:</span>
+                <span className="ml-2 font-medium text-cethos-navy">
+                  {COMPLEXITY_LABELS[doc.complexity] || doc.complexity}
+                </span>
+              </div>
+            </div>
+          </div>
         ))}
       </div>
 
       {/* Quote Summary */}
       <div className="mb-6">
         <QuoteSummary
-          translationTotal={translationTotal}
-          certificationTotal={certificationTotal}
+          translationTotal={subtotal}
+          certificationTotal={documents.length * 50} // $50 per document for certification
         />
       </div>
 
