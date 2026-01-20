@@ -147,10 +147,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
           state.countryOfIssue
         );
 
-      case 3: // Review
-        return true; // Always valid
-
-      case 4: // Contact
+      case 3: // Contact
         const baseValid = !!(
           state.firstName &&
           state.lastName &&
@@ -161,6 +158,9 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
           return baseValid && !!state.companyName;
         }
         return baseValid;
+
+      case 4: // Review
+        return true; // Always valid, processing check happens in component
 
       case 5: // Success
         return true; // Always valid
@@ -207,7 +207,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       return { success: true };
     }
 
-    // Step 2 -> 3: Update quote details and start processing
+    // Step 2 -> 3: Update quote details, navigate to Contact
     if (state.currentStep === 2) {
       if (state.quoteId) {
         await supabase.updateQuoteDetails(state.quoteId, {
@@ -218,21 +218,14 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
           specialInstructions: state.specialInstructions,
         });
       }
-      // Enable processing screen
-      updateState({ isProcessing: true });
+      updateState({ currentStep: 3 });
       return { success: true };
     }
 
-    // Step 3 (Contact) -> 4 (Review): Just navigation
+    // Step 3 (Contact) -> 4 (Review): Save contact info and enable processing screen
     if (state.currentStep === 3) {
-      updateState({ currentStep: 4 });
-      return { success: true };
-    }
-
-    // Step 4 (Review) -> 5 (Success): Create/update customer and finalize quote
-    if (state.currentStep === 4) {
       if (state.quoteId) {
-        const customerSaved = await supabase.createOrUpdateCustomer(
+        await supabase.createOrUpdateCustomer(
           state.quoteId,
           {
             email: state.email,
@@ -243,10 +236,17 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
             companyName: state.companyName,
           },
         );
+      }
+      // Enable processing screen - user will wait here for AI analysis
+      updateState({ isProcessing: true });
+      return { success: true };
+    }
 
-        if (customerSaved) {
-          await supabase.finalizeQuote(state.quoteId, state.files.length);
-        }
+    // Step 4 (Review) -> 5 (Success): Finalize quote
+    if (state.currentStep === 4) {
+      if (state.quoteId) {
+        // Customer already saved in step 3
+        await supabase.finalizeQuote(state.quoteId, state.files.length);
       }
 
       updateState({ currentStep: 5 });
