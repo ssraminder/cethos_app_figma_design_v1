@@ -41,14 +41,28 @@ export default function Index() {
 
     // Normal flow
     const success = await goToNextStep();
+    console.log("🔄 Step transition:", {
+      success,
+      fromStep: currentStep,
+      toStep: state.currentStep,
+      quoteId: state.quoteId,
+    });
 
     // After moving from Step 1 to Step 2, trigger document processing
     if (success && currentStep === 1 && state.quoteId) {
+      console.log(
+        "🚀 Triggering document processing for quote:",
+        state.quoteId,
+      );
       // Trigger processing in background (don't await)
-      triggerProcessing(state.quoteId).catch((error) => {
-        console.error("Failed to trigger processing:", error);
-        // Processing will happen eventually, don't block user flow
-      });
+      triggerProcessing(state.quoteId)
+        .then(() => {
+          console.log("✅ Document processing triggered successfully");
+        })
+        .catch((error) => {
+          console.error("❌ Failed to trigger processing:", error);
+          // Processing will happen eventually, don't block user flow
+        });
     }
 
     // Navigate to success page if we were on step 4 and successfully moved to step 5
