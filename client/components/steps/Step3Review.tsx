@@ -1,13 +1,44 @@
 import { useQuote } from "@/context/QuoteContext";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
+import { useQuotePricing } from "@/hooks/useQuotePricing";
 import DocumentPricingCard from "@/components/DocumentPricingCard";
 import QuoteSummary from "@/components/QuoteSummary";
 import HumanReviewNotice from "@/components/HumanReviewNotice";
+import ProcessingStatus from "@/components/ProcessingStatus";
 import { Loader2 } from "lucide-react";
 
+// Document type display names
+const DOC_TYPE_LABELS: Record<string, string> = {
+  birth_certificate: 'Birth Certificate',
+  marriage_certificate: 'Marriage Certificate',
+  divorce_decree: 'Divorce Decree',
+  drivers_license: "Driver's License",
+  passport: 'Passport',
+  police_clearance: 'Police Clearance',
+  diploma_degree: 'Diploma/Degree',
+  transcript: 'Academic Transcript',
+  medical_records: 'Medical Records',
+  legal_contract: 'Legal Contract',
+  immigration_document: 'Immigration Document',
+  court_document: 'Court Document',
+  bank_statement: 'Bank Statement',
+  employment_letter: 'Employment Letter',
+  power_of_attorney: 'Power of Attorney',
+  affidavit: 'Affidavit',
+  other: 'Document',
+};
+
+// Complexity labels
+const COMPLEXITY_LABELS: Record<string, string> = {
+  easy: 'Standard',
+  medium: 'Moderate',
+  hard: 'Complex',
+};
+
 export default function Step3Review() {
-  const { state } = useQuote();
-  const { languages, loading } = useDropdownOptions();
+  const { state, completeProcessing } = useQuote();
+  const { languages, loading: optionsLoading } = useDropdownOptions();
+  const { documents, subtotal, isLoading, isReady, error } = useQuotePricing(state.quoteId);
 
   const handleRequestReview = () => {
     console.log("Human review requested");
@@ -18,31 +49,60 @@ export default function Step3Review() {
   const sourceLanguage = languages.find((l) => l.id === state.sourceLanguageId);
   const targetLanguage = languages.find((l) => l.id === state.targetLanguageId);
 
-  // Map uploaded files to document pricing data
   const languagePair =
     sourceLanguage && targetLanguage
       ? `${sourceLanguage.name} → ${targetLanguage.name}`
       : "Language pair not set";
 
-  const documents = state.files.map((file) => ({
-    filename: file.name,
-    languagePair,
-    translationPrice: 65, // Base price per document
-    certificationPrice: 50, // Base certification price
-    pages: 1, // Default to 1 page (would need actual page detection)
-  }));
+  // If processing not complete, show processing status
+  if (!isReady && state.quoteId) {
+    return (
+      <div className="space-y-6">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold font-jakarta text-cethos-navy mb-2">
+            Preparing Your Quote
+          </h1>
+          <p className="text-base text-cethos-slate">
+            We're analyzing your documents to provide accurate pricing
+          </p>
+        </div>
+        <ProcessingStatus
+          quoteId={state.quoteId}
+          onComplete={completeProcessing}
+          onEmailInstead={() => {
+            // Navigate to contact form in email mode
+            state.emailQuoteMode = true;
+            state.currentStep = 4;
+          }}
+        />
+        {isLoading && (
+          <div className="animate-pulse space-y-3">
+            <div className="h-24 bg-gray-200 rounded-lg"></div>
+            <div className="h-24 bg-gray-200 rounded-lg"></div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
-  // Calculate totals
-  const translationTotal = documents.reduce(
-    (sum, doc) => sum + doc.translationPrice,
-    0,
-  );
-  const certificationTotal = documents.reduce(
-    (sum, doc) => sum + doc.certificationPrice,
-    0,
-  );
+  // If there was an error loading pricing
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold font-jakarta text-cethos-navy mb-2">
+            Quote Error
+          </h1>
+        </div>
+        <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-red-800 font-medium mb-2">Unable to load quote pricing</p>
+          <p className="text-red-600 text-sm">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
-  if (loading) {
+  if (optionsLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin text-cethos-blue" />
