@@ -147,6 +147,18 @@ export default function HITLReviewDetail() {
     return localEdits[fileId]?.[field] ?? original;
   };
 
+  // Get language multiplier
+  const getLanguageMultiplier = (langCode: string) => {
+    return LANGUAGE_MULTIPLIERS[langCode?.toLowerCase()] || 1.0;
+  };
+
+  // Handle complexity change and auto-update multiplier
+  const handleComplexityChange = (fileId: string, newComplexity: string) => {
+    const multiplier = COMPLEXITY_MULTIPLIERS[newComplexity] || 1.0;
+    updateLocalEdit(fileId, "complexity", newComplexity);
+    updateLocalEdit(fileId, "complexity_multiplier", multiplier);
+  };
+
   // Calculate line total based on edits
   const calculateLineTotal = (analysis: any, fileId: string) => {
     const billablePages = getValue(
@@ -164,14 +176,23 @@ export default function HITLReviewDetail() {
       return 0;
     }
 
-    const multiplier =
+    const complexityMultiplier =
       getValue(
         fileId,
         "complexity_multiplier",
         analysis.complexity_multiplier,
       ) || 1;
-    const baseRate = analysis.base_rate || 50; // default base rate
-    return billablePages * baseRate * multiplier;
+    const languageCode = getValue(
+      fileId,
+      "detected_language",
+      analysis.detected_language,
+    );
+    const languageMultiplier = getLanguageMultiplier(languageCode);
+    const baseRate = analysis.base_rate || 50;
+
+    return (
+      billablePages * baseRate * complexityMultiplier * languageMultiplier
+    );
   };
 
   // Check if file is combined with another
