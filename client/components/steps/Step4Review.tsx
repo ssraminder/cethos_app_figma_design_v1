@@ -36,7 +36,7 @@ const COMPLEXITY_LABELS: Record<string, string> = {
 };
 
 export default function Step4Review() {
-  const { state, completeProcessing } = useQuote();
+  const { state, completeProcessing, skipToEmail } = useQuote();
   const { languages, loading: optionsLoading } = useDropdownOptions();
   const { documents, subtotal, isLoading, isReady, error } = useQuotePricing(
     state.quoteId,
@@ -71,11 +71,7 @@ export default function Step4Review() {
         <ProcessingStatus
           quoteId={state.quoteId}
           onComplete={completeProcessing}
-          onEmailInstead={() => {
-            // Use skipToEmail which navigates to contact form (step 3) in email mode
-            // This is already defined in QuoteContext
-            window.location.reload(); // Temporary fix - should use proper context method
-          }}
+          onEmailInstead={skipToEmail}
         />
         {isLoading && (
           <div className="animate-pulse space-y-3">
