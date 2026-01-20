@@ -81,6 +81,8 @@ export default function ProcessingStatus({
     fetchStatus();
 
     // Subscribe to realtime updates
+    if (!supabase) return;
+
     const channel = supabase
       .channel(`quote-${quoteId}`)
       .on(
@@ -122,7 +124,9 @@ export default function ProcessingStatus({
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (supabase) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [quoteId]);
 
