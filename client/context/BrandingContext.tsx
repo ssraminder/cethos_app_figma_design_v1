@@ -55,7 +55,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
       const timeoutId = setTimeout(() => controller.abort(), 2000);
 
       const response = await fetch(
-        "https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/get-branding",
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-branding`,
         {
           signal: controller.signal,
           mode: "cors",
