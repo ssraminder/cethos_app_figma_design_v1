@@ -239,8 +239,11 @@ export default function HITLReviewDetail() {
 
     // Calculate per-page billable
     const complexityMultiplier =
-      getValue(fileId, "complexity_multiplier", analysis.complexity_multiplier) ||
-      1;
+      getValue(
+        fileId,
+        "complexity_multiplier",
+        analysis.complexity_multiplier,
+      ) || 1;
 
     let totalBillable = 0;
     allPages.forEach((page) => {
@@ -301,7 +304,10 @@ export default function HITLReviewDetail() {
   };
 
   // Combine file with another
-  const combineFileWith = (childFileId: string, parentFileId: string | null) => {
+  const combineFileWith = (
+    childFileId: string,
+    parentFileId: string | null,
+  ) => {
     if (parentFileId === null) {
       // Uncombine
       setCombinedFiles((prev) => {
