@@ -15,58 +15,103 @@ export default function Login() {
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    console.log('=== DATABASE DEBUG START ===');
+
     if (!supabase) {
+      console.error('Supabase client is NULL');
       setMessage('Database not configured');
       return;
     }
 
     setLoading(true);
-    setMessage('');
+    setMessage('Checking database...');
 
-    // Check staff_users with retry logic
-    let attempts = 0;
-    let staffData = null;
-    let lastError = null;
+    try {
+      // 1. Log connection info
+      console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+      console.log('Email to check:', email.toLowerCase());
 
-    while (attempts < 3 && !staffData) {
-      attempts++;
-      try {
-        const { data, error } = await supabase
-          .from('staff_users')
-          .select('id, is_active')
-          .eq('email', email.toLowerCase())
-          .maybeSingle();
+      // 2. First, try to list ALL staff_users to see if table is accessible
+      console.log('Step 1: Fetching ALL staff_users...');
+      const { data: allStaff, error: allError } = await supabase
+        .from('staff_users')
+        .select('id, email, is_active')
+        .limit(10);
 
-        if (error) {
-          lastError = error;
-          await new Promise(r => setTimeout(r, 200));
-          continue;
-        }
+      console.log('All staff result:', { data: allStaff, error: allError });
 
-        staffData = data;
-        break;
-      } catch (err) {
-        lastError = err;
-        await new Promise(r => setTimeout(r, 200));
+      if (allError) {
+        console.error('Error fetching all staff:', allError);
+        setMessage(`Database error: ${allError.message}`);
+        setLoading(false);
+        return;
       }
+
+      if (!allStaff || allStaff.length === 0) {
+        console.log('No staff records found in database');
+        setMessage('No staff records in database. Check RLS policies.');
+        setLoading(false);
+        return;
+      }
+
+      // 3. Log all emails in database
+      console.log('Emails in database:');
+      allStaff.forEach((s, i) => {
+        console.log(`  ${i + 1}. "${s.email}" (active: ${s.is_active})`);
+      });
+
+      // 4. Now try to find specific email
+      console.log('Step 2: Looking for specific email:', email.toLowerCase());
+      const { data: staffData, error: staffError } = await supabase
+        .from('staff_users')
+        .select('id, email, is_active')
+        .eq('email', email.toLowerCase())
+        .maybeSingle();
+
+      console.log('Specific email result:', { data: staffData, error: staffError });
+
+      if (staffError) {
+        console.error('Error finding email:', staffError);
+        setMessage(`Query error: ${staffError.message}`);
+        setLoading(false);
+        return;
+      }
+
+      // 5. Check if email matches exactly
+      const matchingEmail = allStaff.find(s => s.email === email.toLowerCase());
+      console.log('Manual match check:', matchingEmail);
+
+      const matchingEmailTrimmed = allStaff.find(s => s.email.trim() === email.toLowerCase().trim());
+      console.log('Trimmed match check:', matchingEmailTrimmed);
+
+      if (!staffData) {
+        // Show what emails ARE in the database
+        const emailList = allStaff.map(s => s.email).join(', ');
+        setMessage(`Email not found. Available: ${emailList}`);
+        setLoading(false);
+        return;
+      }
+
+      if (!staffData.is_active) {
+        setMessage('Account deactivated.');
+        setLoading(false);
+        return;
+      }
+
+      // Success!
+      console.log('Staff found:', staffData);
+      setStaffId(staffData.id);
+      setStep('otp');
+      setMessage('Enter code 700310 (test mode)');
+
+    } catch (err) {
+      console.error('Caught exception:', err);
+      setMessage(`Exception: ${err}`);
     }
 
     setLoading(false);
-
-    if (!staffData) {
-      setMessage('Email not found in staff directory.');
-      return;
-    }
-
-    if (!staffData.is_active) {
-      setMessage('Account deactivated. Contact administrator.');
-      return;
-    }
-
-    setStaffId(staffData.id);
-    setStep('otp');
-    setMessage('Enter code 700310 (test mode)');
+    console.log('=== DATABASE DEBUG END ===');
   };
 
   const handleVerifyOTP = async (e: React.FormEvent) => {
