@@ -300,7 +300,7 @@ export default function HITLReviewDetail() {
   };
 
   const escalateReview = async () => {
-    if (!review) return;
+    if (!review || !session?.staffId) return;
     if (!confirm('Are you sure you want to escalate this to an admin?')) return;
     setSubmitting(true);
     try {
