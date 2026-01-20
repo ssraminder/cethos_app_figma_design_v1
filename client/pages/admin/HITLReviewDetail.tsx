@@ -113,7 +113,9 @@ export default function HITLReviewDetail() {
 
   // Save state
   const [isSaving, setIsSaving] = useState(false);
-  const [savedCombinedFiles, setSavedCombinedFiles] = useState<Record<string, string>>({});
+  const [savedCombinedFiles, setSavedCombinedFiles] = useState<
+    Record<string, string>
+  >({});
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -431,10 +433,10 @@ export default function HITLReviewDetail() {
 
   // Save all corrections (page edits + combined files)
   const saveAllCorrections = async () => {
-    const session = JSON.parse(sessionStorage.getItem('staffSession') || '{}');
+    const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
 
     if (!session.staffId) {
-      alert('Session expired. Please login again.');
+      alert("Session expired. Please login again.");
       return;
     }
 
@@ -448,18 +450,24 @@ export default function HITLReviewDetail() {
 
     // Combined files
     Object.entries(combinedFiles).forEach(([childId, parentId]) => {
-      const childFile = analysisResults.find(a => a.quote_file_id === childId);
-      const parentFile = analysisResults.find(a => a.quote_file_id === parentId);
-      changes.push(`${childFile?.quote_file?.original_filename} combined with ${parentFile?.quote_file?.original_filename}`);
+      const childFile = analysisResults.find(
+        (a) => a.quote_file_id === childId,
+      );
+      const parentFile = analysisResults.find(
+        (a) => a.quote_file_id === parentId,
+      );
+      changes.push(
+        `${childFile?.quote_file?.original_filename} combined with ${parentFile?.quote_file?.original_filename}`,
+      );
     });
 
     if (changes.length === 0) {
-      alert('No changes to save');
+      alert("No changes to save");
       return;
     }
 
     const confirmed = window.confirm(
-      `Save these corrections?\n\n${changes.join('\n')}\n\nThis will recalculate the quote pricing.`
+      `Save these corrections?\n\n${changes.join("\n")}\n\nThis will recalculate the quote pricing.`,
     );
 
     if (!confirmed) return;
@@ -469,116 +477,139 @@ export default function HITLReviewDetail() {
     try {
       // 1. Save page word count edits
       for (const [pageId, newWordCount] of Object.entries(localPageEdits)) {
-        const originalPage = Object.values(pageData).flat().find(p => p.id === pageId);
+        const originalPage = Object.values(pageData)
+          .flat()
+          .find((p) => p.id === pageId);
 
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              reviewId: reviewId,
+              staffId: session.staffId,
+              field: "page_word_count",
+              originalValue: String(originalPage?.word_count || 0),
+              correctedValue: String(newWordCount),
+              pageId: pageId,
+            }),
           },
-          body: JSON.stringify({
-            reviewId: reviewId,
-            staffId: session.staffId,
-            field: 'page_word_count',
-            originalValue: String(originalPage?.word_count || 0),
-            correctedValue: String(newWordCount),
-            pageId: pageId
-          })
-        });
+        );
       }
 
       // 2. Save combined file relationships
       for (const [childFileId, parentFileId] of Object.entries(combinedFiles)) {
-        const childAnalysis = analysisResults.find(a => a.quote_file_id === childFileId);
-        const parentAnalysis = analysisResults.find(a => a.quote_file_id === parentFileId);
+        const childAnalysis = analysisResults.find(
+          (a) => a.quote_file_id === childFileId,
+        );
+        const parentAnalysis = analysisResults.find(
+          (a) => a.quote_file_id === parentFileId,
+        );
 
         // Save as correction: child file combined with parent
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              reviewId: reviewId,
+              staffId: session.staffId,
+              field: "combined_with",
+              originalValue: null,
+              correctedValue: parentFileId,
+              fileId: childFileId,
+            }),
           },
-          body: JSON.stringify({
-            reviewId: reviewId,
-            staffId: session.staffId,
-            field: 'combined_with',
-            originalValue: null,
-            correctedValue: parentFileId,
-            fileId: childFileId
-          })
-        });
+        );
 
         // Update child's billable_pages to 0
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              reviewId: reviewId,
+              staffId: session.staffId,
+              field: "billable_pages",
+              originalValue: String(childAnalysis?.billable_pages || 1),
+              correctedValue: "0",
+              fileId: childFileId,
+            }),
           },
-          body: JSON.stringify({
-            reviewId: reviewId,
-            staffId: session.staffId,
-            field: 'billable_pages',
-            originalValue: String(childAnalysis?.billable_pages || 1),
-            correctedValue: '0',
-            fileId: childFileId
-          })
-        });
+        );
 
         // Update parent's billable_pages with recalculated value
-        const newBillablePages = calculateDocumentTotal(parentFileId, parentAnalysis);
+        const newBillablePages = calculateDocumentTotal(
+          parentFileId,
+          parentAnalysis,
+        );
         const newLineTotal = calculateLineTotal(parentFileId, parentAnalysis);
 
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              reviewId: reviewId,
+              staffId: session.staffId,
+              field: "billable_pages",
+              originalValue: String(parentAnalysis?.billable_pages || 1),
+              correctedValue: String(newBillablePages),
+              fileId: parentFileId,
+            }),
           },
-          body: JSON.stringify({
-            reviewId: reviewId,
-            staffId: session.staffId,
-            field: 'billable_pages',
-            originalValue: String(parentAnalysis?.billable_pages || 1),
-            correctedValue: String(newBillablePages),
-            fileId: parentFileId
-          })
-        });
+        );
 
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              reviewId: reviewId,
+              staffId: session.staffId,
+              field: "line_total",
+              originalValue: String(parentAnalysis?.line_total || 0),
+              correctedValue: String(newLineTotal),
+              fileId: parentFileId,
+            }),
           },
-          body: JSON.stringify({
-            reviewId: reviewId,
-            staffId: session.staffId,
-            field: 'line_total',
-            originalValue: String(parentAnalysis?.line_total || 0),
-            correctedValue: String(newLineTotal),
-            fileId: parentFileId
-          })
-        });
+        );
       }
 
       // Mark combined files as saved so UI merges them
-      setSavedCombinedFiles(prev => ({ ...prev, ...combinedFiles }));
+      setSavedCombinedFiles((prev) => ({ ...prev, ...combinedFiles }));
 
       // Clear local edits
       setLocalPageEdits({});
       setCombinedFiles({});
 
-      alert('Corrections saved successfully!');
+      alert("Corrections saved successfully!");
 
       // Refresh data from server
       fetchReviewDetail();
-
     } catch (error) {
-      console.error('Save error:', error);
-      alert('Error saving corrections: ' + error);
+      console.error("Save error:", error);
+      alert("Error saving corrections: " + error);
     } finally {
       setIsSaving(false);
     }
@@ -586,24 +617,30 @@ export default function HITLReviewDetail() {
 
   // Filter out files that have been saved as combined (they'll show under parent)
   const getVisibleFiles = () => {
-    return analysisResults.filter(analysis =>
-      !savedCombinedFiles[analysis.quote_file_id]
+    return analysisResults.filter(
+      (analysis) => !savedCombinedFiles[analysis.quote_file_id],
     );
   };
 
   // Get all pages for a document (including saved combined files)
   const getAllPagesForDocument = (fileId: string) => {
-    let allPages: Array<{ id: string; page_number: number; word_count: number; sourceFile: string; sourceFileName: string }> = [];
+    let allPages: Array<{
+      id: string;
+      page_number: number;
+      word_count: number;
+      sourceFile: string;
+      sourceFileName: string;
+    }> = [];
 
     // This file's pages
     const thisFilePages = pageData[fileId] || [];
-    const thisFile = analysisResults.find(a => a.quote_file_id === fileId);
+    const thisFile = analysisResults.find((a) => a.quote_file_id === fileId);
 
     thisFilePages.forEach((page) => {
       allPages.push({
         ...page,
         sourceFile: fileId,
-        sourceFileName: thisFile?.quote_file?.original_filename || 'Unknown'
+        sourceFileName: thisFile?.quote_file?.original_filename || "Unknown",
       });
     });
 
@@ -613,15 +650,18 @@ export default function HITLReviewDetail() {
       .filter(([childId, parentId]) => parentId === fileId)
       .map(([childId]) => childId);
 
-    combinedFileIds.forEach(combinedFileId => {
+    combinedFileIds.forEach((combinedFileId) => {
       const combinedPages = pageData[combinedFileId] || [];
-      const combinedFile = analysisResults.find(a => a.quote_file_id === combinedFileId);
+      const combinedFile = analysisResults.find(
+        (a) => a.quote_file_id === combinedFileId,
+      );
 
-      combinedPages.forEach(page => {
+      combinedPages.forEach((page) => {
         allPages.push({
           ...page,
           sourceFile: combinedFileId,
-          sourceFileName: combinedFile?.quote_file?.original_filename || 'Unknown'
+          sourceFileName:
+            combinedFile?.quote_file?.original_filename || "Unknown",
         });
       });
     });
@@ -631,16 +671,21 @@ export default function HITLReviewDetail() {
 
   // Get all previews for a document (including combined)
   const getAllPreviewsForDocument = (fileId: string) => {
-    const previews: Array<{ fileId: string; fileName: string; storagePath: string; fileSize: number }> = [];
+    const previews: Array<{
+      fileId: string;
+      fileName: string;
+      storagePath: string;
+      fileSize: number;
+    }> = [];
 
     // This file
-    const thisFile = analysisResults.find(a => a.quote_file_id === fileId);
+    const thisFile = analysisResults.find((a) => a.quote_file_id === fileId);
     if (thisFile?.quote_file?.storage_path) {
       previews.push({
         fileId: fileId,
         fileName: thisFile.quote_file.original_filename,
         storagePath: thisFile.quote_file.storage_path,
-        fileSize: thisFile.quote_file.file_size
+        fileSize: thisFile.quote_file.file_size,
       });
     }
 
@@ -650,14 +695,16 @@ export default function HITLReviewDetail() {
       .filter(([childId, parentId]) => parentId === fileId)
       .map(([childId]) => childId);
 
-    combinedFileIds.forEach(combinedFileId => {
-      const combinedFile = analysisResults.find(a => a.quote_file_id === combinedFileId);
+    combinedFileIds.forEach((combinedFileId) => {
+      const combinedFile = analysisResults.find(
+        (a) => a.quote_file_id === combinedFileId,
+      );
       if (combinedFile?.quote_file?.storage_path) {
         previews.push({
           fileId: combinedFileId,
           fileName: combinedFile.quote_file.original_filename,
           storagePath: combinedFile.quote_file.storage_path,
-          fileSize: combinedFile.quote_file.file_size
+          fileSize: combinedFile.quote_file.file_size,
         });
       }
     });
@@ -1125,339 +1172,302 @@ export default function HITLReviewDetail() {
         {getVisibleFiles().map((analysis, index) => {
           const allPages = getAllPagesForDocument(analysis.quote_file_id);
           const allPreviews = getAllPreviewsForDocument(analysis.quote_file_id);
-          const totalWordCount = allPages.reduce((sum, p) => sum + getPageWordCount(p), 0);
+          const totalWordCount = allPages.reduce(
+            (sum, p) => sum + getPageWordCount(p),
+            0,
+          );
 
           return (
-          <div
-            key={analysis.id}
-            className="border rounded-lg mb-3 overflow-hidden"
-          >
-            {/* File Header - Always Visible */}
-            <button
-              onClick={() =>
-                setExpandedFile(
-                  expandedFile === analysis.id ? null : analysis.id,
-                )
-              }
-              className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
+            <div
+              key={analysis.id}
+              className="border rounded-lg mb-3 overflow-hidden"
             >
-              <div className="flex items-center gap-4">
-                <span className="text-lg font-medium">
-                  {index + 1}.{" "}
-                  {analysis.quote_file?.original_filename ||
-                    `File ${index + 1}`}
-                </span>
-                <span className="text-sm text-gray-500">
-                  {totalWordCount} words • {allPages.length} page(s)
-                </span>
-                {/* Show combined badge if has combined files */}
-                {allPreviews.length > 1 && (
-                  <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">
-                    {allPreviews.length} files merged
+              {/* File Header - Always Visible */}
+              <button
+                onClick={() =>
+                  setExpandedFile(
+                    expandedFile === analysis.id ? null : analysis.id,
+                  )
+                }
+                className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="text-lg font-medium">
+                    {index + 1}.{" "}
+                    {analysis.quote_file?.original_filename ||
+                      `File ${index + 1}`}
                   </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                {/* Confidence Badges */}
-                <div className="flex gap-2">
-                  <span
-                    className={`px-2 py-1 rounded text-xs ${
-                      (analysis.document_type_confidence || 0) >= 0.9
-                        ? "bg-green-100 text-green-800"
-                        : (analysis.document_type_confidence || 0) >= 0.7
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    Type:{" "}
-                    {((analysis.document_type_confidence || 0) * 100).toFixed(
-                      0,
-                    )}
-                    %
+                  <span className="text-sm text-gray-500">
+                    {totalWordCount} words • {allPages.length} page(s)
                   </span>
-                  <span
-                    className={`px-2 py-1 rounded text-xs ${
-                      (analysis.language_confidence || 0) >= 0.9
-                        ? "bg-green-100 text-green-800"
-                        : (analysis.language_confidence || 0) >= 0.7
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    Lang:{" "}
-                    {((analysis.language_confidence || 0) * 100).toFixed(0)}%
-                  </span>
+                  {/* Show combined badge if has combined files */}
+                  {allPreviews.length > 1 && (
+                    <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">
+                      {allPreviews.length} files merged
+                    </span>
+                  )}
                 </div>
-                {/* Expand Icon */}
-                <svg
-                  className={`w-5 h-5 transition-transform ${
-                    expandedFile === analysis.id ? "rotate-180" : ""
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </div>
-            </button>
-
-            {/* File Content - Expanded */}
-            {expandedFile === analysis.id && (
-              <div className="p-4 border-t">
-                <div className="grid grid-cols-2 gap-6">
-                  {/* Left: Document Preview - Show ALL combined previews */}
-                  <div>
-                    <h4 className="font-semibold mb-3">
-                      Document Preview{allPreviews.length > 1 ? 's' : ''}
-                    </h4>
-
-                    <div className="space-y-4">
-                      {allPreviews.map((preview, previewIdx) => (
-                        <div key={preview.fileId} className="border rounded-lg overflow-hidden">
-                          {allPreviews.length > 1 && (
-                            <div className="bg-gray-100 px-3 py-1 text-sm font-medium">
-                              File {previewIdx + 1}: {preview.fileName}
-                            </div>
-                          )}
-                          <div className="p-4 bg-gray-50 min-h-[200px] flex items-center justify-center">
-                            <img
-                              src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${preview.storagePath}`}
-                              alt={preview.fileName}
-                              className="max-w-full max-h-[250px] object-contain"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                          </div>
-                          <div className="px-3 py-2 flex justify-between items-center text-sm border-t">
-                            <span className="text-gray-500">
-                              {(preview.fileSize / 1024 / 1024).toFixed(2)} MB
-                            </span>
-                            <a
-                              href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${preview.storagePath}`}
-                              target="_blank"
-                              className="text-blue-600 hover:underline"
-                            >
-                              ↓ Download
-                            </a>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Right: AI Analysis + Corrections */}
-                  <div>
-                    <h4 className="font-semibold mb-3">
-                      AI Analysis
-                      {!claimedByMe && (
-                        <span className="text-sm font-normal text-gray-500 ml-2">
-                          (Claim to edit)
-                        </span>
+                <div className="flex items-center gap-3">
+                  {/* Confidence Badges */}
+                  <div className="flex gap-2">
+                    <span
+                      className={`px-2 py-1 rounded text-xs ${
+                        (analysis.document_type_confidence || 0) >= 0.9
+                          ? "bg-green-100 text-green-800"
+                          : (analysis.document_type_confidence || 0) >= 0.7
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      Type:{" "}
+                      {((analysis.document_type_confidence || 0) * 100).toFixed(
+                        0,
                       )}
-                    </h4>
+                      %
+                    </span>
+                    <span
+                      className={`px-2 py-1 rounded text-xs ${
+                        (analysis.language_confidence || 0) >= 0.9
+                          ? "bg-green-100 text-green-800"
+                          : (analysis.language_confidence || 0) >= 0.7
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      Lang:{" "}
+                      {((analysis.language_confidence || 0) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  {/* Expand Icon */}
+                  <svg
+                    className={`w-5 h-5 transition-transform ${
+                      expandedFile === analysis.id ? "rotate-180" : ""
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+              </button>
 
-                    <div className="space-y-4">
-                      {/* Document Type */}
-                      <div className="bg-white border rounded p-3">
-                        <label className="text-sm text-gray-500 block mb-1">
-                          Document Type
-                        </label>
-                        <div className="flex items-center justify-between">
-                          {claimedByMe ? (
-                            <select
-                              value={
-                                getValue(
-                                  analysis.quote_file_id,
-                                  "document_type",
-                                  analysis.detected_document_type,
-                                ) || ""
-                              }
-                              onChange={(e) =>
-                                updateLocalEdit(
-                                  analysis.quote_file_id,
-                                  "document_type",
-                                  e.target.value,
-                                )
-                              }
-                              className="border rounded px-3 py-2 flex-1 mr-2 focus:ring-2 focus:ring-blue-500"
-                            >
-                              <option value="">Select...</option>
-                              <option value="birth_certificate">
-                                Birth Certificate
-                              </option>
-                              <option value="marriage_certificate">
-                                Marriage Certificate
-                              </option>
-                              <option value="death_certificate">
-                                Death Certificate
-                              </option>
-                              <option value="divorce_decree">
-                                Divorce Decree
-                              </option>
-                              <option value="passport">Passport</option>
-                              <option value="drivers_license">
-                                Driver's License
-                              </option>
-                              <option value="national_id">National ID</option>
-                              <option value="academic_transcript">
-                                Academic Transcript
-                              </option>
-                              <option value="diploma">Diploma / Degree</option>
-                              <option value="legal_document">
-                                Legal Document
-                              </option>
-                              <option value="medical_document">
-                                Medical Document
-                              </option>
-                              <option value="financial_document">
-                                Financial Document
-                              </option>
-                              <option value="immigration_document">
-                                Immigration Document
-                              </option>
-                              <option value="court_document">
-                                Court Document
-                              </option>
-                              <option value="business_document">
-                                Business Document
-                              </option>
-                              <option value="other">Other</option>
-                            </select>
-                          ) : (
-                            <span className="capitalize">
-                              {analysis.detected_document_type?.replace(
-                                /_/g,
-                                " ",
-                              ) || "Unknown"}
-                            </span>
-                          )}
-                          <span
-                            className={`px-2 py-1 rounded text-sm ${
-                              (analysis.document_type_confidence || 0) >= 0.9
-                                ? "bg-green-100 text-green-800"
-                                : (analysis.document_type_confidence || 0) >=
-                                    0.7
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-red-100 text-red-800"
-                            }`}
+              {/* File Content - Expanded */}
+              {expandedFile === analysis.id && (
+                <div className="p-4 border-t">
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Left: Document Preview - Show ALL combined previews */}
+                    <div>
+                      <h4 className="font-semibold mb-3">
+                        Document Preview{allPreviews.length > 1 ? "s" : ""}
+                      </h4>
+
+                      <div className="space-y-4">
+                        {allPreviews.map((preview, previewIdx) => (
+                          <div
+                            key={preview.fileId}
+                            className="border rounded-lg overflow-hidden"
                           >
-                            {(
-                              (analysis.document_type_confidence || 0) * 100
-                            ).toFixed(0)}
-                            %
-                          </span>
-                        </div>
+                            {allPreviews.length > 1 && (
+                              <div className="bg-gray-100 px-3 py-1 text-sm font-medium">
+                                File {previewIdx + 1}: {preview.fileName}
+                              </div>
+                            )}
+                            <div className="p-4 bg-gray-50 min-h-[200px] flex items-center justify-center">
+                              <img
+                                src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${preview.storagePath}`}
+                                alt={preview.fileName}
+                                className="max-w-full max-h-[250px] object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = "none";
+                                }}
+                              />
+                            </div>
+                            <div className="px-3 py-2 flex justify-between items-center text-sm border-t">
+                              <span className="text-gray-500">
+                                {(preview.fileSize / 1024 / 1024).toFixed(2)} MB
+                              </span>
+                              <a
+                                href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${preview.storagePath}`}
+                                target="_blank"
+                                className="text-blue-600 hover:underline"
+                              >
+                                ↓ Download
+                              </a>
+                            </div>
+                          </div>
+                        ))}
                       </div>
+                    </div>
 
-                      {/* Detected Language */}
-                      <div className="bg-white border rounded p-3">
-                        <label className="text-sm text-gray-500 block mb-1">
-                          Detected Language
-                        </label>
-                        <div className="flex items-center justify-between">
-                          {editingLanguage === analysis.quote_file_id &&
-                          claimedByMe ? (
-                            // Edit mode
-                            <div className="flex items-center gap-2 flex-1 mr-2">
+                    {/* Right: AI Analysis + Corrections */}
+                    <div>
+                      <h4 className="font-semibold mb-3">
+                        AI Analysis
+                        {!claimedByMe && (
+                          <span className="text-sm font-normal text-gray-500 ml-2">
+                            (Claim to edit)
+                          </span>
+                        )}
+                      </h4>
+
+                      <div className="space-y-4">
+                        {/* Document Type */}
+                        <div className="bg-white border rounded p-3">
+                          <label className="text-sm text-gray-500 block mb-1">
+                            Document Type
+                          </label>
+                          <div className="flex items-center justify-between">
+                            {claimedByMe ? (
                               <select
                                 value={
                                   getValue(
                                     analysis.quote_file_id,
-                                    "detected_language",
-                                    analysis.detected_language,
+                                    "document_type",
+                                    analysis.detected_document_type,
                                   ) || ""
                                 }
                                 onChange={(e) =>
                                   updateLocalEdit(
                                     analysis.quote_file_id,
-                                    "detected_language",
+                                    "document_type",
                                     e.target.value,
                                   )
                                 }
-                                className="border rounded px-3 py-2 flex-1 focus:ring-2 focus:ring-blue-500"
-                                autoFocus
+                                className="border rounded px-3 py-2 flex-1 mr-2 focus:ring-2 focus:ring-blue-500"
                               >
-                                <option value="">Select language...</option>
-                                <option value="en">English (1.0x)</option>
-                                <option value="es">Spanish (1.0x)</option>
-                                <option value="fr">French (1.1x)</option>
-                                <option value="de">German (1.1x)</option>
-                                <option value="zh">Chinese (1.25x)</option>
-                                <option value="ja">Japanese (1.25x)</option>
-                                <option value="ko">Korean (1.25x)</option>
-                                <option value="ar">Arabic (1.3x)</option>
-                                <option value="ru">Russian (1.15x)</option>
-                                <option value="pl">Polish (1.1x)</option>
-                                <option value="pt">Portuguese (1.0x)</option>
-                                <option value="it">Italian (1.0x)</option>
-                                <option value="nl">Dutch (1.1x)</option>
-                                <option value="sv">Swedish (1.1x)</option>
-                                <option value="uk">Ukrainian (1.15x)</option>
-                                <option value="vi">Vietnamese (1.2x)</option>
-                                <option value="th">Thai (1.25x)</option>
-                                <option value="hi">Hindi (1.15x)</option>
-                                <option value="tr">Turkish (1.1x)</option>
-                                <option value="he">Hebrew (1.2x)</option>
+                                <option value="">Select...</option>
+                                <option value="birth_certificate">
+                                  Birth Certificate
+                                </option>
+                                <option value="marriage_certificate">
+                                  Marriage Certificate
+                                </option>
+                                <option value="death_certificate">
+                                  Death Certificate
+                                </option>
+                                <option value="divorce_decree">
+                                  Divorce Decree
+                                </option>
+                                <option value="passport">Passport</option>
+                                <option value="drivers_license">
+                                  Driver's License
+                                </option>
+                                <option value="national_id">National ID</option>
+                                <option value="academic_transcript">
+                                  Academic Transcript
+                                </option>
+                                <option value="diploma">
+                                  Diploma / Degree
+                                </option>
+                                <option value="legal_document">
+                                  Legal Document
+                                </option>
+                                <option value="medical_document">
+                                  Medical Document
+                                </option>
+                                <option value="financial_document">
+                                  Financial Document
+                                </option>
+                                <option value="immigration_document">
+                                  Immigration Document
+                                </option>
+                                <option value="court_document">
+                                  Court Document
+                                </option>
+                                <option value="business_document">
+                                  Business Document
+                                </option>
+                                <option value="other">Other</option>
                               </select>
-                              <button
-                                onClick={() => setEditingLanguage(null)}
-                                className="text-gray-500 hover:text-gray-700 p-1"
-                                title="Done"
-                              >
-                                <svg
-                                  className="w-5 h-5"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M5 13l4 4L19 7"
-                                  />
-                                </svg>
-                              </button>
-                            </div>
-                          ) : (
-                            // Display mode
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">
-                                {analysis.language_name ||
-                                  getValue(
-                                    analysis.quote_file_id,
-                                    "detected_language",
-                                    analysis.detected_language,
-                                  ) ||
-                                  "Unknown"}
+                            ) : (
+                              <span className="capitalize">
+                                {analysis.detected_document_type?.replace(
+                                  /_/g,
+                                  " ",
+                                ) || "Unknown"}
                               </span>
-                              <span className="text-sm text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                                {getLanguageMultiplier(
-                                  getValue(
-                                    analysis.quote_file_id,
-                                    "detected_language",
-                                    analysis.detected_language,
-                                  ),
-                                )}
-                                x
-                              </span>
-                              {claimedByMe && (
-                                <button
-                                  onClick={() =>
-                                    setEditingLanguage(analysis.quote_file_id)
+                            )}
+                            <span
+                              className={`px-2 py-1 rounded text-sm ${
+                                (analysis.document_type_confidence || 0) >= 0.9
+                                  ? "bg-green-100 text-green-800"
+                                  : (analysis.document_type_confidence || 0) >=
+                                      0.7
+                                    ? "bg-yellow-100 text-yellow-800"
+                                    : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {(
+                                (analysis.document_type_confidence || 0) * 100
+                              ).toFixed(0)}
+                              %
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Detected Language */}
+                        <div className="bg-white border rounded p-3">
+                          <label className="text-sm text-gray-500 block mb-1">
+                            Detected Language
+                          </label>
+                          <div className="flex items-center justify-between">
+                            {editingLanguage === analysis.quote_file_id &&
+                            claimedByMe ? (
+                              // Edit mode
+                              <div className="flex items-center gap-2 flex-1 mr-2">
+                                <select
+                                  value={
+                                    getValue(
+                                      analysis.quote_file_id,
+                                      "detected_language",
+                                      analysis.detected_language,
+                                    ) || ""
                                   }
-                                  className="text-gray-400 hover:text-blue-600 p-1"
-                                  title="Edit language"
+                                  onChange={(e) =>
+                                    updateLocalEdit(
+                                      analysis.quote_file_id,
+                                      "detected_language",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="border rounded px-3 py-2 flex-1 focus:ring-2 focus:ring-blue-500"
+                                  autoFocus
+                                >
+                                  <option value="">Select language...</option>
+                                  <option value="en">English (1.0x)</option>
+                                  <option value="es">Spanish (1.0x)</option>
+                                  <option value="fr">French (1.1x)</option>
+                                  <option value="de">German (1.1x)</option>
+                                  <option value="zh">Chinese (1.25x)</option>
+                                  <option value="ja">Japanese (1.25x)</option>
+                                  <option value="ko">Korean (1.25x)</option>
+                                  <option value="ar">Arabic (1.3x)</option>
+                                  <option value="ru">Russian (1.15x)</option>
+                                  <option value="pl">Polish (1.1x)</option>
+                                  <option value="pt">Portuguese (1.0x)</option>
+                                  <option value="it">Italian (1.0x)</option>
+                                  <option value="nl">Dutch (1.1x)</option>
+                                  <option value="sv">Swedish (1.1x)</option>
+                                  <option value="uk">Ukrainian (1.15x)</option>
+                                  <option value="vi">Vietnamese (1.2x)</option>
+                                  <option value="th">Thai (1.25x)</option>
+                                  <option value="hi">Hindi (1.15x)</option>
+                                  <option value="tr">Turkish (1.1x)</option>
+                                  <option value="he">Hebrew (1.2x)</option>
+                                </select>
+                                <button
+                                  onClick={() => setEditingLanguage(null)}
+                                  className="text-gray-500 hover:text-gray-700 p-1"
+                                  title="Done"
                                 >
                                   <svg
-                                    className="w-4 h-4"
+                                    className="w-5 h-5"
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
@@ -1466,292 +1476,304 @@ export default function HITLReviewDetail() {
                                       strokeLinecap="round"
                                       strokeLinejoin="round"
                                       strokeWidth={2}
-                                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                      d="M5 13l4 4L19 7"
                                     />
                                   </svg>
                                 </button>
-                              )}
-                            </div>
-                          )}
-                          <span
-                            className={`px-2 py-1 rounded text-sm ${
-                              (analysis.language_confidence || 0) >= 0.9
-                                ? "bg-green-100 text-green-800"
-                                : (analysis.language_confidence || 0) >= 0.7
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {(
-                              (analysis.language_confidence || 0) * 100
-                            ).toFixed(0)}
-                            %
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Complexity */}
-                      <div className="bg-white border rounded p-3">
-                        <label className="text-sm text-gray-500 block mb-1">
-                          Complexity
-                        </label>
-                        <div className="flex items-center justify-between">
-                          {claimedByMe ? (
-                            <select
-                              value={
-                                getValue(
-                                  analysis.quote_file_id,
-                                  "complexity",
-                                  analysis.assessed_complexity,
-                                ) || "standard"
-                              }
-                              onChange={(e) =>
-                                handleComplexityChange(
-                                  analysis.quote_file_id,
-                                  e.target.value,
-                                )
-                              }
-                              className="border rounded px-3 py-2 flex-1 mr-2 focus:ring-2 focus:ring-blue-500"
-                            >
-                              <option value="standard">Standard (1.0x)</option>
-                              <option value="complex">Complex (1.15x)</option>
-                              <option value="highly_complex">
-                                Highly Complex (1.5x)
-                              </option>
-                            </select>
-                          ) : (
-                            <span className="capitalize">
-                              {analysis.assessed_complexity?.replace(
-                                /_/g,
-                                " ",
-                              ) || "Standard"}
-                            </span>
-                          )}
-                          <span
-                            className={`px-2 py-1 rounded text-sm ${
-                              (analysis.complexity_confidence || 0) >= 0.9
-                                ? "bg-green-100 text-green-800"
-                                : (analysis.complexity_confidence || 0) >= 0.7
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {(
-                              (analysis.complexity_confidence || 0) * 100
-                            ).toFixed(0)}
-                            %
-                          </span>
-                        </div>
-                        {analysis.complexity_reasoning && (
-                          <p className="text-sm text-gray-500 mt-2">
-                            {analysis.complexity_reasoning}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* PAGE BREAKDOWN - show all pages from all combined files */}
-                      <div className="bg-white border rounded p-3 mt-3">
-                        <label className="text-sm text-gray-500 block mb-2">
-                          Page Breakdown ({allPages.length} page{allPages.length > 1 ? 's' : ''})
-                        </label>
-
-                        <div className="space-y-2">
-                          {allPages.map((page, idx) => (
-                            <div
-                              key={page.id}
-                              className={`flex items-center justify-between p-2 rounded ${
-                                page.sourceFile !== analysis.quote_file_id
-                                  ? 'bg-purple-50 border border-purple-200'
-                                  : 'bg-gray-50'
+                              </div>
+                            ) : (
+                              // Display mode
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">
+                                  {analysis.language_name ||
+                                    getValue(
+                                      analysis.quote_file_id,
+                                      "detected_language",
+                                      analysis.detected_language,
+                                    ) ||
+                                    "Unknown"}
+                                </span>
+                                <span className="text-sm text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                                  {getLanguageMultiplier(
+                                    getValue(
+                                      analysis.quote_file_id,
+                                      "detected_language",
+                                      analysis.detected_language,
+                                    ),
+                                  )}
+                                  x
+                                </span>
+                                {claimedByMe && (
+                                  <button
+                                    onClick={() =>
+                                      setEditingLanguage(analysis.quote_file_id)
+                                    }
+                                    className="text-gray-400 hover:text-blue-600 p-1"
+                                    title="Edit language"
+                                  >
+                                    <svg
+                                      className="w-4 h-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                      />
+                                    </svg>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            <span
+                              className={`px-2 py-1 rounded text-sm ${
+                                (analysis.language_confidence || 0) >= 0.9
+                                  ? "bg-green-100 text-green-800"
+                                  : (analysis.language_confidence || 0) >= 0.7
+                                    ? "bg-yellow-100 text-yellow-800"
+                                    : "bg-red-100 text-red-800"
                               }`}
                             >
-                              <div>
-                                <span className="text-sm font-medium">Page {idx + 1}</span>
-                                {page.sourceFile !== analysis.quote_file_id && (
-                                  <span className="text-xs text-purple-600 ml-2">
-                                    (from {page.sourceFileName})
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {claimedByMe ? (
-                                  <input
-                                    type="number"
-                                    value={getPageWordCount(page)}
-                                    onChange={(e) =>
-                                      updatePageWordCount(page.id, parseInt(e.target.value) || 0)
-                                    }
-                                    className="w-20 text-right border rounded px-2 py-1 text-sm"
-                                    min="0"
-                                  />
-                                ) : (
-                                  <span className="text-sm font-medium">{page.word_count}</span>
-                                )}
-                                <span className="text-xs text-gray-500">words</span>
-                                <span className="text-xs text-gray-400">
-                                  = {calculatePageBillable(getPageWordCount(page), getValue(analysis.quote_file_id, 'complexity_multiplier', analysis.complexity_multiplier) || 1).toFixed(3)} bp
-                                </span>
-                              </div>
-                            </div>
-                          ))}
+                              {(
+                                (analysis.language_confidence || 0) * 100
+                              ).toFixed(0)}
+                              %
+                            </span>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* BILLABLE PAGES CALCULATION */}
-                      <div className="bg-gray-100 p-3 rounded mt-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Total Billable Pages</span>
-                          <span className="text-lg font-bold">
-                            {combinedFiles[analysis.quote_file_id]
-                              ? "0 (combined)"
-                              : calculateDocumentTotal(
-                                  analysis.quote_file_id,
-                                  analysis,
-                                ).toFixed(2)}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Sum of (words/225 ×{" "}
-                          {getValue(
-                            analysis.quote_file_id,
-                            "complexity_multiplier",
-                            analysis.complexity_multiplier,
-                          ) || 1}
-                          x) per page, rounded to 0.10, min 1.0
-                        </p>
-                      </div>
-
-                      {/* Multipliers Display Row - Read Only */}
-                      <div className="grid grid-cols-2 gap-3 mt-3">
-                        <div className="bg-gray-100 p-3 rounded text-center">
-                          <label className="text-xs text-gray-500 block mb-1">
-                            Complexity Multiplier
+                        {/* Complexity */}
+                        <div className="bg-white border rounded p-3">
+                          <label className="text-sm text-gray-500 block mb-1">
+                            Complexity
                           </label>
-                          <div className="text-lg font-bold text-gray-700">
+                          <div className="flex items-center justify-between">
+                            {claimedByMe ? (
+                              <select
+                                value={
+                                  getValue(
+                                    analysis.quote_file_id,
+                                    "complexity",
+                                    analysis.assessed_complexity,
+                                  ) || "standard"
+                                }
+                                onChange={(e) =>
+                                  handleComplexityChange(
+                                    analysis.quote_file_id,
+                                    e.target.value,
+                                  )
+                                }
+                                className="border rounded px-3 py-2 flex-1 mr-2 focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="standard">
+                                  Standard (1.0x)
+                                </option>
+                                <option value="complex">Complex (1.15x)</option>
+                                <option value="highly_complex">
+                                  Highly Complex (1.5x)
+                                </option>
+                              </select>
+                            ) : (
+                              <span className="capitalize">
+                                {analysis.assessed_complexity?.replace(
+                                  /_/g,
+                                  " ",
+                                ) || "Standard"}
+                              </span>
+                            )}
+                            <span
+                              className={`px-2 py-1 rounded text-sm ${
+                                (analysis.complexity_confidence || 0) >= 0.9
+                                  ? "bg-green-100 text-green-800"
+                                  : (analysis.complexity_confidence || 0) >= 0.7
+                                    ? "bg-yellow-100 text-yellow-800"
+                                    : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {(
+                                (analysis.complexity_confidence || 0) * 100
+                              ).toFixed(0)}
+                              %
+                            </span>
+                          </div>
+                          {analysis.complexity_reasoning && (
+                            <p className="text-sm text-gray-500 mt-2">
+                              {analysis.complexity_reasoning}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* PAGE BREAKDOWN - show all pages from all combined files */}
+                        <div className="bg-white border rounded p-3 mt-3">
+                          <label className="text-sm text-gray-500 block mb-2">
+                            Page Breakdown ({allPages.length} page
+                            {allPages.length > 1 ? "s" : ""})
+                          </label>
+
+                          <div className="space-y-2">
+                            {allPages.map((page, idx) => (
+                              <div
+                                key={page.id}
+                                className={`flex items-center justify-between p-2 rounded ${
+                                  page.sourceFile !== analysis.quote_file_id
+                                    ? "bg-purple-50 border border-purple-200"
+                                    : "bg-gray-50"
+                                }`}
+                              >
+                                <div>
+                                  <span className="text-sm font-medium">
+                                    Page {idx + 1}
+                                  </span>
+                                  {page.sourceFile !==
+                                    analysis.quote_file_id && (
+                                    <span className="text-xs text-purple-600 ml-2">
+                                      (from {page.sourceFileName})
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {claimedByMe ? (
+                                    <input
+                                      type="number"
+                                      value={getPageWordCount(page)}
+                                      onChange={(e) =>
+                                        updatePageWordCount(
+                                          page.id,
+                                          parseInt(e.target.value) || 0,
+                                        )
+                                      }
+                                      className="w-20 text-right border rounded px-2 py-1 text-sm"
+                                      min="0"
+                                    />
+                                  ) : (
+                                    <span className="text-sm font-medium">
+                                      {page.word_count}
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-gray-500">
+                                    words
+                                  </span>
+                                  <span className="text-xs text-gray-400">
+                                    ={" "}
+                                    {calculatePageBillable(
+                                      getPageWordCount(page),
+                                      getValue(
+                                        analysis.quote_file_id,
+                                        "complexity_multiplier",
+                                        analysis.complexity_multiplier,
+                                      ) || 1,
+                                    ).toFixed(3)}{" "}
+                                    bp
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* BILLABLE PAGES CALCULATION */}
+                        <div className="bg-gray-100 p-3 rounded mt-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm">
+                              Total Billable Pages
+                            </span>
+                            <span className="text-lg font-bold">
+                              {combinedFiles[analysis.quote_file_id]
+                                ? "0 (combined)"
+                                : calculateDocumentTotal(
+                                    analysis.quote_file_id,
+                                    analysis,
+                                  ).toFixed(2)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Sum of (words/225 ×{" "}
                             {getValue(
                               analysis.quote_file_id,
                               "complexity_multiplier",
                               analysis.complexity_multiplier,
-                            ) || 1.0}
-                            x
-                          </div>
-                        </div>
-                        <div className="bg-gray-100 p-3 rounded text-center">
-                          <label className="text-xs text-gray-500 block mb-1">
-                            Language Multiplier
-                          </label>
-                          <div className="text-lg font-bold text-gray-700">
-                            {getLanguageMultiplier(
-                              getValue(
-                                analysis.quote_file_id,
-                                "detected_language",
-                                analysis.detected_language,
-                              ),
-                            )}
-                            x
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Line Total - Auto-calculated */}
-                      <div className="bg-blue-50 p-3 rounded mt-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Line Total</span>
-                          <div>
-                            <span className="text-sm">Line Total</span>
-                            {!combinedFiles[analysis.quote_file_id] && (
-                              <p className="text-xs text-gray-500">
-                                {calculateDocumentTotal(
-                                  analysis.quote_file_id,
-                                  analysis,
-                                ).toFixed(2)}{" "}
-                                × ${baseRate} ×{" "}
-                                {getLanguageMultiplier(
-                                  getValue(
-                                    analysis.quote_file_id,
-                                    "detected_language",
-                                    analysis.detected_language,
-                                  ),
-                                )}
-                                x → rounded to $2.50
-                              </p>
-                            )}
-                          </div>
-                          <span
-                            className={`text-xl font-bold ${
-                              combinedFiles[analysis.quote_file_id]
-                                ? "text-gray-400"
-                                : ""
-                            }`}
-                          >
-                            $
-                            {calculateLineTotal(
-                              analysis.quote_file_id,
-                              analysis,
-                            ).toFixed(2)}
-                          </span>
-                        </div>
-
-                        {combinedFiles[analysis.quote_file_id] && (
-                          <p className="text-xs text-purple-600 mt-1">
-                            Combined with{" "}
-                            {
-                              analysisResults.find(
-                                (a) =>
-                                  a.quote_file_id ===
-                                  combinedFiles[analysis.quote_file_id],
-                              )?.quote_file?.original_filename
-                            }
+                            ) || 1}
+                            x) per page, rounded to 0.10, min 1.0
                           </p>
-                        )}
-                      </div>
+                        </div>
 
-                      {/* COMBINE WITH ANOTHER DOCUMENT */}
-                      {claimedByMe &&
-                        !combinedFiles[analysis.quote_file_id] &&
-                        analysisResults.length > 1 &&
-                        getCombinedChildren(analysis.quote_file_id).length ===
-                          0 && (
-                          <div className="bg-purple-50 border border-purple-200 rounded p-3 mt-3">
-                            <label className="text-sm font-medium text-purple-800 block mb-2">
-                              Combine with another document?
+                        {/* Multipliers Display Row - Read Only */}
+                        <div className="grid grid-cols-2 gap-3 mt-3">
+                          <div className="bg-gray-100 p-3 rounded text-center">
+                            <label className="text-xs text-gray-500 block mb-1">
+                              Complexity Multiplier
                             </label>
-                            <p className="text-xs text-purple-600 mb-2">
-                              Use if this file is part of another document
-                              (e.g., back of ID card)
-                            </p>
-                            <select
-                              onChange={(e) => {
-                                if (e.target.value)
-                                  combineFileWith(
-                                    analysis.quote_file_id,
-                                    e.target.value,
-                                  );
-                              }}
-                              className="border rounded px-3 py-2 text-sm w-full"
-                              defaultValue=""
-                            >
-                              <option value="">-- Select document --</option>
-                              {getAvailableParentFiles(
+                            <div className="text-lg font-bold text-gray-700">
+                              {getValue(
                                 analysis.quote_file_id,
-                              ).map((parent) => (
-                                <option
-                                  key={parent.quote_file_id}
-                                  value={parent.quote_file_id}
-                                >
-                                  {parent.quote_file?.original_filename}
-                                </option>
-                              ))}
-                            </select>
+                                "complexity_multiplier",
+                                analysis.complexity_multiplier,
+                              ) || 1.0}
+                              x
+                            </div>
                           </div>
-                        )}
+                          <div className="bg-gray-100 p-3 rounded text-center">
+                            <label className="text-xs text-gray-500 block mb-1">
+                              Language Multiplier
+                            </label>
+                            <div className="text-lg font-bold text-gray-700">
+                              {getLanguageMultiplier(
+                                getValue(
+                                  analysis.quote_file_id,
+                                  "detected_language",
+                                  analysis.detected_language,
+                                ),
+                              )}
+                              x
+                            </div>
+                          </div>
+                        </div>
 
-                      {/* Already combined indicator */}
-                      {combinedFiles[analysis.quote_file_id] && (
-                        <div className="bg-purple-50 border border-purple-200 rounded p-3 mt-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-purple-700">
-                              ✓ Combined with:{" "}
+                        {/* Line Total - Auto-calculated */}
+                        <div className="bg-blue-50 p-3 rounded mt-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm">Line Total</span>
+                            <div>
+                              <span className="text-sm">Line Total</span>
+                              {!combinedFiles[analysis.quote_file_id] && (
+                                <p className="text-xs text-gray-500">
+                                  {calculateDocumentTotal(
+                                    analysis.quote_file_id,
+                                    analysis,
+                                  ).toFixed(2)}{" "}
+                                  × ${baseRate} ×{" "}
+                                  {getLanguageMultiplier(
+                                    getValue(
+                                      analysis.quote_file_id,
+                                      "detected_language",
+                                      analysis.detected_language,
+                                    ),
+                                  )}
+                                  x → rounded to $2.50
+                                </p>
+                              )}
+                            </div>
+                            <span
+                              className={`text-xl font-bold ${
+                                combinedFiles[analysis.quote_file_id]
+                                  ? "text-gray-400"
+                                  : ""
+                              }`}
+                            >
+                              $
+                              {calculateLineTotal(
+                                analysis.quote_file_id,
+                                analysis,
+                              ).toFixed(2)}
+                            </span>
+                          </div>
+
+                          {combinedFiles[analysis.quote_file_id] && (
+                            <p className="text-xs text-purple-600 mt-1">
+                              Combined with{" "}
                               {
                                 analysisResults.find(
                                   (a) =>
@@ -1759,56 +1781,118 @@ export default function HITLReviewDetail() {
                                     combinedFiles[analysis.quote_file_id],
                                 )?.quote_file?.original_filename
                               }
-                            </span>
-                            {claimedByMe && (
-                              <button
-                                onClick={() =>
-                                  combineFileWith(analysis.quote_file_id, null)
-                                }
-                                className="text-sm text-purple-600 hover:text-purple-800 underline"
-                              >
-                                Undo
-                              </button>
-                            )}
-                          </div>
+                            </p>
+                          )}
                         </div>
-                      )}
 
-                      {/* Save/Cancel buttons - show if there are changes */}
-                      {claimedByMe &&
-                        (Object.keys(localPageEdits).length > 0 ||
-                          Object.keys(localEdits).length > 0 ||
-                          Object.keys(combinedFiles).length > 0) && (
-                          <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
-                            <button
-                              onClick={() => {
-                                setLocalPageEdits({});
-                                setLocalEdits({});
-                                setCombinedFiles({});
-                              }}
-                              className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-50"
-                            >
-                              Reset All
-                            </button>
-                            <button
-                              onClick={saveAllCorrections}
-                              disabled={isSaving}
-                              className={`px-4 py-2 rounded text-white ${
-                                isSaving
-                                  ? 'bg-gray-400 cursor-not-allowed'
-                                  : 'bg-blue-600 hover:bg-blue-700'
-                              }`}
-                            >
-                              {isSaving ? 'Saving...' : 'Save All Corrections'}
-                            </button>
+                        {/* COMBINE WITH ANOTHER DOCUMENT */}
+                        {claimedByMe &&
+                          !combinedFiles[analysis.quote_file_id] &&
+                          analysisResults.length > 1 &&
+                          getCombinedChildren(analysis.quote_file_id).length ===
+                            0 && (
+                            <div className="bg-purple-50 border border-purple-200 rounded p-3 mt-3">
+                              <label className="text-sm font-medium text-purple-800 block mb-2">
+                                Combine with another document?
+                              </label>
+                              <p className="text-xs text-purple-600 mb-2">
+                                Use if this file is part of another document
+                                (e.g., back of ID card)
+                              </p>
+                              <select
+                                onChange={(e) => {
+                                  if (e.target.value)
+                                    combineFileWith(
+                                      analysis.quote_file_id,
+                                      e.target.value,
+                                    );
+                                }}
+                                className="border rounded px-3 py-2 text-sm w-full"
+                                defaultValue=""
+                              >
+                                <option value="">-- Select document --</option>
+                                {getAvailableParentFiles(
+                                  analysis.quote_file_id,
+                                ).map((parent) => (
+                                  <option
+                                    key={parent.quote_file_id}
+                                    value={parent.quote_file_id}
+                                  >
+                                    {parent.quote_file?.original_filename}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                        {/* Already combined indicator */}
+                        {combinedFiles[analysis.quote_file_id] && (
+                          <div className="bg-purple-50 border border-purple-200 rounded p-3 mt-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-purple-700">
+                                ✓ Combined with:{" "}
+                                {
+                                  analysisResults.find(
+                                    (a) =>
+                                      a.quote_file_id ===
+                                      combinedFiles[analysis.quote_file_id],
+                                  )?.quote_file?.original_filename
+                                }
+                              </span>
+                              {claimedByMe && (
+                                <button
+                                  onClick={() =>
+                                    combineFileWith(
+                                      analysis.quote_file_id,
+                                      null,
+                                    )
+                                  }
+                                  className="text-sm text-purple-600 hover:text-purple-800 underline"
+                                >
+                                  Undo
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
+
+                        {/* Save/Cancel buttons - show if there are changes */}
+                        {claimedByMe &&
+                          (Object.keys(localPageEdits).length > 0 ||
+                            Object.keys(localEdits).length > 0 ||
+                            Object.keys(combinedFiles).length > 0) && (
+                            <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
+                              <button
+                                onClick={() => {
+                                  setLocalPageEdits({});
+                                  setLocalEdits({});
+                                  setCombinedFiles({});
+                                }}
+                                className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-50"
+                              >
+                                Reset All
+                              </button>
+                              <button
+                                onClick={saveAllCorrections}
+                                disabled={isSaving}
+                                className={`px-4 py-2 rounded text-white ${
+                                  isSaving
+                                    ? "bg-gray-400 cursor-not-allowed"
+                                    : "bg-blue-600 hover:bg-blue-700"
+                                }`}
+                              >
+                                {isSaving
+                                  ? "Saving..."
+                                  : "Save All Corrections"}
+                              </button>
+                            </div>
+                          )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
           );
         })}
       </div>
