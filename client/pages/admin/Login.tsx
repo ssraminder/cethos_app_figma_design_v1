@@ -147,8 +147,10 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("🔐 Form submitted, email:", email);
 
     if (!supabase) {
+      console.error("❌ Supabase not configured");
       setMessage("Supabase not configured");
       return;
     }
@@ -157,6 +159,7 @@ export default function Login() {
     setMessage("");
 
     try {
+      console.log("📋 Checking if email exists in staff_users...");
       // First check if the email exists in staff_users
       const { data: staffCheck, error: staffCheckError } = await supabase
         .from("staff_users")
@@ -164,13 +167,17 @@ export default function Login() {
         .eq("email", email.toLowerCase())
         .single();
 
+      console.log("📋 Staff check result:", { staffCheck, staffCheckError });
+
       if (staffCheckError || !staffCheck) {
+        console.error("❌ Email not found in staff directory");
         setMessage("Email not found in staff directory.");
         setLoading(false);
         return;
       }
 
       if (!staffCheck.is_active) {
+        console.error("❌ Account deactivated");
         setMessage(
           "Your account has been deactivated. Contact an administrator.",
         );
@@ -178,6 +185,7 @@ export default function Login() {
         return;
       }
 
+      console.log("✅ Staff user verified, sending magic link...");
       // Send magic link
       const { error } = await supabase.auth.signInWithOtp({
         email: email.toLowerCase(),
@@ -186,17 +194,22 @@ export default function Login() {
         },
       });
 
+      console.log("📧 Magic link result:", { error });
+
       if (error) {
+        console.error("❌ Magic link error:", error);
         setMessage(error.message);
+        setLoading(false);
       } else {
+        console.log("✅ Magic link sent successfully!");
         setMessage("Check your email for the magic link!");
+        setLoading(false);
       }
     } catch (err) {
-      console.error("Login error:", err);
+      console.error("❌ Login error (caught):", err);
       setMessage("An error occurred. Please try again.");
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   if (checkingAuth) {
