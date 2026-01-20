@@ -26,9 +26,11 @@ export default function Step2Details() {
 
   // Subscribe to processing status updates
   useEffect(() => {
-    if (!state.quoteId) return;
+    if (!state.quoteId || !supabase) return;
 
     const fetchStatus = async () => {
+      if (!supabase) return;
+
       // Get quote status
       const { data: quote } = await supabase
         .from('quotes')
