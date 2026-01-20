@@ -364,6 +364,18 @@ export default function HITLReviewDetail() {
         });
       }
       if (
+        corrections.detectedLanguage &&
+        review.ai_analysis?.detected_language !== corrections.detectedLanguage
+      ) {
+        correctionsToSave.push({
+          field: "detected_language",
+          learningType: "language",
+          aiValue: review.ai_analysis?.detected_language,
+          correctedValue: corrections.detectedLanguage,
+          confidence: review.ai_analysis?.language_confidence,
+        });
+      }
+      if (
         corrections.complexity &&
         review.ai_analysis?.complexity_assessment !== corrections.complexity
       ) {
