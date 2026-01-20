@@ -111,6 +111,10 @@ export default function HITLReviewDetail() {
     {},
   );
 
+  // Save state
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedCombinedFiles, setSavedCombinedFiles] = useState<Record<string, string>>({});
+
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
