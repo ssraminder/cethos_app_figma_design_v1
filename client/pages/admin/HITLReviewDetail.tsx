@@ -107,14 +107,17 @@ export default function HITLReviewDetail() {
   >({});
 
   // Local page edits (pageId -> edit metadata)
-  const [localPageEdits, setLocalPageEdits] = useState<Record<string, {
-    wordCount: number;
-    originalWordCount: number;
-    fileId: string;
-    pageId: string;
-  }>>(
-    {},
-  );
+  const [localPageEdits, setLocalPageEdits] = useState<
+    Record<
+      string,
+      {
+        wordCount: number;
+        originalWordCount: number;
+        fileId: string;
+        pageId: string;
+      }
+    >
+  >({});
 
   // Save state
   const [isSaving, setIsSaving] = useState(false);
@@ -218,8 +221,8 @@ export default function HITLReviewDetail() {
         wordCount: wordCount,
         originalWordCount: page.word_count,
         fileId: page.quote_file_id,
-        pageId: page.id
-      }
+        pageId: page.id,
+      },
     }));
   };
 
@@ -512,7 +515,9 @@ export default function HITLReviewDetail() {
     try {
       // 1. Save file-level edits (complexity, document_type, language, etc.)
       for (const [fileId, fileEdits] of Object.entries(localEdits)) {
-        const analysis = analysisResults.find((a) => a.quote_file_id === fileId);
+        const analysis = analysisResults.find(
+          (a) => a.quote_file_id === fileId,
+        );
 
         for (const [field, value] of Object.entries(fileEdits)) {
           await fetch(
