@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
 
 interface Branding {
   companyName: string;
@@ -10,11 +16,11 @@ interface Branding {
 }
 
 const defaultBranding: Branding = {
-  companyName: 'Cethos',
-  logoUrl: '',
-  logoDarkUrl: '',
-  supportEmail: 'support@cethos.com',
-  primaryColor: '#3B82F6',
+  companyName: "Cethos",
+  logoUrl: "",
+  logoDarkUrl: "",
+  supportEmail: "support@cethos.com",
+  primaryColor: "#3B82F6",
   loading: true,
 };
 
@@ -35,8 +41,8 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
     // Check if we're in a sandboxed/restricted environment
     try {
       // Quick feature detection - if fetch is wrapped or restricted, skip
-      if (typeof window === 'undefined') {
-        setBranding(prev => ({ ...prev, loading: false }));
+      if (typeof window === "undefined") {
+        setBranding((prev) => ({ ...prev, loading: false }));
         return;
       }
 
@@ -44,14 +50,14 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
       const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
 
       const response = await fetch(
-        'https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/get-branding',
+        "https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/get-branding",
         {
           signal: controller.signal,
-          mode: 'cors',
+          mode: "cors",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
-        }
+        },
       ).catch(() => {
         // Catch fetch errors immediately without logging
         clearTimeout(timeoutId);
@@ -61,7 +67,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId);
 
       if (!response || !response.ok) {
-        setBranding(prev => ({ ...prev, loading: false }));
+        setBranding((prev) => ({ ...prev, loading: false }));
         return;
       }
 
@@ -72,11 +78,11 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
           loading: false,
         });
       } else {
-        setBranding(prev => ({ ...prev, loading: false }));
+        setBranding((prev) => ({ ...prev, loading: false }));
       }
     } catch (error) {
       // Silently fallback to default branding
-      setBranding(prev => ({ ...prev, loading: false }));
+      setBranding((prev) => ({ ...prev, loading: false }));
     }
   }
 
