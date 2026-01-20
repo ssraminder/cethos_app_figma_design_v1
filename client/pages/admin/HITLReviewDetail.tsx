@@ -445,7 +445,8 @@ export default function HITLReviewDetail() {
             .update({
               occurrence_count: existingPattern.occurrence_count + 1,
               last_seen_at: now,
-              confidence_score: correction.confidence || existingPattern.confidence_score,
+              confidence_score:
+                correction.confidence || existingPattern.confidence_score,
               updated_at: now,
             })
             .eq("id", existingPattern.id);
@@ -459,7 +460,8 @@ export default function HITLReviewDetail() {
 
           if (review.ai_analysis) {
             documentCharacteristics.word_count = review.ai_analysis.word_count;
-            documentCharacteristics.billable_pages = review.ai_analysis.billable_pages;
+            documentCharacteristics.billable_pages =
+              review.ai_analysis.billable_pages;
           }
 
           await supabase.from("ai_learning_log").insert({
