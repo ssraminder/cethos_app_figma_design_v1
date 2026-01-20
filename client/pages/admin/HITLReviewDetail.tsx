@@ -356,8 +356,10 @@ export default function HITLReviewDetail() {
       ) {
         correctionsToSave.push({
           field: "document_type",
+          learningType: "document_type",
           aiValue: review.ai_analysis?.document_type,
           correctedValue: corrections.documentType,
+          confidence: review.ai_analysis?.document_type_confidence,
         });
       }
       if (
@@ -366,8 +368,10 @@ export default function HITLReviewDetail() {
       ) {
         correctionsToSave.push({
           field: "complexity",
+          learningType: "complexity",
           aiValue: review.ai_analysis?.complexity_assessment,
           correctedValue: corrections.complexity,
+          confidence: review.ai_analysis?.complexity_confidence,
         });
       }
       if (
@@ -376,11 +380,14 @@ export default function HITLReviewDetail() {
       ) {
         correctionsToSave.push({
           field: "word_count",
-          aiValue: review.ai_analysis?.word_count,
-          correctedValue: parseInt(corrections.wordCount),
+          learningType: "word_count",
+          aiValue: review.ai_analysis?.word_count?.toString(),
+          correctedValue: corrections.wordCount,
+          confidence: null,
         });
       }
 
+      // Save corrections to hitl_corrections table (existing flow)
       for (const correction of correctionsToSave) {
         const response = await fetch(
           `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
@@ -405,7 +412,59 @@ export default function HITLReviewDetail() {
           throw new Error(`Failed to save ${correction.field} correction`);
       }
 
-      alert("Corrections saved successfully!");
+      // Log patterns to ai_learning_log for pattern tracking
+      for (const correction of correctionsToSave) {
+        // Check if this pattern already exists
+        const { data: existingPattern } = await supabase
+          .from("ai_learning_log")
+          .select("*")
+          .eq("learning_type", correction.learningType)
+          .eq("ai_prediction", correction.aiValue)
+          .eq("correct_value", correction.correctedValue)
+          .maybeSingle();
+
+        const now = new Date().toISOString();
+
+        if (existingPattern) {
+          // Update existing pattern: increment count and update last_seen
+          await supabase
+            .from("ai_learning_log")
+            .update({
+              occurrence_count: existingPattern.occurrence_count + 1,
+              last_seen_at: now,
+              confidence_score: correction.confidence || existingPattern.confidence_score,
+              updated_at: now,
+            })
+            .eq("id", existingPattern.id);
+        } else {
+          // Insert new pattern
+          const documentCharacteristics: any = {
+            source_language: review.source_language,
+            target_language: review.target_language,
+            is_rush: review.is_rush,
+          };
+
+          if (review.ai_analysis) {
+            documentCharacteristics.word_count = review.ai_analysis.word_count;
+            documentCharacteristics.billable_pages = review.ai_analysis.billable_pages;
+          }
+
+          await supabase.from("ai_learning_log").insert({
+            learning_type: correction.learningType,
+            ai_prediction: correction.aiValue,
+            correct_value: correction.correctedValue,
+            occurrence_count: 1,
+            confidence_score: correction.confidence,
+            first_seen_at: now,
+            last_seen_at: now,
+            document_characteristics: documentCharacteristics,
+            created_at: now,
+            updated_at: now,
+          });
+        }
+      }
+
+      alert("Corrections saved and logged to learning system!");
       setShowCorrections(false);
       setCorrections({
         documentType: "",
