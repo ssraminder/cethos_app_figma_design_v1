@@ -69,8 +69,21 @@ export default function HITLReviewDetail() {
   // Claim state
   const [claimedByMe, setClaimedByMe] = useState(false);
 
-  // Corrections tracking per file
-  const [corrections, setCorrections] = useState<Record<string, any>>({});
+  // Local edits per file (not saved yet)
+  const [localEdits, setLocalEdits] = useState<
+    Record<
+      string,
+      {
+        word_count?: number;
+        page_count?: number;
+        billable_pages?: number;
+        complexity_multiplier?: number;
+        line_total?: number;
+        document_type?: string;
+        complexity?: string;
+      }
+    >
+  >({});
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -88,6 +101,126 @@ export default function HITLReviewDetail() {
     if (hours < 24) return `${hours}h ${minutes % 60}m`;
     const days = Math.floor(hours / 24);
     return `${days}d ${hours % 24}h`;
+  };
+
+  // Get current value (local edit or original)
+  const getValue = (fileId: string, field: string, original: any) => {
+    return localEdits[fileId]?.[field] ?? original;
+  };
+
+  // Calculate line total based on edits
+  const calculateLineTotal = (analysis: any, fileId: string) => {
+    const billablePages =
+      getValue(fileId, "billable_pages", analysis.billable_pages) || 1;
+    const multiplier =
+      getValue(fileId, "complexity_multiplier", analysis.complexity_multiplier) ||
+      1;
+    const baseRate = analysis.base_rate || 50; // default base rate
+    return billablePages * baseRate * multiplier;
+  };
+
+  // Update local edit (doesn't save yet)
+  const updateLocalEdit = (fileId: string, field: string, value: any) => {
+    setLocalEdits((prev) => ({
+      ...prev,
+      [fileId]: {
+        ...prev[fileId],
+        [field]: value,
+      },
+    }));
+  };
+
+  // Check if file has unsaved changes
+  const hasChanges = (fileId: string, analysis: any) => {
+    const edits = localEdits[fileId];
+    if (!edits) return false;
+    return Object.keys(edits).some((field) => {
+      const original = analysis[field];
+      return edits[field] !== undefined && edits[field] !== original;
+    });
+  };
+
+  // Save with confirmation
+  const saveFileCorrections = async (fileId: string, analysis: any) => {
+    const edits = localEdits[fileId];
+    if (!edits) return;
+
+    const changes = Object.entries(edits)
+      .filter(([field, value]) => value !== analysis[field])
+      .map(
+        ([field, value]) =>
+          `${field.replace(/_/g, " ")}: ${analysis[field]} → ${value}`,
+      )
+      .join("\n");
+
+    if (!changes) {
+      alert("No changes to save");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Save these corrections?\n\n${changes}\n\nThis will update the quote pricing.`,
+    );
+
+    if (!confirmed) return;
+
+    // Save each changed field
+    const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
+
+    for (const [field, value] of Object.entries(edits)) {
+      if (value === analysis[field]) continue; // Skip unchanged
+
+      try {
+        const response = await fetch(
+          `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              reviewId: reviewId,
+              staffId: session.staffId,
+              field: field,
+              originalValue: String(analysis[field]),
+              correctedValue: String(value),
+              fileId: fileId,
+            }),
+          },
+        );
+
+        const result = await response.json();
+        if (!result.success) {
+          alert(`Failed to save ${field}: ${result.error}`);
+          return;
+        }
+      } catch (error) {
+        alert(`Error saving ${field}: ${error}`);
+        return;
+      }
+    }
+
+    alert("Corrections saved successfully!");
+
+    // Clear local edits for this file
+    setLocalEdits((prev) => {
+      const newEdits = { ...prev };
+      delete newEdits[fileId];
+      return newEdits;
+    });
+
+    // Refresh data
+    fetchReviewDetail();
+  };
+
+  // Cancel edits for a file
+  const cancelFileEdits = (fileId: string) => {
+    setLocalEdits((prev) => {
+      const newEdits = { ...prev };
+      delete newEdits[fileId];
+      return newEdits;
+    });
   };
 
   useEffect(() => {
