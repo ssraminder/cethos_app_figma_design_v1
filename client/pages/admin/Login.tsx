@@ -17,7 +17,7 @@ export default function Login() {
     // Timeout fallback - show login form after 2 seconds no matter what
     const timeout = setTimeout(() => {
       if (isMounted.current) {
-        console.log('⏰ 2-second timeout reached, showing login form');
+        console.log("⏰ 2-second timeout reached, showing login form");
         setCheckingAuth(false);
       }
     }, 2000);

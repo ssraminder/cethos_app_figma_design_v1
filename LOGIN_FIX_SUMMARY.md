@@ -3,24 +3,28 @@
 ## Investigation Results
 
 ### 1. File Locations
+
 ✅ **Only ONE Login.tsx file exists:** `code/client/pages/admin/Login.tsx`
+
 - No duplicates found
 - App.tsx correctly imports from `./pages/admin/Login`
 
 ### 2. Root Cause
+
 **The 2-second timeout was MISSING** from the useEffect hook!
 
 The current code had:
+
 ```typescript
 useEffect(() => {
   isMounted.current = true;
-  
+
   const handleAuthCallback = async () => {
     // ... auth logic
   };
-  
-  handleAuthCallback();  // Called immediately
-  
+
+  handleAuthCallback(); // Called immediately
+
   return () => {
     isMounted.current = false;
   };
@@ -40,7 +44,7 @@ useEffect(() => {
   // Timeout fallback - show login form after 2 seconds no matter what
   const timeout = setTimeout(() => {
     if (isMounted.current) {
-      console.log('⏰ 2-second timeout reached, showing login form');
+      console.log("⏰ 2-second timeout reached, showing login form");
       setCheckingAuth(false);
     }
   }, 2000);
@@ -53,7 +57,7 @@ useEffect(() => {
 
   return () => {
     isMounted.current = false;
-    clearTimeout(timeout);  // Clean up timeout
+    clearTimeout(timeout); // Clean up timeout
   };
 }, [navigate]);
 ```
