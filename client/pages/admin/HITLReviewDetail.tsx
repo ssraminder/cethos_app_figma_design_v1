@@ -429,6 +429,242 @@ export default function HITLReviewDetail() {
     });
   };
 
+  // Save all corrections (page edits + combined files)
+  const saveAllCorrections = async () => {
+    const session = JSON.parse(sessionStorage.getItem('staffSession') || '{}');
+
+    if (!session.staffId) {
+      alert('Session expired. Please login again.');
+      return;
+    }
+
+    // Build list of changes for confirmation
+    const changes: string[] = [];
+
+    // Page word count changes
+    Object.entries(localPageEdits).forEach(([pageId, newWordCount]) => {
+      changes.push(`Page word count → ${newWordCount}`);
+    });
+
+    // Combined files
+    Object.entries(combinedFiles).forEach(([childId, parentId]) => {
+      const childFile = analysisResults.find(a => a.quote_file_id === childId);
+      const parentFile = analysisResults.find(a => a.quote_file_id === parentId);
+      changes.push(`${childFile?.quote_file?.original_filename} combined with ${parentFile?.quote_file?.original_filename}`);
+    });
+
+    if (changes.length === 0) {
+      alert('No changes to save');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Save these corrections?\n\n${changes.join('\n')}\n\nThis will recalculate the quote pricing.`
+    );
+
+    if (!confirmed) return;
+
+    setIsSaving(true);
+
+    try {
+      // 1. Save page word count edits
+      for (const [pageId, newWordCount] of Object.entries(localPageEdits)) {
+        const originalPage = Object.values(pageData).flat().find(p => p.id === pageId);
+
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            field: 'page_word_count',
+            originalValue: String(originalPage?.word_count || 0),
+            correctedValue: String(newWordCount),
+            pageId: pageId
+          })
+        });
+      }
+
+      // 2. Save combined file relationships
+      for (const [childFileId, parentFileId] of Object.entries(combinedFiles)) {
+        const childAnalysis = analysisResults.find(a => a.quote_file_id === childFileId);
+        const parentAnalysis = analysisResults.find(a => a.quote_file_id === parentFileId);
+
+        // Save as correction: child file combined with parent
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            field: 'combined_with',
+            originalValue: null,
+            correctedValue: parentFileId,
+            fileId: childFileId
+          })
+        });
+
+        // Update child's billable_pages to 0
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            field: 'billable_pages',
+            originalValue: String(childAnalysis?.billable_pages || 1),
+            correctedValue: '0',
+            fileId: childFileId
+          })
+        });
+
+        // Update parent's billable_pages with recalculated value
+        const newBillablePages = calculateDocumentTotal(parentFileId, parentAnalysis);
+        const newLineTotal = calculateLineTotal(parentFileId, parentAnalysis);
+
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            field: 'billable_pages',
+            originalValue: String(parentAnalysis?.billable_pages || 1),
+            correctedValue: String(newBillablePages),
+            fileId: parentFileId
+          })
+        });
+
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            field: 'line_total',
+            originalValue: String(parentAnalysis?.line_total || 0),
+            correctedValue: String(newLineTotal),
+            fileId: parentFileId
+          })
+        });
+      }
+
+      // Mark combined files as saved so UI merges them
+      setSavedCombinedFiles(prev => ({ ...prev, ...combinedFiles }));
+
+      // Clear local edits
+      setLocalPageEdits({});
+      setCombinedFiles({});
+
+      alert('Corrections saved successfully!');
+
+      // Refresh data from server
+      fetchReviewDetail();
+
+    } catch (error) {
+      console.error('Save error:', error);
+      alert('Error saving corrections: ' + error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Filter out files that have been saved as combined (they'll show under parent)
+  const getVisibleFiles = () => {
+    return analysisResults.filter(analysis =>
+      !savedCombinedFiles[analysis.quote_file_id]
+    );
+  };
+
+  // Get all pages for a document (including saved combined files)
+  const getAllPagesForDocument = (fileId: string) => {
+    let allPages: Array<{ id: string; page_number: number; word_count: number; sourceFile: string; sourceFileName: string }> = [];
+
+    // This file's pages
+    const thisFilePages = pageData[fileId] || [];
+    const thisFile = analysisResults.find(a => a.quote_file_id === fileId);
+
+    thisFilePages.forEach((page) => {
+      allPages.push({
+        ...page,
+        sourceFile: fileId,
+        sourceFileName: thisFile?.quote_file?.original_filename || 'Unknown'
+      });
+    });
+
+    // Combined files' pages (both pending and saved)
+    const allCombined = { ...savedCombinedFiles, ...combinedFiles };
+    const combinedFileIds = Object.entries(allCombined)
+      .filter(([childId, parentId]) => parentId === fileId)
+      .map(([childId]) => childId);
+
+    combinedFileIds.forEach(combinedFileId => {
+      const combinedPages = pageData[combinedFileId] || [];
+      const combinedFile = analysisResults.find(a => a.quote_file_id === combinedFileId);
+
+      combinedPages.forEach(page => {
+        allPages.push({
+          ...page,
+          sourceFile: combinedFileId,
+          sourceFileName: combinedFile?.quote_file?.original_filename || 'Unknown'
+        });
+      });
+    });
+
+    return allPages;
+  };
+
+  // Get all previews for a document (including combined)
+  const getAllPreviewsForDocument = (fileId: string) => {
+    const previews: Array<{ fileId: string; fileName: string; storagePath: string; fileSize: number }> = [];
+
+    // This file
+    const thisFile = analysisResults.find(a => a.quote_file_id === fileId);
+    if (thisFile?.quote_file?.storage_path) {
+      previews.push({
+        fileId: fileId,
+        fileName: thisFile.quote_file.original_filename,
+        storagePath: thisFile.quote_file.storage_path,
+        fileSize: thisFile.quote_file.file_size
+      });
+    }
+
+    // Combined files
+    const allCombined = { ...savedCombinedFiles, ...combinedFiles };
+    const combinedFileIds = Object.entries(allCombined)
+      .filter(([childId, parentId]) => parentId === fileId)
+      .map(([childId]) => childId);
+
+    combinedFileIds.forEach(combinedFileId => {
+      const combinedFile = analysisResults.find(a => a.quote_file_id === combinedFileId);
+      if (combinedFile?.quote_file?.storage_path) {
+        previews.push({
+          fileId: combinedFileId,
+          fileName: combinedFile.quote_file.original_filename,
+          storagePath: combinedFile.quote_file.storage_path,
+          fileSize: combinedFile.quote_file.file_size
+        });
+      }
+    });
+
+    return previews;
+  };
+
   useEffect(() => {
     const checkSession = async () => {
       const stored = sessionStorage.getItem("staffSession");
