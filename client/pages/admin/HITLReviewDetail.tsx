@@ -1614,9 +1614,9 @@ export default function HITLReviewDetail() {
                                 value={
                                   getValue(
                                     analysis.quote_file_id,
-                                    "complexity",
+                                    "assessed_complexity",
                                     analysis.assessed_complexity,
-                                  ) || "standard"
+                                  ) || "easy"
                                 }
                                 onChange={(e) =>
                                   handleComplexityChange(
@@ -1626,20 +1626,16 @@ export default function HITLReviewDetail() {
                                 }
                                 className="border rounded px-3 py-2 flex-1 mr-2 focus:ring-2 focus:ring-blue-500"
                               >
-                                <option value="standard">
-                                  Standard (1.0x)
-                                </option>
-                                <option value="complex">Complex (1.15x)</option>
-                                <option value="highly_complex">
-                                  Highly Complex (1.5x)
-                                </option>
+                                <option value="easy">Easy (1.0x)</option>
+                                <option value="medium">Medium (1.15x)</option>
+                                <option value="hard">Hard (1.25x)</option>
                               </select>
                             ) : (
                               <span className="capitalize">
                                 {analysis.assessed_complexity?.replace(
                                   /_/g,
                                   " ",
-                                ) || "Standard"}
+                                ) || "Easy"}
                               </span>
                             )}
                             <span
