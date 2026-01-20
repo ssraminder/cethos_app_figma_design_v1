@@ -146,7 +146,7 @@ export default function HITLReviewDetail() {
     try {
       // Fetch review detail from v_hitl_review_detail
       const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/v_hitl_review_detail?review_id=eq.${reviewId}&select=*`,
+        `${SUPABASE_URL}/rest/v1/v_hitl_review_detail?id=eq.${reviewId}&select=*`,
         {
           method: "GET",
           headers: {
