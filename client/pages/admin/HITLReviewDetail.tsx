@@ -1623,28 +1623,31 @@ export default function HITLReviewDetail() {
                         </div>
                       )}
 
-                      {/* Save/Cancel buttons for this file - show only if there are changes */}
+                      {/* Save/Cancel buttons - show if there are changes */}
                       {claimedByMe &&
-                        hasChanges(analysis.quote_file_id, analysis) && (
+                        (Object.keys(localPageEdits).length > 0 ||
+                          Object.keys(localEdits).length > 0 ||
+                          Object.keys(combinedFiles).length > 0) && (
                           <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
                             <button
-                              onClick={() =>
-                                cancelFileEdits(analysis.quote_file_id)
-                              }
+                              onClick={() => {
+                                setLocalPageEdits({});
+                                setLocalEdits({});
+                                setCombinedFiles({});
+                              }}
                               className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-50"
                             >
-                              Cancel
+                              Reset All
                             </button>
                             <button
                               onClick={() =>
-                                saveFileCorrections(
-                                  analysis.quote_file_id,
-                                  analysis,
+                                alert(
+                                  "Save functionality coming soon. Check console for debug info.",
                                 )
                               }
                               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                             >
-                              Save Corrections
+                              Save All Corrections
                             </button>
                           </div>
                         )}
