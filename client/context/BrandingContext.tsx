@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
 
 interface Branding {
   companyName: string;
@@ -10,11 +16,11 @@ interface Branding {
 }
 
 const defaultBranding: Branding = {
-  companyName: 'Cethos',
-  logoUrl: '',
-  logoDarkUrl: '',
-  supportEmail: 'support@cethos.com',
-  primaryColor: '#3B82F6',
+  companyName: "Cethos",
+  logoUrl: "",
+  logoDarkUrl: "",
+  supportEmail: "support@cethos.com",
+  primaryColor: "#3B82F6",
   loading: true,
 };
 
@@ -30,7 +36,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   async function fetchBranding() {
     try {
       const response = await fetch(
-        'https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/get-branding'
+        "https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/get-branding",
       );
       const result = await response.json();
       if (result.success) {
@@ -39,11 +45,11 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
           loading: false,
         });
       } else {
-        setBranding(prev => ({ ...prev, loading: false }));
+        setBranding((prev) => ({ ...prev, loading: false }));
       }
     } catch (error) {
-      console.error('Failed to fetch branding:', error);
-      setBranding(prev => ({ ...prev, loading: false }));
+      console.error("Failed to fetch branding:", error);
+      setBranding((prev) => ({ ...prev, loading: false }));
     }
   }
 
