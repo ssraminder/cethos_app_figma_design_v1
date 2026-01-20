@@ -4,11 +4,14 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
 // Debug: Log credential status
-console.log('=== SUPABASE CLIENT INITIALIZATION ===');
-console.log('VITE_SUPABASE_URL:', supabaseUrl);
-console.log('VITE_SUPABASE_ANON_KEY (first 20 chars):', supabaseAnonKey.substring(0, 20) + '...');
-console.log('URL is valid:', supabaseUrl.startsWith('https://'));
-console.log('Key is valid:', supabaseAnonKey.length > 100);
+console.log("=== SUPABASE CLIENT INITIALIZATION ===");
+console.log("VITE_SUPABASE_URL:", supabaseUrl);
+console.log(
+  "VITE_SUPABASE_ANON_KEY (first 20 chars):",
+  supabaseAnonKey.substring(0, 20) + "...",
+);
+console.log("URL is valid:", supabaseUrl.startsWith("https://"));
+console.log("Key is valid:", supabaseAnonKey.length > 100);
 
 // Check if credentials are provided
 const hasCredentials =
@@ -17,7 +20,7 @@ const hasCredentials =
   supabaseUrl !== "your_supabase_url_here" &&
   supabaseAnonKey !== "your_supabase_anon_key_here";
 
-console.log('hasCredentials:', hasCredentials);
+console.log("hasCredentials:", hasCredentials);
 
 if (!hasCredentials) {
   console.warn(
@@ -35,11 +38,11 @@ export const supabase: SupabaseClient | null = hasCredentials
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        flowType: 'pkce',
+        flowType: "pkce",
       },
       global: {
         headers: {
-          'X-Client-Info': 'cethos-staff-portal',
+          "X-Client-Info": "cethos-staff-portal",
         },
       },
       realtime: {
@@ -50,8 +53,8 @@ export const supabase: SupabaseClient | null = hasCredentials
     })
   : null;
 
-console.log('Supabase client created:', supabase !== null ? 'SUCCESS' : 'NULL');
-console.log('=== END SUPABASE INIT ===');
+console.log("Supabase client created:", supabase !== null ? "SUCCESS" : "NULL");
+console.log("=== END SUPABASE INIT ===");
 
 // Helper to check if Supabase is available
 export const isSupabaseEnabled = (): boolean => {

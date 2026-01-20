@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 interface QuoteFile {
   id: string;
@@ -59,16 +59,16 @@ export default function HITLReviewDetail() {
   const [error, setError] = useState<string | null>(null);
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [showCorrections, setShowCorrections] = useState(false);
-  const [internalNotes, setInternalNotes] = useState('');
+  const [internalNotes, setInternalNotes] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Correction form state
   const [corrections, setCorrections] = useState({
-    documentType: '',
-    complexity: '',
-    wordCount: '',
-    reason: '',
+    documentType: "",
+    complexity: "",
+    wordCount: "",
+    reason: "",
   });
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -76,9 +76,9 @@ export default function HITLReviewDetail() {
 
   useEffect(() => {
     const checkSession = async () => {
-      const stored = sessionStorage.getItem('staffSession');
+      const stored = sessionStorage.getItem("staffSession");
       if (!stored) {
-        navigate('/admin/login', { replace: true });
+        navigate("/admin/login", { replace: true });
         return;
       }
 
@@ -86,7 +86,7 @@ export default function HITLReviewDetail() {
 
       // Fetch staff user ID from staff_users table using email
       if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        setError('Configuration missing');
+        setError("Configuration missing");
         setLoading(false);
         return;
       }
@@ -96,10 +96,10 @@ export default function HITLReviewDetail() {
           `${SUPABASE_URL}/rest/v1/staff_users?email=eq.${encodeURIComponent(parsedSession.email)}&select=id,email,full_name,role`,
           {
             headers: {
-              'apikey': SUPABASE_ANON_KEY,
-              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
             },
-          }
+          },
         );
 
         if (staffResponse.ok) {
@@ -114,7 +114,7 @@ export default function HITLReviewDetail() {
           }
         }
       } catch (err) {
-        console.error('Error fetching staff data:', err);
+        console.error("Error fetching staff data:", err);
       }
 
       fetchReviewDetail();
@@ -125,7 +125,7 @@ export default function HITLReviewDetail() {
 
   const fetchReviewDetail = async () => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !reviewId) {
-      setError('Configuration or review ID missing');
+      setError("Configuration or review ID missing");
       setLoading(false);
       return;
     }
@@ -138,28 +138,28 @@ export default function HITLReviewDetail() {
       const response = await fetch(
         `${SUPABASE_URL}/rest/v1/v_hitl_review_detail?review_id=eq.${reviewId}&select=*`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Fetch error:', errorText);
+        console.error("Fetch error:", errorText);
         setError(`Failed to load review: ${response.status}`);
         setLoading(false);
         return;
       }
 
       const data = await response.json();
-      console.log('Review detail data:', data);
+      console.log("Review detail data:", data);
 
       if (!data || data.length === 0) {
-        setError('Review not found');
+        setError("Review not found");
         setLoading(false);
         return;
       }
@@ -170,12 +170,12 @@ export default function HITLReviewDetail() {
       const filesResponse = await fetch(
         `${SUPABASE_URL}/rest/v1/quote_files?quote_id=eq.${reviewData.quote_id}&select=*`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           },
-        }
+        },
       );
 
       const filesData = filesResponse.ok ? await filesResponse.json() : [];
@@ -184,12 +184,12 @@ export default function HITLReviewDetail() {
       const aiResponse = await fetch(
         `${SUPABASE_URL}/rest/v1/ai_analysis_results?review_id=eq.${reviewId}&select=*`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           },
-        }
+        },
       );
 
       const aiData = aiResponse.ok ? await aiResponse.json() : [];
@@ -203,7 +203,7 @@ export default function HITLReviewDetail() {
       setReview(completeReview);
       setLoading(false);
     } catch (err) {
-      console.error('Fetch exception:', err);
+      console.error("Fetch exception:", err);
       setError(`Error: ${err}`);
       setLoading(false);
     }
@@ -216,22 +216,22 @@ export default function HITLReviewDetail() {
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/claim-hitl-review`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             reviewId: review.review_id,
             staffId: session.staffId,
           }),
-        }
+        },
       );
-      if (!response.ok) throw new Error('Failed to claim review');
+      if (!response.ok) throw new Error("Failed to claim review");
       // Refresh the review data
       fetchReviewDetail();
     } catch (err) {
-      alert('Error claiming review: ' + (err as Error).message);
+      alert("Error claiming review: " + (err as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -239,29 +239,29 @@ export default function HITLReviewDetail() {
 
   const approveReview = async () => {
     if (!review || !session?.staffId) return;
-    if (!confirm('Are you sure you want to approve this quote?')) return;
+    if (!confirm("Are you sure you want to approve this quote?")) return;
     setSubmitting(true);
     try {
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/approve-hitl-review`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             reviewId: review.review_id,
             staffId: session.staffId,
             notes: internalNotes,
           }),
-        }
+        },
       );
-      if (!response.ok) throw new Error('Failed to approve review');
-      alert('Quote approved successfully!');
-      navigate('/admin/hitl');
+      if (!response.ok) throw new Error("Failed to approve review");
+      alert("Quote approved successfully!");
+      navigate("/admin/hitl");
     } catch (err) {
-      alert('Error approving review: ' + (err as Error).message);
+      alert("Error approving review: " + (err as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -269,31 +269,33 @@ export default function HITLReviewDetail() {
 
   const rejectReview = async () => {
     if (!review || !session?.staffId) return;
-    const reason = prompt('Please provide a reason for requesting a better scan:');
+    const reason = prompt(
+      "Please provide a reason for requesting a better scan:",
+    );
     if (!reason) return;
     setSubmitting(true);
     try {
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/reject-hitl-review`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             reviewId: review.review_id,
             staffId: session.staffId,
             reason: reason,
-            fileIds: review.files.map(f => f.id),
+            fileIds: review.files.map((f) => f.id),
           }),
-        }
+        },
       );
-      if (!response.ok) throw new Error('Failed to reject review');
-      alert('Better scan requested. Customer will be notified.');
-      navigate('/admin/hitl');
+      if (!response.ok) throw new Error("Failed to reject review");
+      alert("Better scan requested. Customer will be notified.");
+      navigate("/admin/hitl");
     } catch (err) {
-      alert('Error rejecting review: ' + (err as Error).message);
+      alert("Error rejecting review: " + (err as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -301,30 +303,30 @@ export default function HITLReviewDetail() {
 
   const escalateReview = async () => {
     if (!review || !session?.staffId) return;
-    if (!confirm('Are you sure you want to escalate this to an admin?')) return;
+    if (!confirm("Are you sure you want to escalate this to an admin?")) return;
     setSubmitting(true);
     try {
       const response = await fetch(
         `${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${review.review_id}`,
         {
-          method: 'PATCH',
+          method: "PATCH",
           headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal',
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
           },
           body: JSON.stringify({
-            status: 'escalated',
-            resolution_notes: internalNotes || 'Escalated by reviewer',
+            status: "escalated",
+            resolution_notes: internalNotes || "Escalated by reviewer",
           }),
-        }
+        },
       );
-      if (!response.ok) throw new Error('Failed to escalate review');
-      alert('Review escalated to admin.');
-      navigate('/admin/hitl');
+      if (!response.ok) throw new Error("Failed to escalate review");
+      alert("Review escalated to admin.");
+      navigate("/admin/hitl");
     } catch (err) {
-      alert('Error escalating review: ' + (err as Error).message);
+      alert("Error escalating review: " + (err as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -332,30 +334,39 @@ export default function HITLReviewDetail() {
 
   const saveCorrections = async () => {
     if (!review || !session?.staffId || !corrections.reason.trim()) {
-      alert('Please provide a reason for the corrections.');
+      alert("Please provide a reason for the corrections.");
       return;
     }
     setSubmitting(true);
     try {
       const correctionsToSave = [];
 
-      if (corrections.documentType && review.ai_analysis?.document_type !== corrections.documentType) {
+      if (
+        corrections.documentType &&
+        review.ai_analysis?.document_type !== corrections.documentType
+      ) {
         correctionsToSave.push({
-          field: 'document_type',
+          field: "document_type",
           aiValue: review.ai_analysis?.document_type,
           correctedValue: corrections.documentType,
         });
       }
-      if (corrections.complexity && review.ai_analysis?.complexity_assessment !== corrections.complexity) {
+      if (
+        corrections.complexity &&
+        review.ai_analysis?.complexity_assessment !== corrections.complexity
+      ) {
         correctionsToSave.push({
-          field: 'complexity',
+          field: "complexity",
           aiValue: review.ai_analysis?.complexity_assessment,
           correctedValue: corrections.complexity,
         });
       }
-      if (corrections.wordCount && review.ai_analysis?.word_count !== parseInt(corrections.wordCount)) {
+      if (
+        corrections.wordCount &&
+        review.ai_analysis?.word_count !== parseInt(corrections.wordCount)
+      ) {
         correctionsToSave.push({
-          field: 'word_count',
+          field: "word_count",
           aiValue: review.ai_analysis?.word_count,
           correctedValue: parseInt(corrections.wordCount),
         });
@@ -365,10 +376,10 @@ export default function HITLReviewDetail() {
         const response = await fetch(
           `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
           {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-              'Content-Type': 'application/json',
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+              "Content-Type": "application/json",
             },
             body: JSON.stringify({
               reviewId: review.review_id,
@@ -379,25 +390,31 @@ export default function HITLReviewDetail() {
               correctedValue: correction.correctedValue,
               reason: corrections.reason,
             }),
-          }
+          },
         );
-        if (!response.ok) throw new Error(`Failed to save ${correction.field} correction`);
+        if (!response.ok)
+          throw new Error(`Failed to save ${correction.field} correction`);
       }
 
-      alert('Corrections saved successfully!');
+      alert("Corrections saved successfully!");
       setShowCorrections(false);
-      setCorrections({ documentType: '', complexity: '', wordCount: '', reason: '' });
+      setCorrections({
+        documentType: "",
+        complexity: "",
+        wordCount: "",
+        reason: "",
+      });
       setHasChanges(false);
       fetchReviewDetail();
     } catch (err) {
-      alert('Error saving corrections: ' + (err as Error).message);
+      alert("Error saving corrections: " + (err as Error).message);
     } finally {
       setSubmitting(false);
     }
   };
 
   const formatSLA = (minutes: number) => {
-    if (minutes < 0) return 'OVERDUE';
+    if (minutes < 0) return "OVERDUE";
     const hours = Math.floor(minutes / 60);
     const mins = Math.round(minutes % 60);
     if (hours > 0) return `${hours}h ${mins}m`;
@@ -406,14 +423,14 @@ export default function HITLReviewDetail() {
 
   const getSLAColor = (status: string) => {
     switch (status) {
-      case 'breached':
-        return 'bg-red-100 text-red-800';
-      case 'critical':
-        return 'bg-orange-100 text-orange-800';
-      case 'warning':
-        return 'bg-yellow-100 text-yellow-800';
+      case "breached":
+        return "bg-red-100 text-red-800";
+      case "critical":
+        return "bg-orange-100 text-orange-800";
+      case "warning":
+        return "bg-yellow-100 text-yellow-800";
       default:
-        return 'bg-green-100 text-green-800';
+        return "bg-green-100 text-green-800";
     }
   };
 
@@ -430,13 +447,13 @@ export default function HITLReviewDetail() {
       <div className="min-h-screen bg-gray-50 p-4">
         <div className="max-w-7xl mx-auto">
           <button
-            onClick={() => navigate('/admin/hitl')}
+            onClick={() => navigate("/admin/hitl")}
             className="mb-4 text-blue-600 hover:text-blue-800 font-medium"
           >
             ← Back to Queue
           </button>
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <p className="text-red-800">{error || 'Review not found'}</p>
+            <p className="text-red-800">{error || "Review not found"}</p>
           </div>
         </div>
       </div>
@@ -444,8 +461,8 @@ export default function HITLReviewDetail() {
   }
 
   const currentFile = review.files[selectedFileIndex];
-  const isPDF = currentFile?.mime_type === 'application/pdf';
-  const isImage = currentFile?.mime_type.startsWith('image/');
+  const isPDF = currentFile?.mime_type === "application/pdf";
+  const isImage = currentFile?.mime_type.startsWith("image/");
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -453,22 +470,26 @@ export default function HITLReviewDetail() {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <button
-            onClick={() => navigate('/admin/hitl')}
+            onClick={() => navigate("/admin/hitl")}
             className="mb-2 text-blue-600 hover:text-blue-800 font-medium"
           >
             ← Back to Queue
           </button>
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{review.quote_number}</h1>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {review.quote_number}
+              </h1>
               <p className="text-gray-600">{review.customer_name}</p>
             </div>
             <div className="flex items-center gap-3">
-              <div className={`px-3 py-1 rounded-full text-sm font-medium ${getSLAColor(review.sla_status)}`}>
+              <div
+                className={`px-3 py-1 rounded-full text-sm font-medium ${getSLAColor(review.sla_status)}`}
+              >
                 {formatSLA(review.minutes_to_sla)}
               </div>
               <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                {review.status.replace(/_/g, ' ').toUpperCase()}
+                {review.status.replace(/_/g, " ").toUpperCase()}
               </span>
             </div>
           </div>
@@ -481,7 +502,9 @@ export default function HITLReviewDetail() {
           {/* Left Panel - Document Preview */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Document Preview</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Document Preview
+              </h2>
 
               {/* File Tabs */}
               {review.files.length > 0 && (
@@ -493,8 +516,8 @@ export default function HITLReviewDetail() {
                         onClick={() => setSelectedFileIndex(index)}
                         className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${
                           selectedFileIndex === index
-                            ? 'border-b-2 border-blue-600 text-blue-600'
-                            : 'text-gray-600 hover:text-gray-900'
+                            ? "border-b-2 border-blue-600 text-blue-600"
+                            : "text-gray-600 hover:text-gray-900"
                         }`}
                       >
                         {file.original_filename}
@@ -552,11 +575,15 @@ export default function HITLReviewDetail() {
           <div className="lg:col-span-1 space-y-6">
             {/* Quote Summary */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Quote Summary</h3>
+              <h3 className="font-semibold text-gray-900 mb-4">
+                Quote Summary
+              </h3>
               <div className="space-y-3 text-sm">
                 <div>
                   <p className="text-gray-600">Customer</p>
-                  <p className="font-medium text-gray-900">{review.customer_name}</p>
+                  <p className="font-medium text-gray-900">
+                    {review.customer_name}
+                  </p>
                   <p className="text-gray-600">{review.customer_email}</p>
                 </div>
                 <div>
@@ -567,21 +594,29 @@ export default function HITLReviewDetail() {
                 </div>
                 <div>
                   <p className="text-gray-600">Intended Use</p>
-                  <p className="font-medium text-gray-900">{review.intended_use || 'N/A'}</p>
+                  <p className="font-medium text-gray-900">
+                    {review.intended_use || "N/A"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-gray-600">Rush Status</p>
                   <p>
-                    <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                      review.is_rush ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {review.is_rush ? 'RUSH' : 'STANDARD'}
+                    <span
+                      className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                        review.is_rush
+                          ? "bg-orange-100 text-orange-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      {review.is_rush ? "RUSH" : "STANDARD"}
                     </span>
                   </p>
                 </div>
                 <div>
                   <p className="text-gray-600">Est. Delivery</p>
-                  <p className="font-medium text-gray-900">{review.estimated_delivery || 'N/A'}</p>
+                  <p className="font-medium text-gray-900">
+                    {review.estimated_delivery || "N/A"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -589,43 +624,64 @@ export default function HITLReviewDetail() {
             {/* AI Analysis */}
             {review.ai_analysis && (
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">AI Analysis</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">
+                  AI Analysis
+                </h3>
                 <div className="space-y-3 text-sm">
                   <div>
                     <div className="flex justify-between">
                       <p className="text-gray-600">Document Type</p>
                       <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                        {(review.ai_analysis.document_type_confidence * 100).toFixed(0)}%
+                        {(
+                          review.ai_analysis.document_type_confidence * 100
+                        ).toFixed(0)}
+                        %
                       </span>
                     </div>
-                    <p className="font-medium text-gray-900">{review.ai_analysis.document_type}</p>
+                    <p className="font-medium text-gray-900">
+                      {review.ai_analysis.document_type}
+                    </p>
                   </div>
                   <div>
                     <div className="flex justify-between">
                       <p className="text-gray-600">Detected Language</p>
                       <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                        {(review.ai_analysis.language_confidence * 100).toFixed(0)}%
+                        {(review.ai_analysis.language_confidence * 100).toFixed(
+                          0,
+                        )}
+                        %
                       </span>
                     </div>
-                    <p className="font-medium text-gray-900">{review.ai_analysis.detected_language}</p>
+                    <p className="font-medium text-gray-900">
+                      {review.ai_analysis.detected_language}
+                    </p>
                   </div>
                   <div>
                     <div className="flex justify-between">
                       <p className="text-gray-600">Complexity</p>
                       <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                        {(review.ai_analysis.complexity_confidence * 100).toFixed(0)}%
+                        {(
+                          review.ai_analysis.complexity_confidence * 100
+                        ).toFixed(0)}
+                        %
                       </span>
                     </div>
-                    <p className="font-medium text-gray-900">{review.ai_analysis.complexity_assessment}</p>
+                    <p className="font-medium text-gray-900">
+                      {review.ai_analysis.complexity_assessment}
+                    </p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 pt-2">
                     <div>
                       <p className="text-gray-600 text-xs">Word Count</p>
-                      <p className="font-bold text-lg text-gray-900">{review.ai_analysis.word_count}</p>
+                      <p className="font-bold text-lg text-gray-900">
+                        {review.ai_analysis.word_count}
+                      </p>
                     </div>
                     <div>
                       <p className="text-gray-600 text-xs">Billable Pages</p>
-                      <p className="font-bold text-lg text-gray-900">{review.ai_analysis.billable_pages}</p>
+                      <p className="font-bold text-lg text-gray-900">
+                        {review.ai_analysis.billable_pages}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -638,24 +694,32 @@ export default function HITLReviewDetail() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="font-medium">${review.subtotal.toFixed(2)}</span>
+                  <span className="font-medium">
+                    ${review.subtotal.toFixed(2)}
+                  </span>
                 </div>
                 {review.certification_fee > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Certification</span>
-                    <span className="font-medium">${review.certification_fee.toFixed(2)}</span>
+                    <span className="font-medium">
+                      ${review.certification_fee.toFixed(2)}
+                    </span>
                   </div>
                 )}
                 {review.rush_fee > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Rush Fee</span>
-                    <span className="font-medium">${review.rush_fee.toFixed(2)}</span>
+                    <span className="font-medium">
+                      ${review.rush_fee.toFixed(2)}
+                    </span>
                   </div>
                 )}
                 {review.delivery_fee > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Delivery</span>
-                    <span className="font-medium">${review.delivery_fee.toFixed(2)}</span>
+                    <span className="font-medium">
+                      ${review.delivery_fee.toFixed(2)}
+                    </span>
                   </div>
                 )}
                 <div className="flex justify-between pt-2 border-t border-gray-200">
@@ -664,7 +728,9 @@ export default function HITLReviewDetail() {
                 </div>
                 <div className="flex justify-between pt-2 border-t-2 border-gray-900">
                   <span className="font-bold text-gray-900">Total</span>
-                  <span className="font-bold text-lg text-gray-900">${review.total.toFixed(2)}</span>
+                  <span className="font-bold text-lg text-gray-900">
+                    ${review.total.toFixed(2)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -678,7 +744,7 @@ export default function HITLReviewDetail() {
             className="w-full px-6 py-4 text-left font-semibold text-gray-900 hover:bg-gray-50 flex justify-between items-center"
           >
             <span>Make Corrections</span>
-            <span>{showCorrections ? '▼' : '▶'}</span>
+            <span>{showCorrections ? "▼" : "▶"}</span>
           </button>
 
           {showCorrections && (
@@ -691,7 +757,10 @@ export default function HITLReviewDetail() {
                   <select
                     value={corrections.documentType}
                     onChange={(e) => {
-                      setCorrections({ ...corrections, documentType: e.target.value });
+                      setCorrections({
+                        ...corrections,
+                        documentType: e.target.value,
+                      });
                       setHasChanges(true);
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
@@ -711,7 +780,10 @@ export default function HITLReviewDetail() {
                   <select
                     value={corrections.complexity}
                     onChange={(e) => {
-                      setCorrections({ ...corrections, complexity: e.target.value });
+                      setCorrections({
+                        ...corrections,
+                        complexity: e.target.value,
+                      });
                       setHasChanges(true);
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
@@ -731,7 +803,10 @@ export default function HITLReviewDetail() {
                   type="number"
                   value={corrections.wordCount}
                   onChange={(e) => {
-                    setCorrections({ ...corrections, wordCount: e.target.value });
+                    setCorrections({
+                      ...corrections,
+                      wordCount: e.target.value,
+                    });
                     setHasChanges(true);
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
@@ -781,7 +856,7 @@ export default function HITLReviewDetail() {
       <footer className="sticky bottom-0 bg-white border-t border-gray-200 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex gap-2 justify-end">
-            {review.status === 'pending' && (
+            {review.status === "pending" && (
               <button
                 onClick={claimReview}
                 disabled={submitting}
@@ -809,11 +884,13 @@ export default function HITLReviewDetail() {
               disabled={submitting}
               className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 font-medium"
             >
-              {submitting ? 'Processing...' : 'Approve'}
+              {submitting ? "Processing..." : "Approve"}
             </button>
           </div>
           {hasChanges && (
-            <p className="text-sm text-orange-600 mt-2">⚠️ You have unsaved changes</p>
+            <p className="text-sm text-orange-600 mt-2">
+              ⚠️ You have unsaved changes
+            </p>
           )}
         </div>
       </footer>
