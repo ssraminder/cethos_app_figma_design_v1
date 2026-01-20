@@ -369,16 +369,6 @@ export default function HITLReviewDetail() {
     }));
   };
 
-  // Check if file has unsaved changes
-  const hasChanges = (fileId: string, analysis: any) => {
-    const edits = localEdits[fileId];
-    if (!edits) return false;
-    return Object.keys(edits).some((field) => {
-      const original = analysis[field];
-      return edits[field] !== undefined && edits[field] !== original;
-    });
-  };
-
   // Save with confirmation
   const saveFileCorrections = async (fileId: string, analysis: any) => {
     const edits = localEdits[fileId];
