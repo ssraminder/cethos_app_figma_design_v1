@@ -8,8 +8,8 @@ import ProcessingStatus from "@/components/ProcessingStatus";
 import EmailQuoteConfirmation from "@/components/EmailQuoteConfirmation";
 import Step1Upload from "@/components/steps/Step1Upload";
 import Step2Details from "@/components/steps/Step2Details";
-import Step3Review from "@/components/steps/Step3Review";
-import Step4Contact from "@/components/steps/Step4Contact";
+import Step3Contact from "@/components/steps/Step3Contact";
+import Step4Review from "@/components/steps/Step4Review";
 
 export default function Index() {
   const navigate = useNavigate();
@@ -113,10 +113,10 @@ export default function Index() {
               state.currentStep === 2 && <Step2Details />}
             {!state.emailQuoteSent &&
               !state.isProcessing &&
-              state.currentStep === 3 && <Step3Review />}
+              state.currentStep === 3 && <Step3Contact />}
             {!state.emailQuoteSent &&
               !state.isProcessing &&
-              state.currentStep === 4 && <Step4Contact />}
+              state.currentStep === 4 && <Step4Review />}
           </div>
         </div>
       </main>
