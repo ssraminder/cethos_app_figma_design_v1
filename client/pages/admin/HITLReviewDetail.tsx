@@ -1148,20 +1148,12 @@ export default function HITLReviewDetail() {
                     `File ${index + 1}`}
                 </span>
                 <span className="text-sm text-gray-500">
-                  {analysis.word_count} words • {analysis.page_count} page(s)
+                  {totalWordCount} words • {allPages.length} page(s)
                 </span>
-                {/* Combined badge */}
-                {combinedFiles[analysis.quote_file_id] && (
+                {/* Show combined badge if has combined files */}
+                {allPreviews.length > 1 && (
                   <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">
-                    Combined with{" "}
-                    {analysisResults
-                      .find(
-                        (a) =>
-                          a.quote_file_id ===
-                          combinedFiles[analysis.quote_file_id],
-                      )
-                      ?.quote_file?.original_filename?.split(".")[0] ||
-                      "another file"}
+                    {allPreviews.length} files merged
                   </span>
                 )}
               </div>
