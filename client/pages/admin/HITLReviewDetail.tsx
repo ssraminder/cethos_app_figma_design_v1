@@ -106,8 +106,13 @@ export default function HITLReviewDetail() {
     >
   >({});
 
-  // Local page edits (pageId -> word_count)
-  const [localPageEdits, setLocalPageEdits] = useState<Record<string, number>>(
+  // Local page edits (pageId -> edit metadata)
+  const [localPageEdits, setLocalPageEdits] = useState<Record<string, {
+    wordCount: number;
+    originalWordCount: number;
+    fileId: string;
+    pageId: string;
+  }>>(
     {},
   );
 
@@ -125,6 +130,10 @@ export default function HITLReviewDetail() {
 
   // Complexity to multiplier mapping
   const COMPLEXITY_MULTIPLIERS: Record<string, number> = {
+    easy: 1.0,
+    medium: 1.15,
+    hard: 1.25,
+    // Legacy support
     standard: 1.0,
     complex: 1.15,
     highly_complex: 1.5,
@@ -182,22 +191,41 @@ export default function HITLReviewDetail() {
   // Handle complexity change and auto-update multiplier
   const handleComplexityChange = (fileId: string, newComplexity: string) => {
     const multiplier = COMPLEXITY_MULTIPLIERS[newComplexity] || 1.0;
-    updateLocalEdit(fileId, "complexity", newComplexity);
+    updateLocalEdit(fileId, "assessed_complexity", newComplexity);
     updateLocalEdit(fileId, "complexity_multiplier", multiplier);
+  };
+
+  // Get complexity multiplier
+  const getComplexityMultiplier = (complexity: string) => {
+    return COMPLEXITY_MULTIPLIERS[complexity] || 1.0;
+  };
+
+  // Check if file has unsaved changes
+  const hasChanges = (fileId: string) => {
+    const edits = localEdits[fileId];
+    return edits && Object.keys(edits).length > 0;
   };
 
   // Page-level constants and functions
   const wordsPerPage = 225; // from app_settings
   const baseRate = 50; // default base rate
 
-  // Update page word count locally
-  const updatePageWordCount = (pageId: string, wordCount: number) => {
-    setLocalPageEdits((prev) => ({ ...prev, [pageId]: wordCount }));
+  // Update page word count locally - store metadata for saving
+  const updatePageWordCount = (page: any, wordCount: number) => {
+    setLocalPageEdits((prev) => ({
+      ...prev,
+      [page.id]: {
+        wordCount: wordCount,
+        originalWordCount: page.word_count,
+        fileId: page.quote_file_id,
+        pageId: page.id
+      }
+    }));
   };
 
   // Get word count (edited or original)
   const getPageWordCount = (page: any) => {
-    return localPageEdits[page.id] ?? page.word_count;
+    return localPageEdits[page.id]?.wordCount ?? page.word_count;
   };
 
   // Calculate billable pages for a single page
