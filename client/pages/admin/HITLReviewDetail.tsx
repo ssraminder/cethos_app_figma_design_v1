@@ -257,18 +257,35 @@ export default function HITLReviewDetail() {
     }
   };
 
-  const handleEscalate = async () => {
-    if (!review || !staffEmail) return;
-
+  const escalateReview = async () => {
+    if (!review) return;
+    if (!confirm('Are you sure you want to escalate this to an admin?')) return;
     setSubmitting(true);
     try {
-      console.log('Escalating review:', review.review_id, 'Notes:', internalNotes);
-      // await escalateReview(review.review_id, staffEmail, internalNotes);
-      alert('Review escalated (placeholder)');
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${review.review_id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({
+            status: 'escalated',
+            resolution_notes: internalNotes || 'Escalated by reviewer',
+          }),
+        }
+      );
+      if (!response.ok) throw new Error('Failed to escalate review');
+      alert('Review escalated to admin.');
+      navigate('/admin/hitl');
     } catch (err) {
-      alert(`Error: ${err}`);
+      alert('Error escalating review: ' + (err as Error).message);
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   const handleSaveCorrections = async () => {
