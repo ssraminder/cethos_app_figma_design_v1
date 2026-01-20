@@ -1557,68 +1557,69 @@ export default function HITLReviewDetail() {
                         )}
                       </div>
 
-                      {/* Combine Documents Section - show if there are multiple files */}
-                      {claimedByMe && analysisResults.length > 1 && (
-                        <div className="bg-purple-50 border border-purple-200 rounded p-3 mt-3">
-                          <label className="text-sm font-medium text-purple-800 block mb-2">
-                            Combine with another document?
-                          </label>
+                      {/* COMBINE WITH ANOTHER DOCUMENT */}
+                      {claimedByMe &&
+                        !combinedFiles[analysis.quote_file_id] &&
+                        analysisResults.length > 1 &&
+                        getCombinedChildren(analysis.quote_file_id).length ===
+                          0 && (
+                          <div className="bg-purple-50 border border-purple-200 rounded p-3 mt-3">
+                            <label className="text-sm font-medium text-purple-800 block mb-2">
+                              Combine with another document?
+                            </label>
+                            <p className="text-xs text-purple-600 mb-2">
+                              Use if this file is part of another document
+                              (e.g., back of ID card)
+                            </p>
+                            <select
+                              onChange={(e) => {
+                                if (e.target.value)
+                                  combineFileWith(
+                                    analysis.quote_file_id,
+                                    e.target.value,
+                                  );
+                              }}
+                              className="border rounded px-3 py-2 text-sm w-full"
+                              defaultValue=""
+                            >
+                              <option value="">-- Select document --</option>
+                              {getAvailableParentFiles(
+                                analysis.quote_file_id,
+                              ).map((parent) => (
+                                <option
+                                  key={parent.quote_file_id}
+                                  value={parent.quote_file_id}
+                                >
+                                  {parent.quote_file?.original_filename}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
 
-                          {isCombinedWith(analysis.quote_file_id) ? (
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm text-purple-700">
-                                ✓ Combined with:{" "}
-                                {analysisResults.find(
-                                  (a) =>
-                                    a.quote_file_id ===
-                                    isCombinedWith(analysis.quote_file_id),
-                                )?.quote_file?.original_filename || "Unknown"}
-                              </span>
+                      {/* Already combined indicator */}
+                      {combinedFiles[analysis.quote_file_id] && (
+                        <div className="bg-purple-50 border border-purple-200 rounded p-3 mt-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-purple-700">
+                              ✓ Combined with:{" "}
+                              {analysisResults.find(
+                                (a) =>
+                                  a.quote_file_id ===
+                                  combinedFiles[analysis.quote_file_id],
+                              )?.quote_file?.original_filename}
+                            </span>
+                            {claimedByMe && (
                               <button
                                 onClick={() =>
-                                  combineWith(analysis.quote_file_id, null)
+                                  combineFileWith(analysis.quote_file_id, null)
                                 }
                                 className="text-sm text-purple-600 hover:text-purple-800 underline"
                               >
                                 Undo
                               </button>
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              <p className="text-xs text-purple-600">
-                                Use this if this file is part of another
-                                document (e.g., back side of an ID card). This
-                                will set billable pages to 0.
-                              </p>
-                              <select
-                                onChange={(e) => {
-                                  if (e.target.value) {
-                                    combineWith(
-                                      analysis.quote_file_id,
-                                      e.target.value,
-                                    );
-                                  }
-                                }}
-                                className="border rounded px-3 py-2 text-sm w-full"
-                                defaultValue=""
-                              >
-                                <option value="">
-                                  -- Select document to combine with --
-                                </option>
-                                {getAvailableParentFiles(
-                                  analysis.quote_file_id,
-                                ).map((parentAnalysis) => (
-                                  <option
-                                    key={parentAnalysis.quote_file_id}
-                                    value={parentAnalysis.quote_file_id}
-                                  >
-                                    {parentAnalysis.quote_file
-                                      ?.original_filename || "Unknown file"}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       )}
 
