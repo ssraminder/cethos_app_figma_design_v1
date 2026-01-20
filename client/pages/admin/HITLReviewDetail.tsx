@@ -1000,17 +1000,123 @@ export default function HITLReviewDetail() {
                         </div>
                       </div>
 
-                      {/* Language */}
+                      {/* Detected Language */}
                       <div className="bg-white border rounded p-3">
                         <label className="text-sm text-gray-500 block mb-1">
                           Detected Language
                         </label>
                         <div className="flex items-center justify-between">
-                          <span>
-                            {analysis.language_name ||
-                              analysis.detected_language ||
-                              "Unknown"}
-                          </span>
+                          {editingLanguage === analysis.quote_file_id &&
+                          claimedByMe ? (
+                            // Edit mode
+                            <div className="flex items-center gap-2 flex-1 mr-2">
+                              <select
+                                value={
+                                  getValue(
+                                    analysis.quote_file_id,
+                                    "detected_language",
+                                    analysis.detected_language,
+                                  ) || ""
+                                }
+                                onChange={(e) =>
+                                  updateLocalEdit(
+                                    analysis.quote_file_id,
+                                    "detected_language",
+                                    e.target.value,
+                                  )
+                                }
+                                className="border rounded px-3 py-2 flex-1 focus:ring-2 focus:ring-blue-500"
+                                autoFocus
+                              >
+                                <option value="">Select language...</option>
+                                <option value="en">English (1.0x)</option>
+                                <option value="es">Spanish (1.0x)</option>
+                                <option value="fr">French (1.1x)</option>
+                                <option value="de">German (1.1x)</option>
+                                <option value="zh">Chinese (1.25x)</option>
+                                <option value="ja">Japanese (1.25x)</option>
+                                <option value="ko">Korean (1.25x)</option>
+                                <option value="ar">Arabic (1.3x)</option>
+                                <option value="ru">Russian (1.15x)</option>
+                                <option value="pl">Polish (1.1x)</option>
+                                <option value="pt">Portuguese (1.0x)</option>
+                                <option value="it">Italian (1.0x)</option>
+                                <option value="nl">Dutch (1.1x)</option>
+                                <option value="sv">Swedish (1.1x)</option>
+                                <option value="uk">Ukrainian (1.15x)</option>
+                                <option value="vi">Vietnamese (1.2x)</option>
+                                <option value="th">Thai (1.25x)</option>
+                                <option value="hi">Hindi (1.15x)</option>
+                                <option value="tr">Turkish (1.1x)</option>
+                                <option value="he">Hebrew (1.2x)</option>
+                              </select>
+                              <button
+                                onClick={() => setEditingLanguage(null)}
+                                className="text-gray-500 hover:text-gray-700 p-1"
+                                title="Done"
+                              >
+                                <svg
+                                  className="w-5 h-5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M5 13l4 4L19 7"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          ) : (
+                            // Display mode
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">
+                                {analysis.language_name ||
+                                  getValue(
+                                    analysis.quote_file_id,
+                                    "detected_language",
+                                    analysis.detected_language,
+                                  ) ||
+                                  "Unknown"}
+                              </span>
+                              <span className="text-sm text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                                {getLanguageMultiplier(
+                                  getValue(
+                                    analysis.quote_file_id,
+                                    "detected_language",
+                                    analysis.detected_language,
+                                  ),
+                                )}
+                                x
+                              </span>
+                              {claimedByMe && (
+                                <button
+                                  onClick={() =>
+                                    setEditingLanguage(analysis.quote_file_id)
+                                  }
+                                  className="text-gray-400 hover:text-blue-600 p-1"
+                                  title="Edit language"
+                                >
+                                  <svg
+                                    className="w-4 h-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                    />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          )}
                           <span
                             className={`px-2 py-1 rounded text-sm ${
                               (analysis.language_confidence || 0) >= 0.9
