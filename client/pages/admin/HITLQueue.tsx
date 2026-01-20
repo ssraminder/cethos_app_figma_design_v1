@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useBranding } from '../../context/BrandingContext';
 
 interface HITLReview {
   review_id: string;
@@ -13,6 +14,7 @@ interface HITLReview {
 }
 
 export default function HITLQueue() {
+  const { companyName, logoUrl, primaryColor } = useBranding();
   const [staffEmail, setStaffEmail] = useState<string | null>(null);
   const [reviews, setReviews] = useState<HITLReview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,15 +156,21 @@ export default function HITLQueue() {
       {/* Header */}
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-blue-600">CETHOS</h1>
-            <p className="text-sm text-gray-500">Staff Portal - HITL Queue</p>
+          <div className="flex items-center gap-3">
+            {logoUrl ? (
+              <img src={logoUrl} alt={companyName} className="h-10" />
+            ) : (
+              <h1 className="text-2xl font-bold" style={{ color: primaryColor }}>
+                {companyName.toUpperCase()}
+              </h1>
+            )}
+            <span className="text-gray-500">Staff Portal - HITL Queue</span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">{staffEmail}</span>
+            <span className="text-gray-600">{staffEmail}</span>
             <button
               onClick={handleLogout}
-              className="px-3 py-1 text-sm text-red-600 hover:text-red-800 border border-red-300 rounded hover:bg-red-50"
+              className="text-red-600 hover:text-red-800 font-medium"
             >
               Logout
             </button>
