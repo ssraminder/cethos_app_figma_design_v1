@@ -459,7 +459,7 @@ export default function HITLReviewDetail() {
     });
   };
 
-  // Save all corrections (page edits + combined files)
+  // Save all corrections (page edits + file edits + combined files)
   const saveAllCorrections = async () => {
     const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
 
@@ -471,9 +471,16 @@ export default function HITLReviewDetail() {
     // Build list of changes for confirmation
     const changes: string[] = [];
 
+    // File-level edits (complexity, document type, language, etc.)
+    Object.entries(localEdits).forEach(([fileId, edits]) => {
+      Object.keys(edits).forEach((field) => {
+        changes.push(`${field.replace(/_/g, " ")}: updated`);
+      });
+    });
+
     // Page word count changes
-    Object.entries(localPageEdits).forEach(([pageId, newWordCount]) => {
-      changes.push(`Page word count → ${newWordCount}`);
+    Object.entries(localPageEdits).forEach(([pageId, editData]) => {
+      changes.push(`Page word count → ${editData.wordCount}`);
     });
 
     // Combined files
@@ -503,12 +510,34 @@ export default function HITLReviewDetail() {
     setIsSaving(true);
 
     try {
-      // 1. Save page word count edits
-      for (const [pageId, newWordCount] of Object.entries(localPageEdits)) {
-        const originalPage = Object.values(pageData)
-          .flat()
-          .find((p) => p.id === pageId);
+      // 1. Save file-level edits (complexity, document_type, language, etc.)
+      for (const [fileId, fileEdits] of Object.entries(localEdits)) {
+        const analysis = analysisResults.find((a) => a.quote_file_id === fileId);
 
+        for (const [field, value] of Object.entries(fileEdits)) {
+          await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                reviewId: reviewId,
+                staffId: session.staffId,
+                field: field,
+                originalValue: String(analysis?.[field] || ""),
+                correctedValue: String(value),
+                fileId: fileId,
+              }),
+            },
+          );
+        }
+      }
+
+      // 2. Save page word count edits
+      for (const [pageId, editData] of Object.entries(localPageEdits)) {
         await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
           {
@@ -521,8 +550,9 @@ export default function HITLReviewDetail() {
               reviewId: reviewId,
               staffId: session.staffId,
               field: "page_word_count",
-              originalValue: String(originalPage?.word_count || 0),
-              correctedValue: String(newWordCount),
+              originalValue: String(editData.originalWordCount),
+              correctedValue: String(editData.wordCount),
+              fileId: editData.fileId,
               pageId: pageId,
             }),
           },
