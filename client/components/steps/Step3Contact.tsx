@@ -1,7 +1,7 @@
 import { Lock } from "lucide-react";
 import { useQuote } from "@/context/QuoteContext";
 
-export default function Step4Contact() {
+export default function Step3Contact() {
   const { state, updateState } = useQuote();
 
   const updateField = (field: string, value: string) => {

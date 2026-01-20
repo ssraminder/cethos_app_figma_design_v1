@@ -35,7 +35,7 @@ const COMPLEXITY_LABELS: Record<string, string> = {
   hard: "Complex",
 };
 
-export default function Step3Review() {
+export default function Step4Review() {
   const { state, completeProcessing } = useQuote();
   const { languages, loading: optionsLoading } = useDropdownOptions();
   const { documents, subtotal, isLoading, isReady, error } = useQuotePricing(
