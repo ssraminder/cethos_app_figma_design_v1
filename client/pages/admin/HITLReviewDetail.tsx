@@ -1695,7 +1695,7 @@ export default function HITLReviewDetail() {
                                       value={getPageWordCount(page)}
                                       onChange={(e) =>
                                         updatePageWordCount(
-                                          page.id,
+                                          page,
                                           parseInt(e.target.value) || 0,
                                         )
                                       }
