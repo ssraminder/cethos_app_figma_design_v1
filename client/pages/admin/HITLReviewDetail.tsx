@@ -1096,45 +1096,56 @@ export default function HITLReviewDetail() {
                         </div>
                       </div>
 
-                      {/* Line Total - Editable Override */}
-                      <div className="bg-blue-50 p-3 rounded">
+                      {/* Line Total - Auto-calculated */}
+                      <div className="bg-blue-50 p-3 rounded mt-3">
                         <div className="flex justify-between items-center">
                           <span className="text-sm">Line Total</span>
-                          {claimedByMe ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-gray-500">$</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                defaultValue={(
-                                  analysis.line_total || 0
-                                ).toFixed(2)}
-                                onBlur={(e) =>
-                                  saveCorrection(
-                                    analysis.quote_file_id,
-                                    "line_total",
-                                    String(analysis.line_total),
-                                    e.target.value,
-                                  )
-                                }
-                                className="text-lg font-bold w-24 text-right bg-white border rounded py-1 px-2"
-                                min="0"
-                              />
-                            </div>
-                          ) : (
-                            <span className="text-lg font-bold">
-                              ${(analysis.line_total || 0).toFixed(2)}
-                            </span>
-                          )}
+                          <span className="text-lg font-bold">
+                            $
+                            {calculateLineTotal(
+                              analysis,
+                              analysis.quote_file_id,
+                            ).toFixed(2)}
+                          </span>
                         </div>
-                        {claimedByMe && (
-                          <p className="text-xs text-blue-600 mt-2">
-                            Tip: Adjust billable pages for multi-page scans of
-                            same document (e.g., front/back of license = 1
-                            billable page)
-                          </p>
-                        )}
+                        {claimedByMe &&
+                          getValue(
+                            analysis.quote_file_id,
+                            "billable_pages",
+                            analysis.billable_pages,
+                          ) !== analysis.billable_pages && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              * Recalculated from original $
+                              {(analysis.line_total || 0).toFixed(2)}
+                            </p>
+                          )}
                       </div>
+
+                      {/* Save/Cancel buttons for this file - show only if there are changes */}
+                      {claimedByMe &&
+                        hasChanges(analysis.quote_file_id, analysis) && (
+                          <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
+                            <button
+                              onClick={() =>
+                                cancelFileEdits(analysis.quote_file_id)
+                              }
+                              className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() =>
+                                saveFileCorrections(
+                                  analysis.quote_file_id,
+                                  analysis,
+                                )
+                              }
+                              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              Save Corrections
+                            </button>
+                          </div>
+                        )}
                     </div>
                   </div>
                 </div>
