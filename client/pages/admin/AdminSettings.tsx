@@ -24,8 +24,11 @@ export default function AdminSettings() {
   const [session, setSession] = useState<StaffSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-  
+  const [message, setMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
   const [formData, setFormData] = useState<BrandingFormData>({
     companyName: "",
     logoUrl: "",
@@ -82,23 +85,29 @@ export default function AdminSettings() {
     e.preventDefault();
 
     if (!session?.staffId) {
-      setMessage({ type: 'error', text: 'Session invalid. Please log in again.' });
+      setMessage({
+        type: "error",
+        text: "Session invalid. Please log in again.",
+      });
       return;
     }
 
     // Validation
     if (!formData.companyName.trim()) {
-      setMessage({ type: 'error', text: 'Company name is required' });
+      setMessage({ type: "error", text: "Company name is required" });
       return;
     }
 
-    if (!formData.supportEmail.trim() || !formData.supportEmail.includes('@')) {
-      setMessage({ type: 'error', text: 'Valid support email is required' });
+    if (!formData.supportEmail.trim() || !formData.supportEmail.includes("@")) {
+      setMessage({ type: "error", text: "Valid support email is required" });
       return;
     }
 
     if (!formData.primaryColor.match(/^#[0-9A-Fa-f]{6}$/)) {
-      setMessage({ type: 'error', text: 'Primary color must be a valid hex color (e.g., #3B82F6)' });
+      setMessage({
+        type: "error",
+        text: "Primary color must be a valid hex color (e.g., #3B82F6)",
+      });
       return;
     }
 
@@ -112,7 +121,7 @@ export default function AdminSettings() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             staffId: session.staffId,
@@ -122,19 +131,25 @@ export default function AdminSettings() {
             supportEmail: formData.supportEmail,
             primaryColor: formData.primaryColor,
           }),
-        }
+        },
       );
 
       const result = await response.json();
 
       if (result.success) {
-        setMessage({ type: 'success', text: 'Branding settings saved successfully! Refresh the page to see changes.' });
+        setMessage({
+          type: "success",
+          text: "Branding settings saved successfully! Refresh the page to see changes.",
+        });
       } else {
-        setMessage({ type: 'error', text: result.error || 'Failed to save branding settings' });
+        setMessage({
+          type: "error",
+          text: result.error || "Failed to save branding settings",
+        });
       }
     } catch (err) {
       console.error("Save error:", err);
-      setMessage({ type: 'error', text: `Error: ${err}` });
+      setMessage({ type: "error", text: `Error: ${err}` });
     } finally {
       setSaving(false);
     }
@@ -149,7 +164,7 @@ export default function AdminSettings() {
   }
 
   // Access control: only super_admin can access
-  if (session?.staffRole !== 'super_admin') {
+  if (session?.staffRole !== "super_admin") {
     return (
       <div className="min-h-screen bg-gray-50 p-4">
         <div className="max-w-4xl mx-auto">
@@ -160,7 +175,9 @@ export default function AdminSettings() {
             ← Back to Queue
           </button>
           <div className="bg-red-50 border border-red-200 rounded-lg p-8 text-center">
-            <h1 className="text-2xl font-bold text-red-900 mb-2">Access Denied</h1>
+            <h1 className="text-2xl font-bold text-red-900 mb-2">
+              Access Denied
+            </h1>
             <p className="text-red-700">
               Only super administrators can access this page.
             </p>
@@ -211,7 +228,9 @@ export default function AdminSettings() {
                   type="text"
                   required
                   value={formData.companyName}
-                  onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, companyName: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Cethos"
                 />
@@ -225,7 +244,9 @@ export default function AdminSettings() {
                 <input
                   type="url"
                   value={formData.logoUrl}
-                  onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, logoUrl: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="https://example.com/logo.png"
                 />
@@ -242,7 +263,9 @@ export default function AdminSettings() {
                 <input
                   type="url"
                   value={formData.logoDarkUrl}
-                  onChange={(e) => setFormData({ ...formData, logoDarkUrl: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, logoDarkUrl: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="https://example.com/logo-dark.png"
                 />
@@ -257,7 +280,9 @@ export default function AdminSettings() {
                   type="email"
                   required
                   value={formData.supportEmail}
-                  onChange={(e) => setFormData({ ...formData, supportEmail: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, supportEmail: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="support@cethos.com"
                 />
@@ -272,14 +297,18 @@ export default function AdminSettings() {
                   <input
                     type="color"
                     value={formData.primaryColor}
-                    onChange={(e) => setFormData({ ...formData, primaryColor: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, primaryColor: e.target.value })
+                    }
                     className="h-10 w-20 border border-gray-300 rounded-md cursor-pointer"
                   />
                   <input
                     type="text"
                     required
                     value={formData.primaryColor}
-                    onChange={(e) => setFormData({ ...formData, primaryColor: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, primaryColor: e.target.value })
+                    }
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                     placeholder="#3B82F6"
                     pattern="^#[0-9A-Fa-f]{6}$"
@@ -294,9 +323,9 @@ export default function AdminSettings() {
               {message && (
                 <div
                   className={`p-4 rounded-md ${
-                    message.type === 'success'
-                      ? 'bg-green-50 border border-green-200 text-green-800'
-                      : 'bg-red-50 border border-red-200 text-red-800'
+                    message.type === "success"
+                      ? "bg-green-50 border border-green-200 text-green-800"
+                      : "bg-red-50 border border-red-200 text-red-800"
                   }`}
                 >
                   {message.text}
@@ -309,7 +338,7 @@ export default function AdminSettings() {
                 disabled={saving}
                 className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
-                {saving ? 'Saving...' : 'Save Branding Settings'}
+                {saving ? "Saving..." : "Save Branding Settings"}
               </button>
             </form>
           </div>
@@ -326,17 +355,17 @@ export default function AdminSettings() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     {formData.logoUrl ? (
-                      <img 
-                        src={formData.logoUrl} 
+                      <img
+                        src={formData.logoUrl}
                         alt={formData.companyName}
                         className="h-10 object-contain"
                         onError={(e) => {
-                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.style.display = "none";
                         }}
                       />
                     ) : (
-                      <h1 
-                        className="text-2xl font-bold" 
+                      <h1
+                        className="text-2xl font-bold"
                         style={{ color: formData.primaryColor }}
                       >
                         {formData.companyName.toUpperCase()}
@@ -345,7 +374,9 @@ export default function AdminSettings() {
                     <span className="text-gray-500">Staff Portal</span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-600">admin@example.com</span>
+                    <span className="text-sm text-gray-600">
+                      admin@example.com
+                    </span>
                     <button className="text-sm text-red-600 hover:text-red-800 font-medium">
                       Logout
                     </button>
@@ -370,16 +401,16 @@ export default function AdminSettings() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {formData.logoUrl ? (
-                        <img 
-                          src={formData.logoUrl} 
+                        <img
+                          src={formData.logoUrl}
                           alt={formData.companyName}
                           className="h-8 object-contain"
                           onError={(e) => {
-                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.style.display = "none";
                           }}
                         />
                       ) : (
-                        <div 
+                        <div
                           className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
                           style={{ backgroundColor: formData.primaryColor }}
                         >
@@ -387,7 +418,7 @@ export default function AdminSettings() {
                         </div>
                       )}
                       {!formData.logoUrl && (
-                        <span 
+                        <span
                           className="text-xl font-bold"
                           style={{ color: formData.primaryColor }}
                         >
@@ -396,8 +427,12 @@ export default function AdminSettings() {
                       )}
                     </div>
                     <div className="flex gap-4 text-sm">
-                      <button className="text-gray-600 hover:text-gray-800">Help</button>
-                      <button className="text-gray-600 hover:text-gray-800">Login</button>
+                      <button className="text-gray-600 hover:text-gray-800">
+                        Help
+                      </button>
+                      <button className="text-gray-600 hover:text-gray-800">
+                        Login
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -410,17 +445,17 @@ export default function AdminSettings() {
                 Primary Color Usage
               </h3>
               <div className="grid grid-cols-2 gap-3">
-                <div 
+                <div
                   className="p-4 rounded-lg text-white font-medium text-center"
                   style={{ backgroundColor: formData.primaryColor }}
                 >
                   Button
                 </div>
-                <div 
+                <div
                   className="p-4 rounded-lg border-2 font-medium text-center"
-                  style={{ 
+                  style={{
                     borderColor: formData.primaryColor,
-                    color: formData.primaryColor 
+                    color: formData.primaryColor,
                   }}
                 >
                   Outline
@@ -433,9 +468,7 @@ export default function AdminSettings() {
               <h3 className="text-sm font-semibold text-gray-700 mb-2">
                 Support Contact
               </h3>
-              <p className="text-sm text-gray-600">
-                {formData.supportEmail}
-              </p>
+              <p className="text-sm text-gray-600">{formData.supportEmail}</p>
             </div>
           </div>
         </div>
