@@ -46,6 +46,7 @@ const App = () => (
                   element={<HITLReviewDetail />}
                 />
                 <Route path="/admin/settings" element={<AdminSettings />} />
+                <Route path="/admin/analytics" element={<Analytics />} />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
