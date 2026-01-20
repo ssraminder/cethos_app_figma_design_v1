@@ -792,18 +792,21 @@ export default function HITLReviewDetail() {
                         <div className="flex items-center justify-between">
                           {claimedByMe ? (
                             <select
-                              defaultValue={
-                                analysis.detected_document_type || ""
-                              }
-                              onChange={(e) =>
-                                saveCorrection(
+                              value={
+                                getValue(
                                   analysis.quote_file_id,
                                   "document_type",
                                   analysis.detected_document_type,
+                                ) || ""
+                              }
+                              onChange={(e) =>
+                                updateLocalEdit(
+                                  analysis.quote_file_id,
+                                  "document_type",
                                   e.target.value,
                                 )
                               }
-                              className="border rounded px-3 py-2 flex-1 mr-2"
+                              className="border rounded px-3 py-2 flex-1 mr-2 focus:ring-2 focus:ring-blue-500"
                             >
                               <option value="">Select...</option>
                               <option value="birth_certificate">
