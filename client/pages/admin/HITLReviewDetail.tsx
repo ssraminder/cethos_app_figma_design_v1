@@ -1211,46 +1211,44 @@ export default function HITLReviewDetail() {
             {expandedFile === analysis.id && (
               <div className="p-4 border-t">
                 <div className="grid grid-cols-2 gap-6">
-                  {/* Left: Document Preview */}
+                  {/* Left: Document Preview - Show ALL combined previews */}
                   <div>
-                    <h4 className="font-semibold mb-3">Document Preview</h4>
-                    <div className="border rounded-lg p-4 bg-gray-50 min-h-[300px] flex items-center justify-center">
-                      {analysis.quote_file?.storage_path ? (
-                        <img
-                          src={`${SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file.storage_path}`}
-                          alt={analysis.quote_file?.original_filename}
-                          className="max-w-full max-h-[400px] object-contain"
-                          onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                            const sibling = e.currentTarget
-                              .nextElementSibling as HTMLElement;
-                            if (sibling) sibling.classList.remove("hidden");
-                          }}
-                        />
-                      ) : null}
-                      <div className="text-center text-gray-500 hidden">
-                        <p>Preview not available</p>
-                        <p className="text-sm">
-                          {analysis.quote_file?.original_filename}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-2 flex justify-between items-center text-sm">
-                      <span className="text-gray-500">
-                        {(
-                          (analysis.quote_file?.file_size || 0) /
-                          1024 /
-                          1024
-                        ).toFixed(2)}{" "}
-                        MB
-                      </span>
-                      <a
-                        href={`${SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
-                        target="_blank"
-                        className="text-blue-600 hover:underline"
-                      >
-                        ↓ Download
-                      </a>
+                    <h4 className="font-semibold mb-3">
+                      Document Preview{allPreviews.length > 1 ? 's' : ''}
+                    </h4>
+
+                    <div className="space-y-4">
+                      {allPreviews.map((preview, previewIdx) => (
+                        <div key={preview.fileId} className="border rounded-lg overflow-hidden">
+                          {allPreviews.length > 1 && (
+                            <div className="bg-gray-100 px-3 py-1 text-sm font-medium">
+                              File {previewIdx + 1}: {preview.fileName}
+                            </div>
+                          )}
+                          <div className="p-4 bg-gray-50 min-h-[200px] flex items-center justify-center">
+                            <img
+                              src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${preview.storagePath}`}
+                              alt={preview.fileName}
+                              className="max-w-full max-h-[250px] object-contain"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                          <div className="px-3 py-2 flex justify-between items-center text-sm border-t">
+                            <span className="text-gray-500">
+                              {(preview.fileSize / 1024 / 1024).toFixed(2)} MB
+                            </span>
+                            <a
+                              href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${preview.storagePath}`}
+                              target="_blank"
+                              className="text-blue-600 hover:underline"
+                            >
+                              ↓ Download
+                            </a>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
