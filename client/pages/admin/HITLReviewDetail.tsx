@@ -1548,11 +1548,13 @@ export default function HITLReviewDetail() {
                         {combinedFiles[analysis.quote_file_id] && (
                           <p className="text-xs text-purple-600 mt-1">
                             Combined with{" "}
-                            {analysisResults.find(
-                              (a) =>
-                                a.quote_file_id ===
-                                combinedFiles[analysis.quote_file_id],
-                            )?.quote_file?.original_filename}
+                            {
+                              analysisResults.find(
+                                (a) =>
+                                  a.quote_file_id ===
+                                  combinedFiles[analysis.quote_file_id],
+                              )?.quote_file?.original_filename
+                            }
                           </p>
                         )}
                       </div>
@@ -1603,11 +1605,13 @@ export default function HITLReviewDetail() {
                           <div className="flex items-center justify-between">
                             <span className="text-sm text-purple-700">
                               ✓ Combined with:{" "}
-                              {analysisResults.find(
-                                (a) =>
-                                  a.quote_file_id ===
-                                  combinedFiles[analysis.quote_file_id],
-                              )?.quote_file?.original_filename}
+                              {
+                                analysisResults.find(
+                                  (a) =>
+                                    a.quote_file_id ===
+                                    combinedFiles[analysis.quote_file_id],
+                                )?.quote_file?.original_filename
+                              }
                             </span>
                             {claimedByMe && (
                               <button
