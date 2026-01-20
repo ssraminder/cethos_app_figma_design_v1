@@ -225,17 +225,14 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     // Step 3 (Contact) -> 4 (Review): Save contact info and enable processing screen
     if (state.currentStep === 3) {
       if (state.quoteId) {
-        await supabase.createOrUpdateCustomer(
-          state.quoteId,
-          {
-            email: state.email,
-            firstName: state.firstName,
-            lastName: state.lastName,
-            phone: state.phone,
-            customerType: state.customerType,
-            companyName: state.companyName,
-          },
-        );
+        await supabase.createOrUpdateCustomer(state.quoteId, {
+          email: state.email,
+          firstName: state.firstName,
+          lastName: state.lastName,
+          phone: state.phone,
+          customerType: state.customerType,
+          companyName: state.companyName,
+        });
       }
       // Enable processing screen - user will wait here for AI analysis
       updateState({ isProcessing: true });
