@@ -22,6 +22,12 @@ export function useDocumentProcessing() {
   const [processingError, setProcessingError] = useState<string | null>(null);
 
   const triggerProcessing = useCallback(async (quoteId: string): Promise<ProcessingResult | null> => {
+    if (!supabase) {
+      console.warn('Supabase not configured - processing disabled');
+      setProcessingError('Database not configured');
+      return null;
+    }
+
     setIsProcessing(true);
     setProcessingError(null);
 
