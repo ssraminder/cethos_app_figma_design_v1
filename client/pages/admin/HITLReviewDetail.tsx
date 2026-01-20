@@ -476,8 +476,13 @@ export default function HITLReviewDetail() {
         const result = await response.json();
 
         if (!response.ok || !result.success) {
-          console.error(`Save correction failed for ${correction.field}:`, result.error);
-          alert(result.error || `Failed to save ${correction.field} correction`);
+          console.error(
+            `Save correction failed for ${correction.field}:`,
+            result.error,
+          );
+          alert(
+            result.error || `Failed to save ${correction.field} correction`,
+          );
           return;
         }
       }
