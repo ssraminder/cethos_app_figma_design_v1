@@ -21,46 +21,22 @@ export default function Login() {
     setLoading(true);
     setMessage('');
 
-    try {
-      // Check if email exists in staff_users
-      const { data: staffCheck, error: staffError } = await supabase
-        .from('staff_users')
-        .select('id, is_active')
-        .eq('email', email.toLowerCase())
-        .single();
-
-      if (staffError || !staffCheck) {
-        setMessage('Email not found in staff directory.');
-        setLoading(false);
-        return;
-      }
-
-      if (!staffCheck.is_active) {
-        setMessage('Account deactivated. Contact administrator.');
-        setLoading(false);
-        return;
-      }
-
-      // Send OTP code (not magic link)
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.toLowerCase(),
-        options: {
-          shouldCreateUser: false,
-        },
-      });
-
-      if (error) {
-        setMessage(error.message);
-      } else {
-        setStep('otp');
-        setMessage('Check your email for the 6-digit code.');
-      }
-    } catch (err) {
-      console.error('Error:', err);
-      setMessage('An error occurred. Please try again.');
-    }
+    // Send OTP directly - no staff check (we'll verify after OTP)
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.toLowerCase(),
+      options: {
+        shouldCreateUser: true,
+      },
+    });
 
     setLoading(false);
+
+    if (error) {
+      setMessage(error.message);
+    } else {
+      setStep('otp');
+      setMessage('Check your email for the 6-digit code.');
+    }
   };
 
   const handleVerifyOTP = async (e: React.FormEvent) => {
@@ -74,41 +50,57 @@ export default function Login() {
     setLoading(true);
     setMessage('');
 
-    try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: email.toLowerCase(),
-        token: otpCode,
-        type: 'email',
-      });
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: email.toLowerCase(),
+      token: otpCode,
+      type: 'email',
+    });
 
-      if (error) {
-        setMessage(error.message);
+    if (error) {
+      setMessage(error.message);
+      setLoading(false);
+      return;
+    }
+
+    if (data.session) {
+      // NOW check if user is staff (after successful auth)
+      const { data: staff, error: staffError } = await supabase
+        .from('staff_users')
+        .select('id')
+        .eq('auth_user_id', data.session.user.id)
+        .eq('is_active', true)
+        .single();
+
+      if (staffError || !staff) {
+        // Not a staff member - check if email exists but not linked
+        const { data: staffByEmail } = await supabase
+          .from('staff_users')
+          .select('id, auth_user_id')
+          .eq('email', email.toLowerCase())
+          .single();
+
+        if (staffByEmail && !staffByEmail.auth_user_id) {
+          // Link the auth user to staff record
+          await supabase
+            .from('staff_users')
+            .update({ auth_user_id: data.session.user.id })
+            .eq('id', staffByEmail.id);
+          
+          navigate('/admin/hitl', { replace: true });
+          return;
+        }
+
+        setMessage('Access denied. You are not authorized as staff.');
+        await supabase.auth.signOut();
         setLoading(false);
         return;
       }
 
-      if (data.session) {
-        // Verify staff status
-        const { data: staff } = await supabase
-          .from('staff_users')
-          .select('id')
-          .eq('auth_user_id', data.session.user.id)
-          .eq('is_active', true)
-          .single();
-
-        if (staff) {
-          navigate('/admin/hitl', { replace: true });
-        } else {
-          setMessage('Access denied. Not authorized as staff.');
-          await supabase.auth.signOut();
-        }
-      }
-    } catch (err) {
-      console.error('Error:', err);
-      setMessage('An error occurred. Please try again.');
+      navigate('/admin/hitl', { replace: true });
+    } else {
+      setMessage('Verification failed. Please try again.');
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
@@ -142,7 +134,7 @@ export default function Login() {
             </div>
 
             {message && (
-              <p className={`text-sm text-center ${message.includes('Check your email') ? 'text-green-600' : 'text-red-600'}`}>
+              <p className={`text-sm text-center ${message.includes('Check') ? 'text-green-600' : 'text-red-600'}`}>
                 {message}
               </p>
             )}
@@ -174,7 +166,7 @@ export default function Login() {
             </div>
 
             {message && (
-              <p className={`text-sm text-center ${message.includes('Check your email') ? 'text-green-600' : 'text-red-600'}`}>
+              <p className={`text-sm text-center ${message.includes('Check') ? 'text-green-600' : 'text-red-600'}`}>
                 {message}
               </p>
             )}
