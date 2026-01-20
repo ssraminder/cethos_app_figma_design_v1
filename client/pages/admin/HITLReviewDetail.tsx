@@ -730,6 +730,20 @@ export default function HITLReviewDetail() {
                 <span className="text-sm text-gray-500">
                   {analysis.word_count} words • {analysis.page_count} page(s)
                 </span>
+                {/* Combined badge */}
+                {combinedFiles[analysis.quote_file_id] && (
+                  <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">
+                    Combined with{" "}
+                    {analysisResults
+                      .find(
+                        (a) =>
+                          a.quote_file_id ===
+                          combinedFiles[analysis.quote_file_id],
+                      )
+                      ?.quote_file?.original_filename?.split(".")[0] ||
+                      "another file"}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 {/* Confidence Badges */}
