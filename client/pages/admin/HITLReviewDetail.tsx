@@ -657,7 +657,8 @@ export default function HITLReviewDetail() {
       // Mark combined files as saved so UI merges them
       setSavedCombinedFiles((prev) => ({ ...prev, ...combinedFiles }));
 
-      // Clear local edits
+      // Clear all local edits
+      setLocalEdits({});
       setLocalPageEdits({});
       setCombinedFiles({});
 
