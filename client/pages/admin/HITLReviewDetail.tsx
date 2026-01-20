@@ -967,133 +967,131 @@ export default function HITLReviewDetail() {
                       {/* Metrics Grid - Editable when claimed */}
                       <div className="grid grid-cols-2 gap-3">
                         <div className="bg-gray-50 p-3 rounded text-center">
+                          <label className="text-xs text-gray-500 block mb-1">
+                            Words
+                          </label>
                           {claimedByMe ? (
-                            <>
-                              <input
-                                type="number"
-                                defaultValue={analysis.word_count || 0}
-                                onBlur={(e) =>
-                                  saveCorrection(
-                                    analysis.quote_file_id,
-                                    "word_count",
-                                    String(analysis.word_count),
-                                    e.target.value,
-                                  )
-                                }
-                                className="text-xl font-bold w-full text-center bg-white border rounded py-1"
-                                min="0"
-                              />
-                              <div className="text-xs text-gray-500">Words</div>
-                            </>
+                            <input
+                              type="number"
+                              value={
+                                getValue(
+                                  analysis.quote_file_id,
+                                  "word_count",
+                                  analysis.word_count,
+                                ) || 0
+                              }
+                              onChange={(e) =>
+                                updateLocalEdit(
+                                  analysis.quote_file_id,
+                                  "word_count",
+                                  parseInt(e.target.value) || 0,
+                                )
+                              }
+                              className="text-xl font-bold w-full text-center bg-white border rounded py-1 focus:ring-2 focus:ring-blue-500"
+                              min="0"
+                            />
                           ) : (
-                            <>
-                              <div className="text-xl font-bold">
-                                {analysis.word_count || 0}
-                              </div>
-                              <div className="text-xs text-gray-500">Words</div>
-                            </>
+                            <div className="text-xl font-bold">
+                              {analysis.word_count || 0}
+                            </div>
                           )}
                         </div>
 
                         <div className="bg-gray-50 p-3 rounded text-center">
+                          <label className="text-xs text-gray-500 block mb-1">
+                            Pages
+                          </label>
                           {claimedByMe ? (
-                            <>
-                              <input
-                                type="number"
-                                defaultValue={analysis.page_count || 0}
-                                onBlur={(e) =>
-                                  saveCorrection(
-                                    analysis.quote_file_id,
-                                    "page_count",
-                                    String(analysis.page_count),
-                                    e.target.value,
-                                  )
-                                }
-                                className="text-xl font-bold w-full text-center bg-white border rounded py-1"
-                                min="0"
-                              />
-                              <div className="text-xs text-gray-500">Pages</div>
-                            </>
+                            <input
+                              type="number"
+                              value={
+                                getValue(
+                                  analysis.quote_file_id,
+                                  "page_count",
+                                  analysis.page_count,
+                                ) || 0
+                              }
+                              onChange={(e) =>
+                                updateLocalEdit(
+                                  analysis.quote_file_id,
+                                  "page_count",
+                                  parseInt(e.target.value) || 0,
+                                )
+                              }
+                              className="text-xl font-bold w-full text-center bg-white border rounded py-1 focus:ring-2 focus:ring-blue-500"
+                              min="0"
+                            />
                           ) : (
-                            <>
-                              <div className="text-xl font-bold">
-                                {analysis.page_count || 0}
-                              </div>
-                              <div className="text-xs text-gray-500">Pages</div>
-                            </>
+                            <div className="text-xl font-bold">
+                              {analysis.page_count || 0}
+                            </div>
                           )}
                         </div>
 
                         <div className="bg-gray-50 p-3 rounded text-center">
+                          <label className="text-xs text-gray-500 block mb-1">
+                            Billable Pages
+                          </label>
                           {claimedByMe ? (
-                            <>
-                              <input
-                                type="number"
-                                defaultValue={analysis.billable_pages || 0}
-                                onBlur={(e) =>
-                                  saveCorrection(
-                                    analysis.quote_file_id,
-                                    "billable_pages",
-                                    String(analysis.billable_pages),
-                                    e.target.value,
-                                  )
-                                }
-                                className="text-xl font-bold w-full text-center bg-white border rounded py-1"
-                                min="0"
-                              />
-                              <div className="text-xs text-gray-500">
-                                Billable Pages
-                              </div>
-                              <div className="text-xs text-blue-600 mt-1">
-                                (e.g., front+back = 1 page)
-                              </div>
-                            </>
+                            <input
+                              type="number"
+                              value={
+                                getValue(
+                                  analysis.quote_file_id,
+                                  "billable_pages",
+                                  analysis.billable_pages,
+                                ) || 0
+                              }
+                              onChange={(e) =>
+                                updateLocalEdit(
+                                  analysis.quote_file_id,
+                                  "billable_pages",
+                                  parseInt(e.target.value) || 0,
+                                )
+                              }
+                              className="text-xl font-bold w-full text-center bg-white border rounded py-1 focus:ring-2 focus:ring-blue-500"
+                              min="0"
+                            />
                           ) : (
-                            <>
-                              <div className="text-xl font-bold">
-                                {analysis.billable_pages || 0}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                Billable Pages
-                              </div>
-                            </>
+                            <div className="text-xl font-bold">
+                              {analysis.billable_pages || 0}
+                            </div>
                           )}
+                          <div className="text-xs text-blue-600 mt-1">
+                            (e.g., front+back = 1)
+                          </div>
                         </div>
 
                         <div className="bg-gray-50 p-3 rounded text-center">
+                          <label className="text-xs text-gray-500 block mb-1">
+                            Multiplier
+                          </label>
                           {claimedByMe ? (
-                            <>
-                              <input
-                                type="number"
-                                step="0.01"
-                                defaultValue={
-                                  analysis.complexity_multiplier || 1
-                                }
-                                onBlur={(e) =>
-                                  saveCorrection(
-                                    analysis.quote_file_id,
-                                    "complexity_multiplier",
-                                    String(analysis.complexity_multiplier),
-                                    e.target.value,
-                                  )
-                                }
-                                className="text-xl font-bold w-full text-center bg-white border rounded py-1"
-                                min="1"
-                                max="3"
-                              />
-                              <div className="text-xs text-gray-500">
-                                Multiplier
-                              </div>
-                            </>
+                            <input
+                              type="number"
+                              step="0.05"
+                              value={
+                                getValue(
+                                  analysis.quote_file_id,
+                                  "complexity_multiplier",
+                                  analysis.complexity_multiplier,
+                                ) || 1
+                              }
+                              onChange={(e) =>
+                                updateLocalEdit(
+                                  analysis.quote_file_id,
+                                  "complexity_multiplier",
+                                  parseFloat(e.target.value) || 1,
+                                )
+                              }
+                              className="text-xl font-bold w-full text-center bg-white border rounded py-1 focus:ring-2 focus:ring-blue-500"
+                              min="1"
+                              max="3"
+                            />
                           ) : (
-                            <>
-                              <div className="text-xl font-bold">
-                                {analysis.complexity_multiplier || 1}x
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                Multiplier
-                              </div>
-                            </>
+                            <div className="text-xl font-bold">
+                              {analysis.complexity_multiplier || 1}x
+                            </div>
                           )}
                         </div>
                       </div>
