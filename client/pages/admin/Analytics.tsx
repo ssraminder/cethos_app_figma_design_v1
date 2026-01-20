@@ -113,7 +113,9 @@ export default function Analytics() {
         }
       } catch (err) {
         console.error("Analytics fetch error:", err);
-        setError(err instanceof Error ? err.message : "Failed to load analytics");
+        setError(
+          err instanceof Error ? err.message : "Failed to load analytics",
+        );
       } finally {
         setLoading(false);
       }
@@ -182,7 +184,11 @@ export default function Analytics() {
             </button>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               {logoUrl ? (
-                <img src={logoUrl} alt={companyName} style={{ height: "32px" }} />
+                <img
+                  src={logoUrl}
+                  alt={companyName}
+                  style={{ height: "32px" }}
+                />
               ) : (
                 <h1
                   style={{
@@ -587,7 +593,9 @@ export default function Analytics() {
                     marginBottom: "16px",
                   }}
                 >
-                  <h3 style={{ fontSize: "16px", fontWeight: "600", margin: 0 }}>
+                  <h3
+                    style={{ fontSize: "16px", fontWeight: "600", margin: 0 }}
+                  >
                     Top Errors
                   </h3>
                   <button
@@ -606,7 +614,13 @@ export default function Analytics() {
                 </div>
 
                 {analyticsData?.topErrors?.length ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "12px",
+                    }}
+                  >
                     {analyticsData.topErrors.slice(0, 5).map((error, idx) => (
                       <div
                         key={error.id || idx}
@@ -709,17 +723,21 @@ export default function Analytics() {
                   </button>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {analyticsData.recommendations
-                    .slice(0, 3)
-                    .map((rec, idx) => (
-                      <div
-                        key={rec.id || idx}
-                        style={{ fontSize: "14px", color: "#78350F" }}
-                      >
-                        • {rec.reason}
-                      </div>
-                    ))}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                  }}
+                >
+                  {analyticsData.recommendations.slice(0, 3).map((rec, idx) => (
+                    <div
+                      key={rec.id || idx}
+                      style={{ fontSize: "14px", color: "#78350F" }}
+                    >
+                      • {rec.reason}
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -751,7 +769,13 @@ export default function Analytics() {
                 }}
               >
                 <div>
-                  <p style={{ color: "#6B7280", fontSize: "14px", margin: "0 0 8px 0" }}>
+                  <p
+                    style={{
+                      color: "#6B7280",
+                      fontSize: "14px",
+                      margin: "0 0 8px 0",
+                    }}
+                  >
                     Documents
                   </p>
                   <p style={{ fontSize: "24px", fontWeight: "600", margin: 0 }}>
@@ -759,7 +783,13 @@ export default function Analytics() {
                   </p>
                 </div>
                 <div>
-                  <p style={{ color: "#6B7280", fontSize: "14px", margin: "0 0 8px 0" }}>
+                  <p
+                    style={{
+                      color: "#6B7280",
+                      fontSize: "14px",
+                      margin: "0 0 8px 0",
+                    }}
+                  >
                     Quotes
                   </p>
                   <p style={{ fontSize: "24px", fontWeight: "600", margin: 0 }}>
@@ -767,7 +797,13 @@ export default function Analytics() {
                   </p>
                 </div>
                 <div>
-                  <p style={{ color: "#6B7280", fontSize: "14px", margin: "0 0 8px 0" }}>
+                  <p
+                    style={{
+                      color: "#6B7280",
+                      fontSize: "14px",
+                      margin: "0 0 8px 0",
+                    }}
+                  >
                     Avg Accuracy
                   </p>
                   <p style={{ fontSize: "24px", fontWeight: "600", margin: 0 }}>
@@ -775,7 +811,13 @@ export default function Analytics() {
                   </p>
                 </div>
                 <div>
-                  <p style={{ color: "#6B7280", fontSize: "14px", margin: "0 0 8px 0" }}>
+                  <p
+                    style={{
+                      color: "#6B7280",
+                      fontSize: "14px",
+                      margin: "0 0 8px 0",
+                    }}
+                  >
                     Corrections
                   </p>
                   <p style={{ fontSize: "24px", fontWeight: "600", margin: 0 }}>
@@ -783,7 +825,13 @@ export default function Analytics() {
                   </p>
                 </div>
                 <div>
-                  <p style={{ color: "#6B7280", fontSize: "14px", margin: "0 0 8px 0" }}>
+                  <p
+                    style={{
+                      color: "#6B7280",
+                      fontSize: "14px",
+                      margin: "0 0 8px 0",
+                    }}
+                  >
                     Days Tracked
                   </p>
                   <p style={{ fontSize: "24px", fontWeight: "600", margin: 0 }}>
