@@ -433,45 +433,6 @@ export default function HITLReviewDetail() {
     }
   };
 
-  // Save correction to database
-  const saveCorrection = async (
-    fileId: string,
-    field: string,
-    originalValue: string,
-    correctedValue: string,
-  ) => {
-    if (originalValue === correctedValue) return; // No change
-
-    const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
-
-    const response = await fetch(
-      `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          reviewId: reviewId,
-          staffId: session.staffId,
-          field: field,
-          originalValue: originalValue,
-          correctedValue: correctedValue,
-          fileId: fileId,
-        }),
-      },
-    );
-
-    const result = await response.json();
-    if (!result.success) {
-      alert("Failed to save correction: " + result.error);
-    } else {
-      // Optionally refresh to show updated data
-      fetchReviewDetail();
-    }
-  };
-
   const handleApprove = async () => {
     if (!review || !session?.staffId) return;
     if (!confirm("Are you sure you want to approve this quote?")) return;
