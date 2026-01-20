@@ -97,6 +97,8 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
     fetchPricing();
 
     // Subscribe to quote updates
+    if (!supabase) return;
+
     const channel = supabase
       .channel(`pricing-${quoteId}`)
       .on(
@@ -116,7 +118,9 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (supabase) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [quoteId]);
 
