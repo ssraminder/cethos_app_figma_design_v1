@@ -723,11 +723,20 @@ export default function HITLReviewDetail() {
             </div>
 
             {/* AI Analysis */}
-            {review.ai_analysis && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">
-                  AI Analysis
-                </h3>
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="font-semibold text-gray-900 mb-4">
+                AI Analysis
+              </h3>
+              {!review.ai_analysis ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 text-sm">
+                    No analysis data available for this review
+                  </p>
+                  <p className="text-gray-400 text-xs mt-2">
+                    Analysis may still be processing or unavailable
+                  </p>
+                </div>
+              ) : (
                 <div className="space-y-3 text-sm">
                   <div>
                     <div className="flex justify-between">
@@ -775,19 +784,19 @@ export default function HITLReviewDetail() {
                     <div>
                       <p className="text-gray-600 text-xs">Word Count</p>
                       <p className="font-bold text-lg text-gray-900">
-                        {review.ai_analysis.word_count}
+                        {review.ai_analysis.word_count ?? 'N/A'}
                       </p>
                     </div>
                     <div>
                       <p className="text-gray-600 text-xs">Billable Pages</p>
                       <p className="font-bold text-lg text-gray-900">
-                        {review.ai_analysis.billable_pages}
+                        {review.ai_analysis.billable_pages ?? 'N/A'}
                       </p>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Pricing Summary */}
             <div className="bg-white rounded-lg shadow p-6">
