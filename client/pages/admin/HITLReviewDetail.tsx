@@ -167,19 +167,32 @@ export default function HITLReviewDetail() {
     }
   };
 
-  const handleClaimReview = async () => {
-    if (!review || !staffEmail) return;
-
+  const claimReview = async () => {
+    if (!review) return;
     setSubmitting(true);
     try {
-      // Placeholder API call
-      console.log('Claiming review:', review.review_id);
-      // await claimReview(review.review_id, staffEmail);
-      alert('Review claimed (placeholder)');
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/claim-hitl-review`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            reviewId: review.review_id,
+            staffId: staffEmail,
+          }),
+        }
+      );
+      if (!response.ok) throw new Error('Failed to claim review');
+      // Refresh the review data
+      fetchReviewDetail();
     } catch (err) {
-      alert(`Error: ${err}`);
+      alert('Error claiming review: ' + (err as Error).message);
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   const handleApprove = async () => {
