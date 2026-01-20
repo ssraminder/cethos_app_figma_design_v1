@@ -912,18 +912,21 @@ export default function HITLReviewDetail() {
                         <div className="flex items-center justify-between">
                           {claimedByMe ? (
                             <select
-                              defaultValue={
-                                analysis.assessed_complexity || "standard"
-                              }
-                              onChange={(e) =>
-                                saveCorrection(
+                              value={
+                                getValue(
                                   analysis.quote_file_id,
                                   "complexity",
                                   analysis.assessed_complexity,
+                                ) || "standard"
+                              }
+                              onChange={(e) =>
+                                updateLocalEdit(
+                                  analysis.quote_file_id,
+                                  "complexity",
                                   e.target.value,
                                 )
                               }
-                              className="border rounded px-3 py-2 flex-1 mr-2"
+                              className="border rounded px-3 py-2 flex-1 mr-2 focus:ring-2 focus:ring-blue-500"
                             >
                               <option value="standard">Standard</option>
                               <option value="complex">Complex</option>
