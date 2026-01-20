@@ -9,15 +9,12 @@ export default function Login() {
   const [message, setMessage] = useState("");
   const navigate = useNavigate();
 
-  const TEST_CODE = "700310";
-
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    if (!SUPABASE_URL) {
       setMessage("Database not configured");
       return;
     }
@@ -26,51 +23,25 @@ export default function Login() {
     setMessage("");
 
     try {
-      // Use direct fetch to Supabase REST API (bypasses JS client AbortError)
       const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/staff_users?email=eq.${encodeURIComponent(email.toLowerCase())}&select=id,email,is_active`,
+        `${SUPABASE_URL}/functions/v1/send-staff-otp`,
         {
-          method: "GET",
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            "Content-Type": "application/json",
-          },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.toLowerCase() }),
         },
       );
 
-      console.log("Fetch response status:", response.status);
+      const result = await response.json();
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Fetch error:", errorText);
-        setMessage(`Database error: ${response.status}`);
-        setLoading(false);
-        return;
+      if (result.success) {
+        setStep("otp");
+        setMessage("OTP code sent to your email");
+      } else {
+        setMessage(result.error || "Failed to send OTP");
       }
-
-      const data = await response.json();
-      console.log("Staff data:", data);
-
-      if (!data || data.length === 0) {
-        setMessage("Email not found in staff directory.");
-        setLoading(false);
-        return;
-      }
-
-      const staffUser = data[0];
-
-      if (!staffUser.is_active) {
-        setMessage("Account deactivated. Contact administrator.");
-        setLoading(false);
-        return;
-      }
-
-      // Success - show OTP screen
-      setStep("otp");
-      setMessage("Enter code 700310 (test mode)");
     } catch (err) {
-      console.error("Fetch exception:", err);
+      console.error("Send OTP error:", err);
       setMessage(`Error: ${err}`);
     }
 
@@ -80,24 +51,54 @@ export default function Login() {
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    setLoading(true);
-    setMessage("");
-
-    if (otpCode === TEST_CODE) {
-      setMessage("Login successful! Redirecting...");
-
-      // Store login state in sessionStorage for now
-      sessionStorage.setItem("staffEmail", email.toLowerCase());
-      sessionStorage.setItem("staffLoggedIn", "true");
-
-      setTimeout(() => {
-        navigate("/admin/hitl", { replace: true });
-      }, 500);
+    if (!SUPABASE_URL) {
+      setMessage("Database not configured");
       return;
     }
 
-    setMessage("Invalid code. Use 700310 for testing.");
-    setLoading(false);
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/verify-staff-otp`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.toLowerCase(), otp: otpCode }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Store user data in sessionStorage
+        sessionStorage.setItem(
+          "staffSession",
+          JSON.stringify({
+            email: result.user.email,
+            staffId: result.user.id,
+            staffName: result.user.fullName,
+            staffRole: result.user.role,
+            loggedIn: true,
+            loginTime: new Date().toISOString(),
+          }),
+        );
+
+        setMessage("Login successful! Redirecting...");
+
+        setTimeout(() => {
+          navigate("/admin/hitl", { replace: true });
+        }, 500);
+      } else {
+        setMessage(result.error || "Invalid OTP code");
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error("Verify OTP error:", err);
+      setMessage(`Error: ${err}`);
+      setLoading(false);
+    }
   };
 
   return (
@@ -139,7 +140,7 @@ export default function Login() {
 
             {message && (
               <p
-                className={`text-sm text-center ${message.includes("700310") ? "text-blue-600" : "text-red-600"}`}
+                className={`text-sm text-center ${message.includes("sent") ? "text-blue-600" : "text-red-600"}`}
               >
                 {message}
               </p>
@@ -180,7 +181,7 @@ export default function Login() {
 
             {message && (
               <p
-                className={`text-sm text-center ${message.includes("successful") ? "text-green-600" : message.includes("700310") ? "text-blue-600" : "text-red-600"}`}
+                className={`text-sm text-center ${message.includes("successful") ? "text-green-600" : "text-red-600"}`}
               >
                 {message}
               </p>
