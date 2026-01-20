@@ -75,18 +75,53 @@ export default function HITLReviewDetail() {
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   useEffect(() => {
-    // Check sessionStorage for login state
-    const isLoggedIn = sessionStorage.getItem('staffLoggedIn');
-    const email = sessionStorage.getItem('staffEmail');
+    const checkSession = async () => {
+      const stored = sessionStorage.getItem('staffSession');
+      if (!stored) {
+        navigate('/admin/login', { replace: true });
+        return;
+      }
 
-    if (isLoggedIn !== 'true' || !email) {
-      navigate('/admin/login', { replace: true });
-      return;
-    }
+      const parsedSession = JSON.parse(stored) as StaffSession;
 
-    setStaffEmail(email);
-    fetchReviewDetail();
-  }, [reviewId, navigate]);
+      // Fetch staff user ID from staff_users table using email
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        setError('Configuration missing');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const staffResponse = await fetch(
+          `${SUPABASE_URL}/rest/v1/staff_users?email=eq.${encodeURIComponent(parsedSession.email)}&select=id,email,full_name,role`,
+          {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+          }
+        );
+
+        if (staffResponse.ok) {
+          const staffData = await staffResponse.json();
+          if (staffData.length > 0) {
+            setSession({
+              ...parsedSession,
+              staffId: staffData[0].id,
+              staffName: staffData[0].full_name,
+              staffRole: staffData[0].role,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching staff data:', err);
+      }
+
+      fetchReviewDetail();
+    };
+
+    checkSession();
+  }, [reviewId, navigate, SUPABASE_URL, SUPABASE_ANON_KEY]);
 
   const fetchReviewDetail = async () => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !reviewId) {
