@@ -966,7 +966,9 @@ export default function HITLReviewDetail() {
                               <input
                                 type="number"
                                 step="0.01"
-                                defaultValue={analysis.complexity_multiplier || 1}
+                                defaultValue={
+                                  analysis.complexity_multiplier || 1
+                                }
                                 onBlur={(e) =>
                                   saveCorrection(
                                     analysis.quote_file_id,
@@ -1006,9 +1008,9 @@ export default function HITLReviewDetail() {
                               <input
                                 type="number"
                                 step="0.01"
-                                defaultValue={(analysis.line_total || 0).toFixed(
-                                  2,
-                                )}
+                                defaultValue={(
+                                  analysis.line_total || 0
+                                ).toFixed(2)}
                                 onBlur={(e) =>
                                   saveCorrection(
                                     analysis.quote_file_id,
@@ -1029,8 +1031,9 @@ export default function HITLReviewDetail() {
                         </div>
                         {claimedByMe && (
                           <p className="text-xs text-blue-600 mt-2">
-                            Tip: Adjust billable pages for multi-page scans of same
-                            document (e.g., front/back of license = 1 billable page)
+                            Tip: Adjust billable pages for multi-page scans of
+                            same document (e.g., front/back of license = 1
+                            billable page)
                           </p>
                         )}
                       </div>
