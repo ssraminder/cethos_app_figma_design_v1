@@ -28,6 +28,70 @@ export default function Step2Details() {
     }
   }, [languages.length, state.targetLanguageId, updateState]);
 
+  // Subscribe to processing status updates
+  useEffect(() => {
+    if (!state.quoteId) return;
+
+    const fetchStatus = async () => {
+      // Get quote status
+      const { data: quote } = await supabase
+        .from('quotes')
+        .select('processing_status')
+        .eq('id', state.quoteId)
+        .single();
+
+      if (quote) {
+        setProcessingStatus(quote.processing_status);
+      }
+
+      // Get file progress
+      const { data: files } = await supabase
+        .from('quote_files')
+        .select('processing_status')
+        .eq('quote_id', state.quoteId);
+
+      if (files) {
+        const completed = files.filter(f => f.processing_status === 'complete').length;
+        setFileProgress({ completed, total: files.length });
+      }
+    };
+
+    fetchStatus();
+
+    // Subscribe to realtime updates
+    const channel = supabase
+      .channel(`step2-${state.quoteId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'quotes',
+          filter: `id=eq.${state.quoteId}`,
+        },
+        (payload: any) => {
+          setProcessingStatus(payload.new.processing_status);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'quote_files',
+          filter: `quote_id=eq.${state.quoteId}`,
+        },
+        () => {
+          fetchStatus();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [state.quoteId]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
