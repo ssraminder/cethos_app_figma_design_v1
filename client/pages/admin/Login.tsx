@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -8,110 +7,75 @@ export default function Login() {
   const [step, setStep] = useState<'email' | 'otp'>('email');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [staffId, setStaffId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const TEST_CODE = '700310';
+  
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    console.log('=== DATABASE DEBUG START ===');
-
-    if (!supabase) {
-      console.error('Supabase client is NULL');
+    
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       setMessage('Database not configured');
       return;
     }
 
     setLoading(true);
-    setMessage('Checking database...');
+    setMessage('');
 
     try {
-      // 1. Log connection info
-      console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
-      console.log('Email to check:', email.toLowerCase());
+      // Use direct fetch to Supabase REST API (bypasses JS client AbortError)
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/staff_users?email=eq.${encodeURIComponent(email.toLowerCase())}&select=id,email,is_active`,
+        {
+          method: 'GET',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
-      // 2. First, try to list ALL staff_users to see if table is accessible
-      console.log('Step 1: Fetching ALL staff_users...');
-      const { data: allStaff, error: allError } = await supabase
-        .from('staff_users')
-        .select('id, email, is_active')
-        .limit(10);
+      console.log('Fetch response status:', response.status);
 
-      console.log('All staff result:', { data: allStaff, error: allError });
-
-      if (allError) {
-        console.error('Error fetching all staff:', allError);
-        setMessage(`Database error: ${allError.message}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Fetch error:', errorText);
+        setMessage(`Database error: ${response.status}`);
         setLoading(false);
         return;
       }
 
-      if (!allStaff || allStaff.length === 0) {
-        console.log('No staff records found in database');
-        setMessage('No staff records in database. Check RLS policies.');
+      const data = await response.json();
+      console.log('Staff data:', data);
+
+      if (!data || data.length === 0) {
+        setMessage('Email not found in staff directory.');
         setLoading(false);
         return;
       }
 
-      // 3. Log all emails in database
-      console.log('Emails in database:');
-      allStaff.forEach((s, i) => {
-        console.log(`  ${i + 1}. "${s.email}" (active: ${s.is_active})`);
-      });
+      const staffUser = data[0];
 
-      // 4. Now try to find specific email
-      console.log('Step 2: Looking for specific email:', email.toLowerCase());
-      const { data: staffData, error: staffError } = await supabase
-        .from('staff_users')
-        .select('id, email, is_active')
-        .eq('email', email.toLowerCase())
-        .maybeSingle();
-
-      console.log('Specific email result:', { data: staffData, error: staffError });
-
-      if (staffError) {
-        console.error('Error finding email:', staffError);
-        setMessage(`Query error: ${staffError.message}`);
+      if (!staffUser.is_active) {
+        setMessage('Account deactivated. Contact administrator.');
         setLoading(false);
         return;
       }
 
-      // 5. Check if email matches exactly
-      const matchingEmail = allStaff.find(s => s.email === email.toLowerCase());
-      console.log('Manual match check:', matchingEmail);
-
-      const matchingEmailTrimmed = allStaff.find(s => s.email.trim() === email.toLowerCase().trim());
-      console.log('Trimmed match check:', matchingEmailTrimmed);
-
-      if (!staffData) {
-        // Show what emails ARE in the database
-        const emailList = allStaff.map(s => s.email).join(', ');
-        setMessage(`Email not found. Available: ${emailList}`);
-        setLoading(false);
-        return;
-      }
-
-      if (!staffData.is_active) {
-        setMessage('Account deactivated.');
-        setLoading(false);
-        return;
-      }
-
-      // Success!
-      console.log('Staff found:', staffData);
-      setStaffId(staffData.id);
+      // Success - show OTP screen
       setStep('otp');
       setMessage('Enter code 700310 (test mode)');
 
     } catch (err) {
-      console.error('Caught exception:', err);
-      setMessage(`Exception: ${err}`);
+      console.error('Fetch exception:', err);
+      setMessage(`Error: ${err}`);
     }
 
     setLoading(false);
-    console.log('=== DATABASE DEBUG END ===');
   };
 
   const handleVerifyOTP = async (e: React.FormEvent) => {
@@ -122,6 +86,11 @@ export default function Login() {
 
     if (otpCode === TEST_CODE) {
       setMessage('Login successful! Redirecting...');
+      
+      // Store login state in sessionStorage for now
+      sessionStorage.setItem('staffEmail', email.toLowerCase());
+      sessionStorage.setItem('staffLoggedIn', 'true');
+      
       setTimeout(() => {
         navigate('/admin/hitl', { replace: true });
       }, 500);
@@ -163,7 +132,9 @@ export default function Login() {
             </div>
 
             {message && (
-              <p className="text-sm text-center text-red-600">{message}</p>
+              <p className={`text-sm text-center ${message.includes('700310') ? 'text-blue-600' : 'text-red-600'}`}>
+                {message}
+              </p>
             )}
 
             <button
