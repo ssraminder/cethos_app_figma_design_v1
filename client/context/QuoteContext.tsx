@@ -41,7 +41,7 @@ export interface QuoteState {
 interface QuoteContextType {
   state: QuoteState;
   updateState: (updates: Partial<QuoteState>) => void;
-  goToNextStep: () => Promise<boolean>;
+  goToNextStep: () => Promise<{ success: boolean; quoteId?: string }>;
   goToPreviousStep: () => void;
   goToStep: (step: number) => void;
   validateStep: (step: number) => boolean;
@@ -170,13 +170,16 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const goToNextStep = async (): Promise<boolean> => {
+  const goToNextStep = async (): Promise<{
+    success: boolean;
+    quoteId?: string;
+  }> => {
     if (!validateStep(state.currentStep)) {
-      return false;
+      return { success: false };
     }
 
     if (state.currentStep >= 5) {
-      return false;
+      return { success: false };
     }
 
     // Step 1 -> 2: Create quote and upload files
@@ -192,15 +195,16 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
             quoteId: result.quoteId,
             quoteNumber: result.quoteNumber,
           });
-          return true;
+          // Return the quoteId immediately so it can be used for triggering processing
+          return { success: true, quoteId: result.quoteId };
         } else {
           // Failed to create quote - don't block navigation, localStorage is backup
           updateState({ currentStep: 2 });
-          return true;
+          return { success: true };
         }
       }
       updateState({ currentStep: 2 });
-      return true;
+      return { success: true };
     }
 
     // Step 2 -> 3: Update quote details and start processing
