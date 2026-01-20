@@ -8,7 +8,10 @@ export default function Login() {
   const [step, setStep] = useState<'email' | 'otp'>('email');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [staffId, setStaffId] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  const TEST_CODE = '700310';
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,86 +24,67 @@ export default function Login() {
     setLoading(true);
     setMessage('');
 
-    // Send OTP directly - no staff check (we'll verify after OTP)
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.toLowerCase(),
-      options: {
-        shouldCreateUser: true,
-      },
-    });
+    // Check staff_users with retry logic
+    let attempts = 0;
+    let staffData = null;
+    let lastError = null;
+
+    while (attempts < 3 && !staffData) {
+      attempts++;
+      try {
+        const { data, error } = await supabase
+          .from('staff_users')
+          .select('id, is_active')
+          .eq('email', email.toLowerCase())
+          .maybeSingle();
+
+        if (error) {
+          lastError = error;
+          await new Promise(r => setTimeout(r, 200));
+          continue;
+        }
+
+        staffData = data;
+        break;
+      } catch (err) {
+        lastError = err;
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
 
     setLoading(false);
 
-    if (error) {
-      setMessage(error.message);
-    } else {
-      setStep('otp');
-      setMessage('Check your email for the 6-digit code.');
+    if (!staffData) {
+      setMessage('Email not found in staff directory.');
+      return;
     }
+
+    if (!staffData.is_active) {
+      setMessage('Account deactivated. Contact administrator.');
+      return;
+    }
+
+    setStaffId(staffData.id);
+    setStep('otp');
+    setMessage('Enter code 700310 (test mode)');
   };
 
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!supabase) {
-      setMessage('Database not configured');
-      return;
-    }
-
     setLoading(true);
     setMessage('');
 
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: email.toLowerCase(),
-      token: otpCode,
-      type: 'email',
-    });
-
-    if (error) {
-      setMessage(error.message);
-      setLoading(false);
+    if (otpCode === TEST_CODE) {
+      setMessage('Login successful! Redirecting...');
+      setTimeout(() => {
+        navigate('/admin/hitl', { replace: true });
+      }, 500);
       return;
     }
 
-    if (data.session) {
-      // NOW check if user is staff (after successful auth)
-      const { data: staff, error: staffError } = await supabase
-        .from('staff_users')
-        .select('id')
-        .eq('auth_user_id', data.session.user.id)
-        .eq('is_active', true)
-        .single();
-
-      if (staffError || !staff) {
-        // Not a staff member - check if email exists but not linked
-        const { data: staffByEmail } = await supabase
-          .from('staff_users')
-          .select('id, auth_user_id')
-          .eq('email', email.toLowerCase())
-          .single();
-
-        if (staffByEmail && !staffByEmail.auth_user_id) {
-          // Link the auth user to staff record
-          await supabase
-            .from('staff_users')
-            .update({ auth_user_id: data.session.user.id })
-            .eq('id', staffByEmail.id);
-          
-          navigate('/admin/hitl', { replace: true });
-          return;
-        }
-
-        setMessage('Access denied. You are not authorized as staff.');
-        await supabase.auth.signOut();
-        setLoading(false);
-        return;
-      }
-
-      navigate('/admin/hitl', { replace: true });
-    } else {
-      setMessage('Verification failed. Please try again.');
-      setLoading(false);
-    }
+    setMessage('Invalid code. Use 700310 for testing.');
+    setLoading(false);
   };
 
   return (
@@ -112,7 +96,7 @@ export default function Login() {
             Staff Portal
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            {step === 'email' ? 'Enter your email to receive a login code' : 'Enter the 6-digit code from your email'}
+            {step === 'email' ? 'Enter your staff email' : 'Enter the 6-digit code'}
           </p>
         </div>
 
@@ -134,9 +118,7 @@ export default function Login() {
             </div>
 
             {message && (
-              <p className={`text-sm text-center ${message.includes('Check') ? 'text-green-600' : 'text-red-600'}`}>
-                {message}
-              </p>
+              <p className="text-sm text-center text-red-600">{message}</p>
             )}
 
             <button
@@ -144,11 +126,15 @@ export default function Login() {
               disabled={loading}
               className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? 'Sending...' : 'Send Login Code'}
+              {loading ? 'Checking...' : 'Continue'}
             </button>
           </form>
         ) : (
           <form className="mt-8 space-y-6" onSubmit={handleVerifyOTP}>
+            <p className="text-sm text-center text-gray-500">
+              Logging in as: {email}
+            </p>
+            
             <div>
               <label htmlFor="otp" className="block text-sm font-medium text-gray-700">
                 6-Digit Code
@@ -166,7 +152,7 @@ export default function Login() {
             </div>
 
             {message && (
-              <p className={`text-sm text-center ${message.includes('Check') ? 'text-green-600' : 'text-red-600'}`}>
+              <p className={`text-sm text-center ${message.includes('successful') ? 'text-green-600' : message.includes('700310') ? 'text-blue-600' : 'text-red-600'}`}>
                 {message}
               </p>
             )}
@@ -184,7 +170,7 @@ export default function Login() {
               onClick={() => { setStep('email'); setOtpCode(''); setMessage(''); }}
               className="w-full py-2 px-4 text-sm text-gray-600 hover:text-gray-900"
             >
-              ← Back to email
+              ← Back
             </button>
           </form>
         )}
