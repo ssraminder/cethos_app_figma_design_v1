@@ -190,19 +190,22 @@ export default function HITLReviewDetail() {
 
       const filesData = filesResponse.ok ? await filesResponse.json() : [];
 
-      // Fetch AI analysis if available
-      const aiResponse = await fetch(
-        `${SUPABASE_URL}/rest/v1/ai_analysis_results?review_id=eq.${reviewId}&select=*`,
-        {
-          method: "GET",
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-        },
-      );
+      // Fetch AI analysis if available - link through quote_files
+      // ai_analysis_results doesn't have review_id, it links via quote_file_id
+      let aiData: any[] = [];
 
-      const aiData = aiResponse.ok ? await aiResponse.json() : [];
+      if (filesData.length > 0) {
+        const fileIds = filesData.map((f: any) => f.id);
+
+        const { data: analysisResults } = await supabase
+          .from("ai_analysis_results")
+          .select("*")
+          .in("quote_file_id", fileIds)
+          .eq("processing_status", "complete")
+          .order("created_at", { ascending: false });
+
+        aiData = analysisResults || [];
+      }
 
       const completeReview: ReviewDetail = {
         ...reviewData,
