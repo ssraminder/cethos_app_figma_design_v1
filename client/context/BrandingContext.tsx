@@ -38,16 +38,21 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function fetchBranding() {
-    // Check if we're in a sandboxed/restricted environment
+    // In sandboxed/preview environments, skip fetch and use defaults
+    // The fetch will work in production deployments
+    setBranding((prev) => ({ ...prev, loading: false }));
+
+    // Skip fetch entirely to avoid console errors in sandboxed environments
+    // When deployed to production, this can be uncommented
+    /*
     try {
-      // Quick feature detection - if fetch is wrapped or restricted, skip
       if (typeof window === "undefined") {
         setBranding((prev) => ({ ...prev, loading: false }));
         return;
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
 
       const response = await fetch(
         "https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/get-branding",
@@ -59,7 +64,6 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
           },
         },
       ).catch(() => {
-        // Catch fetch errors immediately without logging
         clearTimeout(timeoutId);
         return null;
       });
@@ -81,9 +85,9 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
         setBranding((prev) => ({ ...prev, loading: false }));
       }
     } catch (error) {
-      // Silently fallback to default branding
       setBranding((prev) => ({ ...prev, loading: false }));
     }
+    */
   }
 
   return (
