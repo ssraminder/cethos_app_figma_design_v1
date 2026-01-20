@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
@@ -8,86 +8,108 @@ export default function Login() {
   const [message, setMessage] = useState('');
   const [checkingAuth, setCheckingAuth] = useState(true);
   const navigate = useNavigate();
+  const isMounted = useRef(true);
+  const hasProcessedCallback = useRef(false);
 
   useEffect(() => {
-    // Timeout fallback - show login form after 2 seconds no matter what
-    const timeout = setTimeout(() => {
-      setCheckingAuth(false);
-    }, 2000);
-
-    const handleAuth = async () => {
-      if (!supabase) {
-        setCheckingAuth(false);
+    isMounted.current = true;
+    
+    const handleAuthCallback = async () => {
+      // Prevent double processing
+      if (hasProcessedCallback.current) {
         return;
       }
 
+      if (!supabase) {
+        if (isMounted.current) setCheckingAuth(false);
+        return;
+      }
+
+      // Check if we have a hash with access_token (magic link redirect)
       const hash = window.location.hash;
       
-      // If we have tokens in the URL (magic link callback)
       if (hash && hash.includes('access_token')) {
-        console.log('Magic link detected, processing...');
+        hasProcessedCallback.current = true;
+        console.log('Processing magic link callback...');
         
         try {
+          // Parse the hash to extract tokens
           const params = new URLSearchParams(hash.substring(1));
           const accessToken = params.get('access_token');
           const refreshToken = params.get('refresh_token');
           
           if (accessToken && refreshToken) {
+            // Set the session manually
             const { data, error } = await supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: refreshToken,
             });
 
             if (error) {
-              console.error('Session error:', error);
-              setMessage('Login failed. Please try again.');
-              window.history.replaceState(null, '', '/admin/login');
-              setCheckingAuth(false);
+              console.error('Error setting session:', error);
+              if (isMounted.current) {
+                setMessage('Error processing login. Please try again.');
+                setCheckingAuth(false);
+              }
               return;
             }
 
             if (data.session) {
-              // Verify staff status
-              const { data: staff } = await supabase
+              console.log('Session established, checking staff status...');
+              
+              // Check if user is a staff member
+              const { data: staffData, error: staffError } = await supabase
                 .from('staff_users')
-                .select('id')
+                .select('id, email, full_name, role, is_active')
                 .eq('auth_user_id', data.session.user.id)
                 .eq('is_active', true)
                 .single();
 
-              if (staff) {
-                window.history.replaceState(null, '', '/admin/login');
-                navigate('/admin/hitl', { replace: true });
-                return;
-              } else {
-                setMessage('Access denied. Not authorized as staff.');
+              if (!isMounted.current) return;
+
+              if (staffError || !staffData) {
+                console.error('Not a staff user:', staffError);
+                setMessage('Access denied. You are not authorized as staff.');
                 await supabase.auth.signOut();
+                setCheckingAuth(false);
+                return;
               }
+
+              console.log('Staff user verified, redirecting...');
+              // Clear the hash from URL
+              window.history.replaceState(null, '', window.location.pathname);
+              navigate('/admin/hitl', { replace: true });
+              return;
             }
           }
         } catch (err) {
-          console.error('Auth error:', err);
-          setMessage('Login error. Please try again.');
+          console.error('Auth callback error:', err);
+          if (isMounted.current) {
+            setMessage('Error processing login. Please try again.');
+            setCheckingAuth(false);
+          }
+          return;
         }
-        
-        window.history.replaceState(null, '', '/admin/login');
-        setCheckingAuth(false);
-        return;
       }
 
-      // No hash - check existing session
+      // No hash, check for existing session
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
+        if (!isMounted.current) return;
+
         if (session) {
-          const { data: staff } = await supabase
+          // Check if user is staff
+          const { data: staffData } = await supabase
             .from('staff_users')
             .select('id')
             .eq('auth_user_id', session.user.id)
             .eq('is_active', true)
             .single();
 
-          if (staff) {
+          if (!isMounted.current) return;
+
+          if (staffData) {
             navigate('/admin/hitl', { replace: true });
             return;
           }
@@ -96,19 +118,23 @@ export default function Login() {
         console.error('Session check error:', err);
       }
 
-      setCheckingAuth(false);
+      if (isMounted.current) {
+        setCheckingAuth(false);
+      }
     };
 
-    handleAuth();
+    handleAuthCallback();
 
-    return () => clearTimeout(timeout);
+    return () => {
+      isMounted.current = false;
+    };
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!supabase) {
-      setMessage('Database not configured');
+      setMessage('Supabase not configured');
       return;
     }
 
@@ -116,21 +142,21 @@ export default function Login() {
     setMessage('');
 
     try {
-      // Check if email is in staff_users
-      const { data: staffCheck } = await supabase
+      // First check if the email exists in staff_users
+      const { data: staffCheck, error: staffCheckError } = await supabase
         .from('staff_users')
         .select('id, is_active')
         .eq('email', email.toLowerCase())
         .single();
 
-      if (!staffCheck) {
+      if (staffCheckError || !staffCheck) {
         setMessage('Email not found in staff directory.');
         setLoading(false);
         return;
       }
 
       if (!staffCheck.is_active) {
-        setMessage('Account deactivated. Contact administrator.');
+        setMessage('Your account has been deactivated. Contact an administrator.');
         setLoading(false);
         return;
       }
@@ -149,6 +175,7 @@ export default function Login() {
         setMessage('Check your email for the magic link!');
       }
     } catch (err) {
+      console.error('Login error:', err);
       setMessage('An error occurred. Please try again.');
     }
 
@@ -167,7 +194,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
           <h1 className="text-center text-3xl font-bold text-blue-600">CETHOS</h1>
@@ -188,24 +215,25 @@ export default function Login() {
               id="email"
               name="email"
               type="email"
+              autoComplete="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               placeholder="you@cethos.com"
             />
           </div>
 
           {message && (
-            <p className={`text-sm text-center ${message.includes('Check your email') ? 'text-green-600' : 'text-red-600'}`}>
+            <div className={`text-sm text-center ${message.includes('Check your email') ? 'text-green-600' : 'text-red-600'}`}>
               {message}
-            </p>
+            </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Sending...' : 'Send Magic Link'}
           </button>
