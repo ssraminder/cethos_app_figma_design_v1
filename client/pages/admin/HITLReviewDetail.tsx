@@ -482,6 +482,35 @@ export default function HITLReviewDetail() {
     setClaimedByMe(review?.assigned_to === session.staffId);
   }, [review]);
 
+  // Fetch page data for each file
+  useEffect(() => {
+    const fetchPageData = async () => {
+      if (!analysisResults.length) return;
+
+      const fileIds = analysisResults.map((a) => a.quote_file_id);
+
+      const { data, error } = await supabase
+        .from("quote_pages")
+        .select("id, quote_file_id, page_number, word_count")
+        .in("quote_file_id", fileIds)
+        .order("page_number");
+
+      if (data) {
+        // Group by file
+        const grouped: Record<string, any[]> = {};
+        data.forEach((page) => {
+          if (!grouped[page.quote_file_id]) {
+            grouped[page.quote_file_id] = [];
+          }
+          grouped[page.quote_file_id].push(page);
+        });
+        setPageData(grouped);
+      }
+    };
+
+    fetchPageData();
+  }, [analysisResults]);
+
   const fetchReviewDetail = async () => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !reviewId) {
       setError("Configuration or review ID missing");
