@@ -190,9 +190,7 @@ export default function HITLReviewDetail() {
     const languageMultiplier = getLanguageMultiplier(languageCode);
     const baseRate = analysis.base_rate || 50;
 
-    return (
-      billablePages * baseRate * complexityMultiplier * languageMultiplier
-    );
+    return billablePages * baseRate * complexityMultiplier * languageMultiplier;
   };
 
   // Check if file is combined with another
