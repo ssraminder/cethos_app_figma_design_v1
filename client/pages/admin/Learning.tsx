@@ -49,9 +49,7 @@ function getTypeBadgeColor(type: string) {
 }
 
 function formatType(type: string): string {
-  return type
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -273,9 +271,7 @@ export default function Learning() {
           </label>
           <select
             value={filters.type}
-            onChange={(e) =>
-              setFilters({ ...filters, type: e.target.value })
-            }
+            onChange={(e) => setFilters({ ...filters, type: e.target.value })}
             style={{
               padding: "6px 12px",
               borderRadius: "6px",
@@ -304,9 +300,7 @@ export default function Learning() {
           </label>
           <select
             value={filters.status}
-            onChange={(e) =>
-              setFilters({ ...filters, status: e.target.value })
-            }
+            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
             style={{
               padding: "6px 12px",
               borderRadius: "6px",
@@ -334,9 +328,7 @@ export default function Learning() {
           </label>
           <select
             value={filters.sortBy}
-            onChange={(e) =>
-              setFilters({ ...filters, sortBy: e.target.value })
-            }
+            onChange={(e) => setFilters({ ...filters, sortBy: e.target.value })}
             style={{
               padding: "6px 12px",
               borderRadius: "6px",
