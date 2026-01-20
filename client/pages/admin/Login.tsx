@@ -138,6 +138,7 @@ export default function Login() {
 
     return () => {
       isMounted.current = false;
+      clearTimeout(timeout);
     };
   }, [navigate]);
 
