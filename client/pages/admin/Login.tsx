@@ -132,6 +132,7 @@ export default function Login() {
       }
 
       if (isMounted.current) {
+        clearTimeout(timeout);
         setCheckingAuth(false);
       }
     };
