@@ -1194,7 +1194,8 @@ export default function HITLReviewDetail() {
                       </div>
 
                       {/* Metrics Grid - Editable when claimed */}
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-3 gap-3">
+                        {/* Words */}
                         <div className="bg-gray-50 p-3 rounded text-center">
                           <label className="text-xs text-gray-500 block mb-1">
                             Words
@@ -1226,6 +1227,7 @@ export default function HITLReviewDetail() {
                           )}
                         </div>
 
+                        {/* Pages */}
                         <div className="bg-gray-50 p-3 rounded text-center">
                           <label className="text-xs text-gray-500 block mb-1">
                             Pages
@@ -1257,6 +1259,7 @@ export default function HITLReviewDetail() {
                           )}
                         </div>
 
+                        {/* Billable Pages */}
                         <div className="bg-gray-50 p-3 rounded text-center">
                           <label className="text-xs text-gray-500 block mb-1">
                             Billable Pages
@@ -1290,38 +1293,37 @@ export default function HITLReviewDetail() {
                             (e.g., front+back = 1)
                           </div>
                         </div>
+                      </div>
 
-                        <div className="bg-gray-50 p-3 rounded text-center">
+                      {/* Multipliers Display Row - Read Only */}
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="bg-gray-100 p-3 rounded text-center">
                           <label className="text-xs text-gray-500 block mb-1">
-                            Multiplier
+                            Complexity Multiplier
                           </label>
-                          {claimedByMe ? (
-                            <input
-                              type="number"
-                              step="0.05"
-                              value={
-                                getValue(
-                                  analysis.quote_file_id,
-                                  "complexity_multiplier",
-                                  analysis.complexity_multiplier,
-                                ) || 1
-                              }
-                              onChange={(e) =>
-                                updateLocalEdit(
-                                  analysis.quote_file_id,
-                                  "complexity_multiplier",
-                                  parseFloat(e.target.value) || 1,
-                                )
-                              }
-                              className="text-xl font-bold w-full text-center bg-white border rounded py-1 focus:ring-2 focus:ring-blue-500"
-                              min="1"
-                              max="3"
-                            />
-                          ) : (
-                            <div className="text-xl font-bold">
-                              {analysis.complexity_multiplier || 1}x
-                            </div>
-                          )}
+                          <div className="text-lg font-bold text-gray-700">
+                            {getValue(
+                              analysis.quote_file_id,
+                              "complexity_multiplier",
+                              analysis.complexity_multiplier,
+                            ) || 1.0}
+                            x
+                          </div>
+                        </div>
+                        <div className="bg-gray-100 p-3 rounded text-center">
+                          <label className="text-xs text-gray-500 block mb-1">
+                            Language Multiplier
+                          </label>
+                          <div className="text-lg font-bold text-gray-700">
+                            {getLanguageMultiplier(
+                              getValue(
+                                analysis.quote_file_id,
+                                "detected_language",
+                                analysis.detected_language,
+                              ),
+                            )}
+                            x
+                          </div>
                         </div>
                       </div>
 
