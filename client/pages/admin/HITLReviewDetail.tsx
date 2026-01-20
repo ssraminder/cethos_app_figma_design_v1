@@ -741,7 +741,7 @@ export default function HITLReviewDetail() {
           <div className="flex gap-2 justify-end">
             {review.status === 'pending' && (
               <button
-                onClick={handleClaimReview}
+                onClick={claimReview}
                 disabled={submitting}
                 className="px-4 py-2 bg-gray-100 text-gray-900 rounded-md hover:bg-gray-200 disabled:opacity-50 font-medium text-sm"
               >
@@ -749,21 +749,21 @@ export default function HITLReviewDetail() {
               </button>
             )}
             <button
-              onClick={handleRejectRequest}
+              onClick={rejectReview}
               disabled={submitting}
               className="px-4 py-2 bg-orange-100 text-orange-700 rounded-md hover:bg-orange-200 disabled:opacity-50 font-medium text-sm"
             >
               Request Better Scan
             </button>
             <button
-              onClick={handleEscalate}
+              onClick={escalateReview}
               disabled={submitting}
               className="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 disabled:opacity-50 font-medium text-sm"
             >
               Escalate
             </button>
             <button
-              onClick={handleApprove}
+              onClick={approveReview}
               disabled={submitting}
               className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 font-medium"
             >
