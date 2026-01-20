@@ -94,8 +94,28 @@ export default function HITLReviewDetail() {
   // Language editing state
   const [editingLanguage, setEditingLanguage] = useState<string | null>(null);
 
+  // Page-level data
+  const [pageData, setPageData] = useState<
+    Record<
+      string,
+      Array<{
+        id: string;
+        page_number: number;
+        word_count: number;
+      }>
+    >
+  >({});
+
+  // Local page edits (pageId -> word_count)
+  const [localPageEdits, setLocalPageEdits] = useState<Record<string, number>>(
+    {},
+  );
+
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // Initialize Supabase client
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   // Complexity to multiplier mapping
   const COMPLEXITY_MULTIPLIERS: Record<string, number> = {
