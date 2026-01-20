@@ -210,7 +210,7 @@ export default function HITLReviewDetail() {
   };
 
   const claimReview = async () => {
-    if (!review) return;
+    if (!review || !session?.staffId) return;
     setSubmitting(true);
     try {
       const response = await fetch(
@@ -223,7 +223,7 @@ export default function HITLReviewDetail() {
           },
           body: JSON.stringify({
             reviewId: review.review_id,
-            staffId: staffEmail,
+            staffId: session.staffId,
           }),
         }
       );
