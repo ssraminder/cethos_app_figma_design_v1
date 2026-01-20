@@ -53,7 +53,7 @@ interface StaffSession {
 export default function HITLReviewDetail() {
   const { reviewId } = useParams<{ reviewId: string }>();
   const navigate = useNavigate();
-  const [staffEmail, setStaffEmail] = useState<string | null>(null);
+  const [session, setSession] = useState<StaffSession | null>(null);
   const [review, setReview] = useState<ReviewDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
