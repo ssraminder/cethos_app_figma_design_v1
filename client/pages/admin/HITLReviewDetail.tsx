@@ -1170,7 +1170,16 @@ export default function HITLReviewDetail() {
                       <div className="bg-blue-50 p-3 rounded mt-3">
                         <div className="flex justify-between items-center">
                           <span className="text-sm">Line Total</span>
-                          <span className="text-lg font-bold">
+                          <span
+                            className={`text-lg font-bold ${
+                              calculateLineTotal(
+                                analysis,
+                                analysis.quote_file_id,
+                              ) === 0
+                                ? "text-gray-400"
+                                : ""
+                            }`}
+                          >
                             $
                             {calculateLineTotal(
                               analysis,
@@ -1178,18 +1187,92 @@ export default function HITLReviewDetail() {
                             ).toFixed(2)}
                           </span>
                         </div>
-                        {claimedByMe &&
-                          getValue(
-                            analysis.quote_file_id,
-                            "billable_pages",
-                            analysis.billable_pages,
-                          ) !== analysis.billable_pages && (
+
+                        {/* Show why it's $0 */}
+                        {calculateLineTotal(analysis, analysis.quote_file_id) ===
+                          0 &&
+                          combinedFiles[analysis.quote_file_id] && (
+                            <p className="text-xs text-purple-600 mt-1">
+                              Combined with another document - not billed
+                              separately
+                            </p>
+                          )}
+
+                        {/* Show recalculation note */}
+                        {calculateLineTotal(analysis, analysis.quote_file_id) !==
+                          (analysis.line_total || 0) &&
+                          !combinedFiles[analysis.quote_file_id] && (
                             <p className="text-xs text-orange-600 mt-1">
                               * Recalculated from original $
                               {(analysis.line_total || 0).toFixed(2)}
                             </p>
                           )}
                       </div>
+
+                      {/* Combine Documents Section - show if there are multiple files */}
+                      {claimedByMe && analysisResults.length > 1 && (
+                        <div className="bg-purple-50 border border-purple-200 rounded p-3 mt-3">
+                          <label className="text-sm font-medium text-purple-800 block mb-2">
+                            Combine with another document?
+                          </label>
+
+                          {isCombinedWith(analysis.quote_file_id) ? (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-purple-700">
+                                ✓ Combined with:{" "}
+                                {analysisResults.find(
+                                  (a) =>
+                                    a.quote_file_id ===
+                                    isCombinedWith(analysis.quote_file_id),
+                                )?.quote_file?.original_filename || "Unknown"}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  combineWith(analysis.quote_file_id, null)
+                                }
+                                className="text-sm text-purple-600 hover:text-purple-800 underline"
+                              >
+                                Undo
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <p className="text-xs text-purple-600">
+                                Use this if this file is part of another document
+                                (e.g., back side of an ID card). This will set
+                                billable pages to 0.
+                              </p>
+                              <select
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    combineWith(
+                                      analysis.quote_file_id,
+                                      e.target.value,
+                                    );
+                                  }
+                                }}
+                                className="border rounded px-3 py-2 text-sm w-full"
+                                defaultValue=""
+                              >
+                                <option value="">
+                                  -- Select document to combine with --
+                                </option>
+                                {getAvailableParentFiles(
+                                  analysis.quote_file_id,
+                                ).map((parentAnalysis) => (
+                                  <option
+                                    key={parentAnalysis.quote_file_id}
+                                    value={parentAnalysis.quote_file_id}
+                                  >
+                                    {parentAnalysis.quote_file?.original_filename ||
+                                      "Unknown file"}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Save/Cancel buttons for this file - show only if there are changes */}
                       {claimedByMe &&
