@@ -1549,140 +1549,52 @@ export default function HITLReviewDetail() {
                         )}
                       </div>
 
-                      {/* PAGE BREAKDOWN */}
+                      {/* PAGE BREAKDOWN - show all pages from all combined files */}
                       <div className="bg-white border rounded p-3 mt-3">
                         <label className="text-sm text-gray-500 block mb-2">
-                          Page Breakdown
+                          Page Breakdown ({allPages.length} page{allPages.length > 1 ? 's' : ''})
                         </label>
 
-                        {/* This file's pages */}
                         <div className="space-y-2">
-                          {(pageData[analysis.quote_file_id] || []).map(
-                            (page) => (
-                              <div
-                                key={page.id}
-                                className="flex items-center justify-between bg-gray-50 p-2 rounded"
-                              >
-                                <span className="text-sm">
-                                  Page {page.page_number}
-                                </span>
-                                <div className="flex items-center gap-2">
-                                  {claimedByMe ? (
-                                    <input
-                                      type="number"
-                                      value={getPageWordCount(page)}
-                                      onChange={(e) =>
-                                        updatePageWordCount(
-                                          page.id,
-                                          parseInt(e.target.value) || 0,
-                                        )
-                                      }
-                                      className="w-20 text-right border rounded px-2 py-1 text-sm"
-                                      min="0"
-                                    />
-                                  ) : (
-                                    <span className="text-sm font-medium">
-                                      {page.word_count}
-                                    </span>
-                                  )}
-                                  <span className="text-xs text-gray-500">
-                                    words
+                          {allPages.map((page, idx) => (
+                            <div
+                              key={page.id}
+                              className={`flex items-center justify-between p-2 rounded ${
+                                page.sourceFile !== analysis.quote_file_id
+                                  ? 'bg-purple-50 border border-purple-200'
+                                  : 'bg-gray-50'
+                              }`}
+                            >
+                              <div>
+                                <span className="text-sm font-medium">Page {idx + 1}</span>
+                                {page.sourceFile !== analysis.quote_file_id && (
+                                  <span className="text-xs text-purple-600 ml-2">
+                                    (from {page.sourceFileName})
                                   </span>
-                                  <span className="text-xs text-gray-400">
-                                    ={" "}
-                                    {calculatePageBillable(
-                                      getPageWordCount(page),
-                                      getValue(
-                                        analysis.quote_file_id,
-                                        "complexity_multiplier",
-                                        analysis.complexity_multiplier,
-                                      ) || 1,
-                                    ).toFixed(3)}{" "}
-                                    bp
-                                  </span>
-                                </div>
+                                )}
                               </div>
-                            ),
-                          )}
-                        </div>
-
-                        {/* Combined files' pages */}
-                        {getCombinedChildren(analysis.quote_file_id).map(
-                          (childFileId) => {
-                            const childAnalysis = analysisResults.find(
-                              (a) => a.quote_file_id === childFileId,
-                            );
-                            const childPages = pageData[childFileId] || [];
-
-                            return (
-                              <div
-                                key={childFileId}
-                                className="mt-3 pt-3 border-t border-dashed"
-                              >
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-sm text-purple-600 font-medium">
-                                    +{" "}
-                                    {childAnalysis?.quote_file
-                                      ?.original_filename || "Combined file"}
-                                  </span>
-                                  <button
-                                    onClick={() =>
-                                      combineFileWith(childFileId, null)
+                              <div className="flex items-center gap-2">
+                                {claimedByMe ? (
+                                  <input
+                                    type="number"
+                                    value={getPageWordCount(page)}
+                                    onChange={(e) =>
+                                      updatePageWordCount(page.id, parseInt(e.target.value) || 0)
                                     }
-                                    className="text-xs text-red-500 hover:text-red-700"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                                {childPages.map((page) => (
-                                  <div
-                                    key={page.id}
-                                    className="flex items-center justify-between bg-purple-50 p-2 rounded mb-1"
-                                  >
-                                    <span className="text-sm">
-                                      Page {page.page_number}
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                      {claimedByMe ? (
-                                        <input
-                                          type="number"
-                                          value={getPageWordCount(page)}
-                                          onChange={(e) =>
-                                            updatePageWordCount(
-                                              page.id,
-                                              parseInt(e.target.value) || 0,
-                                            )
-                                          }
-                                          className="w-20 text-right border rounded px-2 py-1 text-sm"
-                                          min="0"
-                                        />
-                                      ) : (
-                                        <span className="text-sm font-medium">
-                                          {page.word_count}
-                                        </span>
-                                      )}
-                                      <span className="text-xs text-gray-500">
-                                        words
-                                      </span>
-                                      <span className="text-xs text-gray-400">
-                                        ={" "}
-                                        {calculatePageBillable(
-                                          getPageWordCount(page),
-                                          getValue(
-                                            analysis.quote_file_id,
-                                            "complexity_multiplier",
-                                            analysis.complexity_multiplier,
-                                          ) || 1,
-                                        ).toFixed(3)}{" "}
-                                        bp
-                                      </span>
-                                    </div>
-                                  </div>
-                                ))}
+                                    className="w-20 text-right border rounded px-2 py-1 text-sm"
+                                    min="0"
+                                  />
+                                ) : (
+                                  <span className="text-sm font-medium">{page.word_count}</span>
+                                )}
+                                <span className="text-xs text-gray-500">words</span>
+                                <span className="text-xs text-gray-400">
+                                  = {calculatePageBillable(getPageWordCount(page), getValue(analysis.quote_file_id, 'complexity_multiplier', analysis.complexity_multiplier) || 1).toFixed(3)} bp
+                                </span>
                               </div>
-                            );
-                          },
-                        )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
 
                       {/* BILLABLE PAGES CALCULATION */}
