@@ -150,9 +150,6 @@ export default function Login() {
 
     console.log('=== LOGIN DEBUG START ===');
     console.log('Email entered:', email);
-    console.log('Email lowercase:', email.toLowerCase());
-    console.log('Supabase client:', supabase);
-    console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
 
     if (!supabase) {
       console.error('Supabase client is NULL');
@@ -166,24 +163,59 @@ export default function Login() {
     try {
       console.log('Querying staff_users table...');
 
-      const { data: staffCheck, error: staffError } = await supabase
-        .from('staff_users')
-        .select('id, is_active, email')
-        .eq('email', email.toLowerCase())
-        .single();
+      // Try the query with a retry mechanism
+      let staffCheck = null;
+      let staffError = null;
+      let attempts = 0;
+      const maxAttempts = 3;
+
+      while (attempts < maxAttempts) {
+        attempts++;
+        console.log(`Query attempt ${attempts}/${maxAttempts}...`);
+
+        try {
+          const result = await supabase
+            .from('staff_users')
+            .select('id, is_active, email')
+            .eq('email', email.toLowerCase())
+            .single();
+
+          staffCheck = result.data;
+          staffError = result.error;
+
+          // If we got a result (even if null) without AbortError, break
+          if (!result.error || !result.error.message?.includes('Abort')) {
+            console.log('Query completed on attempt', attempts);
+            break;
+          }
+        } catch (err: any) {
+          console.log(`Attempt ${attempts} caught error:`, err?.message);
+          if (!err?.message?.includes('Abort') || attempts >= maxAttempts) {
+            throw err;
+          }
+          // Wait a bit before retry
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
 
       console.log('Query response - data:', staffCheck);
       console.log('Query response - error:', staffError);
 
       if (staffError) {
-        console.error('Staff query error code:', staffError.code);
-        console.error('Staff query error message:', staffError.message);
-        console.error('Staff query error details:', staffError.details);
-        console.error('Staff query error hint:', staffError.hint);
+        console.error('Staff query error:', staffError);
+
+        // Check if it's a "no rows" error (PGRST116) - that's expected for non-existent email
+        if (staffError.code === 'PGRST116') {
+          setMessage('Email not found in staff directory.');
+        } else {
+          setMessage('Database error. Please try again.');
+        }
+        setLoading(false);
+        return;
       }
 
-      if (staffError || !staffCheck) {
-        setMessage('Email not found in staff directory. Check console for details.');
+      if (!staffCheck) {
+        setMessage('Email not found in staff directory.');
         setLoading(false);
         return;
       }
@@ -194,7 +226,7 @@ export default function Login() {
         return;
       }
 
-      console.log('Staff found, sending magic link...');
+      console.log('Staff found! Sending magic link...');
 
       const { error } = await supabase.auth.signInWithOtp({
         email: email.toLowerCase(),
@@ -203,14 +235,14 @@ export default function Login() {
         },
       });
 
-      console.log('Magic link response error:', error);
+      console.log('Magic link response:', error ? error.message : 'SUCCESS');
 
       if (error) {
         setMessage(error.message);
       } else {
         setMessage('Check your email for the magic link!');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Caught exception:', err);
       setMessage('An error occurred. Please try again.');
     } finally {
