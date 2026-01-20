@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useBranding } from '../../context/BrandingContext';
+import { useBranding } from "../../context/BrandingContext";
 
 interface HITLReview {
   review_id: string;
@@ -160,7 +160,10 @@ export default function HITLQueue() {
             {logoUrl ? (
               <img src={logoUrl} alt={companyName} className="h-10" />
             ) : (
-              <h1 className="text-2xl font-bold" style={{ color: primaryColor }}>
+              <h1
+                className="text-2xl font-bold"
+                style={{ color: primaryColor }}
+              >
                 {companyName.toUpperCase()}
               </h1>
             )}
