@@ -23,7 +23,9 @@ if (!hasCredentials) {
 export const supabase: SupabaseClient | null = hasCredentials
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
-        persistSession: false, // We're not using auth in Phase 1
+        persistSession: true, // Enable auth session persistence
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
       },
     })
   : null;
