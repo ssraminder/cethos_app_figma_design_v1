@@ -48,6 +48,7 @@ const App = () => (
                 />
                 <Route path="/admin/settings" element={<AdminSettings />} />
                 <Route path="/admin/analytics" element={<Analytics />} />
+                <Route path="/admin/patterns" element={<Patterns />} />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
