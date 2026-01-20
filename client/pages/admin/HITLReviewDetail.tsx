@@ -1,13 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useBranding } from "../../context/BrandingContext";
-import { createClient } from "@supabase/supabase-js";
-
-// Initialize Supabase client
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-);
 
 interface QuoteFile {
   id: string;
@@ -17,38 +9,39 @@ interface QuoteFile {
   storage_path: string;
 }
 
-interface AIAnalysis {
-  document_type: string;
+interface AIAnalysisResult {
+  id: string;
+  quote_file_id: string;
+  detected_document_type: string;
   document_type_confidence: number;
   detected_language: string;
+  language_name: string;
   language_confidence: number;
-  complexity_assessment: string;
+  assessed_complexity: string;
   complexity_confidence: number;
+  complexity_reasoning: string;
   word_count: number;
+  page_count: number;
   billable_pages: number;
+  complexity_multiplier: number;
+  line_total: number;
+  quote_file?: QuoteFile;
 }
 
 interface ReviewDetail {
-  review_id: string;
+  id: string;
+  quote_id: string;
   quote_number: string;
   customer_name: string;
   customer_email: string;
   status: string;
-  sla_status: string;
-  minutes_to_sla: number;
-  source_language: string;
-  target_language: string;
-  intended_use: string;
-  is_rush: boolean;
-  estimated_delivery: string;
-  subtotal: number;
-  certification_fee: number;
-  rush_fee: number;
-  delivery_fee: number;
-  tax: number;
+  sla_deadline: string | null;
+  assigned_to: string | null;
+  assigned_to_name: string | null;
+  source_language_name: string;
+  target_language_name: string;
+  intended_use_name: string | null;
   total: number;
-  files: QuoteFile[];
-  ai_analysis: AIAnalysis | null;
 }
 
 interface StaffSession {
@@ -59,30 +52,41 @@ interface StaffSession {
 }
 
 export default function HITLReviewDetail() {
-  const { companyName, logoUrl, primaryColor } = useBranding();
   const { reviewId } = useParams<{ reviewId: string }>();
   const navigate = useNavigate();
   const [session, setSession] = useState<StaffSession | null>(null);
   const [review, setReview] = useState<ReviewDetail | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<AIAnalysisResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedFileIndex, setSelectedFileIndex] = useState(0);
-  const [showCorrections, setShowCorrections] = useState(false);
-  const [internalNotes, setInternalNotes] = useState("");
-  const [hasChanges, setHasChanges] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Correction form state
-  const [corrections, setCorrections] = useState({
-    documentType: "",
-    detectedLanguage: "",
-    complexity: "",
-    wordCount: "",
-    reason: "",
-  });
+  // File accordion state
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  
+  // Claim state
+  const [claimedByMe, setClaimedByMe] = useState(false);
+
+  // Corrections tracking per file
+  const [corrections, setCorrections] = useState<Record<string, any>>({});
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // Helper: Calculate time remaining for SLA
+  const calculateTimeRemaining = (deadline: string | null) => {
+    if (!deadline) return 'N/A';
+    const deadlineTime = new Date(deadline).getTime();
+    if (isNaN(deadlineTime)) return 'N/A';
+    const diff = deadlineTime - Date.now();
+    if (diff < 0) return 'Overdue';
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ${minutes % 60}m`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ${hours % 24}h`;
+  };
 
   useEffect(() => {
     const checkSession = async () => {
@@ -133,6 +137,12 @@ export default function HITLReviewDetail() {
     checkSession();
   }, [reviewId, navigate, SUPABASE_URL, SUPABASE_ANON_KEY]);
 
+  // Track claim status
+  useEffect(() => {
+    const session = JSON.parse(sessionStorage.getItem('staffSession') || '{}');
+    setClaimedByMe(review?.assigned_to === session.staffId);
+  }, [review]);
+
   const fetchReviewDetail = async () => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !reviewId) {
       setError("Configuration or review ID missing");
@@ -166,7 +176,6 @@ export default function HITLReviewDetail() {
       }
 
       const data = await response.json();
-      console.log("Review detail data:", data);
 
       if (!data || data.length === 0) {
         setError("Review not found");
@@ -175,6 +184,7 @@ export default function HITLReviewDetail() {
       }
 
       const reviewData = data[0];
+      setReview(reviewData);
 
       // Fetch quote files
       const filesResponse = await fetch(
@@ -190,30 +200,39 @@ export default function HITLReviewDetail() {
 
       const filesData = filesResponse.ok ? await filesResponse.json() : [];
 
-      // Fetch AI analysis if available - link through quote_files
-      // ai_analysis_results doesn't have review_id, it links via quote_file_id
-      let aiData: any[] = [];
-
+      // Fetch AI analysis results for each file with quote_file joined
       if (filesData.length > 0) {
         const fileIds = filesData.map((f: any) => f.id);
 
-        const { data: analysisResults } = await supabase
-          .from("ai_analysis_results")
-          .select("*")
-          .in("quote_file_id", fileIds)
-          .eq("processing_status", "complete")
-          .order("created_at", { ascending: false });
+        const analysisResponse = await fetch(
+          `${SUPABASE_URL}/rest/v1/ai_analysis_results?quote_file_id=in.(${fileIds.join(',')})&processing_status=eq.complete&select=*`,
+          {
+            method: "GET",
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+          },
+        );
 
-        aiData = analysisResults || [];
+        if (analysisResponse.ok) {
+          const analysisData = await analysisResponse.json();
+          
+          // Join quote_file data to each analysis result
+          const enrichedAnalysis = analysisData.map((analysis: any) => ({
+            ...analysis,
+            quote_file: filesData.find((f: any) => f.id === analysis.quote_file_id),
+          }));
+
+          setAnalysisResults(enrichedAnalysis);
+          
+          // Auto-expand first file
+          if (enrichedAnalysis.length > 0) {
+            setExpandedFile(enrichedAnalysis[0].id);
+          }
+        }
       }
 
-      const completeReview: ReviewDetail = {
-        ...reviewData,
-        files: filesData,
-        ai_analysis: aiData.length > 0 ? aiData[0] : null,
-      };
-
-      setReview(completeReview);
       setLoading(false);
     } catch (err) {
       console.error("Fetch exception:", err);
@@ -223,7 +242,6 @@ export default function HITLReviewDetail() {
   };
 
   const claimReview = async () => {
-    // Read fresh session from storage
     const stored = sessionStorage.getItem("staffSession");
     if (!stored) {
       alert("Session expired. Please login again.");
@@ -278,9 +296,49 @@ export default function HITLReviewDetail() {
     }
   };
 
-  const approveReview = async () => {
+  // Save correction to database
+  const saveCorrection = async (
+    fileId: string,
+    field: string,
+    originalValue: string,
+    correctedValue: string
+  ) => {
+    if (originalValue === correctedValue) return; // No change
+
+    const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
+
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          reviewId: reviewId,
+          staffId: session.staffId,
+          field: field,
+          originalValue: originalValue,
+          correctedValue: correctedValue,
+          fileId: fileId,
+        }),
+      }
+    );
+
+    const result = await response.json();
+    if (!result.success) {
+      alert("Failed to save correction: " + result.error);
+    } else {
+      // Optionally refresh to show updated data
+      fetchReviewDetail();
+    }
+  };
+
+  const handleApprove = async () => {
     if (!review || !session?.staffId) return;
     if (!confirm("Are you sure you want to approve this quote?")) return;
+    
     setSubmitting(true);
     try {
       const response = await fetch(
@@ -292,13 +350,15 @@ export default function HITLReviewDetail() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            reviewId: review.review_id,
+            reviewId: review.id,
             staffId: session.staffId,
-            notes: internalNotes,
+            notes: "",
           }),
         },
       );
+      
       if (!response.ok) throw new Error("Failed to approve review");
+      
       alert("Quote approved successfully!");
       navigate("/admin/hitl");
     } catch (err) {
@@ -308,14 +368,16 @@ export default function HITLReviewDetail() {
     }
   };
 
-  const rejectReview = async () => {
+  const handleReject = async () => {
     if (!review || !session?.staffId) return;
-    const reason = prompt(
-      "Please provide a reason for requesting a better scan:",
-    );
+    
+    const reason = prompt("Please provide a reason for requesting a better scan:");
     if (!reason) return;
+    
     setSubmitting(true);
     try {
+      const fileIds = analysisResults.map(a => a.quote_file_id);
+      
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/reject-hitl-review`,
         {
@@ -325,14 +387,16 @@ export default function HITLReviewDetail() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            reviewId: review.review_id,
+            reviewId: review.id,
             staffId: session.staffId,
             reason: reason,
-            fileIds: review.files.map((f) => f.id),
+            fileIds: fileIds,
           }),
         },
       );
+      
       if (!response.ok) throw new Error("Failed to reject review");
+      
       alert("Better scan requested. Customer will be notified.");
       navigate("/admin/hitl");
     } catch (err) {
@@ -342,13 +406,14 @@ export default function HITLReviewDetail() {
     }
   };
 
-  const escalateReview = async () => {
+  const handleEscalate = async () => {
     if (!review || !session?.staffId) return;
     if (!confirm("Are you sure you want to escalate this to an admin?")) return;
+    
     setSubmitting(true);
     try {
       const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${review.review_id}`,
+        `${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${review.id}`,
         {
           method: "PATCH",
           headers: {
@@ -359,224 +424,19 @@ export default function HITLReviewDetail() {
           },
           body: JSON.stringify({
             status: "escalated",
-            resolution_notes: internalNotes || "Escalated by reviewer",
+            resolution_notes: "Escalated by reviewer",
           }),
         },
       );
+      
       if (!response.ok) throw new Error("Failed to escalate review");
+      
       alert("Review escalated to admin.");
       navigate("/admin/hitl");
     } catch (err) {
       alert("Error escalating review: " + (err as Error).message);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const saveCorrections = async () => {
-    // Read fresh session from storage
-    const stored = sessionStorage.getItem("staffSession");
-    if (!stored) {
-      alert("Session expired. Please login again.");
-      navigate("/admin/login");
-      return;
-    }
-
-    const sessionData = JSON.parse(stored);
-    if (!sessionData.staffId) {
-      alert("Session expired. Please login again.");
-      navigate("/admin/login");
-      return;
-    }
-
-    if (!review || !corrections.reason.trim()) {
-      alert("Please provide a reason for the corrections.");
-      return;
-    }
-
-    if (!reviewId) {
-      alert("Review ID missing");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const correctionsToSave = [];
-
-      if (
-        corrections.documentType &&
-        review.ai_analysis?.document_type !== corrections.documentType
-      ) {
-        correctionsToSave.push({
-          field: "document_type",
-          learningType: "document_type",
-          originalValue: review.ai_analysis?.document_type,
-          correctedValue: corrections.documentType,
-          confidence: review.ai_analysis?.document_type_confidence,
-        });
-      }
-      if (
-        corrections.detectedLanguage &&
-        review.ai_analysis?.detected_language !== corrections.detectedLanguage
-      ) {
-        correctionsToSave.push({
-          field: "detected_language",
-          learningType: "language",
-          originalValue: review.ai_analysis?.detected_language,
-          correctedValue: corrections.detectedLanguage,
-          confidence: review.ai_analysis?.language_confidence,
-        });
-      }
-      if (
-        corrections.complexity &&
-        review.ai_analysis?.complexity_assessment !== corrections.complexity
-      ) {
-        correctionsToSave.push({
-          field: "complexity",
-          learningType: "complexity",
-          originalValue: review.ai_analysis?.complexity_assessment,
-          correctedValue: corrections.complexity,
-          confidence: review.ai_analysis?.complexity_confidence,
-        });
-      }
-      if (
-        corrections.wordCount &&
-        review.ai_analysis?.word_count !== parseInt(corrections.wordCount)
-      ) {
-        correctionsToSave.push({
-          field: "word_count",
-          learningType: "word_count",
-          originalValue: review.ai_analysis?.word_count?.toString(),
-          correctedValue: corrections.wordCount,
-          confidence: null,
-        });
-      }
-
-      // Save corrections to hitl_corrections table via Edge Function
-      for (const correction of correctionsToSave) {
-        const response = await fetch(
-          `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({
-              reviewId: reviewId,
-              staffId: sessionData.staffId,
-              field: correction.field,
-              originalValue: correction.originalValue,
-              correctedValue: correction.correctedValue,
-              fileId: null, // Optional - can be added if needed per file
-            }),
-          },
-        );
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          console.error(
-            `Save correction failed for ${correction.field}:`,
-            result.error,
-          );
-          alert(
-            result.error || `Failed to save ${correction.field} correction`,
-          );
-          return;
-        }
-      }
-
-      // Log patterns to ai_learning_log for pattern tracking
-      for (const correction of correctionsToSave) {
-        // Check if this pattern already exists
-        const { data: existingPattern } = await supabase
-          .from("ai_learning_log")
-          .select("*")
-          .eq("learning_type", correction.learningType)
-          .eq("ai_prediction", correction.originalValue)
-          .eq("correct_value", correction.correctedValue)
-          .maybeSingle();
-
-        const now = new Date().toISOString();
-
-        if (existingPattern) {
-          // Update existing pattern: increment count and update last_seen
-          await supabase
-            .from("ai_learning_log")
-            .update({
-              occurrence_count: existingPattern.occurrence_count + 1,
-              last_seen_at: now,
-              confidence_score:
-                correction.confidence || existingPattern.confidence_score,
-              updated_at: now,
-            })
-            .eq("id", existingPattern.id);
-        } else {
-          // Insert new pattern
-          const documentCharacteristics: any = {
-            source_language: review.source_language,
-            target_language: review.target_language,
-            is_rush: review.is_rush,
-          };
-
-          if (review.ai_analysis) {
-            documentCharacteristics.word_count = review.ai_analysis.word_count;
-            documentCharacteristics.billable_pages =
-              review.ai_analysis.billable_pages;
-          }
-
-          await supabase.from("ai_learning_log").insert({
-            learning_type: correction.learningType,
-            ai_prediction: correction.originalValue,
-            correct_value: correction.correctedValue,
-            occurrence_count: 1,
-            confidence_score: correction.confidence,
-            first_seen_at: now,
-            last_seen_at: now,
-            document_characteristics: documentCharacteristics,
-            created_at: now,
-            updated_at: now,
-          });
-        }
-      }
-
-      alert("Corrections saved and logged to learning system!");
-      setShowCorrections(false);
-      setCorrections({
-        documentType: "",
-        detectedLanguage: "",
-        complexity: "",
-        wordCount: "",
-        reason: "",
-      });
-      setHasChanges(false);
-      fetchReviewDetail();
-    } catch (err) {
-      alert("Error saving corrections: " + (err as Error).message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const formatSLA = (minutes: number) => {
-    if (minutes < 0) return "OVERDUE";
-    const hours = Math.floor(minutes / 60);
-    const mins = Math.round(minutes % 60);
-    if (hours > 0) return `${hours}h ${mins}m`;
-    return `${mins}m`;
-  };
-
-  const getSLAColor = (status: string) => {
-    switch (status) {
-      case "breached":
-        return "bg-red-100 text-red-800";
-      case "critical":
-        return "bg-orange-100 text-orange-800";
-      case "warning":
-        return "bg-yellow-100 text-yellow-800";
-      default:
-        return "bg-green-100 text-green-800";
     }
   };
 
@@ -591,13 +451,13 @@ export default function HITLReviewDetail() {
   if (error || !review) {
     return (
       <div className="min-h-screen bg-gray-50 p-4">
-        <div className="max-w-7xl mx-auto">
-          <button
-            onClick={() => navigate("/admin/hitl")}
-            className="mb-4 text-blue-600 hover:text-blue-800 font-medium"
+        <div className="max-w-6xl mx-auto">
+          <a
+            href="/admin/hitl"
+            className="mb-4 text-blue-600 hover:underline inline-block"
           >
             ← Back to Queue
-          </button>
+          </a>
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
             <p className="text-red-800">{error || "Review not found"}</p>
           </div>
@@ -606,495 +466,412 @@ export default function HITLReviewDetail() {
     );
   }
 
-  const currentFile = review.files[selectedFileIndex];
-  const isPDF = currentFile?.mime_type === "application/pdf";
-  const isImage = currentFile?.mime_type.startsWith("image/");
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="max-w-6xl mx-auto p-6">
       {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-3 mb-4">
-            {logoUrl ? (
-              <img src={logoUrl} alt={companyName} className="h-10" />
-            ) : (
-              <h1
-                className="text-2xl font-bold"
-                style={{ color: primaryColor }}
-              >
-                {companyName.toUpperCase()}
-              </h1>
-            )}
-            <span className="text-gray-500">Staff Portal - Review Detail</span>
-          </div>
-          <button
-            onClick={() => navigate("/admin/hitl")}
-            className="mb-2 text-blue-600 hover:text-blue-800 font-medium"
-          >
+      <div className="flex justify-between items-start mb-6">
+        <div>
+          <a href="/admin/hitl" className="text-blue-600 hover:underline">
             ← Back to Queue
-          </button>
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">
-                {review.quote_number}
-              </h2>
-              <p className="text-gray-600">{review.customer_name}</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div
-                className={`px-3 py-1 rounded-full text-sm font-medium ${getSLAColor(review.sla_status)}`}
-              >
-                {formatSLA(review.minutes_to_sla)}
-              </div>
-              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                {review.status.replace(/_/g, " ").toUpperCase()}
-              </span>
-            </div>
-          </div>
+          </a>
+          <h1 className="text-2xl font-bold mt-2">{review?.quote_number}</h1>
+          <p className="text-gray-600">{review?.customer_name}</p>
         </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Panel - Document Preview */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Document Preview
-              </h2>
-
-              {/* File Tabs */}
-              {review.files.length > 0 && (
-                <div className="mb-4 border-b border-gray-200">
-                  <div className="flex gap-2 overflow-x-auto">
-                    {review.files.map((file, index) => (
-                      <button
-                        key={file.id}
-                        onClick={() => setSelectedFileIndex(index)}
-                        className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${
-                          selectedFileIndex === index
-                            ? "border-b-2 border-blue-600 text-blue-600"
-                            : "text-gray-600 hover:text-gray-900"
-                        }`}
-                      >
-                        {file.original_filename}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Document Viewer */}
-              <div className="bg-gray-100 rounded-lg p-12 text-center min-h-96 flex items-center justify-center">
-                {!currentFile ? (
-                  <p className="text-gray-500">No files attached</p>
-                ) : isPDF ? (
-                  <div className="text-gray-500">
-                    <p className="mb-2">📄 PDF Preview</p>
-                    <p className="text-sm">{currentFile.original_filename}</p>
-                    <p className="text-xs text-gray-400 mt-2">
-                      {((currentFile.file_size ?? 0) / 1024 / 1024).toFixed(2)}{" "}
-                      MB
-                    </p>
-                  </div>
-                ) : isImage ? (
-                  <div className="text-gray-500">
-                    <p className="mb-2">🖼️ Image Preview</p>
-                    <p className="text-sm">{currentFile.original_filename}</p>
-                  </div>
-                ) : (
-                  <div className="text-gray-500">
-                    <p className="mb-2">📁 File</p>
-                    <p className="text-sm">{currentFile.original_filename}</p>
-                  </div>
-                )}
-              </div>
-
-              {currentFile && (
-                <div className="mt-4 flex justify-between items-center">
-                  <div className="text-sm text-gray-600">
-                    {currentFile.original_filename}
-                    <span className="ml-2 text-gray-400">
-                      ({((currentFile.file_size ?? 0) / 1024 / 1024).toFixed(2)}{" "}
-                      MB)
-                    </span>
-                  </div>
-                  <a
-                    href="#"
-                    className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                  >
-                    ↓ Download
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right Panel - Review Details */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* Quote Summary */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">
-                Quote Summary
-              </h3>
-              <div className="space-y-3 text-sm">
-                <div>
-                  <p className="text-gray-600">Customer</p>
-                  <p className="font-medium text-gray-900">
-                    {review.customer_name}
-                  </p>
-                  <p className="text-gray-600">{review.customer_email}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Language Pair</p>
-                  <p className="font-medium text-gray-900">
-                    {review.source_language} → {review.target_language}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Intended Use</p>
-                  <p className="font-medium text-gray-900">
-                    {review.intended_use || "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Rush Status</p>
-                  <p>
-                    <span
-                      className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                        review.is_rush
-                          ? "bg-orange-100 text-orange-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}
-                    >
-                      {review.is_rush ? "RUSH" : "STANDARD"}
-                    </span>
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Est. Delivery</p>
-                  <p className="font-medium text-gray-900">
-                    {review.estimated_delivery || "N/A"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* AI Analysis */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">AI Analysis</h3>
-              {!review.ai_analysis ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500 text-sm">
-                    No analysis data available for this review
-                  </p>
-                  <p className="text-gray-400 text-xs mt-2">
-                    Analysis may still be processing or unavailable
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3 text-sm">
-                  <div>
-                    <div className="flex justify-between">
-                      <p className="text-gray-600">Document Type</p>
-                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                        {(
-                          (review.ai_analysis.document_type_confidence ?? 0) *
-                          100
-                        ).toFixed(0)}
-                        %
-                      </span>
-                    </div>
-                    <p className="font-medium text-gray-900">
-                      {review.ai_analysis.document_type}
-                    </p>
-                  </div>
-                  <div>
-                    <div className="flex justify-between">
-                      <p className="text-gray-600">Detected Language</p>
-                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                        {(
-                          (review.ai_analysis.language_confidence ?? 0) * 100
-                        ).toFixed(0)}
-                        %
-                      </span>
-                    </div>
-                    <p className="font-medium text-gray-900">
-                      {review.ai_analysis.detected_language}
-                    </p>
-                  </div>
-                  <div>
-                    <div className="flex justify-between">
-                      <p className="text-gray-600">Complexity</p>
-                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                        {(
-                          (review.ai_analysis.complexity_confidence ?? 0) * 100
-                        ).toFixed(0)}
-                        %
-                      </span>
-                    </div>
-                    <p className="font-medium text-gray-900">
-                      {review.ai_analysis.complexity_assessment}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 pt-2">
-                    <div>
-                      <p className="text-gray-600 text-xs">Word Count</p>
-                      <p className="font-bold text-lg text-gray-900">
-                        {review.ai_analysis.word_count ?? "N/A"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 text-xs">Billable Pages</p>
-                      <p className="font-bold text-lg text-gray-900">
-                        {review.ai_analysis.billable_pages ?? "N/A"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Pricing Summary */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Pricing</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotal</span>
-                  <span className="font-medium">
-                    ${(review.subtotal ?? 0).toFixed(2)}
-                  </span>
-                </div>
-                {review.certification_fee > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Certification</span>
-                    <span className="font-medium">
-                      ${(review.certification_fee ?? 0).toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                {review.rush_fee > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Rush Fee</span>
-                    <span className="font-medium">
-                      ${(review.rush_fee ?? 0).toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                {review.delivery_fee > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Delivery</span>
-                    <span className="font-medium">
-                      ${(review.delivery_fee ?? 0).toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between pt-2 border-t border-gray-200">
-                  <span className="text-gray-600">Tax</span>
-                  <span className="font-medium">
-                    ${(review.tax ?? 0).toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between pt-2 border-t-2 border-gray-900">
-                  <span className="font-bold text-gray-900">Total</span>
-                  <span className="font-bold text-lg text-gray-900">
-                    ${(review.total ?? 0).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Correction Form */}
-        <div className="mt-6 bg-white rounded-lg shadow">
-          <button
-            onClick={() => setShowCorrections(!showCorrections)}
-            className="w-full px-6 py-4 text-left font-semibold text-gray-900 hover:bg-gray-50 flex justify-between items-center"
+        <div className="flex items-center gap-3">
+          <span className="px-3 py-1 bg-gray-100 rounded">
+            {calculateTimeRemaining(review?.sla_deadline)}
+          </span>
+          <span
+            className={`px-3 py-1 rounded ${
+              review?.status === "pending"
+                ? "bg-yellow-100 text-yellow-800"
+                : review?.status === "in_review"
+                ? "bg-blue-100 text-blue-800"
+                : "bg-gray-100"
+            }`}
           >
-            <span>Make Corrections</span>
-            <span>{showCorrections ? "▼" : "▶"}</span>
+            {review?.status?.toUpperCase().replace("_", " ")}
+          </span>
+        </div>
+      </div>
+
+      {/* Claim Banner - Show if not claimed */}
+      {!review?.assigned_to && (
+        <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg mb-6 flex justify-between items-center">
+          <span>This review is not claimed. Claim it to make corrections.</span>
+          <button
+            onClick={claimReview}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          >
+            Claim Review
           </button>
-
-          {showCorrections && (
-            <div className="border-t border-gray-200 p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Document Type
-                  </label>
-                  <select
-                    value={corrections.documentType}
-                    onChange={(e) => {
-                      setCorrections({
-                        ...corrections,
-                        documentType: e.target.value,
-                      });
-                      setHasChanges(true);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
-                  >
-                    <option value="">Select type</option>
-                    <option value="certificate">Certificate</option>
-                    <option value="contract">Contract</option>
-                    <option value="technical">Technical Document</option>
-                    <option value="medical">Medical Document</option>
-                    <option value="legal">Legal Document</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Detected Language
-                  </label>
-                  <select
-                    value={corrections.detectedLanguage}
-                    onChange={(e) => {
-                      setCorrections({
-                        ...corrections,
-                        detectedLanguage: e.target.value,
-                      });
-                      setHasChanges(true);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
-                  >
-                    <option value="">Select language</option>
-                    <option value="English">English</option>
-                    <option value="Spanish">Spanish</option>
-                    <option value="Portuguese">Portuguese</option>
-                    <option value="French">French</option>
-                    <option value="German">German</option>
-                    <option value="Italian">Italian</option>
-                    <option value="Chinese">Chinese</option>
-                    <option value="Japanese">Japanese</option>
-                    <option value="Korean">Korean</option>
-                    <option value="Arabic">Arabic</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Complexity
-                  </label>
-                  <select
-                    value={corrections.complexity}
-                    onChange={(e) => {
-                      setCorrections({
-                        ...corrections,
-                        complexity: e.target.value,
-                      });
-                      setHasChanges(true);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
-                  >
-                    <option value="">Select complexity</option>
-                    <option value="easy">Easy</option>
-                    <option value="medium">Medium</option>
-                    <option value="hard">Hard</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Word Count (Override)
-                  </label>
-                  <input
-                    type="number"
-                    value={corrections.wordCount}
-                    onChange={(e) => {
-                      setCorrections({
-                        ...corrections,
-                        wordCount: e.target.value,
-                      });
-                      setHasChanges(true);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
-                    placeholder="Leave blank to keep AI value"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Correction Reason *
-                </label>
-                <textarea
-                  value={corrections.reason}
-                  onChange={(e) => {
-                    setCorrections({ ...corrections, reason: e.target.value });
-                    setHasChanges(true);
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
-                  rows={2}
-                  placeholder="Why are you making these changes?"
-                />
-              </div>
-              <button
-                onClick={saveCorrections}
-                disabled={submitting || !corrections.reason.trim()}
-                className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium"
-              >
-                Save Corrections
-              </button>
-            </div>
-          )}
         </div>
+      )}
 
-        {/* Internal Notes */}
-        <div className="mt-6 bg-white rounded-lg shadow p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Internal Notes</h3>
-          <textarea
-            value={internalNotes}
-            onChange={(e) => setInternalNotes(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
-            rows={3}
-            placeholder="Add internal notes for other reviewers..."
-          />
+      {/* Claimed by someone else */}
+      {review?.assigned_to && !claimedByMe && (
+        <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg mb-6">
+          <span>
+            This review is claimed by <strong>{review.assigned_to_name}</strong>
+          </span>
         </div>
-      </main>
+      )}
 
-      {/* Sticky Action Buttons */}
-      <footer className="sticky bottom-0 bg-white border-t border-gray-200 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex gap-2 justify-end">
-            {review.status === "pending" && (
-              <button
-                onClick={claimReview}
-                disabled={submitting}
-                className="px-4 py-2 bg-gray-100 text-gray-900 rounded-md hover:bg-gray-200 disabled:opacity-50 font-medium text-sm"
-              >
-                Claim Review
-              </button>
-            )}
-            <button
-              onClick={rejectReview}
-              disabled={submitting}
-              className="px-4 py-2 bg-orange-100 text-orange-700 rounded-md hover:bg-orange-200 disabled:opacity-50 font-medium text-sm"
-            >
-              Request Better Scan
-            </button>
-            <button
-              onClick={escalateReview}
-              disabled={submitting}
-              className="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 disabled:opacity-50 font-medium text-sm"
-            >
-              Escalate
-            </button>
-            <button
-              onClick={approveReview}
-              disabled={submitting}
-              className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 font-medium"
-            >
-              {submitting ? "Processing..." : "Approve"}
-            </button>
+      {/* Quote Summary Card */}
+      <div className="bg-white border rounded-lg p-4 mb-6">
+        <h3 className="font-semibold mb-3">Quote Summary</h3>
+        <div className="grid grid-cols-4 gap-4 text-sm">
+          <div>
+            <span className="text-gray-500">Customer</span>
+            <p>{review?.customer_name}</p>
+            <p className="text-gray-500">{review?.customer_email}</p>
           </div>
-          {hasChanges && (
-            <p className="text-sm text-orange-600 mt-2">
-              ⚠️ You have unsaved changes
+          <div>
+            <span className="text-gray-500">Language Pair</span>
+            <p>
+              {review?.source_language_name} → {review?.target_language_name}
             </p>
-          )}
+          </div>
+          <div>
+            <span className="text-gray-500">Intended Use</span>
+            <p>{review?.intended_use_name || "N/A"}</p>
+          </div>
+          <div>
+            <span className="text-gray-500">Total</span>
+            <p className="text-lg font-semibold">
+              ${review?.total?.toFixed(2) || "0.00"}
+            </p>
+          </div>
         </div>
-      </footer>
+      </div>
+
+      {/* Files Accordion */}
+      <div className="mb-6">
+        <h3 className="font-semibold mb-3">
+          Documents ({analysisResults.length} files)
+        </h3>
+
+        {analysisResults.map((analysis, index) => (
+          <div key={analysis.id} className="border rounded-lg mb-3 overflow-hidden">
+            {/* File Header - Always Visible */}
+            <button
+              onClick={() =>
+                setExpandedFile(expandedFile === analysis.id ? null : analysis.id)
+              }
+              className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
+            >
+              <div className="flex items-center gap-4">
+                <span className="text-lg font-medium">
+                  {index + 1}.{" "}
+                  {analysis.quote_file?.original_filename || `File ${index + 1}`}
+                </span>
+                <span className="text-sm text-gray-500">
+                  {analysis.word_count} words • {analysis.page_count} page(s)
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                {/* Confidence Badges */}
+                <div className="flex gap-2">
+                  <span
+                    className={`px-2 py-1 rounded text-xs ${
+                      (analysis.document_type_confidence || 0) >= 0.9
+                        ? "bg-green-100 text-green-800"
+                        : (analysis.document_type_confidence || 0) >= 0.7
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    Type: {((analysis.document_type_confidence || 0) * 100).toFixed(0)}%
+                  </span>
+                  <span
+                    className={`px-2 py-1 rounded text-xs ${
+                      (analysis.language_confidence || 0) >= 0.9
+                        ? "bg-green-100 text-green-800"
+                        : (analysis.language_confidence || 0) >= 0.7
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    Lang: {((analysis.language_confidence || 0) * 100).toFixed(0)}%
+                  </span>
+                </div>
+                {/* Expand Icon */}
+                <svg
+                  className={`w-5 h-5 transition-transform ${
+                    expandedFile === analysis.id ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </button>
+
+            {/* File Content - Expanded */}
+            {expandedFile === analysis.id && (
+              <div className="p-4 border-t">
+                <div className="grid grid-cols-2 gap-6">
+                  {/* Left: Document Preview */}
+                  <div>
+                    <h4 className="font-semibold mb-3">Document Preview</h4>
+                    <div className="border rounded-lg p-4 bg-gray-50 min-h-[300px] flex items-center justify-center">
+                      {analysis.quote_file?.storage_path ? (
+                        <img
+                          src={`${SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file.storage_path}`}
+                          alt={analysis.quote_file?.original_filename}
+                          className="max-w-full max-h-[400px] object-contain"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                            const sibling = e.currentTarget.nextElementSibling as HTMLElement;
+                            if (sibling) sibling.classList.remove("hidden");
+                          }}
+                        />
+                      ) : null}
+                      <div className="text-center text-gray-500 hidden">
+                        <p>Preview not available</p>
+                        <p className="text-sm">
+                          {analysis.quote_file?.original_filename}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex justify-between items-center text-sm">
+                      <span className="text-gray-500">
+                        {((analysis.quote_file?.file_size || 0) / 1024 / 1024).toFixed(2)} MB
+                      </span>
+                      <a
+                        href={`${SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
+                        target="_blank"
+                        className="text-blue-600 hover:underline"
+                      >
+                        ↓ Download
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Right: AI Analysis + Corrections */}
+                  <div>
+                    <h4 className="font-semibold mb-3">
+                      AI Analysis
+                      {!claimedByMe && (
+                        <span className="text-sm font-normal text-gray-500 ml-2">
+                          (Claim to edit)
+                        </span>
+                      )}
+                    </h4>
+
+                    <div className="space-y-4">
+                      {/* Document Type */}
+                      <div className="bg-white border rounded p-3">
+                        <label className="text-sm text-gray-500 block mb-1">
+                          Document Type
+                        </label>
+                        <div className="flex items-center justify-between">
+                          {claimedByMe ? (
+                            <select
+                              defaultValue={analysis.detected_document_type || ""}
+                              onChange={(e) =>
+                                saveCorrection(
+                                  analysis.quote_file_id,
+                                  "document_type",
+                                  analysis.detected_document_type,
+                                  e.target.value
+                                )
+                              }
+                              className="border rounded px-3 py-2 flex-1 mr-2"
+                            >
+                              <option value="">Select...</option>
+                              <option value="birth_certificate">Birth Certificate</option>
+                              <option value="marriage_certificate">
+                                Marriage Certificate
+                              </option>
+                              <option value="death_certificate">Death Certificate</option>
+                              <option value="divorce_decree">Divorce Decree</option>
+                              <option value="passport">Passport</option>
+                              <option value="drivers_license">Driver's License</option>
+                              <option value="national_id">National ID</option>
+                              <option value="academic_transcript">
+                                Academic Transcript
+                              </option>
+                              <option value="diploma">Diploma / Degree</option>
+                              <option value="legal_document">Legal Document</option>
+                              <option value="medical_document">Medical Document</option>
+                              <option value="financial_document">
+                                Financial Document
+                              </option>
+                              <option value="immigration_document">
+                                Immigration Document
+                              </option>
+                              <option value="court_document">Court Document</option>
+                              <option value="business_document">Business Document</option>
+                              <option value="other">Other</option>
+                            </select>
+                          ) : (
+                            <span className="capitalize">
+                              {analysis.detected_document_type?.replace(/_/g, " ") ||
+                                "Unknown"}
+                            </span>
+                          )}
+                          <span
+                            className={`px-2 py-1 rounded text-sm ${
+                              (analysis.document_type_confidence || 0) >= 0.9
+                                ? "bg-green-100 text-green-800"
+                                : (analysis.document_type_confidence || 0) >= 0.7
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {((analysis.document_type_confidence || 0) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Language */}
+                      <div className="bg-white border rounded p-3">
+                        <label className="text-sm text-gray-500 block mb-1">
+                          Detected Language
+                        </label>
+                        <div className="flex items-center justify-between">
+                          <span>
+                            {analysis.language_name ||
+                              analysis.detected_language ||
+                              "Unknown"}
+                          </span>
+                          <span
+                            className={`px-2 py-1 rounded text-sm ${
+                              (analysis.language_confidence || 0) >= 0.9
+                                ? "bg-green-100 text-green-800"
+                                : (analysis.language_confidence || 0) >= 0.7
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {((analysis.language_confidence || 0) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Complexity */}
+                      <div className="bg-white border rounded p-3">
+                        <label className="text-sm text-gray-500 block mb-1">
+                          Complexity
+                        </label>
+                        <div className="flex items-center justify-between">
+                          {claimedByMe ? (
+                            <select
+                              defaultValue={analysis.assessed_complexity || "standard"}
+                              onChange={(e) =>
+                                saveCorrection(
+                                  analysis.quote_file_id,
+                                  "complexity",
+                                  analysis.assessed_complexity,
+                                  e.target.value
+                                )
+                              }
+                              className="border rounded px-3 py-2 flex-1 mr-2"
+                            >
+                              <option value="standard">Standard</option>
+                              <option value="complex">Complex</option>
+                              <option value="highly_complex">Highly Complex</option>
+                            </select>
+                          ) : (
+                            <span className="capitalize">
+                              {analysis.assessed_complexity?.replace(/_/g, " ") ||
+                                "Standard"}
+                            </span>
+                          )}
+                          <span
+                            className={`px-2 py-1 rounded text-sm ${
+                              (analysis.complexity_confidence || 0) >= 0.9
+                                ? "bg-green-100 text-green-800"
+                                : (analysis.complexity_confidence || 0) >= 0.7
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {((analysis.complexity_confidence || 0) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        {analysis.complexity_reasoning && (
+                          <p className="text-sm text-gray-500 mt-2">
+                            {analysis.complexity_reasoning}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Metrics Grid */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-gray-50 p-3 rounded text-center">
+                          <div className="text-xl font-bold">
+                            {analysis.word_count || 0}
+                          </div>
+                          <div className="text-xs text-gray-500">Words</div>
+                        </div>
+                        <div className="bg-gray-50 p-3 rounded text-center">
+                          <div className="text-xl font-bold">
+                            {analysis.page_count || 0}
+                          </div>
+                          <div className="text-xs text-gray-500">Pages</div>
+                        </div>
+                        <div className="bg-gray-50 p-3 rounded text-center">
+                          <div className="text-xl font-bold">
+                            {analysis.billable_pages || 0}
+                          </div>
+                          <div className="text-xs text-gray-500">Billable Pages</div>
+                        </div>
+                        <div className="bg-gray-50 p-3 rounded text-center">
+                          <div className="text-xl font-bold">
+                            {analysis.complexity_multiplier || 1}x
+                          </div>
+                          <div className="text-xs text-gray-500">Multiplier</div>
+                        </div>
+                      </div>
+
+                      {/* Line Total */}
+                      <div className="bg-blue-50 p-3 rounded flex justify-between items-center">
+                        <span className="text-sm">Line Total</span>
+                        <span className="text-lg font-bold">
+                          ${(analysis.line_total || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Action Buttons - Only show if claimed by me */}
+      {claimedByMe && (
+        <div className="flex justify-end gap-3 pt-4 border-t">
+          <button
+            onClick={() => handleReject()}
+            className="px-6 py-2 border border-red-300 text-red-600 rounded hover:bg-red-50"
+          >
+            Reject
+          </button>
+          <button
+            onClick={() => handleEscalate()}
+            className="px-6 py-2 border border-orange-300 text-orange-600 rounded hover:bg-orange-50"
+          >
+            Escalate
+          </button>
+          <button
+            onClick={() => handleApprove()}
+            className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            Approve
+          </button>
+        </div>
+      )}
     </div>
   );
 }
