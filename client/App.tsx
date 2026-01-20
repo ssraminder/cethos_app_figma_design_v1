@@ -21,6 +21,7 @@ import HITLQueue from "./pages/admin/HITLQueue";
 import HITLReviewDetail from "./pages/admin/HITLReviewDetail";
 import AdminSettings from "./pages/admin/AdminSettings";
 import Analytics from "./pages/admin/Analytics";
+import Patterns from "./pages/admin/Patterns";
 
 const queryClient = new QueryClient();
 
