@@ -57,6 +57,8 @@ export default function Step2Details() {
     fetchStatus();
 
     // Subscribe to realtime updates
+    if (!supabase) return;
+
     const channel = supabase
       .channel(`step2-${state.quoteId}`)
       .on(
@@ -86,7 +88,9 @@ export default function Step2Details() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (supabase) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [state.quoteId]);
 
