@@ -195,18 +195,34 @@ export default function HITLReviewDetail() {
     }
   };
 
-  const handleApprove = async () => {
-    if (!review || !staffEmail) return;
-
+  const approveReview = async () => {
+    if (!review) return;
+    if (!confirm('Are you sure you want to approve this quote?')) return;
     setSubmitting(true);
     try {
-      console.log('Approving review:', review.review_id, 'Notes:', internalNotes);
-      // await approveReview(review.review_id, staffEmail, internalNotes);
-      alert('Review approved (placeholder)');
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/approve-hitl-review`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            reviewId: review.review_id,
+            staffId: staffEmail,
+            notes: internalNotes,
+          }),
+        }
+      );
+      if (!response.ok) throw new Error('Failed to approve review');
+      alert('Quote approved successfully!');
+      navigate('/admin/hitl');
     } catch (err) {
-      alert(`Error: ${err}`);
+      alert('Error approving review: ' + (err as Error).message);
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   const handleRejectRequest = async () => {
