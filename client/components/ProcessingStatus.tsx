@@ -31,10 +31,12 @@ export default function ProcessingStatus({
 
   // Fetch current status and subscribe to realtime updates
   useEffect(() => {
-    if (!quoteId) return;
+    if (!quoteId || !supabase) return;
 
     // Initial fetch
     const fetchStatus = async () => {
+      if (!supabase) return;
+
       const { data: quote } = await supabase
         .from('quotes')
         .select('processing_status')
