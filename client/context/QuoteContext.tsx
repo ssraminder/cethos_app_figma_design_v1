@@ -290,11 +290,11 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
   };
 
   const completeProcessing = () => {
-    updateState({ isProcessing: false, currentStep: 3 });
+    updateState({ isProcessing: false, currentStep: 4 });
   };
 
   const skipToEmail = () => {
-    updateState({ isProcessing: false, currentStep: 4, emailQuoteMode: true });
+    updateState({ isProcessing: false, currentStep: 3, emailQuoteMode: true });
   };
 
   return (
