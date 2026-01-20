@@ -225,18 +225,36 @@ export default function HITLReviewDetail() {
     }
   };
 
-  const handleRejectRequest = async () => {
-    if (!review || !staffEmail) return;
-
+  const rejectReview = async () => {
+    if (!review) return;
+    const reason = prompt('Please provide a reason for requesting a better scan:');
+    if (!reason) return;
     setSubmitting(true);
     try {
-      console.log('Requesting better scan for:', review.review_id);
-      // await rejectReview(review.review_id, staffEmail, 'better_scan_needed', []);
-      alert('Scan request submitted (placeholder)');
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/reject-hitl-review`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            reviewId: review.review_id,
+            staffId: staffEmail,
+            reason: reason,
+            fileIds: review.files.map(f => f.id),
+          }),
+        }
+      );
+      if (!response.ok) throw new Error('Failed to reject review');
+      alert('Better scan requested. Customer will be notified.');
+      navigate('/admin/hitl');
     } catch (err) {
-      alert(`Error: ${err}`);
+      alert('Error rejecting review: ' + (err as Error).message);
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   const handleEscalate = async () => {
