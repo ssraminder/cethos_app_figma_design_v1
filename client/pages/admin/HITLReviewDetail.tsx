@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useBranding } from '../../context/BrandingContext';
 
 interface QuoteFile {
   id: string;
@@ -51,6 +52,7 @@ interface StaffSession {
 }
 
 export default function HITLReviewDetail() {
+  const { companyName, logoUrl, primaryColor } = useBranding();
   const { reviewId } = useParams<{ reviewId: string }>();
   const navigate = useNavigate();
   const [session, setSession] = useState<StaffSession | null>(null);
@@ -469,6 +471,16 @@ export default function HITLReviewDetail() {
       {/* Header */}
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center gap-3 mb-4">
+            {logoUrl ? (
+              <img src={logoUrl} alt={companyName} className="h-10" />
+            ) : (
+              <h1 className="text-2xl font-bold" style={{ color: primaryColor }}>
+                {companyName.toUpperCase()}
+              </h1>
+            )}
+            <span className="text-gray-500">Staff Portal - Review Detail</span>
+          </div>
           <button
             onClick={() => navigate("/admin/hitl")}
             className="mb-2 text-blue-600 hover:text-blue-800 font-medium"
@@ -477,9 +489,9 @@ export default function HITLReviewDetail() {
           </button>
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h2 className="text-2xl font-bold text-gray-900">
                 {review.quote_number}
-              </h1>
+              </h2>
               <p className="text-gray-600">{review.customer_name}</p>
             </div>
             <div className="flex items-center gap-3">
