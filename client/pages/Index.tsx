@@ -31,8 +31,8 @@ export default function Index() {
 
     // Special handling for email quote mode on Step 4
     if (isLastStep && state.emailQuoteMode) {
-      const success = await goToNextStep();
-      if (success) {
+      const result = await goToNextStep();
+      if (result.success) {
         // Show confirmation instead of navigating to success page
         updateState({ emailQuoteSent: true });
       }
@@ -40,22 +40,24 @@ export default function Index() {
     }
 
     // Normal flow
-    const success = await goToNextStep();
+    const result = await goToNextStep();
     console.log("🔄 Step transition:", {
-      success,
+      success: result.success,
       fromStep: currentStep,
       toStep: state.currentStep,
-      quoteId: state.quoteId,
+      returnedQuoteId: result.quoteId,
+      stateQuoteId: state.quoteId,
     });
 
     // After moving from Step 1 to Step 2, trigger document processing
-    if (success && currentStep === 1 && state.quoteId) {
+    // Use the returned quoteId instead of state.quoteId (which hasn't updated yet)
+    if (result.success && currentStep === 1 && result.quoteId) {
       console.log(
         "🚀 Triggering document processing for quote:",
-        state.quoteId,
+        result.quoteId,
       );
       // Trigger processing in background (don't await)
-      triggerProcessing(state.quoteId)
+      triggerProcessing(result.quoteId)
         .then(() => {
           console.log("✅ Document processing triggered successfully");
         })
@@ -66,7 +68,7 @@ export default function Index() {
     }
 
     // Navigate to success page if we were on step 4 and successfully moved to step 5
-    if (success && isLastStep) {
+    if (result.success && isLastStep) {
       navigate("/success");
     }
   };
