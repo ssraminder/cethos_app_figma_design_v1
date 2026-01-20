@@ -23,6 +23,7 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import Analytics from "./pages/admin/Analytics";
 import Patterns from "./pages/admin/Patterns";
 import Learning from "./pages/admin/Learning";
+import Thresholds from "./pages/admin/Thresholds";
 
 const queryClient = new QueryClient();
 
