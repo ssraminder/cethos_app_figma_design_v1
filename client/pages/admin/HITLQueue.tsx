@@ -178,6 +178,12 @@ export default function HITLQueue() {
             <span className="text-gray-500">Staff Portal - HITL Queue</span>
           </div>
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate("/admin/analytics")}
+              className="text-gray-600 hover:text-gray-800 flex items-center gap-1"
+            >
+              <span>📊</span> Analytics
+            </button>
             {session?.staffRole === "super_admin" && (
               <button
                 onClick={() => navigate("/admin/settings")}
