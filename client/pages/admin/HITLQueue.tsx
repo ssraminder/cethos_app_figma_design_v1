@@ -25,19 +25,34 @@ export default function HITLQueue() {
 
   useEffect(() => {
     // Check sessionStorage for login state
-    const isLoggedIn = sessionStorage.getItem("staffLoggedIn");
-    const email = sessionStorage.getItem("staffEmail");
+    const stored = sessionStorage.getItem("staffSession");
 
-    if (isLoggedIn !== "true" || !email) {
+    if (!stored) {
+      console.log("No session found, redirecting to login");
       navigate("/admin/login", { replace: true });
       return;
     }
 
-    setStaffEmail(email);
-    setLoading(false);
+    try {
+      const session = JSON.parse(stored);
 
-    // Fetch reviews on mount
-    fetchReviews();
+      if (!session.loggedIn) {
+        console.log("Session not logged in, redirecting");
+        navigate("/admin/login", { replace: true });
+        return;
+      }
+
+      // Session valid, continue loading page
+      console.log("Valid session found:", session.email);
+      setStaffEmail(session.email);
+      setLoading(false);
+
+      // Fetch reviews on mount
+      fetchReviews();
+    } catch (err) {
+      console.error("Invalid session data:", err);
+      navigate("/admin/login", { replace: true });
+    }
   }, [navigate]);
 
   const fetchReviews = async () => {
