@@ -156,8 +156,10 @@ export default function Thresholds() {
                 analysis_type: rec.analysis_type,
                 threshold_name: change.threshold_name || change.name,
                 current_value: change.current_value || change.currentValue,
-                suggested_value: change.suggested_value || change.suggestedValue,
-                reason: change.reason || rec.recommendations || "No reason provided",
+                suggested_value:
+                  change.suggested_value || change.suggestedValue,
+                reason:
+                  change.reason || rec.recommendations || "No reason provided",
                 status: rec.status,
                 suggested_threshold_changes: rec.suggested_threshold_changes,
                 created_at: rec.created_at,
@@ -433,7 +435,11 @@ export default function Thresholds() {
                   ⚠️ Pending Recommendations ({recommendations.length})
                 </h2>
                 <div
-                  style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
                 >
                   {recommendations.map((rec, idx) => (
                     <div
@@ -490,7 +496,9 @@ export default function Thresholds() {
                           disabled={submitting || !isSuperAdmin}
                           style={{
                             padding: "8px 16px",
-                            backgroundColor: isSuperAdmin ? "#10B981" : "#D1D5DB",
+                            backgroundColor: isSuperAdmin
+                              ? "#10B981"
+                              : "#D1D5DB",
                             color: "white",
                             border: "none",
                             borderRadius: "6px",
@@ -533,7 +541,9 @@ export default function Thresholds() {
                 overflow: "hidden",
               }}
             >
-              <div style={{ padding: "20px", borderBottom: "1px solid #E5E7EB" }}>
+              <div
+                style={{ padding: "20px", borderBottom: "1px solid #E5E7EB" }}
+              >
                 <h2 style={{ fontSize: "18px", fontWeight: "600", margin: 0 }}>
                   Current Thresholds
                 </h2>
@@ -660,7 +670,9 @@ export default function Thresholds() {
                                   type="text"
                                   placeholder="Reason for change..."
                                   value={editReason}
-                                  onChange={(e) => setEditReason(e.target.value)}
+                                  onChange={(e) =>
+                                    setEditReason(e.target.value)
+                                  }
                                   style={{
                                     width: "200px",
                                     padding: "4px 8px",
@@ -709,9 +721,9 @@ export default function Thresholds() {
                                   color: "#1F2937",
                                 }}
                               >
-                                {(parseFloat(threshold.setting_value) * 100).toFixed(
-                                  0,
-                                )}
+                                {(
+                                  parseFloat(threshold.setting_value) * 100
+                                ).toFixed(0)}
                                 %
                               </span>
                             )}
@@ -735,7 +747,9 @@ export default function Thresholds() {
                                   border: "none",
                                   borderRadius: "6px",
                                   fontSize: "14px",
-                                  cursor: isSuperAdmin ? "pointer" : "not-allowed",
+                                  cursor: isSuperAdmin
+                                    ? "pointer"
+                                    : "not-allowed",
                                 }}
                               >
                                 Edit
@@ -759,7 +773,9 @@ export default function Thresholds() {
                 overflow: "hidden",
               }}
             >
-              <div style={{ padding: "20px", borderBottom: "1px solid #E5E7EB" }}>
+              <div
+                style={{ padding: "20px", borderBottom: "1px solid #E5E7EB" }}
+              >
                 <h2 style={{ fontSize: "18px", fontWeight: "600", margin: 0 }}>
                   Change History (Last 10)
                 </h2>
