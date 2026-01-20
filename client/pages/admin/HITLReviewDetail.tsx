@@ -268,7 +268,7 @@ export default function HITLReviewDetail() {
   };
 
   const rejectReview = async () => {
-    if (!review) return;
+    if (!review || !session?.staffId) return;
     const reason = prompt('Please provide a reason for requesting a better scan:');
     if (!reason) return;
     setSubmitting(true);
@@ -283,7 +283,7 @@ export default function HITLReviewDetail() {
           },
           body: JSON.stringify({
             reviewId: review.review_id,
-            staffId: staffEmail,
+            staffId: session.staffId,
             reason: reason,
             fileIds: review.files.map(f => f.id),
           }),
