@@ -637,7 +637,8 @@ export default function HITLReviewDetail() {
                     <p className="mb-2">📄 PDF Preview</p>
                     <p className="text-sm">{currentFile.original_filename}</p>
                     <p className="text-xs text-gray-400 mt-2">
-                      {((currentFile.file_size ?? 0) / 1024 / 1024).toFixed(2)} MB
+                      {((currentFile.file_size ?? 0) / 1024 / 1024).toFixed(2)}{" "}
+                      MB
                     </p>
                   </div>
                 ) : isImage ? (
@@ -658,7 +659,8 @@ export default function HITLReviewDetail() {
                   <div className="text-sm text-gray-600">
                     {currentFile.original_filename}
                     <span className="ml-2 text-gray-400">
-                      ({((currentFile.file_size ?? 0) / 1024 / 1024).toFixed(2)} MB)
+                      ({((currentFile.file_size ?? 0) / 1024 / 1024).toFixed(2)}{" "}
+                      MB)
                     </span>
                   </div>
                   <a
@@ -724,9 +726,7 @@ export default function HITLReviewDetail() {
 
             {/* AI Analysis */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">
-                AI Analysis
-              </h3>
+              <h3 className="font-semibold text-gray-900 mb-4">AI Analysis</h3>
               {!review.ai_analysis ? (
                 <div className="text-center py-8">
                   <p className="text-gray-500 text-sm">
@@ -743,7 +743,8 @@ export default function HITLReviewDetail() {
                       <p className="text-gray-600">Document Type</p>
                       <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
                         {(
-                          (review.ai_analysis.document_type_confidence ?? 0) * 100
+                          (review.ai_analysis.document_type_confidence ?? 0) *
+                          100
                         ).toFixed(0)}
                         %
                       </span>
@@ -756,9 +757,9 @@ export default function HITLReviewDetail() {
                     <div className="flex justify-between">
                       <p className="text-gray-600">Detected Language</p>
                       <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                        {((review.ai_analysis.language_confidence ?? 0) * 100).toFixed(
-                          0,
-                        )}
+                        {(
+                          (review.ai_analysis.language_confidence ?? 0) * 100
+                        ).toFixed(0)}
                         %
                       </span>
                     </div>
@@ -784,13 +785,13 @@ export default function HITLReviewDetail() {
                     <div>
                       <p className="text-gray-600 text-xs">Word Count</p>
                       <p className="font-bold text-lg text-gray-900">
-                        {review.ai_analysis.word_count ?? 'N/A'}
+                        {review.ai_analysis.word_count ?? "N/A"}
                       </p>
                     </div>
                     <div>
                       <p className="text-gray-600 text-xs">Billable Pages</p>
                       <p className="font-bold text-lg text-gray-900">
-                        {review.ai_analysis.billable_pages ?? 'N/A'}
+                        {review.ai_analysis.billable_pages ?? "N/A"}
                       </p>
                     </div>
                   </div>
@@ -834,7 +835,9 @@ export default function HITLReviewDetail() {
                 )}
                 <div className="flex justify-between pt-2 border-t border-gray-200">
                   <span className="text-gray-600">Tax</span>
-                  <span className="font-medium">${(review.tax ?? 0).toFixed(2)}</span>
+                  <span className="font-medium">
+                    ${(review.tax ?? 0).toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between pt-2 border-t-2 border-gray-900">
                   <span className="font-bold text-gray-900">Total</span>
