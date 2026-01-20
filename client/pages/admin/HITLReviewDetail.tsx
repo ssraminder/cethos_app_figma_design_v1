@@ -147,8 +147,7 @@ export default function HITLReviewDetail() {
   const getAvailableParentFiles = (currentFileId: string) => {
     return analysisResults.filter(
       (a) =>
-        a.quote_file_id !== currentFileId &&
-        !combinedFiles[a.quote_file_id], // Can't combine with a file that's already combined
+        a.quote_file_id !== currentFileId && !combinedFiles[a.quote_file_id], // Can't combine with a file that's already combined
     );
   };
 
@@ -1189,8 +1188,10 @@ export default function HITLReviewDetail() {
                         </div>
 
                         {/* Show why it's $0 */}
-                        {calculateLineTotal(analysis, analysis.quote_file_id) ===
-                          0 &&
+                        {calculateLineTotal(
+                          analysis,
+                          analysis.quote_file_id,
+                        ) === 0 &&
                           combinedFiles[analysis.quote_file_id] && (
                             <p className="text-xs text-purple-600 mt-1">
                               Combined with another document - not billed
@@ -1199,8 +1200,10 @@ export default function HITLReviewDetail() {
                           )}
 
                         {/* Show recalculation note */}
-                        {calculateLineTotal(analysis, analysis.quote_file_id) !==
-                          (analysis.line_total || 0) &&
+                        {calculateLineTotal(
+                          analysis,
+                          analysis.quote_file_id,
+                        ) !== (analysis.line_total || 0) &&
                           !combinedFiles[analysis.quote_file_id] && (
                             <p className="text-xs text-orange-600 mt-1">
                               * Recalculated from original $
@@ -1238,9 +1241,9 @@ export default function HITLReviewDetail() {
                           ) : (
                             <div className="space-y-2">
                               <p className="text-xs text-purple-600">
-                                Use this if this file is part of another document
-                                (e.g., back side of an ID card). This will set
-                                billable pages to 0.
+                                Use this if this file is part of another
+                                document (e.g., back side of an ID card). This
+                                will set billable pages to 0.
                               </p>
                               <select
                                 onChange={(e) => {
@@ -1264,8 +1267,8 @@ export default function HITLReviewDetail() {
                                     key={parentAnalysis.quote_file_id}
                                     value={parentAnalysis.quote_file_id}
                                   >
-                                    {parentAnalysis.quote_file?.original_filename ||
-                                      "Unknown file"}
+                                    {parentAnalysis.quote_file
+                                      ?.original_filename || "Unknown file"}
                                   </option>
                                 ))}
                               </select>
