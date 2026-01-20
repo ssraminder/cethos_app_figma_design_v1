@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 export interface DocumentAnalysis {
   id: string;
@@ -42,16 +42,17 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
       try {
         // Get quote status
         const { data: quote } = await supabase
-          .from('quotes')
-          .select('processing_status')
-          .eq('id', quoteId)
+          .from("quotes")
+          .select("processing_status")
+          .eq("id", quoteId)
           .single();
 
-        if (quote?.processing_status === 'quote_ready') {
+        if (quote?.processing_status === "quote_ready") {
           // Fetch analysis results
           const { data: results, error: resultsError } = await supabase
-            .from('ai_analysis_results')
-            .select(`
+            .from("ai_analysis_results")
+            .select(
+              `
               id,
               detected_language,
               language_name,
@@ -65,15 +66,16 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
                 original_filename,
                 quote_id
               )
-            `)
-            .eq('quote_files.quote_id', quoteId)
-            .eq('processing_status', 'complete');
+            `,
+            )
+            .eq("quote_files.quote_id", quoteId)
+            .eq("processing_status", "complete");
 
           if (resultsError) throw resultsError;
 
           const docs: DocumentAnalysis[] = (results || []).map((r: any) => ({
             id: r.id,
-            filename: r.quote_files?.original_filename || 'Unknown',
+            filename: r.quote_files?.original_filename || "Unknown",
             language: r.detected_language,
             languageName: r.language_name,
             documentType: r.detected_document_type,
@@ -88,7 +90,9 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
           setIsReady(true);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch pricing');
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch pricing",
+        );
       } finally {
         setIsLoading(false);
       }
@@ -102,18 +106,18 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
     const channel = supabase
       .channel(`pricing-${quoteId}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'quotes',
+          event: "UPDATE",
+          schema: "public",
+          table: "quotes",
           filter: `id=eq.${quoteId}`,
         },
         (payload: any) => {
-          if (payload.new.processing_status === 'quote_ready') {
+          if (payload.new.processing_status === "quote_ready") {
             fetchPricing();
           }
-        }
+        },
       )
       .subscribe();
 
