@@ -1,15 +1,13 @@
-// app/admin/login/page.tsx
+// client/pages/admin/Login.tsx
 // Staff login page with magic link authentication
 
-'use client';
-
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useStaffAuth } from '@/contexts/StaffAuthContext';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useStaffAuth } from '@/context/StaffAuthContext';
 
-export default function StaffLoginPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+export default function AdminLogin() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { signIn, isStaff, isLoading } = useStaffAuth();
   
   const [email, setEmail] = useState('');
@@ -30,10 +28,9 @@ export default function StaffLoginPage() {
   // Redirect if already logged in as staff
   useEffect(() => {
     if (!isLoading && isStaff) {
-      const redirect = searchParams.get('redirect') || '/admin/hitl';
-      router.push(redirect);
+      navigate('/admin/hitl');
     }
-  }, [isStaff, isLoading, router, searchParams]);
+  }, [isStaff, isLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +44,6 @@ export default function StaffLoginPage() {
         setError(error.message);
       } else {
         setEmailSent(true);
-        // Store email for success message
         sessionStorage.setItem('staffLoginEmail', email);
       }
     } catch (err) {

@@ -1,11 +1,9 @@
-// app/admin/hitl/page.tsx
-// HITL Queue Dashboard - Replace with Builder.io component later
+// client/pages/admin/HITLQueue.tsx
+// HITL Queue Dashboard
 
-'use client';
-
-import { useStaffAuth } from '@/contexts/StaffAuthContext';
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useNavigate } from 'react-router-dom';
+import { useStaffAuth } from '@/context/StaffAuthContext';
 
 interface HITLReview {
   review_id: string;
@@ -21,17 +19,24 @@ interface HITLReview {
   trigger_reasons: string[];
   sla_status: string;
   minutes_to_sla: number;
+  assigned_to: string | null;
   assigned_to_name: string | null;
   created_at: string;
 }
 
-export default function HITLQueuePage() {
-  const { staff, isLoading: authLoading, signOut } = useStaffAuth();
+export default function HITLQueue() {
+  const navigate = useNavigate();
+  const { staff, isLoading: authLoading, isStaff, signOut, supabase } = useStaffAuth();
   const [reviews, setReviews] = useState<HITLReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createClientComponentClient();
+  // Redirect if not staff
+  useEffect(() => {
+    if (!authLoading && !isStaff) {
+      navigate('/admin/login');
+    }
+  }, [authLoading, isStaff, navigate]);
 
   useEffect(() => {
     if (staff) {
@@ -41,6 +46,7 @@ export default function HITLQueuePage() {
 
   const fetchReviews = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('v_hitl_queue')
         .select('*')
@@ -86,11 +92,18 @@ export default function HITLQueuePage() {
 
   const getSLAColor = (status: string) => {
     switch (status) {
-      case 'breached': return 'text-red-600 bg-red-100';
+      case 'breached': return 'text-red-600 bg-red-100 px-2 py-1 rounded';
       case 'critical': return 'text-red-600';
       case 'warning': return 'text-orange-600';
       default: return 'text-green-600';
     }
+  };
+
+  const getPriorityColor = (priority: number) => {
+    if (priority <= 2) return 'bg-red-100 text-red-700';
+    if (priority <= 4) return 'bg-orange-100 text-orange-700';
+    if (priority <= 6) return 'bg-yellow-100 text-yellow-700';
+    return 'bg-gray-100 text-gray-700';
   };
 
   if (authLoading) {
@@ -99,6 +112,10 @@ export default function HITLQueuePage() {
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
       </div>
     );
+  }
+
+  if (!isStaff) {
+    return null; // Will redirect
   }
 
   return (
@@ -115,13 +132,13 @@ export default function HITLQueuePage() {
           <div className="flex items-center gap-4">
             <button
               onClick={fetchReviews}
-              className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+              className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
             >
-              Refresh
+              ↻ Refresh
             </button>
             <button
               onClick={signOut}
-              className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
+              className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             >
               Sign Out
             </button>
@@ -129,20 +146,62 @@ export default function HITLQueuePage() {
         </div>
       </header>
 
-      {/* Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+      {/* Stats Cards */}
+      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white p-4 rounded-lg shadow-sm">
+            <div className="flex items-center">
+              <div className="w-3 h-3 bg-yellow-400 rounded-full mr-2"></div>
+              <span className="text-sm text-gray-500">Pending</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">
+              {reviews.filter(r => r.status === 'pending').length}
+            </p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow-sm">
+            <div className="flex items-center">
+              <div className="w-3 h-3 bg-blue-400 rounded-full mr-2"></div>
+              <span className="text-sm text-gray-500">In Review</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">
+              {reviews.filter(r => r.status === 'in_review').length}
+            </p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow-sm">
+            <div className="flex items-center">
+              <div className="w-3 h-3 bg-red-400 rounded-full mr-2"></div>
+              <span className="text-sm text-gray-500">SLA At Risk</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">
+              {reviews.filter(r => r.sla_status === 'warning' || r.sla_status === 'critical' || r.sla_status === 'breached').length}
+            </p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow-sm">
+            <div className="flex items-center">
+              <div className="w-3 h-3 bg-orange-400 rounded-full mr-2"></div>
+              <span className="text-sm text-gray-500">Rush Orders</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">
+              {reviews.filter(r => r.is_rush).length}
+            </p>
+          </div>
+        </div>
+
+        {/* Error State */}
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-600">
             {error}
           </div>
         )}
 
+        {/* Loading State */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
           </div>
         ) : reviews.length === 0 ? (
-          <div className="text-center py-12">
+          /* Empty State */
+          <div className="text-center py-12 bg-white rounded-lg shadow-sm">
             <div className="text-gray-400 mb-2">
               <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -152,6 +211,7 @@ export default function HITLQueuePage() {
             <p className="text-gray-500">All caught up! Check back later.</p>
           </div>
         ) : (
+          /* Queue Table */
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -171,22 +231,20 @@ export default function HITLQueuePage() {
                 {reviews.map((review) => (
                   <tr 
                     key={review.review_id} 
-                    className={`${review.is_rush ? 'border-l-4 border-orange-400' : ''} ${review.sla_status === 'breached' ? 'bg-red-50' : 'hover:bg-gray-50'}`}
+                    className={`
+                      ${review.is_rush ? 'border-l-4 border-orange-400' : ''} 
+                      ${review.sla_status === 'breached' ? 'bg-red-50' : 'hover:bg-gray-50'}
+                    `}
                   >
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium ${
-                        review.priority <= 2 ? 'bg-red-100 text-red-700' :
-                        review.priority <= 4 ? 'bg-orange-100 text-orange-700' :
-                        review.priority <= 6 ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
+                      <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium ${getPriorityColor(review.priority)}`}>
                         {review.priority}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <a href={`/admin/hitl/${review.review_id}`} className="text-indigo-600 hover:text-indigo-800 font-medium">
+                      <span className="text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer">
                         {review.quote_number}
-                      </a>
+                      </span>
                       {review.is_rush && (
                         <span className="ml-2 px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded-full">
                           RUSH
@@ -194,7 +252,7 @@ export default function HITLQueuePage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900">
-                      {review.customer_name || review.customer_email}
+                      {review.customer_name || review.customer_email || 'N/A'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {review.file_count} file{review.file_count !== 1 ? 's' : ''}
@@ -225,20 +283,25 @@ export default function HITLQueuePage() {
                       {review.assigned_to_name || <span className="text-gray-400">Unassigned</span>}
                     </td>
                     <td className="px-4 py-3">
-                      {!review.assigned_to_name ? (
+                      {!review.assigned_to ? (
                         <button
                           onClick={() => claimReview(review.review_id)}
-                          className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                          className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
                         >
                           Claim
                         </button>
+                      ) : review.assigned_to === staff?.id ? (
+                        <button
+                          className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                        >
+                          Continue
+                        </button>
                       ) : (
-                        <a
-                          href={`/admin/hitl/${review.review_id}`}
-                          className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                        <button
+                          className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
                         >
                           View
-                        </a>
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -247,7 +310,7 @@ export default function HITLQueuePage() {
             </table>
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
