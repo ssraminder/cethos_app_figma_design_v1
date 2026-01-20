@@ -43,6 +43,13 @@ interface ReviewDetail {
   ai_analysis: AIAnalysis | null;
 }
 
+interface StaffSession {
+  email: string;
+  staffId?: string;
+  staffName?: string;
+  staffRole?: string;
+}
+
 export default function HITLReviewDetail() {
   const { reviewId } = useParams<{ reviewId: string }>();
   const navigate = useNavigate();
