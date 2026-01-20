@@ -74,9 +74,7 @@ function getAccuracyColor(accuracy: number | null | undefined): string {
 
 function formatLabel(label: string | null | undefined): string {
   if (!label) return "-";
-  return label
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return label.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function formatThresholdName(key: string | null | undefined): string {
@@ -309,7 +307,10 @@ export default function Patterns() {
         alert("Error: " + result.error);
       }
     } catch (err) {
-      alert("Error generating analysis: " + (err instanceof Error ? err.message : "Unknown error"));
+      alert(
+        "Error generating analysis: " +
+          (err instanceof Error ? err.message : "Unknown error"),
+      );
     } finally {
       setGenerating(false);
     }
