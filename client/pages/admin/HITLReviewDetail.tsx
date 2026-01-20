@@ -75,6 +75,7 @@ export default function HITLReviewDetail() {
   // Correction form state
   const [corrections, setCorrections] = useState({
     documentType: "",
+    detectedLanguage: "",
     complexity: "",
     wordCount: "",
     reason: "",
