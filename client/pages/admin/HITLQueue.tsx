@@ -101,8 +101,7 @@ export default function HITLQueue() {
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem("staffLoggedIn");
-    sessionStorage.removeItem("staffEmail");
+    sessionStorage.removeItem("staffSession");
     navigate("/admin/login", { replace: true });
   };
 
