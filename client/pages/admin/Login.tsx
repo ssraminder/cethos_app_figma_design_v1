@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useBranding } from '../../context/BrandingContext';
 
 export default function Login() {
+  const { companyName, logoUrl, primaryColor } = useBranding();
   const [email, setEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [step, setStep] = useState<"email" | "otp">("email");
@@ -106,11 +108,15 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
       <div className="max-w-md w-full space-y-8">
-        <div>
-          <h1 className="text-center text-3xl font-bold text-blue-600">
-            CETHOS
-          </h1>
-          <h2 className="mt-6 text-center text-2xl font-semibold text-gray-900">
+        <div className="text-center">
+          {logoUrl ? (
+            <img src={logoUrl} alt={companyName} className="h-12 mx-auto mb-4" />
+          ) : (
+            <h1 className="text-3xl font-bold mb-4" style={{ color: primaryColor }}>
+              {companyName.toUpperCase()}
+            </h1>
+          )}
+          <h2 className="text-2xl font-semibold text-gray-900">
             Staff Portal
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
