@@ -44,17 +44,17 @@ export default function HITLQueue() {
     }
 
     try {
-      const session = JSON.parse(stored);
+      const parsedSession = JSON.parse(stored) as StaffSession;
 
-      if (!session.loggedIn) {
+      if (!parsedSession.loggedIn) {
         console.log("Session not logged in, redirecting");
         navigate("/admin/login", { replace: true });
         return;
       }
 
       // Session valid, continue loading page
-      console.log("Valid session found:", session.email);
-      setStaffEmail(session.email);
+      console.log("Valid session found:", parsedSession.email);
+      setSession(parsedSession);
       setLoading(false);
 
       // Fetch reviews on mount
