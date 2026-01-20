@@ -20,6 +20,7 @@ import AdminLogin from "./pages/admin/Login";
 import HITLQueue from "./pages/admin/HITLQueue";
 import HITLReviewDetail from "./pages/admin/HITLReviewDetail";
 import AdminSettings from "./pages/admin/AdminSettings";
+import Analytics from "./pages/admin/Analytics";
 
 const queryClient = new QueryClient();
 
