@@ -1,158 +1,19 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "../../lib/supabase";
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [step, setStep] = useState<'email' | 'otp'>('email');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [message, setMessage] = useState('');
   const navigate = useNavigate();
-  const isMounted = useRef(true);
-  const hasProcessedCallback = useRef(false);
 
-  useEffect(() => {
-    isMounted.current = true;
-
-    // Timeout fallback - show login form after 2 seconds no matter what
-    const timeout = setTimeout(() => {
-      if (isMounted.current) {
-        console.log("⏰ 2-second timeout reached, showing login form");
-        setCheckingAuth(false);
-      }
-    }, 2000);
-
-    const handleAuthCallback = async () => {
-      // Prevent double processing
-      if (hasProcessedCallback.current) {
-        return;
-      }
-
-      if (!supabase) {
-        if (isMounted.current) setCheckingAuth(false);
-        clearTimeout(timeout);
-        return;
-      }
-
-      // Check if we have a hash with access_token (magic link redirect)
-      const hash = window.location.hash;
-
-      if (hash && hash.includes("access_token")) {
-        hasProcessedCallback.current = true;
-        console.log("Processing magic link callback...");
-
-        try {
-          // Parse the hash to extract tokens
-          const params = new URLSearchParams(hash.substring(1));
-          const accessToken = params.get("access_token");
-          const refreshToken = params.get("refresh_token");
-
-          if (accessToken && refreshToken) {
-            // Set the session manually
-            const { data, error } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-
-            if (error) {
-              console.error("Error setting session:", error);
-              if (isMounted.current) {
-                setMessage("Error processing login. Please try again.");
-                setCheckingAuth(false);
-              }
-              return;
-            }
-
-            if (data.session) {
-              console.log("Session established, checking staff status...");
-
-              // Check if user is a staff member
-              const { data: staffData, error: staffError } = await supabase
-                .from("staff_users")
-                .select("id, email, full_name, role, is_active")
-                .eq("auth_user_id", data.session.user.id)
-                .eq("is_active", true)
-                .single();
-
-              if (!isMounted.current) return;
-
-              if (staffError || !staffData) {
-                console.error("Not a staff user:", staffError);
-                setMessage("Access denied. You are not authorized as staff.");
-                await supabase.auth.signOut();
-                setCheckingAuth(false);
-                return;
-              }
-
-              console.log("Staff user verified, redirecting...");
-              // Clear the hash from URL
-              window.history.replaceState(null, "", window.location.pathname);
-              clearTimeout(timeout);
-              navigate("/admin/hitl", { replace: true });
-              return;
-            }
-          }
-        } catch (err) {
-          console.error("Auth callback error:", err);
-          if (isMounted.current) {
-            setMessage("Error processing login. Please try again.");
-            setCheckingAuth(false);
-          }
-          return;
-        }
-      }
-
-      // No hash, check for existing session
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!isMounted.current) return;
-
-        if (session) {
-          // Check if user is staff
-          const { data: staffData } = await supabase
-            .from("staff_users")
-            .select("id")
-            .eq("auth_user_id", session.user.id)
-            .eq("is_active", true)
-            .single();
-
-          if (!isMounted.current) return;
-
-          if (staffData) {
-            clearTimeout(timeout);
-            navigate("/admin/hitl", { replace: true });
-            return;
-          }
-        }
-      } catch (err) {
-        console.error("Session check error:", err);
-      }
-
-      if (isMounted.current) {
-        clearTimeout(timeout);
-        setCheckingAuth(false);
-      }
-    };
-
-    handleAuthCallback();
-
-    return () => {
-      isMounted.current = false;
-      clearTimeout(timeout);
-    };
-  }, [navigate]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    console.log('=== LOGIN DEBUG START ===');
-    console.log('Email entered:', email);
-
+    
     if (!supabase) {
-      console.error('Supabase client is NULL');
       setMessage('Database not configured');
       return;
     }
@@ -161,60 +22,14 @@ export default function Login() {
     setMessage('');
 
     try {
-      console.log('Querying staff_users table...');
+      // Check if email exists in staff_users
+      const { data: staffCheck, error: staffError } = await supabase
+        .from('staff_users')
+        .select('id, is_active')
+        .eq('email', email.toLowerCase())
+        .single();
 
-      // Try the query with a retry mechanism
-      let staffCheck = null;
-      let staffError = null;
-      let attempts = 0;
-      const maxAttempts = 3;
-
-      while (attempts < maxAttempts) {
-        attempts++;
-        console.log(`Query attempt ${attempts}/${maxAttempts}...`);
-
-        try {
-          const result = await supabase
-            .from('staff_users')
-            .select('id, is_active, email')
-            .eq('email', email.toLowerCase())
-            .single();
-
-          staffCheck = result.data;
-          staffError = result.error;
-
-          // If we got a result (even if null) without AbortError, break
-          if (!result.error || !result.error.message?.includes('Abort')) {
-            console.log('Query completed on attempt', attempts);
-            break;
-          }
-        } catch (err: any) {
-          console.log(`Attempt ${attempts} caught error:`, err?.message);
-          if (!err?.message?.includes('Abort') || attempts >= maxAttempts) {
-            throw err;
-          }
-          // Wait a bit before retry
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
-
-      console.log('Query response - data:', staffCheck);
-      console.log('Query response - error:', staffError);
-
-      if (staffError) {
-        console.error('Staff query error:', staffError);
-
-        // Check if it's a "no rows" error (PGRST116) - that's expected for non-existent email
-        if (staffError.code === 'PGRST116') {
-          setMessage('Email not found in staff directory.');
-        } else {
-          setMessage('Database error. Please try again.');
-        }
-        setLoading(false);
-        return;
-      }
-
-      if (!staffCheck) {
+      if (staffError || !staffCheck) {
         setMessage('Email not found in staff directory.');
         setLoading(false);
         return;
@@ -226,94 +41,161 @@ export default function Login() {
         return;
       }
 
-      console.log('Staff found! Sending magic link...');
-
+      // Send OTP code (not magic link)
       const { error } = await supabase.auth.signInWithOtp({
         email: email.toLowerCase(),
         options: {
-          emailRedirectTo: `${window.location.origin}/admin/login`,
+          shouldCreateUser: false,
         },
       });
-
-      console.log('Magic link response:', error ? error.message : 'SUCCESS');
 
       if (error) {
         setMessage(error.message);
       } else {
-        setMessage('Check your email for the magic link!');
+        setStep('otp');
+        setMessage('Check your email for the 6-digit code.');
       }
-    } catch (err: any) {
-      console.error('Caught exception:', err);
+    } catch (err) {
+      console.error('Error:', err);
       setMessage('An error occurred. Please try again.');
-    } finally {
-      setLoading(false);
-      console.log('=== LOGIN DEBUG END ===');
     }
+
+    setLoading(false);
   };
 
-  if (checkingAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Verifying authentication...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!supabase) {
+      setMessage('Database not configured');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: email.toLowerCase(),
+        token: otpCode,
+        type: 'email',
+      });
+
+      if (error) {
+        setMessage(error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (data.session) {
+        // Verify staff status
+        const { data: staff } = await supabase
+          .from('staff_users')
+          .select('id')
+          .eq('auth_user_id', data.session.user.id)
+          .eq('is_active', true)
+          .single();
+
+        if (staff) {
+          navigate('/admin/hitl', { replace: true });
+        } else {
+          setMessage('Access denied. Not authorized as staff.');
+          await supabase.auth.signOut();
+        }
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setMessage('An error occurred. Please try again.');
+    }
+
+    setLoading(false);
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h1 className="text-center text-3xl font-bold text-blue-600">
-            CETHOS
-          </h1>
+          <h1 className="text-center text-3xl font-bold text-blue-600">CETHOS</h1>
           <h2 className="mt-6 text-center text-2xl font-semibold text-gray-900">
             Staff Portal
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Sign in to access the admin dashboard
+            {step === 'email' ? 'Enter your email to receive a login code' : 'Enter the 6-digit code from your email'}
           </p>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Email address
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              placeholder="you@cethos.com"
-            />
-          </div>
-
-          {message && (
-            <div
-              className={`text-sm text-center ${message.includes("Check your email") ? "text-green-600" : "text-red-600"}`}
-            >
-              {message}
+        {step === 'email' ? (
+          <form className="mt-8 space-y-6" onSubmit={handleSendOTP}>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email address
+              </label>
+              <input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="you@cethos.com"
+              />
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? "Sending..." : "Send Magic Link"}
-          </button>
-        </form>
+            {message && (
+              <p className={`text-sm text-center ${message.includes('Check your email') ? 'text-green-600' : 'text-red-600'}`}>
+                {message}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? 'Sending...' : 'Send Login Code'}
+            </button>
+          </form>
+        ) : (
+          <form className="mt-8 space-y-6" onSubmit={handleVerifyOTP}>
+            <div>
+              <label htmlFor="otp" className="block text-sm font-medium text-gray-700">
+                6-Digit Code
+              </label>
+              <input
+                id="otp"
+                type="text"
+                required
+                maxLength={6}
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest"
+                placeholder="000000"
+              />
+            </div>
+
+            {message && (
+              <p className={`text-sm text-center ${message.includes('Check your email') ? 'text-green-600' : 'text-red-600'}`}>
+                {message}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || otpCode.length !== 6}
+              className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? 'Verifying...' : 'Verify Code'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setStep('email'); setOtpCode(''); setMessage(''); }}
+              className="w-full py-2 px-4 text-sm text-gray-600 hover:text-gray-900"
+            >
+              ← Back to email
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
