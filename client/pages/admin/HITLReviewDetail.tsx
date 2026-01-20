@@ -996,12 +996,43 @@ export default function HITLReviewDetail() {
                         </div>
                       </div>
 
-                      {/* Line Total */}
-                      <div className="bg-blue-50 p-3 rounded flex justify-between items-center">
-                        <span className="text-sm">Line Total</span>
-                        <span className="text-lg font-bold">
-                          ${(analysis.line_total || 0).toFixed(2)}
-                        </span>
+                      {/* Line Total - Editable Override */}
+                      <div className="bg-blue-50 p-3 rounded">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm">Line Total</span>
+                          {claimedByMe ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-500">$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                defaultValue={(analysis.line_total || 0).toFixed(
+                                  2,
+                                )}
+                                onBlur={(e) =>
+                                  saveCorrection(
+                                    analysis.quote_file_id,
+                                    "line_total",
+                                    String(analysis.line_total),
+                                    e.target.value,
+                                  )
+                                }
+                                className="text-lg font-bold w-24 text-right bg-white border rounded py-1 px-2"
+                                min="0"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-lg font-bold">
+                              ${(analysis.line_total || 0).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                        {claimedByMe && (
+                          <p className="text-xs text-blue-600 mt-2">
+                            Tip: Adjust billable pages for multi-page scans of same
+                            document (e.g., front/back of license = 1 billable page)
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
