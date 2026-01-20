@@ -27,28 +27,30 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <QuoteProvider>
-        <StaffAuthProvider>
-          <BrowserRouter>
-            <Routes>
-              {/* Customer routes */}
-              <Route path="/" element={<Index />} />
-              <Route path="/success" element={<Success />} />
+      <BrandingProvider>
+        <QuoteProvider>
+          <StaffAuthProvider>
+            <BrowserRouter>
+              <Routes>
+                {/* Customer routes */}
+                <Route path="/" element={<Index />} />
+                <Route path="/success" element={<Success />} />
 
-              {/* Admin routes */}
-              <Route path="/admin/login" element={<AdminLogin />} />
-              <Route path="/admin/hitl" element={<HITLQueue />} />
-              <Route
-                path="/admin/hitl/:reviewId"
-                element={<HITLReviewDetail />}
-              />
+                {/* Admin routes */}
+                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route path="/admin/hitl" element={<HITLQueue />} />
+                <Route
+                  path="/admin/hitl/:reviewId"
+                  element={<HITLReviewDetail />}
+                />
 
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </StaffAuthProvider>
-      </QuoteProvider>
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </StaffAuthProvider>
+        </QuoteProvider>
+      </BrandingProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
