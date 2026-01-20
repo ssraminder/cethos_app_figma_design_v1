@@ -180,38 +180,113 @@ export default function HITLReviewDetail() {
     updateLocalEdit(fileId, "complexity_multiplier", multiplier);
   };
 
-  // Calculate line total based on edits
-  const calculateLineTotal = (analysis: any, fileId: string) => {
-    const billablePages = getValue(
-      fileId,
-      "billable_pages",
-      analysis.billable_pages,
-    );
+  // Page-level constants and functions
+  const wordsPerPage = 225; // from app_settings
+  const baseRate = 50; // default base rate
 
-    // If billable pages is 0, line total is 0
-    if (
-      billablePages === 0 ||
-      billablePages === null ||
-      billablePages === undefined
-    ) {
+  // Update page word count locally
+  const updatePageWordCount = (pageId: string, wordCount: number) => {
+    setLocalPageEdits((prev) => ({ ...prev, [pageId]: wordCount }));
+  };
+
+  // Get word count (edited or original)
+  const getPageWordCount = (page: any) => {
+    return localPageEdits[page.id] ?? page.word_count;
+  };
+
+  // Calculate billable pages for a single page
+  const calculatePageBillable = (
+    wordCount: number,
+    complexityMultiplier: number,
+  ) => {
+    return (wordCount / wordsPerPage) * complexityMultiplier;
+  };
+
+  // Round up to nearest increment
+  const roundUpTo = (value: number, increment: number) => {
+    return Math.ceil(value / increment) * increment;
+  };
+
+  // Get combined children of a file
+  const getCombinedChildren = (fileId: string) => {
+    return Object.entries(combinedFiles)
+      .filter(([childId, parentId]) => parentId === fileId)
+      .map(([childId]) => childId);
+  };
+
+  // Calculate document total (including combined files)
+  const calculateDocumentTotal = (fileId: string, analysis: any) => {
+    // Get this file's pages
+    const thisFilePages = pageData[fileId] || [];
+
+    // Get combined files' pages
+    const combinedFileIds = getCombinedChildren(fileId);
+
+    let allPages: Array<{ wordCount: number }> = [];
+
+    // Add this file's pages
+    thisFilePages.forEach((page) => {
+      allPages.push({ wordCount: getPageWordCount(page) });
+    });
+
+    // Add combined files' pages
+    combinedFileIds.forEach((combinedFileId) => {
+      const combinedPages = pageData[combinedFileId] || [];
+      combinedPages.forEach((page) => {
+        allPages.push({ wordCount: getPageWordCount(page) });
+      });
+    });
+
+    // Calculate per-page billable
+    const complexityMultiplier =
+      getValue(fileId, "complexity_multiplier", analysis.complexity_multiplier) ||
+      1;
+
+    let totalBillable = 0;
+    allPages.forEach((page) => {
+      totalBillable += calculatePageBillable(
+        page.wordCount,
+        complexityMultiplier,
+      );
+    });
+
+    // Round to nearest 0.10
+    totalBillable = roundUpTo(totalBillable, 0.1);
+
+    // Minimum 1 page
+    if (totalBillable < 1 && totalBillable > 0) {
+      totalBillable = 1;
+    }
+
+    return totalBillable;
+  };
+
+  // Calculate line total based on page data
+  const calculateLineTotal = (fileId: string, analysis: any) => {
+    // If this file is combined with another, return 0
+    if (combinedFiles[fileId]) {
       return 0;
     }
 
-    const complexityMultiplier =
-      getValue(
-        fileId,
-        "complexity_multiplier",
-        analysis.complexity_multiplier,
-      ) || 1;
+    const billablePages = calculateDocumentTotal(fileId, analysis);
+
+    if (billablePages === 0) {
+      return 0;
+    }
+
     const languageCode = getValue(
       fileId,
       "detected_language",
       analysis.detected_language,
     );
     const languageMultiplier = getLanguageMultiplier(languageCode);
-    const baseRate = analysis.base_rate || 50;
 
-    return billablePages * baseRate * complexityMultiplier * languageMultiplier;
+    let lineTotal = billablePages * baseRate * languageMultiplier;
+
+    // Round up to nearest 2.50
+    lineTotal = roundUpTo(lineTotal, 2.5);
+
+    return lineTotal;
   };
 
   // Check if file is combined with another
