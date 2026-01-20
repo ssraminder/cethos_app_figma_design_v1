@@ -29,14 +29,16 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!quoteId) {
+    if (!quoteId || !supabase) {
       setIsLoading(false);
       return;
     }
 
     const fetchPricing = async () => {
+      if (!supabase) return;
+
       setIsLoading(true);
-      
+
       try {
         // Get quote status
         const { data: quote } = await supabase
