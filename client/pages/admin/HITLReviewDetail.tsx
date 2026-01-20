@@ -56,14 +56,16 @@ export default function HITLReviewDetail() {
   const navigate = useNavigate();
   const [session, setSession] = useState<StaffSession | null>(null);
   const [review, setReview] = useState<ReviewDetail | null>(null);
-  const [analysisResults, setAnalysisResults] = useState<AIAnalysisResult[]>([]);
+  const [analysisResults, setAnalysisResults] = useState<AIAnalysisResult[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // File accordion state
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
-  
+
   // Claim state
   const [claimedByMe, setClaimedByMe] = useState(false);
 
@@ -75,11 +77,11 @@ export default function HITLReviewDetail() {
 
   // Helper: Calculate time remaining for SLA
   const calculateTimeRemaining = (deadline: string | null) => {
-    if (!deadline) return 'N/A';
+    if (!deadline) return "N/A";
     const deadlineTime = new Date(deadline).getTime();
-    if (isNaN(deadlineTime)) return 'N/A';
+    if (isNaN(deadlineTime)) return "N/A";
     const diff = deadlineTime - Date.now();
-    if (diff < 0) return 'Overdue';
+    if (diff < 0) return "Overdue";
     const minutes = Math.floor(diff / 60000);
     if (minutes < 60) return `${minutes}m`;
     const hours = Math.floor(minutes / 60);
@@ -139,7 +141,7 @@ export default function HITLReviewDetail() {
 
   // Track claim status
   useEffect(() => {
-    const session = JSON.parse(sessionStorage.getItem('staffSession') || '{}');
+    const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
     setClaimedByMe(review?.assigned_to === session.staffId);
   }, [review]);
 
@@ -205,7 +207,7 @@ export default function HITLReviewDetail() {
         const fileIds = filesData.map((f: any) => f.id);
 
         const analysisResponse = await fetch(
-          `${SUPABASE_URL}/rest/v1/ai_analysis_results?quote_file_id=in.(${fileIds.join(',')})&processing_status=eq.complete&select=*`,
+          `${SUPABASE_URL}/rest/v1/ai_analysis_results?quote_file_id=in.(${fileIds.join(",")})&processing_status=eq.complete&select=*`,
           {
             method: "GET",
             headers: {
@@ -217,15 +219,17 @@ export default function HITLReviewDetail() {
 
         if (analysisResponse.ok) {
           const analysisData = await analysisResponse.json();
-          
+
           // Join quote_file data to each analysis result
           const enrichedAnalysis = analysisData.map((analysis: any) => ({
             ...analysis,
-            quote_file: filesData.find((f: any) => f.id === analysis.quote_file_id),
+            quote_file: filesData.find(
+              (f: any) => f.id === analysis.quote_file_id,
+            ),
           }));
 
           setAnalysisResults(enrichedAnalysis);
-          
+
           // Auto-expand first file
           if (enrichedAnalysis.length > 0) {
             setExpandedFile(enrichedAnalysis[0].id);
@@ -301,7 +305,7 @@ export default function HITLReviewDetail() {
     fileId: string,
     field: string,
     originalValue: string,
-    correctedValue: string
+    correctedValue: string,
   ) => {
     if (originalValue === correctedValue) return; // No change
 
@@ -323,7 +327,7 @@ export default function HITLReviewDetail() {
           correctedValue: correctedValue,
           fileId: fileId,
         }),
-      }
+      },
     );
 
     const result = await response.json();
@@ -338,7 +342,7 @@ export default function HITLReviewDetail() {
   const handleApprove = async () => {
     if (!review || !session?.staffId) return;
     if (!confirm("Are you sure you want to approve this quote?")) return;
-    
+
     setSubmitting(true);
     try {
       const response = await fetch(
@@ -356,9 +360,9 @@ export default function HITLReviewDetail() {
           }),
         },
       );
-      
+
       if (!response.ok) throw new Error("Failed to approve review");
-      
+
       alert("Quote approved successfully!");
       navigate("/admin/hitl");
     } catch (err) {
@@ -370,14 +374,16 @@ export default function HITLReviewDetail() {
 
   const handleReject = async () => {
     if (!review || !session?.staffId) return;
-    
-    const reason = prompt("Please provide a reason for requesting a better scan:");
+
+    const reason = prompt(
+      "Please provide a reason for requesting a better scan:",
+    );
     if (!reason) return;
-    
+
     setSubmitting(true);
     try {
-      const fileIds = analysisResults.map(a => a.quote_file_id);
-      
+      const fileIds = analysisResults.map((a) => a.quote_file_id);
+
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/reject-hitl-review`,
         {
@@ -394,9 +400,9 @@ export default function HITLReviewDetail() {
           }),
         },
       );
-      
+
       if (!response.ok) throw new Error("Failed to reject review");
-      
+
       alert("Better scan requested. Customer will be notified.");
       navigate("/admin/hitl");
     } catch (err) {
@@ -409,7 +415,7 @@ export default function HITLReviewDetail() {
   const handleEscalate = async () => {
     if (!review || !session?.staffId) return;
     if (!confirm("Are you sure you want to escalate this to an admin?")) return;
-    
+
     setSubmitting(true);
     try {
       const response = await fetch(
@@ -428,9 +434,9 @@ export default function HITLReviewDetail() {
           }),
         },
       );
-      
+
       if (!response.ok) throw new Error("Failed to escalate review");
-      
+
       alert("Review escalated to admin.");
       navigate("/admin/hitl");
     } catch (err) {
@@ -486,8 +492,8 @@ export default function HITLReviewDetail() {
               review?.status === "pending"
                 ? "bg-yellow-100 text-yellow-800"
                 : review?.status === "in_review"
-                ? "bg-blue-100 text-blue-800"
-                : "bg-gray-100"
+                  ? "bg-blue-100 text-blue-800"
+                  : "bg-gray-100"
             }`}
           >
             {review?.status?.toUpperCase().replace("_", " ")}
@@ -552,18 +558,24 @@ export default function HITLReviewDetail() {
         </h3>
 
         {analysisResults.map((analysis, index) => (
-          <div key={analysis.id} className="border rounded-lg mb-3 overflow-hidden">
+          <div
+            key={analysis.id}
+            className="border rounded-lg mb-3 overflow-hidden"
+          >
             {/* File Header - Always Visible */}
             <button
               onClick={() =>
-                setExpandedFile(expandedFile === analysis.id ? null : analysis.id)
+                setExpandedFile(
+                  expandedFile === analysis.id ? null : analysis.id,
+                )
               }
               className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
             >
               <div className="flex items-center gap-4">
                 <span className="text-lg font-medium">
                   {index + 1}.{" "}
-                  {analysis.quote_file?.original_filename || `File ${index + 1}`}
+                  {analysis.quote_file?.original_filename ||
+                    `File ${index + 1}`}
                 </span>
                 <span className="text-sm text-gray-500">
                   {analysis.word_count} words • {analysis.page_count} page(s)
@@ -577,22 +589,27 @@ export default function HITLReviewDetail() {
                       (analysis.document_type_confidence || 0) >= 0.9
                         ? "bg-green-100 text-green-800"
                         : (analysis.document_type_confidence || 0) >= 0.7
-                        ? "bg-yellow-100 text-yellow-800"
-                        : "bg-red-100 text-red-800"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-red-100 text-red-800"
                     }`}
                   >
-                    Type: {((analysis.document_type_confidence || 0) * 100).toFixed(0)}%
+                    Type:{" "}
+                    {((analysis.document_type_confidence || 0) * 100).toFixed(
+                      0,
+                    )}
+                    %
                   </span>
                   <span
                     className={`px-2 py-1 rounded text-xs ${
                       (analysis.language_confidence || 0) >= 0.9
                         ? "bg-green-100 text-green-800"
                         : (analysis.language_confidence || 0) >= 0.7
-                        ? "bg-yellow-100 text-yellow-800"
-                        : "bg-red-100 text-red-800"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-red-100 text-red-800"
                     }`}
                   >
-                    Lang: {((analysis.language_confidence || 0) * 100).toFixed(0)}%
+                    Lang:{" "}
+                    {((analysis.language_confidence || 0) * 100).toFixed(0)}%
                   </span>
                 </div>
                 {/* Expand Icon */}
@@ -629,7 +646,8 @@ export default function HITLReviewDetail() {
                           className="max-w-full max-h-[400px] object-contain"
                           onError={(e) => {
                             e.currentTarget.style.display = "none";
-                            const sibling = e.currentTarget.nextElementSibling as HTMLElement;
+                            const sibling = e.currentTarget
+                              .nextElementSibling as HTMLElement;
                             if (sibling) sibling.classList.remove("hidden");
                           }}
                         />
@@ -643,7 +661,12 @@ export default function HITLReviewDetail() {
                     </div>
                     <div className="mt-2 flex justify-between items-center text-sm">
                       <span className="text-gray-500">
-                        {((analysis.quote_file?.file_size || 0) / 1024 / 1024).toFixed(2)} MB
+                        {(
+                          (analysis.quote_file?.file_size || 0) /
+                          1024 /
+                          1024
+                        ).toFixed(2)}{" "}
+                        MB
                       </span>
                       <a
                         href={`${SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
@@ -675,59 +698,83 @@ export default function HITLReviewDetail() {
                         <div className="flex items-center justify-between">
                           {claimedByMe ? (
                             <select
-                              defaultValue={analysis.detected_document_type || ""}
+                              defaultValue={
+                                analysis.detected_document_type || ""
+                              }
                               onChange={(e) =>
                                 saveCorrection(
                                   analysis.quote_file_id,
                                   "document_type",
                                   analysis.detected_document_type,
-                                  e.target.value
+                                  e.target.value,
                                 )
                               }
                               className="border rounded px-3 py-2 flex-1 mr-2"
                             >
                               <option value="">Select...</option>
-                              <option value="birth_certificate">Birth Certificate</option>
+                              <option value="birth_certificate">
+                                Birth Certificate
+                              </option>
                               <option value="marriage_certificate">
                                 Marriage Certificate
                               </option>
-                              <option value="death_certificate">Death Certificate</option>
-                              <option value="divorce_decree">Divorce Decree</option>
+                              <option value="death_certificate">
+                                Death Certificate
+                              </option>
+                              <option value="divorce_decree">
+                                Divorce Decree
+                              </option>
                               <option value="passport">Passport</option>
-                              <option value="drivers_license">Driver's License</option>
+                              <option value="drivers_license">
+                                Driver's License
+                              </option>
                               <option value="national_id">National ID</option>
                               <option value="academic_transcript">
                                 Academic Transcript
                               </option>
                               <option value="diploma">Diploma / Degree</option>
-                              <option value="legal_document">Legal Document</option>
-                              <option value="medical_document">Medical Document</option>
+                              <option value="legal_document">
+                                Legal Document
+                              </option>
+                              <option value="medical_document">
+                                Medical Document
+                              </option>
                               <option value="financial_document">
                                 Financial Document
                               </option>
                               <option value="immigration_document">
                                 Immigration Document
                               </option>
-                              <option value="court_document">Court Document</option>
-                              <option value="business_document">Business Document</option>
+                              <option value="court_document">
+                                Court Document
+                              </option>
+                              <option value="business_document">
+                                Business Document
+                              </option>
                               <option value="other">Other</option>
                             </select>
                           ) : (
                             <span className="capitalize">
-                              {analysis.detected_document_type?.replace(/_/g, " ") ||
-                                "Unknown"}
+                              {analysis.detected_document_type?.replace(
+                                /_/g,
+                                " ",
+                              ) || "Unknown"}
                             </span>
                           )}
                           <span
                             className={`px-2 py-1 rounded text-sm ${
                               (analysis.document_type_confidence || 0) >= 0.9
                                 ? "bg-green-100 text-green-800"
-                                : (analysis.document_type_confidence || 0) >= 0.7
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-red-100 text-red-800"
+                                : (analysis.document_type_confidence || 0) >=
+                                    0.7
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-red-100 text-red-800"
                             }`}
                           >
-                            {((analysis.document_type_confidence || 0) * 100).toFixed(0)}%
+                            {(
+                              (analysis.document_type_confidence || 0) * 100
+                            ).toFixed(0)}
+                            %
                           </span>
                         </div>
                       </div>
@@ -748,11 +795,14 @@ export default function HITLReviewDetail() {
                               (analysis.language_confidence || 0) >= 0.9
                                 ? "bg-green-100 text-green-800"
                                 : (analysis.language_confidence || 0) >= 0.7
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-red-100 text-red-800"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-red-100 text-red-800"
                             }`}
                           >
-                            {((analysis.language_confidence || 0) * 100).toFixed(0)}%
+                            {(
+                              (analysis.language_confidence || 0) * 100
+                            ).toFixed(0)}
+                            %
                           </span>
                         </div>
                       </div>
@@ -765,25 +815,31 @@ export default function HITLReviewDetail() {
                         <div className="flex items-center justify-between">
                           {claimedByMe ? (
                             <select
-                              defaultValue={analysis.assessed_complexity || "standard"}
+                              defaultValue={
+                                analysis.assessed_complexity || "standard"
+                              }
                               onChange={(e) =>
                                 saveCorrection(
                                   analysis.quote_file_id,
                                   "complexity",
                                   analysis.assessed_complexity,
-                                  e.target.value
+                                  e.target.value,
                                 )
                               }
                               className="border rounded px-3 py-2 flex-1 mr-2"
                             >
                               <option value="standard">Standard</option>
                               <option value="complex">Complex</option>
-                              <option value="highly_complex">Highly Complex</option>
+                              <option value="highly_complex">
+                                Highly Complex
+                              </option>
                             </select>
                           ) : (
                             <span className="capitalize">
-                              {analysis.assessed_complexity?.replace(/_/g, " ") ||
-                                "Standard"}
+                              {analysis.assessed_complexity?.replace(
+                                /_/g,
+                                " ",
+                              ) || "Standard"}
                             </span>
                           )}
                           <span
@@ -791,11 +847,14 @@ export default function HITLReviewDetail() {
                               (analysis.complexity_confidence || 0) >= 0.9
                                 ? "bg-green-100 text-green-800"
                                 : (analysis.complexity_confidence || 0) >= 0.7
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-red-100 text-red-800"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-red-100 text-red-800"
                             }`}
                           >
-                            {((analysis.complexity_confidence || 0) * 100).toFixed(0)}%
+                            {(
+                              (analysis.complexity_confidence || 0) * 100
+                            ).toFixed(0)}
+                            %
                           </span>
                         </div>
                         {analysis.complexity_reasoning && (
@@ -823,13 +882,17 @@ export default function HITLReviewDetail() {
                           <div className="text-xl font-bold">
                             {analysis.billable_pages || 0}
                           </div>
-                          <div className="text-xs text-gray-500">Billable Pages</div>
+                          <div className="text-xs text-gray-500">
+                            Billable Pages
+                          </div>
                         </div>
                         <div className="bg-gray-50 p-3 rounded text-center">
                           <div className="text-xl font-bold">
                             {analysis.complexity_multiplier || 1}x
                           </div>
-                          <div className="text-xs text-gray-500">Multiplier</div>
+                          <div className="text-xs text-gray-500">
+                            Multiplier
+                          </div>
                         </div>
                       </div>
 
