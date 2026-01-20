@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QuoteProvider } from "./context/QuoteContext";
 import { StaffAuthProvider } from "./context/StaffAuthContext";
+import { BrandingProvider } from "./context/BrandingContext";
 import Index from "./pages/Index";
 import Success from "./pages/Success";
 import NotFound from "./pages/NotFound";
