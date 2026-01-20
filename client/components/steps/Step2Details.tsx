@@ -1,11 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 import { Loader2 } from "lucide-react";
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Step2Details() {
   const { state, updateState } = useQuote();
   const { languages, intendedUses, loading, error } = useDropdownOptions();
+  const [processingStatus, setProcessingStatus] = useState<'pending' | 'processing' | 'quote_ready' | null>(null);
+  const [fileProgress, setFileProgress] = useState({ completed: 0, total: 0 });
 
   const updateField = (field: string, value: string) => {
     updateState({ [field]: value });
