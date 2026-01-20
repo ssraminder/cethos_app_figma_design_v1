@@ -1,10 +1,4 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  ReactNode,
-} from "react";
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 interface Branding {
   companyName: string;
@@ -16,11 +10,11 @@ interface Branding {
 }
 
 const defaultBranding: Branding = {
-  companyName: "Cethos",
-  logoUrl: "",
-  logoDarkUrl: "",
-  supportEmail: "support@cethos.com",
-  primaryColor: "#3B82F6",
+  companyName: 'Cethos',
+  logoUrl: '',
+  logoDarkUrl: '',
+  supportEmail: 'support@cethos.com',
+  primaryColor: '#3B82F6',
   loading: true,
 };
 
@@ -35,16 +29,26 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 
   async function fetchBranding() {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
       const response = await fetch(
-        "https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/get-branding",
+        'https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/get-branding',
+        {
+          signal: controller.signal,
+          mode: 'cors',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
       );
+
+      clearTimeout(timeoutId);
 
       // If the function doesn't exist yet (404), just use defaults
       if (!response.ok) {
-        console.warn(
-          "Branding Edge Function not found, using default branding",
-        );
-        setBranding((prev) => ({ ...prev, loading: false }));
+        console.warn('Branding Edge Function returned', response.status, '- using default branding');
+        setBranding(prev => ({ ...prev, loading: false }));
         return;
       }
 
@@ -55,12 +59,17 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
           loading: false,
         });
       } else {
-        setBranding((prev) => ({ ...prev, loading: false }));
+        setBranding(prev => ({ ...prev, loading: false }));
       }
     } catch (error) {
-      // Silently fallback to default branding (Edge Function not deployed yet)
-      console.warn("Branding fetch failed, using default branding");
-      setBranding((prev) => ({ ...prev, loading: false }));
+      // Silently fallback to default branding
+      // This is expected in development environments with CORS restrictions
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.warn('Branding fetch timed out, using default branding');
+      } else {
+        console.warn('Branding fetch failed (CORS or network issue), using default branding');
+      }
+      setBranding(prev => ({ ...prev, loading: false }));
     }
   }
 
