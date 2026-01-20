@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 import { Check, Mail, Loader2 } from "lucide-react";
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface ProcessingStatusProps {
   quoteId: string;
@@ -12,12 +17,15 @@ interface ProcessingStep {
   status: "completed" | "processing" | "pending";
 }
 
+type QuoteStatus = 'pending' | 'processing' | 'quote_ready' | 'hitl_pending' | 'error';
+
 export default function ProcessingStatus({
   quoteId,
   onComplete,
   onEmailInstead,
 }: ProcessingStatusProps) {
   const [progress, setProgress] = useState(0);
+  const [quoteStatus, setQuoteStatus] = useState<QuoteStatus>('pending');
   const [steps, setSteps] = useState<ProcessingStep[]>([
     { label: "Files uploaded", status: "completed" },
     { label: "Translation details saved", status: "completed" },
@@ -25,26 +33,43 @@ export default function ProcessingStatus({
     { label: "Calculating pricing", status: "pending" },
   ]);
 
-  // Simulate progress (in real implementation, poll the backend)
+  // Fetch current status and subscribe to realtime updates
   useEffect(() => {
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(progressInterval);
-          return 100;
-        }
-        // Increment progress
-        const newProgress = prev + 5;
+    if (!quoteId) return;
 
-        // Update step statuses based on progress
-        if (newProgress >= 50 && newProgress < 80) {
+    // Initial fetch
+    const fetchStatus = async () => {
+      const { data: quote } = await supabase
+        .from('quotes')
+        .select('processing_status')
+        .eq('id', quoteId)
+        .single();
+
+      if (quote) {
+        setQuoteStatus(quote.processing_status);
+      }
+
+      // Fetch file progress
+      const { data: files } = await supabase
+        .from('quote_files')
+        .select('processing_status')
+        .eq('quote_id', quoteId);
+
+      if (files) {
+        const completed = files.filter(f => f.processing_status === 'complete').length;
+        const total = files.length;
+        const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+        setProgress(progressPercent);
+
+        // Update steps based on progress
+        if (progressPercent >= 50 && progressPercent < 100) {
           setSteps([
             { label: "Files uploaded", status: "completed" },
             { label: "Translation details saved", status: "completed" },
             { label: "Analyzing documents...", status: "completed" },
             { label: "Calculating pricing", status: "processing" },
           ]);
-        } else if (newProgress >= 80) {
+        } else if (progressPercent >= 100) {
           setSteps([
             { label: "Files uploaded", status: "completed" },
             { label: "Translation details saved", status: "completed" },
@@ -52,17 +77,60 @@ export default function ProcessingStatus({
             { label: "Calculating pricing", status: "completed" },
           ]);
         }
+      }
+    };
 
-        return newProgress;
-      });
-    }, 400); // Update every 400ms for smooth animation
+    fetchStatus();
 
-    return () => clearInterval(progressInterval);
-  }, []);
+    // Subscribe to realtime updates
+    const channel = supabase
+      .channel(`quote-${quoteId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'quotes',
+          filter: `id=eq.${quoteId}`,
+        },
+        (payload: any) => {
+          const newStatus = payload.new.processing_status as QuoteStatus;
+          setQuoteStatus(newStatus);
+
+          if (newStatus === 'quote_ready') {
+            setProgress(100);
+            setSteps([
+              { label: "Files uploaded", status: "completed" },
+              { label: "Translation details saved", status: "completed" },
+              { label: "Analyzing documents...", status: "completed" },
+              { label: "Calculating pricing", status: "completed" },
+            ]);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'quote_files',
+          filter: `quote_id=eq.${quoteId}`,
+        },
+        () => {
+          // Refresh progress when file status changes
+          fetchStatus();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [quoteId]);
 
   // Check if processing is complete
   useEffect(() => {
-    if (progress >= 100) {
+    if (quoteStatus === 'quote_ready' || progress >= 100) {
       // Wait 500ms before auto-navigating
       const timeout = setTimeout(() => {
         onComplete();
@@ -70,26 +138,7 @@ export default function ProcessingStatus({
 
       return () => clearTimeout(timeout);
     }
-  }, [progress, onComplete]);
-
-  // TODO: In production, replace with actual polling
-  // useEffect(() => {
-  //   const pollInterval = setInterval(async () => {
-  //     const { data } = await supabase
-  //       .from('quotes')
-  //       .select('processing_status, processing_progress')
-  //       .eq('id', quoteId)
-  //       .single();
-  //
-  //     if (data?.processing_status === 'completed') {
-  //       onComplete();
-  //     } else {
-  //       setProgress(data?.processing_progress || 0);
-  //     }
-  //   }, 2000);
-  //
-  //   return () => clearInterval(pollInterval);
-  // }, [quoteId, onComplete]);
+  }, [quoteStatus, progress, onComplete]);
 
   return (
     <div className="max-w-[600px] mx-auto">
