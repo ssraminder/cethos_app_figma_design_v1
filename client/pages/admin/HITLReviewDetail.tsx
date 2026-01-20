@@ -301,25 +301,17 @@ export default function HITLReviewDetail() {
   };
 
   // Combine file with another
-  const combineWith = (childFileId: string, parentFileId: string | null) => {
+  const combineFileWith = (childFileId: string, parentFileId: string | null) => {
     if (parentFileId === null) {
       // Uncombine
       setCombinedFiles((prev) => {
-        const newCombined = { ...prev };
-        delete newCombined[childFileId];
-        return newCombined;
+        const updated = { ...prev };
+        delete updated[childFileId];
+        return updated;
       });
-      // Reset billable pages to original
-      updateLocalEdit(
-        childFileId,
-        "billable_pages",
-        analysisResults.find((a) => a.quote_file_id === childFileId)
-          ?.billable_pages || 1,
-      );
     } else {
-      // Combine - set this file's billable pages to 0
+      // Combine
       setCombinedFiles((prev) => ({ ...prev, [childFileId]: parentFileId }));
-      updateLocalEdit(childFileId, "billable_pages", 0);
     }
   };
 
