@@ -230,7 +230,14 @@ export default function HITLQueue() {
                       key={review.review_id}
                       className={`hover:bg-gray-50 ${review.sla_status === 'breached' ? 'bg-red-50' : ''}`}
                     >
-                      <td className="px-4 py-3 font-medium text-blue-600">{review.quote_number}</td>
+                      <td className="px-4 py-3 font-medium">
+                        <button
+                          onClick={() => navigate(`/admin/hitl/${review.review_id}`)}
+                          style={{ color: '#3B82F6', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                        >
+                          {review.quote_number}
+                        </button>
+                      </td>
                       <td className="px-4 py-3 text-gray-900">
                         <div className="text-sm">
                           <div className="font-medium">{review.customer_name || 'N/A'}</div>
