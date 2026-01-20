@@ -122,6 +122,7 @@ export default function Login() {
           if (!isMounted.current) return;
 
           if (staffData) {
+            clearTimeout(timeout);
             navigate("/admin/hitl", { replace: true });
             return;
           }
