@@ -489,7 +489,7 @@ export default function HITLReviewDetail() {
           .from("ai_learning_log")
           .select("*")
           .eq("learning_type", correction.learningType)
-          .eq("ai_prediction", correction.aiValue)
+          .eq("ai_prediction", correction.originalValue)
           .eq("correct_value", correction.correctedValue)
           .maybeSingle();
 
