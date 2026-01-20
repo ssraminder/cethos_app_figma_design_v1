@@ -220,13 +220,13 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       }
       // Enable processing screen
       updateState({ isProcessing: true });
-      return true;
+      return { success: true };
     }
 
     // Step 3 -> 4: Just navigation
     if (state.currentStep === 3) {
       updateState({ currentStep: 4 });
-      return true;
+      return { success: true };
     }
 
     // Step 4 -> 5: Create/update customer and finalize quote
@@ -250,10 +250,10 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       }
 
       updateState({ currentStep: 5 });
-      return true;
+      return { success: true };
     }
 
-    return false;
+    return { success: false };
   };
 
   const goToPreviousStep = () => {
