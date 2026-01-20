@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound";
 // Admin pages
 import AdminLogin from "./pages/admin/Login";
 import HITLQueue from "./pages/admin/HITLQueue";
+import HITLReviewDetail from "./pages/admin/HITLReviewDetail";
 
 const queryClient = new QueryClient();
 
