@@ -288,24 +288,70 @@ export default function HITLReviewDetail() {
     }
   };
 
-  const handleSaveCorrections = async () => {
-    if (!corrections.reason.trim()) {
-      alert('Please provide a reason for corrections');
+  const saveCorrections = async () => {
+    if (!review || !corrections.reason.trim()) {
+      alert('Please provide a reason for the corrections.');
       return;
     }
-
     setSubmitting(true);
     try {
-      console.log('Saving corrections:', corrections);
-      // await saveCorrection(review.review_id, corrections);
-      alert('Corrections saved (placeholder)');
+      const correctionsToSave = [];
+
+      if (corrections.documentType && review.ai_analysis?.document_type !== corrections.documentType) {
+        correctionsToSave.push({
+          field: 'document_type',
+          aiValue: review.ai_analysis?.document_type,
+          correctedValue: corrections.documentType,
+        });
+      }
+      if (corrections.complexity && review.ai_analysis?.complexity_assessment !== corrections.complexity) {
+        correctionsToSave.push({
+          field: 'complexity',
+          aiValue: review.ai_analysis?.complexity_assessment,
+          correctedValue: corrections.complexity,
+        });
+      }
+      if (corrections.wordCount && review.ai_analysis?.word_count !== parseInt(corrections.wordCount)) {
+        correctionsToSave.push({
+          field: 'word_count',
+          aiValue: review.ai_analysis?.word_count,
+          correctedValue: parseInt(corrections.wordCount),
+        });
+      }
+
+      for (const correction of correctionsToSave) {
+        const response = await fetch(
+          `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              reviewId: review.review_id,
+              analysisId: review.ai_analysis?.id,
+              staffId: staffEmail,
+              field: correction.field,
+              aiValue: correction.aiValue,
+              correctedValue: correction.correctedValue,
+              reason: corrections.reason,
+            }),
+          }
+        );
+        if (!response.ok) throw new Error(`Failed to save ${correction.field} correction`);
+      }
+
+      alert('Corrections saved successfully!');
       setShowCorrections(false);
       setCorrections({ documentType: '', complexity: '', wordCount: '', reason: '' });
       setHasChanges(false);
+      fetchReviewDetail();
     } catch (err) {
-      alert(`Error: ${err}`);
+      alert('Error saving corrections: ' + (err as Error).message);
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   const formatSLA = (minutes: number) => {
