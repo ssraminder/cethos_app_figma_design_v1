@@ -90,8 +90,42 @@ export default function HITLReviewDetail() {
     {},
   );
 
+  // Language editing state
+  const [editingLanguage, setEditingLanguage] = useState<string | null>(null);
+
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // Complexity to multiplier mapping
+  const COMPLEXITY_MULTIPLIERS: Record<string, number> = {
+    standard: 1.0,
+    complex: 1.15,
+    highly_complex: 1.5,
+  };
+
+  // Language multipliers
+  const LANGUAGE_MULTIPLIERS: Record<string, number> = {
+    en: 1.0, // English
+    es: 1.0, // Spanish
+    fr: 1.1, // French
+    de: 1.1, // German
+    zh: 1.25, // Chinese
+    ja: 1.25, // Japanese
+    ko: 1.25, // Korean
+    ar: 1.3, // Arabic
+    ru: 1.15, // Russian
+    pl: 1.1, // Polish
+    pt: 1.0, // Portuguese
+    it: 1.0, // Italian
+    nl: 1.1, // Dutch
+    sv: 1.1, // Swedish
+    uk: 1.15, // Ukrainian
+    vi: 1.2, // Vietnamese
+    th: 1.25, // Thai
+    hi: 1.15, // Hindi
+    tr: 1.1, // Turkish
+    he: 1.2, // Hebrew
+  };
 
   // Helper: Calculate time remaining for SLA
   const calculateTimeRemaining = (deadline: string | null) => {
