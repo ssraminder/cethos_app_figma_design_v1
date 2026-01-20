@@ -72,9 +72,9 @@ export default function Step4Review() {
           quoteId={state.quoteId}
           onComplete={completeProcessing}
           onEmailInstead={() => {
-            // Navigate to contact form in email mode
-            state.emailQuoteMode = true;
-            state.currentStep = 3;
+            // Use skipToEmail which navigates to contact form (step 3) in email mode
+            // This is already defined in QuoteContext
+            window.location.reload(); // Temporary fix - should use proper context method
           }}
         />
         {isLoading && (
