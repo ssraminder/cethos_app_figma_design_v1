@@ -1150,18 +1150,17 @@ export default function HITLReviewDetail() {
                                 ) || "standard"
                               }
                               onChange={(e) =>
-                                updateLocalEdit(
+                                handleComplexityChange(
                                   analysis.quote_file_id,
-                                  "complexity",
                                   e.target.value,
                                 )
                               }
                               className="border rounded px-3 py-2 flex-1 mr-2 focus:ring-2 focus:ring-blue-500"
                             >
-                              <option value="standard">Standard</option>
-                              <option value="complex">Complex</option>
+                              <option value="standard">Standard (1.0x)</option>
+                              <option value="complex">Complex (1.15x)</option>
                               <option value="highly_complex">
-                                Highly Complex
+                                Highly Complex (1.5x)
                               </option>
                             </select>
                           ) : (
