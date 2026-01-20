@@ -3,12 +3,21 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
+// Debug: Log credential status
+console.log('=== SUPABASE CLIENT INITIALIZATION ===');
+console.log('VITE_SUPABASE_URL:', supabaseUrl);
+console.log('VITE_SUPABASE_ANON_KEY (first 20 chars):', supabaseAnonKey.substring(0, 20) + '...');
+console.log('URL is valid:', supabaseUrl.startsWith('https://'));
+console.log('Key is valid:', supabaseAnonKey.length > 100);
+
 // Check if credentials are provided
 const hasCredentials =
   supabaseUrl &&
   supabaseAnonKey &&
   supabaseUrl !== "your_supabase_url_here" &&
   supabaseAnonKey !== "your_supabase_anon_key_here";
+
+console.log('hasCredentials:', hasCredentials);
 
 if (!hasCredentials) {
   console.warn(
