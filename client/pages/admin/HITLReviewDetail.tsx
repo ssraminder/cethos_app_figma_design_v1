@@ -85,6 +85,11 @@ export default function HITLReviewDetail() {
     >
   >({});
 
+  // Combined files tracking (fileId -> parentFileId)
+  const [combinedFiles, setCombinedFiles] = useState<Record<string, string>>(
+    {},
+  );
+
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -110,8 +115,21 @@ export default function HITLReviewDetail() {
 
   // Calculate line total based on edits
   const calculateLineTotal = (analysis: any, fileId: string) => {
-    const billablePages =
-      getValue(fileId, "billable_pages", analysis.billable_pages) || 1;
+    const billablePages = getValue(
+      fileId,
+      "billable_pages",
+      analysis.billable_pages,
+    );
+
+    // If billable pages is 0, line total is 0
+    if (
+      billablePages === 0 ||
+      billablePages === null ||
+      billablePages === undefined
+    ) {
+      return 0;
+    }
+
     const multiplier =
       getValue(
         fileId,
@@ -120,6 +138,41 @@ export default function HITLReviewDetail() {
       ) || 1;
     const baseRate = analysis.base_rate || 50; // default base rate
     return billablePages * baseRate * multiplier;
+  };
+
+  // Check if file is combined with another
+  const isCombinedWith = (fileId: string) => combinedFiles[fileId];
+
+  // Get files that can be combined with (exclude self and already-combined files)
+  const getAvailableParentFiles = (currentFileId: string) => {
+    return analysisResults.filter(
+      (a) =>
+        a.quote_file_id !== currentFileId &&
+        !combinedFiles[a.quote_file_id], // Can't combine with a file that's already combined
+    );
+  };
+
+  // Combine file with another
+  const combineWith = (childFileId: string, parentFileId: string | null) => {
+    if (parentFileId === null) {
+      // Uncombine
+      setCombinedFiles((prev) => {
+        const newCombined = { ...prev };
+        delete newCombined[childFileId];
+        return newCombined;
+      });
+      // Reset billable pages to original
+      updateLocalEdit(
+        childFileId,
+        "billable_pages",
+        analysisResults.find((a) => a.quote_file_id === childFileId)
+          ?.billable_pages || 1,
+      );
+    } else {
+      // Combine - set this file's billable pages to 0
+      setCombinedFiles((prev) => ({ ...prev, [childFileId]: parentFileId }));
+      updateLocalEdit(childFileId, "billable_pages", 0);
+    }
   };
 
   // Update local edit (doesn't save yet)
