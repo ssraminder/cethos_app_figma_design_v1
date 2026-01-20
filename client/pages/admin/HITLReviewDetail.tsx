@@ -1119,10 +1119,15 @@ export default function HITLReviewDetail() {
       {/* Files Accordion */}
       <div className="mb-6">
         <h3 className="font-semibold mb-3">
-          Documents ({analysisResults.length} files)
+          Documents ({getVisibleFiles().length} files)
         </h3>
 
-        {analysisResults.map((analysis, index) => (
+        {getVisibleFiles().map((analysis, index) => {
+          const allPages = getAllPagesForDocument(analysis.quote_file_id);
+          const allPreviews = getAllPreviewsForDocument(analysis.quote_file_id);
+          const totalWordCount = allPages.reduce((sum, p) => sum + getPageWordCount(p), 0);
+
+          return (
           <div
             key={analysis.id}
             className="border rounded-lg mb-3 overflow-hidden"
@@ -1901,7 +1906,8 @@ export default function HITLReviewDetail() {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Action Buttons - Only show if claimed by me */}
