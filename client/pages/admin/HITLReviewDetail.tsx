@@ -637,7 +637,7 @@ export default function HITLReviewDetail() {
                     <p className="mb-2">📄 PDF Preview</p>
                     <p className="text-sm">{currentFile.original_filename}</p>
                     <p className="text-xs text-gray-400 mt-2">
-                      {(currentFile.file_size / 1024 / 1024).toFixed(2)} MB
+                      {((currentFile.file_size ?? 0) / 1024 / 1024).toFixed(2)} MB
                     </p>
                   </div>
                 ) : isImage ? (
@@ -658,7 +658,7 @@ export default function HITLReviewDetail() {
                   <div className="text-sm text-gray-600">
                     {currentFile.original_filename}
                     <span className="ml-2 text-gray-400">
-                      ({(currentFile.file_size / 1024 / 1024).toFixed(2)} MB)
+                      ({((currentFile.file_size ?? 0) / 1024 / 1024).toFixed(2)} MB)
                     </span>
                   </div>
                   <a
@@ -734,7 +734,7 @@ export default function HITLReviewDetail() {
                       <p className="text-gray-600">Document Type</p>
                       <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
                         {(
-                          review.ai_analysis.document_type_confidence * 100
+                          (review.ai_analysis.document_type_confidence ?? 0) * 100
                         ).toFixed(0)}
                         %
                       </span>
@@ -747,7 +747,7 @@ export default function HITLReviewDetail() {
                     <div className="flex justify-between">
                       <p className="text-gray-600">Detected Language</p>
                       <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                        {(review.ai_analysis.language_confidence * 100).toFixed(
+                        {((review.ai_analysis.language_confidence ?? 0) * 100).toFixed(
                           0,
                         )}
                         %
@@ -762,7 +762,7 @@ export default function HITLReviewDetail() {
                       <p className="text-gray-600">Complexity</p>
                       <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
                         {(
-                          review.ai_analysis.complexity_confidence * 100
+                          (review.ai_analysis.complexity_confidence ?? 0) * 100
                         ).toFixed(0)}
                         %
                       </span>
@@ -796,14 +796,14 @@ export default function HITLReviewDetail() {
                 <div className="flex justify-between">
                   <span className="text-gray-600">Subtotal</span>
                   <span className="font-medium">
-                    ${review.subtotal.toFixed(2)}
+                    ${(review.subtotal ?? 0).toFixed(2)}
                   </span>
                 </div>
                 {review.certification_fee > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Certification</span>
                     <span className="font-medium">
-                      ${review.certification_fee.toFixed(2)}
+                      ${(review.certification_fee ?? 0).toFixed(2)}
                     </span>
                   </div>
                 )}
@@ -811,7 +811,7 @@ export default function HITLReviewDetail() {
                   <div className="flex justify-between">
                     <span className="text-gray-600">Rush Fee</span>
                     <span className="font-medium">
-                      ${review.rush_fee.toFixed(2)}
+                      ${(review.rush_fee ?? 0).toFixed(2)}
                     </span>
                   </div>
                 )}
@@ -819,18 +819,18 @@ export default function HITLReviewDetail() {
                   <div className="flex justify-between">
                     <span className="text-gray-600">Delivery</span>
                     <span className="font-medium">
-                      ${review.delivery_fee.toFixed(2)}
+                      ${(review.delivery_fee ?? 0).toFixed(2)}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between pt-2 border-t border-gray-200">
                   <span className="text-gray-600">Tax</span>
-                  <span className="font-medium">${review.tax.toFixed(2)}</span>
+                  <span className="font-medium">${(review.tax ?? 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t-2 border-gray-900">
                   <span className="font-bold text-gray-900">Total</span>
                   <span className="font-bold text-lg text-gray-900">
-                    ${review.total.toFixed(2)}
+                    ${(review.total ?? 0).toFixed(2)}
                   </span>
                 </div>
               </div>
