@@ -22,6 +22,7 @@ import HITLReviewDetail from "./pages/admin/HITLReviewDetail";
 import AdminSettings from "./pages/admin/AdminSettings";
 import Analytics from "./pages/admin/Analytics";
 import Patterns from "./pages/admin/Patterns";
+import Learning from "./pages/admin/Learning";
 
 const queryClient = new QueryClient();
 
