@@ -121,6 +121,35 @@ export default function Step2Details() {
         </p>
       </div>
 
+      {/* Processing Status Indicator */}
+      {processingStatus && (processingStatus === 'pending' || processingStatus === 'processing') && (
+        <div className="mb-6 bg-blue-50 border-l-4 border-cethos-blue rounded-lg p-4 flex items-center gap-3">
+          <Loader2 className="w-5 h-5 animate-spin text-cethos-blue flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-blue-900">
+              Analyzing your documents in the background...
+            </p>
+            {fileProgress.total > 0 && (
+              <p className="text-xs text-blue-700 mt-1">
+                {fileProgress.completed} of {fileProgress.total} documents processed
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Processing Complete Indicator */}
+      {processingStatus === 'quote_ready' && (
+        <div className="mb-6 bg-green-50 border-l-4 border-green-500 rounded-lg p-4 flex items-center gap-3">
+          <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <p className="text-sm font-medium text-green-900">
+            Document analysis complete! Your quote is ready.
+          </p>
+        </div>
+      )}
+
       {/* Form Section */}
       <div className="bg-white border-2 border-cethos-border rounded-xl p-6 sm:p-8 space-y-6">
         {/* Source Language */}
