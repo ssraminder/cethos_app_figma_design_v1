@@ -238,7 +238,7 @@ export default function HITLReviewDetail() {
   };
 
   const approveReview = async () => {
-    if (!review) return;
+    if (!review || !session?.staffId) return;
     if (!confirm('Are you sure you want to approve this quote?')) return;
     setSubmitting(true);
     try {
@@ -252,7 +252,7 @@ export default function HITLReviewDetail() {
           },
           body: JSON.stringify({
             reviewId: review.review_id,
-            staffId: staffEmail,
+            staffId: session.staffId,
             notes: internalNotes,
           }),
         }
