@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useQuote } from "@/context/QuoteContext";
+import { useDocumentProcessing } from "@/hooks/useDocumentProcessing";
 import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
 import Footer from "@/components/Footer";
@@ -22,8 +23,11 @@ export default function Index() {
     skipToEmail,
   } = useQuote();
 
+  const { triggerProcessing } = useDocumentProcessing();
+
   const handleContinue = async () => {
-    const isLastStep = state.currentStep === 4;
+    const currentStep = state.currentStep;
+    const isLastStep = currentStep === 4;
 
     // Special handling for email quote mode on Step 4
     if (isLastStep && state.emailQuoteMode) {
@@ -37,6 +41,15 @@ export default function Index() {
 
     // Normal flow
     const success = await goToNextStep();
+
+    // After moving from Step 1 to Step 2, trigger document processing
+    if (success && currentStep === 1 && state.quoteId) {
+      // Trigger processing in background (don't await)
+      triggerProcessing(state.quoteId).catch(error => {
+        console.error('Failed to trigger processing:', error);
+        // Processing will happen eventually, don't block user flow
+      });
+    }
 
     // Navigate to success page if we were on step 4 and successfully moved to step 5
     if (success && isLastStep) {
