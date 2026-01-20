@@ -223,7 +223,26 @@ export default function HITLReviewDetail() {
   };
 
   const claimReview = async () => {
-    if (!review || !session?.staffId) return;
+    // Read fresh session from storage
+    const stored = sessionStorage.getItem("staffSession");
+    if (!stored) {
+      alert("Session expired. Please login again.");
+      navigate("/admin/login");
+      return;
+    }
+
+    const sessionData = JSON.parse(stored);
+    if (!sessionData.staffId) {
+      alert("Session expired. Please login again.");
+      navigate("/admin/login");
+      return;
+    }
+
+    if (!reviewId) {
+      alert("Review ID missing");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const response = await fetch(
@@ -231,19 +250,28 @@ export default function HITLReviewDetail() {
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
             "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
-            reviewId: review.review_id,
-            staffId: session.staffId,
+            reviewId: reviewId,
+            staffId: sessionData.staffId,
           }),
         },
       );
-      if (!response.ok) throw new Error("Failed to claim review");
-      // Refresh the review data
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        console.error("Claim failed:", result.error);
+        alert(result.error || "Failed to claim review");
+        return;
+      }
+
+      // Refresh the review data after claiming
       fetchReviewDetail();
     } catch (err) {
+      console.error("Claim error:", err);
       alert("Error claiming review: " + (err as Error).message);
     } finally {
       setSubmitting(false);
