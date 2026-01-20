@@ -87,6 +87,7 @@ export default function Login() {
               console.log("Staff user verified, redirecting...");
               // Clear the hash from URL
               window.history.replaceState(null, "", window.location.pathname);
+              clearTimeout(timeout);
               navigate("/admin/hitl", { replace: true });
               return;
             }
