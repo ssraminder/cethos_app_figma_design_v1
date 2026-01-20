@@ -223,13 +223,13 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       return { success: true };
     }
 
-    // Step 3 -> 4: Just navigation
+    // Step 3 (Contact) -> 4 (Review): Just navigation
     if (state.currentStep === 3) {
       updateState({ currentStep: 4 });
       return { success: true };
     }
 
-    // Step 4 -> 5: Create/update customer and finalize quote
+    // Step 4 (Review) -> 5 (Success): Create/update customer and finalize quote
     if (state.currentStep === 4) {
       if (state.quoteId) {
         const customerSaved = await supabase.createOrUpdateCustomer(
