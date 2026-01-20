@@ -10,6 +10,7 @@ import { QuoteProvider } from "./context/QuoteContext";
 import Index from "./pages/Index";
 import Success from "./pages/Success";
 import NotFound from "./pages/NotFound";
+import Login from "./pages/admin/Login";
 
 const queryClient = new QueryClient();
 
