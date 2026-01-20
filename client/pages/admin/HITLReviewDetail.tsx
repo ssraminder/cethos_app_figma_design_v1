@@ -1510,47 +1510,51 @@ export default function HITLReviewDetail() {
                       <div className="bg-blue-50 p-3 rounded mt-3">
                         <div className="flex justify-between items-center">
                           <span className="text-sm">Line Total</span>
+                          <div>
+                            <span className="text-sm">Line Total</span>
+                            {!combinedFiles[analysis.quote_file_id] && (
+                              <p className="text-xs text-gray-500">
+                                {calculateDocumentTotal(
+                                  analysis.quote_file_id,
+                                  analysis,
+                                ).toFixed(2)}{" "}
+                                × ${baseRate} ×{" "}
+                                {getLanguageMultiplier(
+                                  getValue(
+                                    analysis.quote_file_id,
+                                    "detected_language",
+                                    analysis.detected_language,
+                                  ),
+                                )}
+                                x → rounded to $2.50
+                              </p>
+                            )}
+                          </div>
                           <span
-                            className={`text-lg font-bold ${
-                              calculateLineTotal(
-                                analysis,
-                                analysis.quote_file_id,
-                              ) === 0
+                            className={`text-xl font-bold ${
+                              combinedFiles[analysis.quote_file_id]
                                 ? "text-gray-400"
                                 : ""
                             }`}
                           >
                             $
                             {calculateLineTotal(
-                              analysis,
                               analysis.quote_file_id,
+                              analysis,
                             ).toFixed(2)}
                           </span>
                         </div>
 
-                        {/* Show why it's $0 */}
-                        {calculateLineTotal(
-                          analysis,
-                          analysis.quote_file_id,
-                        ) === 0 &&
-                          combinedFiles[analysis.quote_file_id] && (
-                            <p className="text-xs text-purple-600 mt-1">
-                              Combined with another document - not billed
-                              separately
-                            </p>
-                          )}
-
-                        {/* Show recalculation note */}
-                        {calculateLineTotal(
-                          analysis,
-                          analysis.quote_file_id,
-                        ) !== (analysis.line_total || 0) &&
-                          !combinedFiles[analysis.quote_file_id] && (
-                            <p className="text-xs text-orange-600 mt-1">
-                              * Recalculated from original $
-                              {(analysis.line_total || 0).toFixed(2)}
-                            </p>
-                          )}
+                        {combinedFiles[analysis.quote_file_id] && (
+                          <p className="text-xs text-purple-600 mt-1">
+                            Combined with{" "}
+                            {analysisResults.find(
+                              (a) =>
+                                a.quote_file_id ===
+                                combinedFiles[analysis.quote_file_id],
+                            )?.quote_file?.original_filename}
+                          </p>
+                        )}
                       </div>
 
                       {/* Combine Documents Section - show if there are multiple files */}
