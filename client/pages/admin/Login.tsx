@@ -72,24 +72,26 @@ export default function Login() {
       const result = await response.json();
 
       if (result.success) {
-        // Store user data in sessionStorage
-        sessionStorage.setItem(
-          "staffSession",
-          JSON.stringify({
-            email: result.user.email,
-            staffId: result.user.id,
-            staffName: result.user.fullName,
-            staffRole: result.user.role,
-            loggedIn: true,
-            loginTime: new Date().toISOString(),
-          }),
-        );
+        // 1. Store session FIRST
+        const sessionData = {
+          email: result.user.email,
+          staffId: result.user.id,
+          staffName: result.user.fullName,
+          staffRole: result.user.role,
+          loggedIn: true,
+          loginTime: new Date().toISOString(),
+        };
+
+        console.log("Saving session:", sessionData);
+        sessionStorage.setItem("staffSession", JSON.stringify(sessionData));
+
+        // 2. Verify it was saved
+        console.log("Session saved:", sessionStorage.getItem("staffSession"));
 
         setMessage("Login successful! Redirecting...");
 
-        setTimeout(() => {
-          navigate("/admin/hitl", { replace: true });
-        }, 500);
+        // 3. Navigate AFTER
+        navigate("/admin/hitl", { replace: true });
       } else {
         setMessage(result.error || "Invalid OTP code");
         setLoading(false);
