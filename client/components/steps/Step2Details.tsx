@@ -2,16 +2,18 @@ import { useEffect, useState } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 import { Loader2 } from "lucide-react";
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Step2Details() {
   const { state, updateState } = useQuote();
   const { languages, intendedUses, loading, error } = useDropdownOptions();
-  const [processingStatus, setProcessingStatus] = useState<'pending' | 'processing' | 'quote_ready' | null>(null);
+  const [processingStatus, setProcessingStatus] = useState<
+    "pending" | "processing" | "quote_ready" | null
+  >(null);
   const [fileProgress, setFileProgress] = useState({ completed: 0, total: 0 });
 
   const updateField = (field: string, value: string) => {
@@ -35,9 +37,9 @@ export default function Step2Details() {
     const fetchStatus = async () => {
       // Get quote status
       const { data: quote } = await supabase
-        .from('quotes')
-        .select('processing_status')
-        .eq('id', state.quoteId)
+        .from("quotes")
+        .select("processing_status")
+        .eq("id", state.quoteId)
         .single();
 
       if (quote) {
@@ -46,12 +48,14 @@ export default function Step2Details() {
 
       // Get file progress
       const { data: files } = await supabase
-        .from('quote_files')
-        .select('processing_status')
-        .eq('quote_id', state.quoteId);
+        .from("quote_files")
+        .select("processing_status")
+        .eq("quote_id", state.quoteId);
 
       if (files) {
-        const completed = files.filter(f => f.processing_status === 'complete').length;
+        const completed = files.filter(
+          (f) => f.processing_status === "complete",
+        ).length;
         setFileProgress({ completed, total: files.length });
       }
     };
@@ -62,28 +66,28 @@ export default function Step2Details() {
     const channel = supabase
       .channel(`step2-${state.quoteId}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'quotes',
+          event: "UPDATE",
+          schema: "public",
+          table: "quotes",
           filter: `id=eq.${state.quoteId}`,
         },
         (payload: any) => {
           setProcessingStatus(payload.new.processing_status);
-        }
+        },
       )
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'quote_files',
+          event: "UPDATE",
+          schema: "public",
+          table: "quote_files",
           filter: `quote_id=eq.${state.quoteId}`,
         },
         () => {
           fetchStatus();
-        }
+        },
       )
       .subscribe();
 
@@ -122,27 +126,40 @@ export default function Step2Details() {
       </div>
 
       {/* Processing Status Indicator */}
-      {processingStatus && (processingStatus === 'pending' || processingStatus === 'processing') && (
-        <div className="mb-6 bg-blue-50 border-l-4 border-cethos-blue rounded-lg p-4 flex items-center gap-3">
-          <Loader2 className="w-5 h-5 animate-spin text-cethos-blue flex-shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-blue-900">
-              Analyzing your documents in the background...
-            </p>
-            {fileProgress.total > 0 && (
-              <p className="text-xs text-blue-700 mt-1">
-                {fileProgress.completed} of {fileProgress.total} documents processed
+      {processingStatus &&
+        (processingStatus === "pending" ||
+          processingStatus === "processing") && (
+          <div className="mb-6 bg-blue-50 border-l-4 border-cethos-blue rounded-lg p-4 flex items-center gap-3">
+            <Loader2 className="w-5 h-5 animate-spin text-cethos-blue flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-blue-900">
+                Analyzing your documents in the background...
               </p>
-            )}
+              {fileProgress.total > 0 && (
+                <p className="text-xs text-blue-700 mt-1">
+                  {fileProgress.completed} of {fileProgress.total} documents
+                  processed
+                </p>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Processing Complete Indicator */}
-      {processingStatus === 'quote_ready' && (
+      {processingStatus === "quote_ready" && (
         <div className="mb-6 bg-green-50 border-l-4 border-green-500 rounded-lg p-4 flex items-center gap-3">
-          <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          <svg
+            className="w-5 h-5 text-green-600 flex-shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 13l4 4L19 7"
+            />
           </svg>
           <p className="text-sm font-medium text-green-900">
             Document analysis complete! Your quote is ready.
