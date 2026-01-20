@@ -14,6 +14,14 @@ export default function Login() {
   useEffect(() => {
     isMounted.current = true;
 
+    // Timeout fallback - show login form after 2 seconds no matter what
+    const timeout = setTimeout(() => {
+      if (isMounted.current) {
+        console.log('⏰ 2-second timeout reached, showing login form');
+        setCheckingAuth(false);
+      }
+    }, 2000);
+
     const handleAuthCallback = async () => {
       // Prevent double processing
       if (hasProcessedCallback.current) {
@@ -22,6 +30,7 @@ export default function Login() {
 
       if (!supabase) {
         if (isMounted.current) setCheckingAuth(false);
+        clearTimeout(timeout);
         return;
       }
 
