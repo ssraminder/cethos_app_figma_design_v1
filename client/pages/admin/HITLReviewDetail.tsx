@@ -523,7 +523,7 @@ export default function HITLReviewDetail() {
 
           await supabase.from("ai_learning_log").insert({
             learning_type: correction.learningType,
-            ai_prediction: correction.aiValue,
+            ai_prediction: correction.originalValue,
             correct_value: correction.correctedValue,
             occurrence_count: 1,
             confidence_score: correction.confidence,
