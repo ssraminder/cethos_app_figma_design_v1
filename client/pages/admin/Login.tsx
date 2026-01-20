@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useStaffAuth } from '../../context/StaffAuthContext';
 import { supabase } from '../../lib/supabase';
 
 export default function Login() {
@@ -8,90 +7,128 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const { staffUser, isStaff } = useStaffAuth();
   const navigate = useNavigate();
+  const isMounted = useRef(true);
+  const hasProcessedCallback = useRef(false);
 
   useEffect(() => {
-    // Handle the auth callback from magic link
+    isMounted.current = true;
+    
     const handleAuthCallback = async () => {
+      // Prevent double processing
+      if (hasProcessedCallback.current) {
+        return;
+      }
+
       if (!supabase) {
-        setCheckingAuth(false);
+        if (isMounted.current) setCheckingAuth(false);
         return;
       }
 
       // Check if we have a hash with access_token (magic link redirect)
       const hash = window.location.hash;
+      
       if (hash && hash.includes('access_token')) {
+        hasProcessedCallback.current = true;
         console.log('Processing magic link callback...');
         
-        // Supabase will automatically pick up the token from the URL
-        // We just need to wait for the session to be established
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error('Error getting session:', error);
-          setMessage('Error processing login. Please try again.');
-          setCheckingAuth(false);
-          return;
-        }
-
-        if (session) {
-          console.log('Session established, checking staff status...');
+        try {
+          // Parse the hash to extract tokens
+          const params = new URLSearchParams(hash.substring(1));
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
           
-          // Check if user is a staff member
-          const { data: staffData, error: staffError } = await supabase
-            .from('staff_users')
-            .select('id, email, full_name, role, is_active')
-            .eq('auth_user_id', session.user.id)
-            .eq('is_active', true)
-            .single();
+          if (accessToken && refreshToken) {
+            // Set the session manually
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
 
-          if (staffError || !staffData) {
-            console.error('Not a staff user:', staffError);
-            setMessage('Access denied. You are not authorized as staff.');
-            await supabase.auth.signOut();
-            setCheckingAuth(false);
-            return;
+            if (error) {
+              console.error('Error setting session:', error);
+              if (isMounted.current) {
+                setMessage('Error processing login. Please try again.');
+                setCheckingAuth(false);
+              }
+              return;
+            }
+
+            if (data.session) {
+              console.log('Session established, checking staff status...');
+              
+              // Check if user is a staff member
+              const { data: staffData, error: staffError } = await supabase
+                .from('staff_users')
+                .select('id, email, full_name, role, is_active')
+                .eq('auth_user_id', data.session.user.id)
+                .eq('is_active', true)
+                .single();
+
+              if (!isMounted.current) return;
+
+              if (staffError || !staffData) {
+                console.error('Not a staff user:', staffError);
+                setMessage('Access denied. You are not authorized as staff.');
+                await supabase.auth.signOut();
+                setCheckingAuth(false);
+                return;
+              }
+
+              console.log('Staff user verified, redirecting...');
+              // Clear the hash from URL
+              window.history.replaceState(null, '', window.location.pathname);
+              navigate('/admin/hitl', { replace: true });
+              return;
+            }
           }
-
-          console.log('Staff user verified, redirecting...');
-          // Clear the hash from URL
-          window.history.replaceState(null, '', window.location.pathname);
-          navigate('/admin/hitl', { replace: true });
+        } catch (err) {
+          console.error('Auth callback error:', err);
+          if (isMounted.current) {
+            setMessage('Error processing login. Please try again.');
+            setCheckingAuth(false);
+          }
           return;
         }
       }
 
       // No hash, check for existing session
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session) {
-        // Check if user is staff
-        const { data: staffData } = await supabase
-          .from('staff_users')
-          .select('id')
-          .eq('auth_user_id', session.user.id)
-          .eq('is_active', true)
-          .single();
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!isMounted.current) return;
 
-        if (staffData) {
-          navigate('/admin/hitl', { replace: true });
-          return;
+        if (session) {
+          // Check if user is staff
+          const { data: staffData } = await supabase
+            .from('staff_users')
+            .select('id')
+            .eq('auth_user_id', session.user.id)
+            .eq('is_active', true)
+            .single();
+
+          if (!isMounted.current) return;
+
+          if (staffData) {
+            navigate('/admin/hitl', { replace: true });
+            return;
+          }
         }
+      } catch (err) {
+        console.error('Session check error:', err);
       }
 
-      setCheckingAuth(false);
+      if (isMounted.current) {
+        setCheckingAuth(false);
+      }
     };
 
     handleAuthCallback();
-  }, [navigate]);
 
-  // Also redirect if staffUser becomes available via context
-  useEffect(() => {
-    if (isStaff && staffUser) {
-      navigate('/admin/hitl', { replace: true });
-    }
-  }, [isStaff, staffUser, navigate]);
+    return () => {
+      isMounted.current = false;
+    };
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,37 +141,42 @@ export default function Login() {
     setLoading(true);
     setMessage('');
 
-    // First check if the email exists in staff_users
-    const { data: staffCheck, error: staffCheckError } = await supabase
-      .from('staff_users')
-      .select('id, is_active')
-      .eq('email', email.toLowerCase())
-      .single();
+    try {
+      // First check if the email exists in staff_users
+      const { data: staffCheck, error: staffCheckError } = await supabase
+        .from('staff_users')
+        .select('id, is_active')
+        .eq('email', email.toLowerCase())
+        .single();
 
-    if (staffCheckError || !staffCheck) {
-      setMessage('Email not found in staff directory.');
-      setLoading(false);
-      return;
-    }
+      if (staffCheckError || !staffCheck) {
+        setMessage('Email not found in staff directory.');
+        setLoading(false);
+        return;
+      }
 
-    if (!staffCheck.is_active) {
-      setMessage('Your account has been deactivated. Contact an administrator.');
-      setLoading(false);
-      return;
-    }
+      if (!staffCheck.is_active) {
+        setMessage('Your account has been deactivated. Contact an administrator.');
+        setLoading(false);
+        return;
+      }
 
-    // Send magic link
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.toLowerCase(),
-      options: {
-        emailRedirectTo: `${window.location.origin}/admin/login`,
-      },
-    });
+      // Send magic link
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.toLowerCase(),
+        options: {
+          emailRedirectTo: `${window.location.origin}/admin/login`,
+        },
+      });
 
-    if (error) {
-      setMessage(error.message);
-    } else {
-      setMessage('Check your email for the magic link!');
+      if (error) {
+        setMessage(error.message);
+      } else {
+        setMessage('Check your email for the magic link!');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setMessage('An error occurred. Please try again.');
     }
 
     setLoading(false);
