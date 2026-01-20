@@ -39,6 +39,9 @@ export const supabase: SupabaseClient | null = hasCredentials
     })
   : null;
 
+console.log('Supabase client created:', supabase !== null ? 'SUCCESS' : 'NULL');
+console.log('=== END SUPABASE INIT ===');
+
 // Helper to check if Supabase is available
 export const isSupabaseEnabled = (): boolean => {
   return supabase !== null;
