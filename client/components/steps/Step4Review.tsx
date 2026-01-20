@@ -74,7 +74,7 @@ export default function Step4Review() {
           onEmailInstead={() => {
             // Navigate to contact form in email mode
             state.emailQuoteMode = true;
-            state.currentStep = 4;
+            state.currentStep = 3;
           }}
         />
         {isLoading && (
