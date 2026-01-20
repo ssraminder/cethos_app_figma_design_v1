@@ -32,11 +32,11 @@ const App = () => (
               {/* Customer routes */}
               <Route path="/" element={<Index />} />
               <Route path="/success" element={<Success />} />
-              
+
               {/* Admin routes */}
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/admin/hitl" element={<HITLQueue />} />
-              
+
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
