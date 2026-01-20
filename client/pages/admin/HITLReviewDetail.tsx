@@ -113,8 +113,11 @@ export default function HITLReviewDetail() {
     const billablePages =
       getValue(fileId, "billable_pages", analysis.billable_pages) || 1;
     const multiplier =
-      getValue(fileId, "complexity_multiplier", analysis.complexity_multiplier) ||
-      1;
+      getValue(
+        fileId,
+        "complexity_multiplier",
+        analysis.complexity_multiplier,
+      ) || 1;
     const baseRate = analysis.base_rate || 50; // default base rate
     return billablePages * baseRate * multiplier;
   };
