@@ -52,6 +52,30 @@ const HITLReviewDetail: React.FC = () => {
   const navigate = useNavigate();
 
   // ============================================
+  // SUPABASE HELPER (Raw fetch to bypass RLS)
+  // ============================================
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  const fetchFromSupabase = async (endpoint: string) => {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Fetch failed [${response.status}]:`, errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    return response.json();
+  };
+
+  // ============================================
   // STATE
   // ============================================
 
