@@ -1296,6 +1296,18 @@ const HITLReviewDetail: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Correction Reason Modal */}
+      {correctionModal && (
+        <CorrectionReasonModal
+          isOpen={correctionModal.isOpen}
+          onClose={() => setCorrectionModal(null)}
+          onConfirm={saveCorrection}
+          fieldName={correctionModal.field}
+          aiValue={correctionModal.aiValue}
+          correctedValue={correctionModal.correctedValue}
+        />
+      )}
     </div>
   );
 };
