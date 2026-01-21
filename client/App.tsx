@@ -14,6 +14,8 @@ import { BrandingProvider } from "./context/BrandingContext";
 import Index from "./pages/Index";
 import Success from "./pages/Success";
 import NotFound from "./pages/NotFound";
+import Checkout from "./pages/Checkout";
+import OrderSuccess from "./pages/OrderSuccess";
 
 // Admin pages
 import AdminLogin from "./pages/admin/Login";
