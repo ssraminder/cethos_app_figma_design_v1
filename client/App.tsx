@@ -21,6 +21,7 @@ import OrderSuccess from "./pages/OrderSuccess";
 // Admin pages
 import AdminLogin from "./pages/admin/Login";
 import ResetPassword from "./pages/admin/ResetPassword";
+import ProtectedAdminRoute from "./components/admin/ProtectedAdminRoute";
 import HITLQueue from "./pages/admin/HITLQueue";
 import HITLReviewDetail from "./pages/admin/HITLReviewDetail";
 import AdminSettings from "./pages/admin/AdminSettings";
