@@ -40,6 +40,7 @@ import HolidaysSettings from "./pages/admin/settings/HolidaysSettings";
 import AIPromptsSettings from "./pages/admin/settings/AIPromptsSettings";
 import OCRSettings from "./pages/admin/settings/OCRSettings";
 import HITLThresholdsSettings from "./pages/admin/settings/HITLThresholdsSettings";
+import IntendedUsesSettings from "./pages/admin/settings/IntendedUsesSettings";
 
 const queryClient = new QueryClient();
 
@@ -113,7 +114,10 @@ const App = () => (
                   path="/admin/settings/ai-prompts"
                   element={<AIPromptsSettings />}
                 />
-                <Route path="/admin/settings/ocr" element={<OCRSettings />} />
+                <Route
+                  path="/admin/settings/ocr"
+                  element={<OCRSettings />}
+                />
                 <Route
                   path="/admin/settings/hitl"
                   element={<HITLThresholdsSettings />}
