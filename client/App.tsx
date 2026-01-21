@@ -51,11 +51,6 @@ import LanguagesSettings from "./pages/admin/settings/LanguagesSettings";
 
 const queryClient = new QueryClient();
 
-// Wrapper component to protect admin routes with AdminAuthProvider
-const ProtectedAdminRoute = ({ children }: { children: React.ReactNode }) => (
-  <AdminAuthProvider>{children}</AdminAuthProvider>
-);
-
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
