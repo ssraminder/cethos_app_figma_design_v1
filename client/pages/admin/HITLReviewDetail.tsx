@@ -83,6 +83,17 @@ const HITLReviewDetail: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [showAddCertModal, setShowAddCertModal] = useState<string | null>(null);
 
+  // Correction reason modal state
+  const [correctionModal, setCorrectionModal] = useState<{
+    isOpen: boolean;
+    field: string;
+    aiValue: string | number;
+    correctedValue: string | number;
+    fileId?: string;
+    analysisId?: string;
+    pageId?: string;
+  } | null>(null);
+
   // Edit tracking
   const [localEdits, setLocalEdits] = useState<
     Record<string, Record<string, any>>
