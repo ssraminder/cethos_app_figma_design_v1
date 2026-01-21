@@ -49,6 +49,40 @@ import LanguagesSettings from "./pages/admin/settings/LanguagesSettings";
 
 const queryClient = new QueryClient();
 
+// Wrapper component for protected admin routes
+const AdminRoutes = () => (
+  <AdminAuthProvider>
+    <Routes>
+      <Route path="/hitl" element={<HITLQueue />} />
+      <Route path="/hitl/:reviewId" element={<HITLReviewDetail />} />
+      <Route path="/settings" element={<AdminSettings />} />
+      <Route path="/analytics" element={<Analytics />} />
+      <Route path="/patterns" element={<Patterns />} />
+      <Route path="/learning" element={<Learning />} />
+      <Route path="/thresholds" element={<Thresholds />} />
+
+      {/* Admin Settings screens */}
+      <Route path="/settings/pricing" element={<PricingSettings />} />
+      <Route path="/settings/complexity" element={<ComplexitySettings />} />
+      <Route path="/settings/turnaround" element={<TurnaroundSettings />} />
+      <Route path="/settings/document-types" element={<DocumentTypesSettings />} />
+      <Route path="/settings/certifications" element={<CertificationTypesSettings />} />
+      <Route path="/settings/delivery" element={<DeliveryOptionsSettings />} />
+      <Route path="/settings/tax" element={<TaxRatesSettings />} />
+      <Route path="/settings/hours" element={<BusinessHoursSettings />} />
+      <Route path="/settings/holidays" element={<HolidaysSettings />} />
+      <Route path="/settings/ai-prompts" element={<AIPromptsSettings />} />
+      <Route path="/settings/ocr" element={<OCRSettings />} />
+      <Route path="/settings/hitl" element={<HITLThresholdsSettings />} />
+      <Route path="/settings/intended-uses" element={<IntendedUsesSettings />} />
+      <Route path="/settings/pickup-locations" element={<PickupLocationsSettings />} />
+      <Route path="/settings/same-day" element={<SameDaySettings />} />
+      <Route path="/settings/language-tiers" element={<LanguageTiersSettings />} />
+      <Route path="/settings/languages" element={<LanguagesSettings />} />
+    </Routes>
+  </AdminAuthProvider>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -65,86 +99,11 @@ const App = () => (
                 <Route path="/quote/:quoteId/checkout" element={<Checkout />} />
                 <Route path="/order/success" element={<OrderSuccess />} />
 
-                {/* Admin routes */}
+                {/* Admin login (not protected) */}
                 <Route path="/admin/login" element={<AdminLogin />} />
-                <Route path="/admin/hitl" element={<HITLQueue />} />
-                <Route
-                  path="/admin/hitl/:reviewId"
-                  element={<HITLReviewDetail />}
-                />
-                <Route path="/admin/settings" element={<AdminSettings />} />
-                <Route path="/admin/analytics" element={<Analytics />} />
-                <Route path="/admin/patterns" element={<Patterns />} />
-                <Route path="/admin/learning" element={<Learning />} />
-                <Route path="/admin/thresholds" element={<Thresholds />} />
 
-                {/* Admin Settings screens */}
-                <Route
-                  path="/admin/settings/pricing"
-                  element={<PricingSettings />}
-                />
-                <Route
-                  path="/admin/settings/complexity"
-                  element={<ComplexitySettings />}
-                />
-                <Route
-                  path="/admin/settings/turnaround"
-                  element={<TurnaroundSettings />}
-                />
-                <Route
-                  path="/admin/settings/document-types"
-                  element={<DocumentTypesSettings />}
-                />
-                <Route
-                  path="/admin/settings/certifications"
-                  element={<CertificationTypesSettings />}
-                />
-                <Route
-                  path="/admin/settings/delivery"
-                  element={<DeliveryOptionsSettings />}
-                />
-                <Route
-                  path="/admin/settings/tax"
-                  element={<TaxRatesSettings />}
-                />
-                <Route
-                  path="/admin/settings/hours"
-                  element={<BusinessHoursSettings />}
-                />
-                <Route
-                  path="/admin/settings/holidays"
-                  element={<HolidaysSettings />}
-                />
-                <Route
-                  path="/admin/settings/ai-prompts"
-                  element={<AIPromptsSettings />}
-                />
-                <Route path="/admin/settings/ocr" element={<OCRSettings />} />
-                <Route
-                  path="/admin/settings/hitl"
-                  element={<HITLThresholdsSettings />}
-                />
-                <Route
-                  path="/admin/settings/intended-uses"
-                  element={<IntendedUsesSettings />}
-                />
-                <Route
-                  path="/admin/settings/pickup-locations"
-                  element={<PickupLocationsSettings />}
-                />
-                <Route
-                  path="/admin/settings/same-day"
-                  element={<SameDaySettings />}
-                />
-                <Route
-                  path="/admin/settings/language-tiers"
-                  element={<LanguageTiersSettings />}
-                />
-                <Route
-                  path="/admin/settings/languages"
-                  element={<LanguagesSettings />}
-                />
-
+                {/* Protected admin routes */}
+                <Route path="/admin/*" element={<AdminRoutes />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
