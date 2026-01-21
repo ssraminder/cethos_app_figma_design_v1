@@ -29,8 +29,12 @@ export default function ResetPassword() {
       return;
     }
 
-    let timeout: NodeJS.Timeout;
-    let unsubscribe: (() => void) | undefined;
+    if (hasHandledLink.current) {
+      return;
+    }
+    hasHandledLink.current = true;
+
+    let isMounted = true;
 
     const handleCodeExchange = async () => {
       setLoading(true);
@@ -38,50 +42,33 @@ export default function ResetPassword() {
 
       try {
         if (code) {
-          // PKCE flow - Supabase client automatically handles code exchange
-          // via detectSessionInUrl: true, so we listen for auth state changes
-          console.log(
-            "Waiting for automatic PKCE code exchange (detectSessionInUrl)...",
-          );
+          console.log("Manually exchanging PKCE code for session...");
 
-          // Listen for auth state changes
-          const { data: authListener } = supabase.auth.onAuthStateChange(
-            (event, session) => {
-              console.log("Auth state changed:", event, session?.user?.id);
+          const { data, error: exchangeError } =
+            await supabase.auth.exchangeCodeForSession(code);
 
-              if (event === "SIGNED_IN" && session) {
-                console.log("Session established successfully via PKCE");
-                setSessionReady(true);
-                setLoading(false);
-              } else if (event === "PASSWORD_RECOVERY") {
-                console.log("Password recovery event detected");
-                setSessionReady(true);
-                setLoading(false);
-              }
-            },
-          );
+          if (exchangeError) {
+            throw new Error(
+              exchangeError.message ||
+                "Failed to verify reset link. Please request a new one.",
+            );
+          }
 
-          unsubscribe = authListener.subscription.unsubscribe;
+          if (!data.session) {
+            throw new Error(
+              "Failed to establish session. The link may have expired. Please request a new one.",
+            );
+          }
 
-          // Fallback: Check session after 3 seconds
-          timeout = setTimeout(async () => {
-            const {
-              data: { session },
-            } = await supabase.auth.getSession();
-
-            if (session) {
-              console.log("Session found via fallback check");
-              setSessionReady(true);
-              setLoading(false);
-            } else {
-              setError(
-                "Failed to establish session. The link may have expired. Please request a new one.",
-              );
-              setLoading(false);
-            }
-          }, 3000);
+          if (isMounted) {
+            setSessionReady(true);
+            window.history.replaceState(
+              {},
+              document.title,
+              window.location.pathname,
+            );
+          }
         } else if (accessToken && type === "recovery") {
-          // Legacy implicit flow
           console.log("Using access token from hash...");
           const { data, error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
@@ -90,28 +77,32 @@ export default function ResetPassword() {
 
           if (sessionError) {
             throw new Error(
-              "Invalid or expired reset link. Please request a new one.",
+              sessionError.message ||
+                "Invalid or expired reset link. Please request a new one.",
             );
           }
 
-          if (data.session) {
+          if (isMounted && data.session) {
             setSessionReady(true);
+            window.location.hash = "";
           }
-          setLoading(false);
         }
       } catch (err: any) {
-        console.error("Reset password init error:", err);
-        setError(err.message || "Failed to verify reset link");
-        setLoading(false);
+        if (isMounted) {
+          console.error("Reset password init error:", err);
+          setError(err.message || "Failed to verify reset link");
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     handleCodeExchange();
 
-    // Cleanup
     return () => {
-      if (timeout) clearTimeout(timeout);
-      if (unsubscribe) unsubscribe();
+      isMounted = false;
     };
   }, [searchParams]);
 
