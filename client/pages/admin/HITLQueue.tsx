@@ -34,8 +34,8 @@ export default function HITLQueue() {
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   useEffect(() => {
-    // Check sessionStorage for login state
-    const stored = sessionStorage.getItem("staffSession");
+    // Check localStorage for login state
+    const stored = localStorage.getItem("staffSession");
 
     if (!stored) {
       console.log("No session found, redirecting to login");
@@ -111,7 +111,7 @@ export default function HITLQueue() {
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem("staffSession");
+    localStorage.removeItem("staffSession");
     navigate("/admin/login", { replace: true });
   };
 

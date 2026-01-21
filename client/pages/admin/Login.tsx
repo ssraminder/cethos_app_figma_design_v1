@@ -85,10 +85,10 @@ export default function Login() {
         };
 
         console.log("Saving session:", sessionData);
-        sessionStorage.setItem("staffSession", JSON.stringify(sessionData));
+        localStorage.setItem("staffSession", JSON.stringify(sessionData));
 
         // 2. Verify it was saved
-        console.log("Session saved:", sessionStorage.getItem("staffSession"));
+        console.log("Session saved:", localStorage.getItem("staffSession"));
 
         setMessage("Login successful! Redirecting...");
 

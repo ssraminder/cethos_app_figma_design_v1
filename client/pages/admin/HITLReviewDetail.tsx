@@ -155,7 +155,7 @@ const HITLReviewDetail: React.FC = () => {
   // ============================================
 
   useEffect(() => {
-    const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
+    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
     setStaffSession(session);
 
     console.log("🔐 Session check:", session);
@@ -243,10 +243,7 @@ const HITLReviewDetail: React.FC = () => {
             console.log("✅ Fetched assigned_to from base table:", assignedTo);
           }
         } catch (error) {
-          console.warn(
-            "⚠️ Could not fetch assigned_to from base table (RLS):",
-            error,
-          );
+          console.warn("⚠️ Could not fetch assigned_to from base table (RLS):", error);
         }
       }
 
@@ -272,13 +269,11 @@ const HITLReviewDetail: React.FC = () => {
 
       // Check if claimed by current user
       const session = JSON.parse(
-        sessionStorage.getItem("staffSession") || "{}",
+        localStorage.getItem("staffSession") || "{}",
       );
       const isClaimed = assignedTo === session.staffId;
       setClaimedByMe(isClaimed);
-      console.log(
-        `🔐 Claimed by me: ${isClaimed} (assigned_to: ${assignedTo}, staffId: ${session.staffId})`,
-      );
+      console.log(`🔐 Claimed by me: ${isClaimed} (assigned_to: ${assignedTo}, staffId: ${session.staffId})`);
 
       if (quote?.id) {
         console.log("🔍 Fetching analysis results for quote:", quote.id);
