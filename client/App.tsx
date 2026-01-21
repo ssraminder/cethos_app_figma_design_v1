@@ -74,13 +74,15 @@ const App = () => (
                   element={<ResetPassword />}
                 />
 
-                {/* Protected admin routes */}
+                {/* Protected admin routes - wrapped with AdminAuthProvider */}
                 <Route
                   path="/admin/hitl"
                   element={
-                    <ProtectedAdminRoute>
-                      <HITLQueue />
-                    </ProtectedAdminRoute>
+                    <AdminAuthProvider>
+                      <ProtectedAdminRoute>
+                        <HITLQueue />
+                      </ProtectedAdminRoute>
+                    </AdminAuthProvider>
                   }
                 />
                 <Route
