@@ -773,6 +773,133 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   // ============================================
+  // PAGE SPLITTING & COMBINING
+  // ============================================
+
+  const togglePageSelection = (pageId: string) => {
+    setSelectedPages((prev) => {
+      const next = new Set(prev);
+      if (next.has(pageId)) {
+        next.delete(pageId);
+      } else {
+        next.add(pageId);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedPages(new Set());
+    setSplitMode(false);
+  };
+
+  const confirmSplitPages = async () => {
+    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
+
+    const firstPageId = Array.from(selectedPages)[0];
+    let sourceAnalysisId: string | null = null;
+
+    for (const [fileId, pages] of Object.entries(pageData)) {
+      if (pages.some((p) => p.id === firstPageId)) {
+        const analysis = analysisResults.find((a) => a.quote_file_id === fileId);
+        sourceAnalysisId = analysis?.id || null;
+        break;
+      }
+    }
+
+    if (!sourceAnalysisId) {
+      alert("Could not determine source document");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            field: "create_document_from_pages",
+            correctedValue: JSON.stringify({
+              source_analysis_id: sourceAnalysisId,
+              page_ids: Array.from(selectedPages),
+              document_name: splitDocumentName || "Split Document",
+            }),
+            reason: `Split ${selectedPages.size} pages into new document`,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`✅ Created new document: ${splitDocumentName || "Split Document"}`);
+        clearSelection();
+        setShowSplitModal(false);
+        setSplitDocumentName("");
+        await fetchAllData();
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error("Split error:", error);
+      alert("Failed to split pages: " + (error as Error).message);
+    }
+  };
+
+  const confirmCombinePages = async () => {
+    if (!targetDocumentId) {
+      alert("Please select a target document");
+      return;
+    }
+
+    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
+
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            field: "combine_pages",
+            correctedValue: JSON.stringify({
+              target_document_id: targetDocumentId,
+              page_ids: Array.from(selectedPages),
+            }),
+            reason: `Combined ${selectedPages.size} pages into document`,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert("✅ Pages combined successfully");
+        clearSelection();
+        setShowCombineModal(false);
+        setTargetDocumentId("");
+        await fetchAllData();
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error("Combine error:", error);
+      alert("Failed to combine pages: " + (error as Error).message);
+    }
+  };
+
+  // ============================================
   // PRICING CALCULATIONS
   // ============================================
 
