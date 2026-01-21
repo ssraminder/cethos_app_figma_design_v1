@@ -1860,6 +1860,224 @@ const HITLReviewDetail: React.FC = () => {
           correctedValue={correctionModal.correctedValue}
         />
       )}
+
+      {/* Action Footer - Only show when claimed by me */}
+      {claimedByMe && reviewData?.status === "in_review" && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-40">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <div className="flex items-center justify-between">
+              {/* Internal Notes */}
+              <div className="flex-1 mr-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Internal Notes (optional)
+                </label>
+                <input
+                  type="text"
+                  value={internalNotes}
+                  onChange={(e) => setInternalNotes(e.target.value)}
+                  placeholder="Add notes visible only to staff..."
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowRejectModal(true)}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-red-100 text-red-700 border border-red-300 rounded-lg hover:bg-red-200 font-medium disabled:opacity-50"
+                >
+                  Request Better Scan
+                </button>
+
+                <button
+                  onClick={handleEscalateReview}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-200 font-medium disabled:opacity-50"
+                >
+                  Escalate to Admin
+                </button>
+
+                <button
+                  onClick={handleApproveReview}
+                  disabled={isSubmitting}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50"
+                >
+                  {isSubmitting ? "Processing..." : "Approve Quote ✓"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add padding at bottom for fixed footer */}
+      {claimedByMe && reviewData?.status === "in_review" && (
+        <div className="h-24"></div>
+      )}
+
+      {/* Reject Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold mb-4">Request Better Scan</h3>
+
+            <p className="text-gray-600 mb-4">
+              The customer will be notified that a clearer scan is needed. Please explain the issue:
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Reason <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 mb-2"
+              >
+                <option value="">Select a reason...</option>
+                <option value="Document is too blurry to read">
+                  Document is too blurry to read
+                </option>
+                <option value="Part of the document is cut off">
+                  Part of the document is cut off
+                </option>
+                <option value="Image is too dark or overexposed">
+                  Image is too dark or overexposed
+                </option>
+                <option value="Document appears to be incomplete">
+                  Document appears to be incomplete
+                </option>
+                <option value="Wrong document uploaded">Wrong document uploaded</option>
+                <option value="Other (see notes)">Other (see notes)</option>
+              </select>
+
+              <textarea
+                value={rejectReason.startsWith("Other") ? "" : rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={3}
+                placeholder="Or type a custom reason..."
+                className="w-full border rounded-lg px-3 py-2"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setRejectReason("");
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectReview}
+                disabled={!rejectReason.trim() || isSubmitting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300"
+              >
+                {isSubmitting ? "Sending..." : "Send to Customer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Split Modal */}
+      {showSplitModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold mb-4">Split Pages to New Document</h3>
+
+            <p className="text-gray-600 mb-4">
+              Create a new document from {selectedPages.size} selected page(s).
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Document Name
+              </label>
+              <input
+                type="text"
+                value={splitDocumentName}
+                onChange={(e) => setSplitDocumentName(e.target.value)}
+                placeholder="e.g., Birth Certificate - Page 2"
+                className="w-full border rounded-lg px-3 py-2"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowSplitModal(false);
+                  setSplitDocumentName("");
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSplitPages}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Create Document
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Combine Modal */}
+      {showCombineModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold mb-4">Combine Pages Into Document</h3>
+
+            <p className="text-gray-600 mb-4">
+              Move {selectedPages.size} selected page(s) into an existing document.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Target Document
+              </label>
+              <select
+                value={targetDocumentId}
+                onChange={(e) => setTargetDocumentId(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2"
+              >
+                <option value="">Select a document...</option>
+                {analysisResults.map((doc) => (
+                  <option key={doc.id} value={doc.id}>
+                    {doc.detected_document_type ||
+                      doc.quote_file?.original_filename}{" "}
+                    ({doc.page_count} pages)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowCombineModal(false);
+                  setTargetDocumentId("");
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmCombinePages}
+                disabled={!targetDocumentId}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300"
+              >
+                Combine Pages
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
