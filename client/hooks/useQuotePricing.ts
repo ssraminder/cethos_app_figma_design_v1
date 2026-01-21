@@ -101,7 +101,11 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
         setIsRush(quote?.is_rush || false);
         setHitlRequired(quote?.hitl_required || false);
         setQuoteNumber(quote?.quote_number || null);
-        setCustomerEmail(quote?.customers?.email || null);
+        setCustomerEmail(
+          Array.isArray(quote?.customers)
+            ? quote.customers[0]?.email || null
+            : (quote?.customers as any)?.email || null,
+        );
 
         if (quote?.processing_status === "quote_ready") {
           // Fetch analysis results for itemized document list
