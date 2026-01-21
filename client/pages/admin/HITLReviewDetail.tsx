@@ -149,6 +149,31 @@ const HITLReviewDetail: React.FC = () => {
   // Staff session
   const [staffSession, setStaffSession] = useState<any>(null);
   const [claimedByMe, setClaimedByMe] = useState(false);
+  const [claimedByOther, setClaimedByOther] = useState(false);
+  const [assignedStaffName, setAssignedStaffName] = useState<string | null>(null);
+
+  // Action buttons
+  const [internalNotes, setInternalNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+
+  // Page splitting/combining
+  const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
+  const [splitMode, setSplitMode] = useState(false);
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [showCombineModal, setShowCombineModal] = useState(false);
+  const [splitDocumentName, setSplitDocumentName] = useState('');
+  const [targetDocumentId, setTargetDocumentId] = useState('');
+
+  // Correction reason modal
+  const [correctionModal, setCorrectionModal] = useState<{
+    isOpen: boolean;
+    field: string;
+    aiValue: string | number | null;
+    correctedValue: string | number;
+    callback: (reason: string) => void;
+  } | null>(null);
 
   // ============================================
   // DATA FETCHING
