@@ -3,58 +3,76 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
-// Debug: Log credential status
-console.log("=== SUPABASE CLIENT INITIALIZATION ===");
-console.log("VITE_SUPABASE_URL:", supabaseUrl);
-console.log(
-  "VITE_SUPABASE_ANON_KEY (first 20 chars):",
-  supabaseAnonKey.substring(0, 20) + "...",
-);
-console.log("URL is valid:", supabaseUrl.startsWith("https://"));
-console.log("Key is valid:", supabaseAnonKey.length > 100);
-
-// Check if credentials are provided
-const hasCredentials =
-  supabaseUrl &&
-  supabaseAnonKey &&
-  supabaseUrl !== "your_supabase_url_here" &&
-  supabaseAnonKey !== "your_supabase_anon_key_here";
-
-console.log("hasCredentials:", hasCredentials);
-
-if (!hasCredentials) {
-  console.warn(
-    "⚠️ Supabase credentials not configured. Database features disabled. App will use localStorage only.",
-  );
-  console.warn(
-    "To enable Supabase: Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file",
-  );
+// Validate environment variables
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("Missing Supabase environment variables");
+  console.error("VITE_SUPABASE_URL:", supabaseUrl ? "SET" : "MISSING");
+  console.error("VITE_SUPABASE_ANON_KEY:", supabaseAnonKey ? "SET" : "MISSING");
 }
 
-// Only create client if we have valid credentials
-export const supabase: SupabaseClient | null = hasCredentials
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        flowType: "pkce",
-      },
-      global: {
-        headers: {
-          "X-Client-Info": "cethos-staff-portal",
-        },
-      },
-      realtime: {
-        params: {
-          eventsPerSecond: 2,
-        },
-      },
-    })
-  : null;
+// Extend Window interface for singleton storage
+declare global {
+  interface Window {
+    __SUPABASE_CLIENT__?: SupabaseClient;
+  }
+}
 
-console.log("Supabase client created:", supabase !== null ? "SUCCESS" : "NULL");
-console.log("=== END SUPABASE INIT ===");
+// Create a single instance (singleton pattern using window object)
+// This ensures only ONE instance exists even across HMR reloads
+function getSupabaseClient(): SupabaseClient | null {
+  // Check if credentials are valid
+  const hasCredentials =
+    supabaseUrl &&
+    supabaseAnonKey &&
+    supabaseUrl !== "your_supabase_url_here" &&
+    supabaseAnonKey !== "your_supabase_anon_key_here";
+
+  if (!hasCredentials) {
+    console.warn(
+      "⚠️ Supabase credentials not configured. Database features disabled.",
+    );
+    return null;
+  }
+
+  // Return existing instance if available (prevents multiple instances)
+  if (typeof window !== "undefined" && window.__SUPABASE_CLIENT__) {
+    return window.__SUPABASE_CLIENT__;
+  }
+
+  console.log("Creating Supabase client (singleton)...");
+
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      storageKey: "cethos-auth",
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: "pkce",
+    },
+    global: {
+      headers: {
+        "X-Client-Info": "cethos-staff-portal",
+      },
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 2,
+      },
+    },
+  });
+
+  // Store in window to ensure singleton across module reloads
+  if (typeof window !== "undefined") {
+    window.__SUPABASE_CLIENT__ = client;
+  }
+
+  console.log("✅ Supabase client created successfully");
+
+  return client;
+}
+
+// Export the singleton instance
+export const supabase = getSupabaseClient();
 
 // Helper to check if Supabase is available
 export const isSupabaseEnabled = (): boolean => {
