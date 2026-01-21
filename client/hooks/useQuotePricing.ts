@@ -74,9 +74,12 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
           .select(
             `
             id,
+            quote_number,
             calculated_totals,
             is_rush,
-            processing_status
+            hitl_required,
+            processing_status,
+            customers(email)
           `,
           )
           .eq("id", quoteId)
@@ -96,6 +99,9 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
           total: calculatedTotals.total || 0,
         });
         setIsRush(quote?.is_rush || false);
+        setHitlRequired(quote?.hitl_required || false);
+        setQuoteNumber(quote?.quote_number || null);
+        setCustomerEmail(quote?.customers?.email || null);
 
         if (quote?.processing_status === "quote_ready") {
           // Fetch analysis results for itemized document list
