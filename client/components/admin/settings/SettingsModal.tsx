@@ -49,9 +49,7 @@ interface SettingsModalFieldsProps extends SettingsModalBaseProps {
   saving?: never;
 }
 
-type SettingsModalProps =
-  | SettingsModalChildrenProps
-  | SettingsModalFieldsProps;
+type SettingsModalProps = SettingsModalChildrenProps | SettingsModalFieldsProps;
 
 export default function SettingsModal(props: SettingsModalProps) {
   const { onClose, title, size = "md" } = props;
