@@ -49,6 +49,9 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
     total: 0,
   });
   const [isRush, setIsRush] = useState(false);
+  const [hitlRequired, setHitlRequired] = useState(false);
+  const [customerEmail, setCustomerEmail] = useState<string | null>(null);
+  const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
