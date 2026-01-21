@@ -99,7 +99,12 @@ export default function Index() {
       // For now, just simulate the success
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      console.log("Save for later email:", saveEmail, "Quote ID:", state.quoteId);
+      console.log(
+        "Save for later email:",
+        saveEmail,
+        "Quote ID:",
+        state.quoteId,
+      );
       setSaveSent(true);
 
       // Reset after 3 seconds
