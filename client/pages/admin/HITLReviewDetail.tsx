@@ -39,6 +39,13 @@ interface AnalysisResult {
   line_total: number;
   certification_type_id: string;
   certification_price: number;
+  ocr_provider?: string;
+  ocr_confidence?: number;
+  llm_model?: string;
+  processing_time_ms?: number;
+  language_confidence?: number;
+  document_type_confidence?: number;
+  complexity_confidence?: number;
   quote_file: {
     original_filename: string;
     storage_path: string;
@@ -119,6 +126,7 @@ const HITLReviewDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showAddCertModal, setShowAddCertModal] = useState<string | null>(null);
+  const [showAiDetails, setShowAiDetails] = useState<Record<string, boolean>>({});
 
   // Correction reason modal state
   const [correctionModal, setCorrectionModal] = useState<{
@@ -304,9 +312,9 @@ const HITLReviewDetail: React.FC = () => {
       if (quote?.id) {
         console.log("🔍 Fetching analysis results for quote:", quote.id);
 
-        // Fetch analysis results with quote_file relationship (using nested select)
+        // Fetch analysis results with quote_file relationship and AI metadata (using nested select)
         const analysis = await fetchFromSupabase(
-          `ai_analysis_results?quote_id=eq.${quote.id}&select=*,quote_file:quote_files(*)`,
+          `ai_analysis_results?quote_id=eq.${quote.id}&select=*,quote_file:quote_files(*),ocr_provider,ocr_confidence,llm_model,processing_time_ms,language_confidence,document_type_confidence,complexity_confidence`,
         );
 
         console.log("📊 Analysis results:", analysis);
@@ -1052,6 +1060,24 @@ const HITLReviewDetail: React.FC = () => {
         );
 
         for (const [field, value] of Object.entries(edits)) {
+          // Get the correct original value from the analysis object
+          let originalValue = "";
+          if (field === "assessed_complexity") {
+            originalValue = analysis?.assessed_complexity || "";
+          } else if (field === "detected_language") {
+            originalValue = analysis?.detected_language || "";
+          } else if (field === "detected_document_type") {
+            originalValue = analysis?.detected_document_type || "";
+          } else if (field === "complexity_multiplier") {
+            originalValue = String(analysis?.complexity_multiplier || 1.0);
+          } else if (field === "certification_type_id") {
+            originalValue = analysis?.certification_type_id || "";
+          } else if (field === "certification_price") {
+            originalValue = String(analysis?.certification_price || 0);
+          } else {
+            originalValue = String((analysis as any)?.[field] || "");
+          }
+
           await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
             {
@@ -1064,7 +1090,7 @@ const HITLReviewDetail: React.FC = () => {
                 reviewId,
                 staffId: staffSession.staffId,
                 field,
-                originalValue: String((analysis as any)?.[field] || ""),
+                originalValue: String(originalValue),
                 correctedValue: String(value),
                 fileId,
                 analysisId: analysis?.id,
@@ -1386,6 +1412,18 @@ const HITLReviewDetail: React.FC = () => {
                                   e.target.value,
                                 )
                               }
+                              onBlur={(e) => {
+                                const newValue = e.target.value;
+                                if (newValue !== analysis.detected_document_type) {
+                                  handleFieldEdit(
+                                    "detected_document_type",
+                                    analysis.detected_document_type,
+                                    newValue,
+                                    analysis.quote_file_id,
+                                    analysis.id,
+                                  );
+                                }
+                              }}
                               className="w-full border rounded px-3 py-2"
                             />
                           ) : (
@@ -1409,13 +1447,23 @@ const HITLReviewDetail: React.FC = () => {
                                   analysis.detected_language,
                                 ) || ""
                               }
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const newValue = e.target.value;
                                 updateLocalEdit(
                                   analysis.quote_file_id,
                                   "detected_language",
-                                  e.target.value,
-                                )
-                              }
+                                  newValue,
+                                );
+                                if (newValue !== analysis.detected_language) {
+                                  handleFieldEdit(
+                                    "detected_language",
+                                    analysis.detected_language,
+                                    newValue,
+                                    analysis.quote_file_id,
+                                    analysis.id,
+                                  );
+                                }
+                              }}
                               className="w-full border rounded px-3 py-2"
                             >
                               {languages.map((lang) => (
@@ -1445,12 +1493,22 @@ const HITLReviewDetail: React.FC = () => {
                                   analysis.assessed_complexity,
                                 ) || "easy"
                               }
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const newValue = e.target.value;
                                 handleComplexityChange(
                                   analysis.quote_file_id,
-                                  e.target.value,
-                                )
-                              }
+                                  newValue,
+                                );
+                                if (newValue !== analysis.assessed_complexity) {
+                                  handleFieldEdit(
+                                    "assessed_complexity",
+                                    analysis.assessed_complexity,
+                                    newValue,
+                                    analysis.quote_file_id,
+                                    analysis.id,
+                                  );
+                                }
+                              }}
                               className="w-full border rounded px-3 py-2"
                             >
                               <option value="easy">Easy (1.0x)</option>
@@ -1765,6 +1823,183 @@ const HITLReviewDetail: React.FC = () => {
                           </div>
                         </div>
                       </div>
+                    </div>
+
+                    {/* AI Processing Details - Collapsible */}
+                    <div className="bg-gray-50 rounded-lg border mt-6">
+                      <button
+                        onClick={() =>
+                          setShowAiDetails((prev) => ({
+                            ...prev,
+                            [analysis.id]: !prev[analysis.id],
+                          }))
+                        }
+                        className="w-full flex justify-between items-center p-4 text-left hover:bg-gray-100"
+                      >
+                        <span className="font-medium text-gray-700">
+                          🤖 AI Processing Details
+                        </span>
+                        <span className="text-gray-400 text-lg">
+                          {showAiDetails[analysis.id] ? "−" : "+"}
+                        </span>
+                      </button>
+
+                      {showAiDetails[analysis.id] && (
+                        <div className="px-4 pb-4 border-t">
+                          {/* Processing Info Grid */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                            <div className="bg-white p-3 rounded border">
+                              <p className="text-xs text-gray-500 uppercase">
+                                OCR Provider
+                              </p>
+                              <p className="font-medium">
+                                {analysis?.ocr_provider ||
+                                  "Google Document AI"}
+                              </p>
+                            </div>
+
+                            <div className="bg-white p-3 rounded border">
+                              <p className="text-xs text-gray-500 uppercase">
+                                OCR Confidence
+                              </p>
+                              <p
+                                className={`font-medium ${
+                                  (analysis?.ocr_confidence || 0) > 0.8
+                                    ? "text-green-600"
+                                    : (analysis?.ocr_confidence || 0) > 0.6
+                                      ? "text-yellow-600"
+                                      : "text-red-600"
+                                }`}
+                              >
+                                {analysis?.ocr_confidence
+                                  ? `${(analysis.ocr_confidence * 100).toFixed(1)}%`
+                                  : "N/A"}
+                              </p>
+                            </div>
+
+                            <div className="bg-white p-3 rounded border">
+                              <p className="text-xs text-gray-500 uppercase">
+                                AI Model
+                              </p>
+                              <p className="font-medium">
+                                {analysis?.llm_model || "Claude Sonnet"}
+                              </p>
+                            </div>
+
+                            <div className="bg-white p-3 rounded border">
+                              <p className="text-xs text-gray-500 uppercase">
+                                Processing Time
+                              </p>
+                              <p className="font-medium">
+                                {analysis?.processing_time_ms
+                                  ? `${(analysis.processing_time_ms / 1000).toFixed(1)}s`
+                                  : "N/A"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Confidence Scores */}
+                          <div className="mt-4">
+                            <p className="text-sm font-medium text-gray-700 mb-2">
+                              AI Confidence Scores
+                            </p>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="bg-white p-3 rounded border">
+                                <div className="flex justify-between">
+                                  <span className="text-sm text-gray-600">
+                                    Language
+                                  </span>
+                                  <span
+                                    className={`text-sm font-medium ${
+                                      (analysis?.language_confidence || 0) > 0.9
+                                        ? "text-green-600"
+                                        : (analysis?.language_confidence || 0) >
+                                            0.8
+                                          ? "text-yellow-600"
+                                          : "text-red-600"
+                                    }`}
+                                  >
+                                    {analysis?.language_confidence
+                                      ? `${(analysis.language_confidence * 100).toFixed(0)}%`
+                                      : "N/A"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="bg-white p-3 rounded border">
+                                <div className="flex justify-between">
+                                  <span className="text-sm text-gray-600">
+                                    Document Type
+                                  </span>
+                                  <span
+                                    className={`text-sm font-medium ${
+                                      (analysis?.document_type_confidence ||
+                                        0) > 0.85
+                                        ? "text-green-600"
+                                        : (analysis?.document_type_confidence ||
+                                              0) > 0.7
+                                          ? "text-yellow-600"
+                                          : "text-red-600"
+                                    }`}
+                                  >
+                                    {analysis?.document_type_confidence
+                                      ? `${(analysis.document_type_confidence * 100).toFixed(0)}%`
+                                      : "N/A"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="bg-white p-3 rounded border">
+                                <div className="flex justify-between">
+                                  <span className="text-sm text-gray-600">
+                                    Complexity
+                                  </span>
+                                  <span
+                                    className={`text-sm font-medium ${
+                                      (analysis?.complexity_confidence || 0) >
+                                      0.8
+                                        ? "text-green-600"
+                                        : (analysis?.complexity_confidence ||
+                                              0) > 0.6
+                                          ? "text-yellow-600"
+                                          : "text-red-600"
+                                    }`}
+                                  >
+                                    {analysis?.complexity_confidence
+                                      ? `${(analysis.complexity_confidence * 100).toFixed(0)}%`
+                                      : "N/A"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* HITL Trigger Reasons */}
+                          {reviewData?.trigger_reasons?.length > 0 && (
+                            <div className="mt-4">
+                              <p className="text-sm font-medium text-gray-700 mb-2">
+                                Why HITL Was Triggered
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {reviewData.trigger_reasons.map(
+                                  (reason: string, idx: number) => (
+                                    <span
+                                      key={idx}
+                                      className="px-3 py-1 bg-amber-100 text-amber-800 text-sm rounded-full"
+                                    >
+                                      {reason
+                                        .replace(/_/g, " ")
+                                        .replace(/\b\w/g, (l) =>
+                                          l.toUpperCase(),
+                                        )}
+                                    </span>
+                                  ),
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
