@@ -27,6 +27,11 @@ import Patterns from "./pages/admin/Patterns";
 import Learning from "./pages/admin/Learning";
 import Thresholds from "./pages/admin/Thresholds";
 
+// Admin Settings pages
+import PricingSettings from "./pages/admin/settings/PricingSettings";
+import ComplexitySettings from "./pages/admin/settings/ComplexitySettings";
+import TurnaroundSettings from "./pages/admin/settings/TurnaroundSettings";
+
 const queryClient = new QueryClient();
 
 const App = () => (
