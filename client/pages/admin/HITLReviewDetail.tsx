@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
+import { supabase } from "@/lib/supabase";
 
 interface PageData {
   id: string;
@@ -132,17 +133,12 @@ const HITLReviewDetail: React.FC = () => {
   // DIAGNOSTIC CODE - Remove after debugging
   useEffect(() => {
     const diagnose = async () => {
-      console.log("=== HITL Review Diagnosis ===");
-      console.log("Review ID from URL:", reviewId);
+      console.log('=== HITL Review Diagnosis ===');
+      console.log('Review ID from URL:', reviewId);
 
       // Check auth
-      const session = JSON.parse(
-        sessionStorage.getItem("staffSession") || "{}",
-      );
-      console.log(
-        "Session:",
-        session?.staffId ? `Staff ID: ${session.staffId}` : "NO SESSION",
-      );
+      const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
+      console.log('Session:', session?.staffId ? `Staff ID: ${session.staffId}` : 'NO SESSION');
 
       // Check if review exists
       try {
@@ -158,8 +154,8 @@ const HITLReviewDetail: React.FC = () => {
         const reviews = await reviewResponse.json();
         const review = reviews[0];
 
-        console.log("Review:", review);
-        console.log("Review Error:", !review ? "No review found" : null);
+        console.log('Review:', review);
+        console.log('Review Error:', !review ? 'No review found' : null);
 
         if (review) {
           // Check quote
@@ -175,8 +171,8 @@ const HITLReviewDetail: React.FC = () => {
           const quotes = await quoteResponse.json();
           const quote = quotes[0];
 
-          console.log("Quote:", quote);
-          console.log("Quote Error:", !quote ? "No quote found" : null);
+          console.log('Quote:', quote);
+          console.log('Quote Error:', !quote ? 'No quote found' : null);
 
           if (quote) {
             // Check analysis results
@@ -191,19 +187,16 @@ const HITLReviewDetail: React.FC = () => {
             );
             const analysis = await analysisResponse.json();
 
-            console.log("Analysis Results:", analysis);
-            console.log("Analysis Count:", analysis?.length || 0);
-            console.log(
-              "Analysis Error:",
-              !analysis || analysis.length === 0 ? "No analysis found" : null,
-            );
+            console.log('Analysis Results:', analysis);
+            console.log('Analysis Count:', analysis?.length || 0);
+            console.log('Analysis Error:', !analysis || analysis.length === 0 ? 'No analysis found' : null);
           }
         }
       } catch (error) {
-        console.error("Diagnosis Error:", error);
+        console.error('Diagnosis Error:', error);
       }
 
-      console.log("=== End Diagnosis ===");
+      console.log('=== End Diagnosis ===');
     };
 
     if (reviewId) {
@@ -878,37 +871,23 @@ const HITLReviewDetail: React.FC = () => {
         {!reviewData && !loading && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
             <p className="text-yellow-800 font-medium">No review data found</p>
-            <p className="text-yellow-600 text-sm mt-2">
-              Review ID: {reviewId}
-            </p>
-            <p className="text-xs text-gray-500 mt-2">
-              Check browser console for details
-            </p>
+            <p className="text-yellow-600 text-sm mt-2">Review ID: {reviewId}</p>
+            <p className="text-xs text-gray-500 mt-2">Check browser console for details</p>
           </div>
         )}
 
         {reviewData && !reviewData.quotes && (
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 text-center">
-            <p className="text-orange-800 font-medium">
-              No quote found for this review
-            </p>
-            <p className="text-orange-600 text-sm mt-2">
-              Quote ID: {reviewData.quote_id}
-            </p>
+            <p className="text-orange-800 font-medium">No quote found for this review</p>
+            <p className="text-orange-600 text-sm mt-2">Quote ID: {reviewData.quote_id}</p>
           </div>
         )}
 
         {reviewData && reviewData.quotes && analysisResults.length === 0 && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-            <p className="text-blue-800 font-medium">
-              No documents found for this quote
-            </p>
-            <p className="text-blue-600 text-sm mt-2">
-              Quote: {reviewData.quotes.quote_number}
-            </p>
-            <p className="text-xs text-gray-500 mt-2">
-              The AI analysis may not have completed yet
-            </p>
+            <p className="text-blue-800 font-medium">No documents found for this quote</p>
+            <p className="text-blue-600 text-sm mt-2">Quote: {reviewData.quotes.quote_number}</p>
+            <p className="text-xs text-gray-500 mt-2">The AI analysis may not have completed yet</p>
           </div>
         )}
 
