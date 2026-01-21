@@ -126,7 +126,9 @@ const HITLReviewDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showAddCertModal, setShowAddCertModal] = useState<string | null>(null);
-  const [showAiDetails, setShowAiDetails] = useState<Record<string, boolean>>({});
+  const [showAiDetails, setShowAiDetails] = useState<Record<string, boolean>>(
+    {},
+  );
 
   // Correction reason modal state
   const [correctionModal, setCorrectionModal] = useState<{
@@ -1414,7 +1416,9 @@ const HITLReviewDetail: React.FC = () => {
                               }
                               onBlur={(e) => {
                                 const newValue = e.target.value;
-                                if (newValue !== analysis.detected_document_type) {
+                                if (
+                                  newValue !== analysis.detected_document_type
+                                ) {
                                   handleFieldEdit(
                                     "detected_document_type",
                                     analysis.detected_document_type,
@@ -1853,8 +1857,7 @@ const HITLReviewDetail: React.FC = () => {
                                 OCR Provider
                               </p>
                               <p className="font-medium">
-                                {analysis?.ocr_provider ||
-                                  "Google Document AI"}
+                                {analysis?.ocr_provider || "Google Document AI"}
                               </p>
                             </div>
 
