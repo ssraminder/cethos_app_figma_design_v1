@@ -346,43 +346,44 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   const fetchCertificationTypes = async () => {
-    if (!supabase) return;
-
-    const { data } = await supabase
-      .from("certification_types")
-      .select("*")
-      .eq("is_active", true)
-      .order("sort_order");
-
-    setCertificationTypes(data || []);
+    try {
+      const data = await fetchFromSupabase(
+        "certification_types?is_active=eq.true&order=sort_order"
+      );
+      setCertificationTypes(data || []);
+    } catch (error) {
+      console.error("Error fetching certification types:", error);
+      setCertificationTypes([]);
+    }
   };
 
   const fetchLanguages = async () => {
-    if (!supabase) return;
-
-    const { data } = await supabase
-      .from("languages")
-      .select("*")
-      .eq("is_active", true)
-      .order("sort_order");
-
-    setLanguages(data || []);
+    try {
+      const data = await fetchFromSupabase(
+        "languages?is_active=eq.true&order=sort_order"
+      );
+      setLanguages(data || []);
+    } catch (error) {
+      console.error("Error fetching languages:", error);
+      setLanguages([]);
+    }
   };
 
   const fetchSettings = async () => {
-    if (!supabase) return;
+    try {
+      const settings = await fetchFromSupabase(
+        "app_settings?setting_key=in.(base_rate,words_per_page)"
+      );
 
-    const { data: settings } = await supabase
-      .from("app_settings")
-      .select("*")
-      .in("setting_key", ["base_rate", "words_per_page"]);
-
-    (settings || []).forEach((s: any) => {
-      if (s.setting_key === "base_rate")
-        setBaseRate(parseFloat(s.setting_value));
-      if (s.setting_key === "words_per_page")
-        setWordsPerPage(parseInt(s.setting_value));
-    });
+      (settings || []).forEach((s: any) => {
+        if (s.setting_key === "base_rate")
+          setBaseRate(parseFloat(s.setting_value));
+        if (s.setting_key === "words_per_page")
+          setWordsPerPage(parseInt(s.setting_value));
+      });
+    } catch (error) {
+      console.error("Error fetching settings:", error);
+    }
   };
 
   // ============================================
