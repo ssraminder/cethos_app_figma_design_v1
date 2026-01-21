@@ -185,12 +185,20 @@ const HITLReviewDetail: React.FC = () => {
 
   const fetchReviewData = async () => {
     console.log("🔍 Fetching review data for ID:", reviewId);
+    console.log("🔍 SUPABASE_URL:", SUPABASE_URL);
+    console.log("🔍 SUPABASE_ANON_KEY exists:", !!SUPABASE_ANON_KEY);
+
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      console.error("❌ Supabase credentials not configured!");
+      return;
+    }
 
     try {
       // Fetch review details using raw fetch (bypasses RLS like Queue does)
       const reviews = await fetchFromSupabase(
         `hitl_reviews?id=eq.${reviewId}&select=*`,
       );
+      console.log(`📋 Reviews fetched:`, reviews);
       const review = reviews[0];
 
       console.log("📄 Review data:", review);
