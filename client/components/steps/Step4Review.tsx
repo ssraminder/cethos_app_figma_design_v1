@@ -152,88 +152,164 @@ export default function Step4Review() {
 
   return (
     <>
-      {/* Page Title */}
-      <div className="mb-6 sm:mb-8">
-        <div className="mb-2">
-          <h1 className="text-2xl sm:text-3xl font-bold font-jakarta text-cethos-navy">
-            Review Your Quote
-          </h1>
-        </div>
-        <p className="text-base text-cethos-slate">
-          AI-powered analysis of your documents
-        </p>
-      </div>
-
-      {/* AI Analysis Results - Document Cards */}
-      <div className="space-y-4 mb-6">
-        {documents.map((doc) => (
-          <div
-            key={doc.id}
-            className="bg-white border-2 border-cethos-border rounded-xl p-6"
-          >
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex-1">
-                <h3 className="font-semibold text-cethos-navy mb-1">
-                  {doc.filename}
-                </h3>
-                <p className="text-sm text-cethos-slate">
-                  {DOC_TYPE_LABELS[doc.documentType] || doc.documentType} •{" "}
-                  {doc.languageName} → English
+      {hitlRequestSubmitted ? (
+        // ========== HITL PENDING STATE ==========
+        <div className="max-w-2xl mx-auto px-4 py-8">
+          {/* Pending Banner */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6">
+            <div className="flex items-start gap-4">
+              <div className="text-amber-500 text-3xl">⏳</div>
+              <div>
+                <h2 className="text-lg font-semibold text-amber-800 mb-1">Review Pending</h2>
+                <p className="text-amber-700 mb-2">
+                  Our team is reviewing your documents. We'll email you within 4 working hours.
                 </p>
-              </div>
-              <span className="text-lg font-bold text-cethos-navy">
-                ${doc.lineTotal.toFixed(2)}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-cethos-slate">Word Count:</span>
-                <span className="ml-2 font-medium text-cethos-navy">
-                  {doc.wordCount}
-                </span>
-              </div>
-              <div>
-                <span className="text-cethos-slate">Pages:</span>
-                <span className="ml-2 font-medium text-cethos-navy">
-                  {doc.pageCount}
-                </span>
-              </div>
-              <div>
-                <span className="text-cethos-slate">Billable Pages:</span>
-                <span className="ml-2 font-medium text-cethos-navy">
-                  {doc.billablePages}
-                </span>
-              </div>
-              <div>
-                <span className="text-cethos-slate">Complexity:</span>
-                <span className="ml-2 font-medium text-cethos-navy">
-                  {COMPLEXITY_LABELS[doc.complexity] || doc.complexity}
-                </span>
+                <p className="text-sm text-amber-600">
+                  Quote #{state.quoteId?.substring(0, 8)}
+                </p>
               </div>
             </div>
           </div>
-        ))}
-      </div>
 
-      {/* Quote Summary - Now uses calculated_totals from database */}
-      <div className="mb-6">
-        <QuoteSummary
-          translationTotal={totals.translation_total}
-          certificationTotal={totals.certification_total}
-          subtotal={totals.subtotal}
-          rushFee={totals.rush_fee}
-          taxRate={totals.tax_rate}
-          taxAmount={totals.tax_amount}
-          grandTotal={totals.total}
-          isRush={isRush}
-        />
-      </div>
+          {/* Document Summary - Read Only */}
+          <div className="bg-white rounded-lg border p-6 mb-6">
+            <h3 className="font-medium text-gray-700 mb-4">Documents Submitted</h3>
 
-      {/* Human Review Notice */}
-      <div>
-        <HumanReviewNotice onRequestReview={() => setShowHitlModal(true)} />
-      </div>
+            {documents.map((doc, index) => (
+              <div key={index} className="flex justify-between items-start py-3 border-b last:border-0">
+                <div>
+                  <p className="font-medium">{doc.filename}</p>
+                  <p className="text-sm text-gray-500">
+                    {DOC_TYPE_LABELS[doc.documentType] || doc.documentType} • {doc.languageName} → English
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {doc.wordCount} words • {doc.pageCount} pages • {doc.billablePages} billable
+                  </p>
+                </div>
+                <p className="font-medium">${doc.lineTotal?.toFixed(2)}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* What Happens Next */}
+          <div className="bg-gray-50 rounded-lg p-6 mb-6">
+            <h3 className="font-medium mb-3">What happens next?</h3>
+            <ol className="space-y-2 text-sm text-gray-600">
+              <li className="flex gap-2">
+                <span className="font-medium text-gray-800">1.</span>
+                Our team reviews your documents for accuracy
+              </li>
+              <li className="flex gap-2">
+                <span className="font-medium text-gray-800">2.</span>
+                We'll email you an updated quote (if needed)
+              </li>
+              <li className="flex gap-2">
+                <span className="font-medium text-gray-800">3.</span>
+                You can then proceed to payment
+              </li>
+            </ol>
+          </div>
+
+          {/* Action Button */}
+          <div className="text-center">
+            <button
+              onClick={() => window.location.href = '/'}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Return to Home
+            </button>
+            <p className="text-sm text-gray-500 mt-2">
+              We'll email you when your quote is ready
+            </p>
+          </div>
+        </div>
+      ) : (
+        // ========== NORMAL REVIEW STATE ==========
+        <>
+          {/* Page Title */}
+          <div className="mb-6 sm:mb-8">
+            <div className="mb-2">
+              <h1 className="text-2xl sm:text-3xl font-bold font-jakarta text-cethos-navy">
+                Review Your Quote
+              </h1>
+            </div>
+            <p className="text-base text-cethos-slate">
+              AI-powered analysis of your documents
+            </p>
+          </div>
+
+          {/* AI Analysis Results - Document Cards */}
+          <div className="space-y-4 mb-6">
+            {documents.map((doc) => (
+              <div
+                key={doc.id}
+                className="bg-white border-2 border-cethos-border rounded-xl p-6"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-cethos-navy mb-1">
+                      {doc.filename}
+                    </h3>
+                    <p className="text-sm text-cethos-slate">
+                      {DOC_TYPE_LABELS[doc.documentType] || doc.documentType} •{" "}
+                      {doc.languageName} → English
+                    </p>
+                  </div>
+                  <span className="text-lg font-bold text-cethos-navy">
+                    ${doc.lineTotal.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-cethos-slate">Word Count:</span>
+                    <span className="ml-2 font-medium text-cethos-navy">
+                      {doc.wordCount}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-cethos-slate">Pages:</span>
+                    <span className="ml-2 font-medium text-cethos-navy">
+                      {doc.pageCount}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-cethos-slate">Billable Pages:</span>
+                    <span className="ml-2 font-medium text-cethos-navy">
+                      {doc.billablePages}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-cethos-slate">Complexity:</span>
+                    <span className="ml-2 font-medium text-cethos-navy">
+                      {COMPLEXITY_LABELS[doc.complexity] || doc.complexity}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Quote Summary - Now uses calculated_totals from database */}
+          <div className="mb-6">
+            <QuoteSummary
+              translationTotal={totals.translation_total}
+              certificationTotal={totals.certification_total}
+              subtotal={totals.subtotal}
+              rushFee={totals.rush_fee}
+              taxRate={totals.tax_rate}
+              taxAmount={totals.tax_amount}
+              grandTotal={totals.total}
+              isRush={isRush}
+            />
+          </div>
+
+          {/* Human Review Notice */}
+          <div>
+            <HumanReviewNotice onRequestReview={() => setShowHitlModal(true)} />
+          </div>
+        </>
+      )}
 
       {/* HITL Request Modal */}
       {showHitlModal && (
