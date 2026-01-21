@@ -108,14 +108,14 @@ export default function LanguagesSettings() {
     setShowModal(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (language: Language) => {
     if (!confirm("Are you sure you want to delete this language?")) return;
 
     try {
       const { error: deleteError } = await supabase
         .from("languages")
         .delete()
-        .eq("id", id);
+        .eq("id", language.id);
 
       if (deleteError) throw deleteError;
 
