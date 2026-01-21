@@ -532,7 +532,7 @@ const HITLReviewDetail: React.FC = () => {
     correctedValue: string | number,
     fileId?: string,
     analysisId?: string,
-    pageId?: string
+    pageId?: string,
   ) => {
     // Only show modal if value actually changed
     if (String(aiValue) === String(correctedValue)) return;
@@ -558,10 +558,10 @@ const HITLReviewDetail: React.FC = () => {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             reviewId,
@@ -573,20 +573,19 @@ const HITLReviewDetail: React.FC = () => {
             analysisId: correctionModal.analysisId,
             pageId: correctionModal.pageId,
             reason: reason, // ← NOW INCLUDED
-          })
-        }
+          }),
+        },
       );
 
-      if (!response.ok) throw new Error('Failed to save correction');
+      if (!response.ok) throw new Error("Failed to save correction");
 
       // Close modal and refresh data
       setCorrectionModal(null);
-      alert('Correction saved successfully!');
+      alert("Correction saved successfully!");
       await fetchReviewData();
-
     } catch (error) {
-      console.error('Error saving correction:', error);
-      alert('Failed to save correction: ' + error);
+      console.error("Error saving correction:", error);
+      alert("Failed to save correction: " + error);
     } finally {
       setIsSaving(false);
     }
@@ -984,15 +983,16 @@ const HITLReviewDetail: React.FC = () => {
                                           )
                                         }
                                         onBlur={(e) => {
-                                          const newValue = parseInt(e.target.value) || 0;
+                                          const newValue =
+                                            parseInt(e.target.value) || 0;
                                           if (newValue !== page.word_count) {
                                             handleFieldEdit(
-                                              'page_word_count',
+                                              "page_word_count",
                                               page.word_count,
                                               newValue,
                                               page.quote_file_id,
                                               undefined,
-                                              page.id
+                                              page.id,
                                             );
                                           }
                                         }}

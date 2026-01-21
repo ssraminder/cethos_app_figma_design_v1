@@ -58,9 +58,7 @@ export default function QuoteSummary({
       {/* Rush Fee (if applicable) */}
       {rushFee > 0 && (
         <div className="flex justify-between items-center text-sm mb-3">
-          <span className="text-orange-600 font-medium">
-            Rush Fee (30%)
-          </span>
+          <span className="text-orange-600 font-medium">Rush Fee (30%)</span>
           <span className="text-orange-600 font-medium">
             ${rushFee.toFixed(2)}
           </span>
@@ -92,9 +90,7 @@ export default function QuoteSummary({
       {/* Estimated Delivery */}
       <div className="flex items-center gap-2 text-sm text-cethos-slate">
         <Calendar className="w-4 h-4" />
-        <span>
-          Estimated delivery: {isRush ? "24 hours" : estimatedDays}
-        </span>
+        <span>Estimated delivery: {isRush ? "24 hours" : estimatedDays}</span>
       </div>
     </div>
   );

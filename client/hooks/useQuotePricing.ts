@@ -177,7 +177,10 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
           table: "ai_analysis_results",
         },
         (payload: any) => {
-          console.log("Analysis results updated, refetching pricing...", payload);
+          console.log(
+            "Analysis results updated, refetching pricing...",
+            payload,
+          );
           fetchPricing();
         },
       )
