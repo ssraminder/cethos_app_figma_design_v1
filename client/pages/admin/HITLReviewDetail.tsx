@@ -70,9 +70,7 @@ const HITLReviewDetail: React.FC = () => {
       },
     });
 
-    console.log(
-      `📡 Response status: ${response.status} ${response.statusText}`,
-    );
+    console.log(`📡 Response status: ${response.status} ${response.statusText}`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -81,10 +79,7 @@ const HITLReviewDetail: React.FC = () => {
     }
 
     const data = await response.json();
-    console.log(
-      `✅ Fetch success, rows returned:`,
-      Array.isArray(data) ? data.length : typeof data,
-    );
+    console.log(`✅ Fetch success, rows returned:`, Array.isArray(data) ? data.length : typeof data);
     return data;
   };
 
@@ -199,12 +194,33 @@ const HITLReviewDetail: React.FC = () => {
     }
 
     try {
-      // Fetch review details using raw fetch (bypasses RLS like Queue does)
+      // Fetch review details using v_hitl_queue view (same as Queue page)
+      // This view has RLS policies that allow anon key access
       const reviews = await fetchFromSupabase(
-        `hitl_reviews?id=eq.${reviewId}&select=*`,
+        `v_hitl_queue?review_id=eq.${reviewId}`,
       );
-      console.log(`📋 Reviews fetched:`, reviews);
-      const review = reviews[0];
+      console.log(`📋 Reviews fetched from view:`, reviews);
+      const reviewFromView = reviews[0];
+
+      if (!reviewFromView) {
+        console.error("❌ No review found in v_hitl_queue for ID:", reviewId);
+
+        // Try the base table as fallback
+        console.log("🔄 Trying base hitl_reviews table...");
+        const fallbackReviews = await fetchFromSupabase(
+          `hitl_reviews?id=eq.${reviewId}&select=*`,
+        );
+        console.log(`📋 Fallback reviews:`, fallbackReviews);
+      }
+
+      // Map view columns to expected review structure
+      const review = reviewFromView ? {
+        id: reviewFromView.review_id,
+        quote_id: reviewFromView.quote_id, // Assuming view has this
+        status: reviewFromView.status,
+        assigned_to: reviewFromView.assigned_to,
+        // Add other fields as needed from the view
+      } : null;
 
       console.log("📄 Review data:", review);
 
