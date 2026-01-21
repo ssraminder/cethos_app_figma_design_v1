@@ -170,8 +170,10 @@ export default function Index() {
           <Footer
             onBack={handleBack}
             onContinue={handleContinue}
+            onSaveForLater={handleSaveForLater}
             canContinue={validateStep(state.currentStep)}
             showBack={state.currentStep > 1}
+            showSaveForLater={state.currentStep === 5}
             continueText={
               state.currentStep === 5 && state.emailQuoteMode
                 ? "Send My Quote"
