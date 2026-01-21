@@ -92,6 +92,10 @@ const App = () => (
                   path="/admin/settings/delivery"
                   element={<DeliveryOptionsSettings />}
                 />
+                <Route
+                  path="/admin/settings/tax"
+                  element={<TaxRatesSettings />}
+                />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
