@@ -43,6 +43,7 @@ import HITLThresholdsSettings from "./pages/admin/settings/HITLThresholdsSetting
 import IntendedUsesSettings from "./pages/admin/settings/IntendedUsesSettings";
 import PickupLocationsSettings from "./pages/admin/settings/PickupLocationsSettings";
 import SameDaySettings from "./pages/admin/settings/SameDaySettings";
+import LanguageTiersSettings from "./pages/admin/settings/LanguageTiersSettings";
 
 const queryClient = new QueryClient();
 
@@ -135,6 +136,10 @@ const App = () => (
                 <Route
                   path="/admin/settings/same-day"
                   element={<SameDaySettings />}
+                />
+                <Route
+                  path="/admin/settings/language-tiers"
+                  element={<LanguageTiersSettings />}
                 />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
