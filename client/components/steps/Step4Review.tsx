@@ -58,6 +58,9 @@ export default function Step4Review() {
   const [hitlSubmitted, setHitlSubmitted] = useState(false);
   const [hitlRequestSubmitted, setHitlRequestSubmitted] = useState(false);
 
+  // Check if system triggered HITL (not customer-requested)
+  const isSystemTriggeredHitl = hitlRequired === true;
+
   const handleRequestReview = async () => {
     setIsSubmittingHitl(true);
 
