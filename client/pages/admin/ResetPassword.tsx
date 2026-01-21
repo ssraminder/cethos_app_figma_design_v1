@@ -30,19 +30,19 @@ export default function ResetPassword() {
         const type = hashParams.get("type");
 
         if (code) {
-          // PKCE flow - exchange code for session
-          console.log("Exchanging code for session...");
-          const { data, error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(code);
+          // PKCE flow - Supabase client automatically handles code exchange
+          // via detectSessionInUrl: true, so we just need to wait and check for session
+          console.log("Waiting for automatic session establishment...");
 
-          if (exchangeError) {
-            console.error("Code exchange error:", exchangeError);
-            throw new Error(
-              "Invalid or expired reset link. Please request a new one.",
-            );
-          }
+          // Give Supabase time to automatically exchange the code
+          await new Promise((resolve) => setTimeout(resolve, 1000));
 
-          if (data.session) {
+          // Check if session was established
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+
+          if (session) {
             console.log("Session established successfully");
             setSessionReady(true);
           } else {
