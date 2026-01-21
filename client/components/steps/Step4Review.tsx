@@ -39,8 +39,17 @@ const COMPLEXITY_LABELS: Record<string, string> = {
 export default function Step4Review() {
   const { state, completeProcessing, skipToEmail } = useQuote();
   const { languages, loading: optionsLoading } = useDropdownOptions();
-  const { documents, totals, isRush, isLoading, isReady, error } =
-    useQuotePricing(state.quoteId);
+  const {
+    documents,
+    totals,
+    isRush,
+    hitlRequired,
+    customerEmail,
+    quoteNumber,
+    isLoading,
+    isReady,
+    error
+  } = useQuotePricing(state.quoteId);
 
   // HITL Modal State
   const [showHitlModal, setShowHitlModal] = useState(false);
