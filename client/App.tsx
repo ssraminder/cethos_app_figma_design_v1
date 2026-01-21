@@ -31,6 +31,9 @@ import Thresholds from "./pages/admin/Thresholds";
 import PricingSettings from "./pages/admin/settings/PricingSettings";
 import ComplexitySettings from "./pages/admin/settings/ComplexitySettings";
 import TurnaroundSettings from "./pages/admin/settings/TurnaroundSettings";
+import DocumentTypesSettings from "./pages/admin/settings/DocumentTypesSettings";
+import CertificationTypesSettings from "./pages/admin/settings/CertificationTypesSettings";
+import DeliveryOptionsSettings from "./pages/admin/settings/DeliveryOptionsSettings";
 
 const queryClient = new QueryClient();
 
@@ -64,18 +67,9 @@ const App = () => (
                 <Route path="/admin/thresholds" element={<Thresholds />} />
 
                 {/* Admin Settings screens */}
-                <Route
-                  path="/admin/settings/pricing"
-                  element={<PricingSettings />}
-                />
-                <Route
-                  path="/admin/settings/complexity"
-                  element={<ComplexitySettings />}
-                />
-                <Route
-                  path="/admin/settings/turnaround"
-                  element={<TurnaroundSettings />}
-                />
+                <Route path="/admin/settings/pricing" element={<PricingSettings />} />
+                <Route path="/admin/settings/complexity" element={<ComplexitySettings />} />
+                <Route path="/admin/settings/turnaround" element={<TurnaroundSettings />} />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
