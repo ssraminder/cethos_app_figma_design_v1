@@ -120,7 +120,7 @@ export default function Index() {
               state.currentStep === 4 && <Step4Delivery />}
             {!state.emailQuoteSent &&
               !state.isProcessing &&
-              state.currentStep === 5 && <Step4Review />}
+              state.currentStep === 5 && <Step5Review />}
           </div>
         </div>
       </main>
