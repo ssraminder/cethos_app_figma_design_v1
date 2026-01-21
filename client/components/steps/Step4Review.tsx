@@ -38,7 +38,7 @@ const COMPLEXITY_LABELS: Record<string, string> = {
 export default function Step4Review() {
   const { state, completeProcessing, skipToEmail } = useQuote();
   const { languages, loading: optionsLoading } = useDropdownOptions();
-  const { documents, subtotal, isLoading, isReady, error } = useQuotePricing(
+  const { documents, totals, isRush, isLoading, isReady, error } = useQuotePricing(
     state.quoteId,
   );
 
@@ -177,11 +177,17 @@ export default function Step4Review() {
         ))}
       </div>
 
-      {/* Quote Summary */}
+      {/* Quote Summary - Now uses calculated_totals from database */}
       <div className="mb-6">
         <QuoteSummary
-          translationTotal={subtotal}
-          certificationTotal={documents.length * 50} // $50 per document for certification
+          translationTotal={totals.translation_total}
+          certificationTotal={totals.certification_total}
+          subtotal={totals.subtotal}
+          rushFee={totals.rush_fee}
+          taxRate={totals.tax_rate}
+          taxAmount={totals.tax_amount}
+          grandTotal={totals.total}
+          isRush={isRush}
         />
       </div>
 
