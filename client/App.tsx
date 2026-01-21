@@ -44,6 +44,7 @@ import IntendedUsesSettings from "./pages/admin/settings/IntendedUsesSettings";
 import PickupLocationsSettings from "./pages/admin/settings/PickupLocationsSettings";
 import SameDaySettings from "./pages/admin/settings/SameDaySettings";
 import LanguageTiersSettings from "./pages/admin/settings/LanguageTiersSettings";
+import LanguagesSettings from "./pages/admin/settings/LanguagesSettings";
 
 const queryClient = new QueryClient();
 
@@ -140,6 +141,10 @@ const App = () => (
                 <Route
                   path="/admin/settings/language-tiers"
                   element={<LanguageTiersSettings />}
+                />
+                <Route
+                  path="/admin/settings/languages"
+                  element={<LanguagesSettings />}
                 />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
