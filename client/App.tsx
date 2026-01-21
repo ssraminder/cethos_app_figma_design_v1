@@ -70,6 +70,9 @@ const App = () => (
                 <Route path="/admin/settings/pricing" element={<PricingSettings />} />
                 <Route path="/admin/settings/complexity" element={<ComplexitySettings />} />
                 <Route path="/admin/settings/turnaround" element={<TurnaroundSettings />} />
+                <Route path="/admin/settings/document-types" element={<DocumentTypesSettings />} />
+                <Route path="/admin/settings/certifications" element={<CertificationTypesSettings />} />
+                <Route path="/admin/settings/delivery" element={<DeliveryOptionsSettings />} />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
