@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "../../lib/supabase";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
@@ -14,18 +14,20 @@ export default function AdminLogin() {
   // Check if already logged in
   useEffect(() => {
     const checkExistingSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (session) {
         // Verify user is still active staff
         const { data: staffData } = await supabase
-          .from('staff')
-          .select('id, is_active')
-          .eq('email', session.user.email)
-          .eq('is_active', true)
+          .from("staff")
+          .select("id, is_active")
+          .eq("email", session.user.email)
+          .eq("is_active", true)
           .single();
 
         if (staffData) {
-          navigate('/admin/hitl');
+          navigate("/admin/hitl");
         }
       }
     };
@@ -34,61 +36,68 @@ export default function AdminLogin() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
       // Step 1: Sign in with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
+      const { data: authData, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        });
 
       if (authError) {
-        if (authError.message.includes('Invalid login credentials')) {
-          throw new Error('Invalid email or password');
+        if (authError.message.includes("Invalid login credentials")) {
+          throw new Error("Invalid email or password");
         }
         throw new Error(authError.message);
       }
 
       if (!authData.session) {
-        throw new Error('Failed to create session');
+        throw new Error("Failed to create session");
       }
 
       // Step 2: Verify user is in staff table and active
       const { data: staffData, error: staffError } = await supabase
-        .from('staff')
-        .select('id, name, email, role, is_active')
-        .eq('email', email.trim().toLowerCase())
+        .from("staff")
+        .select("id, name, email, role, is_active")
+        .eq("email", email.trim().toLowerCase())
         .single();
 
       if (staffError || !staffData) {
         // Sign out if not a valid staff member
         await supabase.auth.signOut();
-        throw new Error('Access denied. Your account is not authorized for admin access.');
+        throw new Error(
+          "Access denied. Your account is not authorized for admin access.",
+        );
       }
 
       if (!staffData.is_active) {
         await supabase.auth.signOut();
-        throw new Error('Your account has been deactivated. Please contact an administrator.');
+        throw new Error(
+          "Your account has been deactivated. Please contact an administrator.",
+        );
       }
 
       // Step 3: Store staff info for UI display (Supabase manages the actual session)
-      localStorage.setItem('staffSession', JSON.stringify({
-        staffId: staffData.id,
-        staffName: staffData.name,
-        staffEmail: staffData.email,
-        staffRole: staffData.role,
-        loggedIn: true,
-        loginTime: new Date().toISOString(),
-      }));
+      localStorage.setItem(
+        "staffSession",
+        JSON.stringify({
+          staffId: staffData.id,
+          staffName: staffData.name,
+          staffEmail: staffData.email,
+          staffRole: staffData.role,
+          loggedIn: true,
+          loginTime: new Date().toISOString(),
+        }),
+      );
 
       // Step 4: Redirect to admin dashboard
-      navigate('/admin/hitl');
-
+      navigate("/admin/hitl");
     } catch (err: any) {
-      console.error('Login error:', err);
-      setError(err.message || 'Failed to sign in. Please try again.');
+      console.error("Login error:", err);
+      setError(err.message || "Failed to sign in. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -96,19 +105,22 @@ export default function AdminLogin() {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email.trim()) {
-      setError('Please enter your email address');
+      setError("Please enter your email address");
       return;
     }
 
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-        redirectTo: `${window.location.origin}/admin/reset-password`,
-      });
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        email.trim().toLowerCase(),
+        {
+          redirectTo: `${window.location.origin}/admin/reset-password`,
+        },
+      );
 
       if (error) {
         throw new Error(error.message);
@@ -116,8 +128,8 @@ export default function AdminLogin() {
 
       setResetEmailSent(true);
     } catch (err: any) {
-      console.error('Password reset error:', err);
-      setError(err.message || 'Failed to send reset email');
+      console.error("Password reset error:", err);
+      setError(err.message || "Failed to send reset email");
     } finally {
       setLoading(false);
     }
@@ -130,8 +142,18 @@ export default function AdminLogin() {
         <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              <svg
+                className="w-8 h-8 text-blue-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                />
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Reset Password</h1>
@@ -143,8 +165,18 @@ export default function AdminLogin() {
           {resetEmailSent ? (
             <div className="text-center">
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg mb-6">
-                <svg className="w-12 h-12 text-green-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                <svg
+                  className="w-12 h-12 text-green-500 mx-auto mb-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
                 </svg>
                 <p className="text-green-800 font-medium">Check your email</p>
                 <p className="text-green-700 text-sm mt-1">
@@ -170,7 +202,10 @@ export default function AdminLogin() {
               )}
 
               <div>
-                <label htmlFor="reset-email" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="reset-email"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Email Address
                 </label>
                 <input
@@ -189,7 +224,7 @@ export default function AdminLogin() {
                 disabled={loading}
                 className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? 'Sending...' : 'Send Reset Link'}
+                {loading ? "Sending..." : "Send Reset Link"}
               </button>
 
               <div className="text-center">
@@ -197,7 +232,7 @@ export default function AdminLogin() {
                   type="button"
                   onClick={() => {
                     setShowForgotPassword(false);
-                    setError('');
+                    setError("");
                   }}
                   className="text-gray-600 hover:text-gray-700 text-sm"
                 >
@@ -217,12 +252,24 @@ export default function AdminLogin() {
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            <svg
+              className="w-8 h-8 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Admin Login</h1>
-          <p className="text-gray-600 mt-2">Sign in to access the admin panel</p>
+          <p className="text-gray-600 mt-2">
+            Sign in to access the admin panel
+          </p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -233,7 +280,10 @@ export default function AdminLogin() {
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Email
             </label>
             <input
@@ -249,7 +299,10 @@ export default function AdminLogin() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Password
             </label>
             <input
@@ -272,13 +325,25 @@ export default function AdminLogin() {
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
                 </svg>
                 Signing in...
               </span>
             ) : (
-              'Sign In'
+              "Sign In"
             )}
           </button>
         </form>
@@ -287,7 +352,7 @@ export default function AdminLogin() {
           <button
             onClick={() => {
               setShowForgotPassword(true);
-              setError('');
+              setError("");
             }}
             className="text-sm text-blue-600 hover:text-blue-700"
           >
