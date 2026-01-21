@@ -8,6 +8,7 @@ interface SettingsInputProps {
   placeholder?: string;
   helperText?: string;
   error?: string;
+  prefix?: string;
   suffix?: string;
   required?: boolean;
   disabled?: boolean;
@@ -26,6 +27,7 @@ export default function SettingsInput({
   placeholder,
   helperText,
   error,
+  prefix,
   suffix,
   required = false,
   disabled = false,
@@ -63,6 +65,11 @@ export default function SettingsInput({
         </select>
       ) : (
         <div className="relative">
+          {prefix && (
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+              {prefix}
+            </span>
+          )}
           <input
             type={type}
             value={value}
@@ -72,7 +79,7 @@ export default function SettingsInput({
             min={min}
             max={max}
             step={step}
-            className={inputClasses}
+            className={`${inputClasses} ${prefix ? "pl-8" : ""}`}
           />
           {suffix && (
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
