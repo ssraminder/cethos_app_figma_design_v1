@@ -394,7 +394,7 @@ export default function Step4Delivery() {
 
     setSaving(true);
     try {
-      // Save delivery options to database
+      // Save delivery options and updated pricing to database
       const { error } = await supabase
         .from("quotes")
         .update({
@@ -403,16 +403,12 @@ export default function Step4Delivery() {
           physical_delivery_option: state.physicalDeliveryOption,
           pickup_location_id: state.pickupLocationId,
           shipping_address: state.shippingAddress,
+          calculated_totals: pricing, // Save updated pricing
           updated_at: new Date().toISOString(),
         })
         .eq("id", state.quoteId);
 
       if (error) throw error;
-
-      // Trigger pricing recalculation
-      await supabase.functions.invoke("recalculate-quote-pricing", {
-        body: { quote_id: state.quoteId },
-      });
 
       await goToNextStep();
     } catch (err) {
