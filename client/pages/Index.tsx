@@ -9,6 +9,7 @@ import EmailQuoteConfirmation from "@/components/EmailQuoteConfirmation";
 import Step1Upload from "@/components/steps/Step1Upload";
 import Step2Details from "@/components/steps/Step2Details";
 import Step3Contact from "@/components/steps/Step3Contact";
+import Step4Delivery from "@/components/quote/Step4Delivery";
 import Step4Review from "@/components/steps/Step4Review";
 
 export default function Index() {
@@ -27,9 +28,9 @@ export default function Index() {
 
   const handleContinue = async () => {
     const currentStep = state.currentStep;
-    const isLastStep = currentStep === 4;
+    const isLastStep = currentStep === 5;
 
-    // Special handling for email quote mode on Step 4
+    // Special handling for email quote mode on Step 5 (Review)
     if (isLastStep && state.emailQuoteMode) {
       const result = await goToNextStep();
       if (result.success) {
@@ -67,9 +68,9 @@ export default function Index() {
         });
     }
 
-    // Navigate to success page if we were on step 4 and successfully moved to step 5
+    // Navigate to checkout page if we were on step 5 (Review) and successfully moved forward
     if (result.success && isLastStep) {
-      navigate("/success");
+      navigate(`/quote/${state.quoteId}/checkout`);
     }
   };
 
@@ -116,24 +117,29 @@ export default function Index() {
               state.currentStep === 3 && <Step3Contact />}
             {!state.emailQuoteSent &&
               !state.isProcessing &&
-              state.currentStep === 4 && <Step4Review />}
+              state.currentStep === 4 && <Step4Delivery />}
+            {!state.emailQuoteSent &&
+              !state.isProcessing &&
+              state.currentStep === 5 && <Step4Review />}
           </div>
         </div>
       </main>
 
-      {/* Footer - Only show on steps 1-4 and not during processing or email confirmation */}
+      {/* Footer - Only show on steps 1-5 and not during processing or email confirmation */}
       {!state.isProcessing &&
         !state.emailQuoteSent &&
-        state.currentStep <= 4 && (
+        state.currentStep <= 5 && (
           <Footer
             onBack={handleBack}
             onContinue={handleContinue}
             canContinue={validateStep(state.currentStep)}
             showBack={state.currentStep > 1}
             continueText={
-              state.currentStep === 4 && state.emailQuoteMode
+              state.currentStep === 5 && state.emailQuoteMode
                 ? "Send My Quote"
-                : "Continue"
+                : state.currentStep === 5
+                  ? "Proceed to Checkout"
+                  : "Continue"
             }
           />
         )}
