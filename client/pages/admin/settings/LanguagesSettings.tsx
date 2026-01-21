@@ -318,6 +318,27 @@ export default function LanguagesSettings() {
       ]}
       loading={loading}
       error={error}
+      actions={
+        <button
+          onClick={handleAdd}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+          Add Language
+        </button>
+      }
     >
       <div className="space-y-6">
         {/* Filters */}
@@ -352,8 +373,6 @@ export default function LanguagesSettings() {
           data={filteredLanguages}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          onAdd={handleAdd}
-          addButtonLabel="+ Add Language"
           emptyMessage="No languages found. Adjust filters or click 'Add Language' to create one."
           getRowKey={(lang) => lang.id}
         />
