@@ -122,6 +122,10 @@ const App = () => (
                   path="/admin/settings/hitl"
                   element={<HITLThresholdsSettings />}
                 />
+                <Route
+                  path="/admin/settings/intended-uses"
+                  element={<IntendedUsesSettings />}
+                />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
