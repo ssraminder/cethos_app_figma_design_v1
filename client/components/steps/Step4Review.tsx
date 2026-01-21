@@ -230,8 +230,80 @@ export default function Step4Review() {
 
       {/* Human Review Notice */}
       <div>
-        <HumanReviewNotice onRequestReview={handleRequestReview} />
+        <HumanReviewNotice onRequestReview={() => setShowHitlModal(true)} />
       </div>
+
+      {/* HITL Request Modal */}
+      {showHitlModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            {!hitlSubmitted ? (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Request Human Review</h3>
+                  <button
+                    onClick={() => setShowHitlModal(false)}
+                    className="text-gray-400 hover:text-gray-600 text-xl"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <p className="text-gray-600 mb-4">
+                  Our team will review your documents and email you an updated quote within 4 working hours.
+                </p>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Please tell us what concerns you (optional):
+                  </label>
+                  <textarea
+                    value={hitlNote}
+                    onChange={(e) => setHitlNote(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 h-24 resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., The word count seems incorrect..."
+                  />
+                </div>
+
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setShowHitlModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRequestReview}
+                    disabled={isSubmittingHitl}
+                    className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:bg-gray-400"
+                  >
+                    {isSubmittingHitl ? 'Submitting...' : 'Submit Request'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <div className="text-green-500 text-5xl mb-4">✓</div>
+                <h3 className="text-lg font-semibold mb-2">Review Requested</h3>
+                <p className="text-gray-600 mb-4">
+                  Your quote is being reviewed by our team.<br/>
+                  We'll email you within 4 working hours.
+                </p>
+                <button
+                  onClick={() => {
+                    setShowHitlModal(false);
+                    setHitlSubmitted(false);
+                    setHitlNote('');
+                  }}
+                  className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
