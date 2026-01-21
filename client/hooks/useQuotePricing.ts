@@ -12,11 +12,23 @@ export interface DocumentAnalysis {
   pageCount: number;
   billablePages: number;
   lineTotal: number;
+  certificationPrice: number;
+}
+
+interface QuoteTotals {
+  translation_total: number;
+  certification_total: number;
+  subtotal: number;
+  rush_fee: number;
+  tax_rate: number;
+  tax_amount: number;
+  total: number;
 }
 
 interface QuotePricing {
   documents: DocumentAnalysis[];
-  subtotal: number;
+  totals: QuoteTotals;
+  isRush: boolean;
   isLoading: boolean;
   isReady: boolean;
   error: string | null;
@@ -24,6 +36,16 @@ interface QuotePricing {
 
 export function useQuotePricing(quoteId: string | null): QuotePricing {
   const [documents, setDocuments] = useState<DocumentAnalysis[]>([]);
+  const [totals, setTotals] = useState<QuoteTotals>({
+    translation_total: 0,
+    certification_total: 0,
+    subtotal: 0,
+    rush_fee: 0,
+    tax_rate: 0.05,
+    tax_amount: 0,
+    total: 0,
+  });
+  const [isRush, setIsRush] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,15 +62,37 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
       setIsLoading(true);
 
       try {
-        // Get quote status
-        const { data: quote } = await supabase
+        // Fetch quote with calculated_totals (source of truth)
+        const { data: quote, error: quoteError } = await supabase
           .from("quotes")
-          .select("processing_status")
+          .select(
+            `
+            id,
+            calculated_totals,
+            is_rush,
+            processing_status
+          `,
+          )
           .eq("id", quoteId)
           .single();
 
+        if (quoteError) throw quoteError;
+
+        // Extract calculated totals from JSONB column
+        const calculatedTotals = quote?.calculated_totals || {};
+        setTotals({
+          translation_total: calculatedTotals.translation_total || 0,
+          certification_total: calculatedTotals.certification_total || 0,
+          subtotal: calculatedTotals.subtotal || 0,
+          rush_fee: calculatedTotals.rush_fee || 0,
+          tax_rate: calculatedTotals.tax_rate || 0.05,
+          tax_amount: calculatedTotals.tax_amount || 0,
+          total: calculatedTotals.total || 0,
+        });
+        setIsRush(quote?.is_rush || false);
+
         if (quote?.processing_status === "quote_ready") {
-          // Fetch analysis results
+          // Fetch analysis results for itemized document list
           const { data: results, error: resultsError } = await supabase
             .from("ai_analysis_results")
             .select(
@@ -62,6 +106,7 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
               page_count,
               billable_pages,
               line_total,
+              certification_price,
               quote_files!inner(
                 original_filename,
                 quote_id
@@ -84,6 +129,7 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
             pageCount: r.page_count,
             billablePages: r.billable_pages,
             lineTotal: r.line_total,
+            certificationPrice: r.certification_price || 0,
           }));
 
           setDocuments(docs);
@@ -100,10 +146,10 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
 
     fetchPricing();
 
-    // Subscribe to quote updates
+    // Subscribe to quote updates (triggers on ANY update, including calculated_totals)
     if (!supabase) return;
 
-    const channel = supabase
+    const quoteChannel = supabase
       .channel(`pricing-${quoteId}`)
       .on(
         "postgres_changes",
@@ -114,21 +160,36 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
           filter: `id=eq.${quoteId}`,
         },
         (payload: any) => {
-          if (payload.new.processing_status === "quote_ready") {
-            fetchPricing();
-          }
+          console.log("Quote updated, refetching pricing...", payload);
+          fetchPricing();
+        },
+      )
+      .subscribe();
+
+    // Subscribe to ai_analysis_results updates (for itemized list changes)
+    const analysisChannel = supabase
+      .channel(`analysis-${quoteId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*", // INSERT, UPDATE, DELETE
+          schema: "public",
+          table: "ai_analysis_results",
+        },
+        (payload: any) => {
+          console.log("Analysis results updated, refetching pricing...", payload);
+          fetchPricing();
         },
       )
       .subscribe();
 
     return () => {
       if (supabase) {
-        supabase.removeChannel(channel);
+        supabase.removeChannel(quoteChannel);
+        supabase.removeChannel(analysisChannel);
       }
     };
   }, [quoteId]);
 
-  const subtotal = documents.reduce((sum, doc) => sum + doc.lineTotal, 0);
-
-  return { documents, subtotal, isLoading, isReady, error };
+  return { documents, totals, isRush, isLoading, isReady, error };
 }
