@@ -49,53 +49,9 @@ import LanguagesSettings from "./pages/admin/settings/LanguagesSettings";
 
 const queryClient = new QueryClient();
 
-// Wrapper component for protected admin routes
-const AdminRoutes = () => (
-  <AdminAuthProvider>
-    <Routes>
-      <Route path="/hitl" element={<HITLQueue />} />
-      <Route path="/hitl/:reviewId" element={<HITLReviewDetail />} />
-      <Route path="/settings" element={<AdminSettings />} />
-      <Route path="/analytics" element={<Analytics />} />
-      <Route path="/patterns" element={<Patterns />} />
-      <Route path="/learning" element={<Learning />} />
-      <Route path="/thresholds" element={<Thresholds />} />
-
-      {/* Admin Settings screens */}
-      <Route path="/settings/pricing" element={<PricingSettings />} />
-      <Route path="/settings/complexity" element={<ComplexitySettings />} />
-      <Route path="/settings/turnaround" element={<TurnaroundSettings />} />
-      <Route
-        path="/settings/document-types"
-        element={<DocumentTypesSettings />}
-      />
-      <Route
-        path="/settings/certifications"
-        element={<CertificationTypesSettings />}
-      />
-      <Route path="/settings/delivery" element={<DeliveryOptionsSettings />} />
-      <Route path="/settings/tax" element={<TaxRatesSettings />} />
-      <Route path="/settings/hours" element={<BusinessHoursSettings />} />
-      <Route path="/settings/holidays" element={<HolidaysSettings />} />
-      <Route path="/settings/ai-prompts" element={<AIPromptsSettings />} />
-      <Route path="/settings/ocr" element={<OCRSettings />} />
-      <Route path="/settings/hitl" element={<HITLThresholdsSettings />} />
-      <Route
-        path="/settings/intended-uses"
-        element={<IntendedUsesSettings />}
-      />
-      <Route
-        path="/settings/pickup-locations"
-        element={<PickupLocationsSettings />}
-      />
-      <Route path="/settings/same-day" element={<SameDaySettings />} />
-      <Route
-        path="/settings/language-tiers"
-        element={<LanguageTiersSettings />}
-      />
-      <Route path="/settings/languages" element={<LanguagesSettings />} />
-    </Routes>
-  </AdminAuthProvider>
+// Wrapper component to protect admin routes with AdminAuthProvider
+const ProtectedAdminRoute = ({ children }: { children: React.ReactNode }) => (
+  <AdminAuthProvider>{children}</AdminAuthProvider>
 );
 
 const App = () => (
@@ -118,7 +74,201 @@ const App = () => (
                 <Route path="/admin/login" element={<AdminLogin />} />
 
                 {/* Protected admin routes */}
-                <Route path="/admin/*" element={<AdminRoutes />} />
+                <Route
+                  path="/admin/hitl"
+                  element={
+                    <ProtectedAdminRoute>
+                      <HITLQueue />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/hitl/:reviewId"
+                  element={
+                    <ProtectedAdminRoute>
+                      <HITLReviewDetail />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings"
+                  element={
+                    <ProtectedAdminRoute>
+                      <AdminSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/analytics"
+                  element={
+                    <ProtectedAdminRoute>
+                      <Analytics />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/patterns"
+                  element={
+                    <ProtectedAdminRoute>
+                      <Patterns />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/learning"
+                  element={
+                    <ProtectedAdminRoute>
+                      <Learning />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/thresholds"
+                  element={
+                    <ProtectedAdminRoute>
+                      <Thresholds />
+                    </ProtectedAdminRoute>
+                  }
+                />
+
+                {/* Admin Settings screens */}
+                <Route
+                  path="/admin/settings/pricing"
+                  element={
+                    <ProtectedAdminRoute>
+                      <PricingSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/complexity"
+                  element={
+                    <ProtectedAdminRoute>
+                      <ComplexitySettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/turnaround"
+                  element={
+                    <ProtectedAdminRoute>
+                      <TurnaroundSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/document-types"
+                  element={
+                    <ProtectedAdminRoute>
+                      <DocumentTypesSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/certifications"
+                  element={
+                    <ProtectedAdminRoute>
+                      <CertificationTypesSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/delivery"
+                  element={
+                    <ProtectedAdminRoute>
+                      <DeliveryOptionsSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/tax"
+                  element={
+                    <ProtectedAdminRoute>
+                      <TaxRatesSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/hours"
+                  element={
+                    <ProtectedAdminRoute>
+                      <BusinessHoursSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/holidays"
+                  element={
+                    <ProtectedAdminRoute>
+                      <HolidaysSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/ai-prompts"
+                  element={
+                    <ProtectedAdminRoute>
+                      <AIPromptsSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/ocr"
+                  element={
+                    <ProtectedAdminRoute>
+                      <OCRSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/hitl"
+                  element={
+                    <ProtectedAdminRoute>
+                      <HITLThresholdsSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/intended-uses"
+                  element={
+                    <ProtectedAdminRoute>
+                      <IntendedUsesSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/pickup-locations"
+                  element={
+                    <ProtectedAdminRoute>
+                      <PickupLocationsSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/same-day"
+                  element={
+                    <ProtectedAdminRoute>
+                      <SameDaySettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/language-tiers"
+                  element={
+                    <ProtectedAdminRoute>
+                      <LanguageTiersSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings/languages"
+                  element={
+                    <ProtectedAdminRoute>
+                      <LanguagesSettings />
+                    </ProtectedAdminRoute>
+                  }
+                />
+
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
