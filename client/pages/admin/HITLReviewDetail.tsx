@@ -409,6 +409,186 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   // ============================================
+  // CLAIM REVIEW & ACTION BUTTONS
+  // ============================================
+
+  const handleClaimReview = async () => {
+    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
+
+    if (!session.staffId) {
+      alert("Session expired. Please login again.");
+      navigate("/admin/login");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/claim-hitl-review`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        setClaimedByMe(true);
+        setClaimedByOther(false);
+        await fetchAllData();
+      } else {
+        throw new Error(result.error || "Failed to claim review");
+      }
+    } catch (error) {
+      console.error("Claim error:", error);
+      alert("Failed to claim review: " + (error as Error).message);
+    }
+  };
+
+  const handleApproveReview = async () => {
+    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
+
+    if (!confirm("Approve this quote? The customer will be notified and can proceed to payment.")) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/approve-hitl-review`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            notes: internalNotes || null,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to approve review");
+      }
+
+      alert("✅ Quote approved! Customer will be notified via email.");
+      navigate("/admin/hitl");
+
+    } catch (error) {
+      console.error("Approve error:", error);
+      alert("Error approving review: " + (error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRejectReview = async () => {
+    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
+
+    if (!rejectReason.trim()) {
+      alert("Please provide a reason for requesting a better scan.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const fileIds = analysisResults.map((a) => a.quote_file_id);
+
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/reject-hitl-review`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            reason: rejectReason.trim(),
+            fileIds: fileIds,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to reject review");
+      }
+
+      alert("📧 Better scan requested. Customer will be notified via email.");
+      setShowRejectModal(false);
+      navigate("/admin/hitl");
+
+    } catch (error) {
+      console.error("Reject error:", error);
+      alert("Error rejecting review: " + (error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEscalateReview = async () => {
+    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
+
+    const escalateReason = prompt("Please provide a reason for escalating this review:");
+
+    if (!escalateReason || !escalateReason.trim()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetchFromSupabase(
+        `hitl_reviews?id=eq.${reviewId}`,
+      );
+
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            status: "escalated",
+            resolution_notes: escalateReason.trim(),
+            updated_at: new Date().toISOString(),
+          }),
+        },
+      );
+
+      alert("⚠️ Review escalated to admin.");
+      navigate("/admin/hitl");
+
+    } catch (error) {
+      console.error("Escalate error:", error);
+      alert("Error escalating review: " + (error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ============================================
   // EDIT HELPERS
   // ============================================
 
