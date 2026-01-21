@@ -81,14 +81,14 @@ export default function IntendedUsesSettings() {
     setShowModal(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (item: IntendedUse) => {
     if (!confirm("Are you sure you want to delete this intended use?")) return;
 
     try {
       const { error: deleteError } = await supabase
         .from("intended_uses")
         .delete()
-        .eq("id", id);
+        .eq("id", item.id);
 
       if (deleteError) throw deleteError;
 
