@@ -129,6 +129,80 @@ const HITLReviewDetail: React.FC = () => {
     fetchAllData();
   }, [reviewId]);
 
+  // DIAGNOSTIC CODE - Remove after debugging
+  useEffect(() => {
+    const diagnose = async () => {
+      console.log('=== HITL Review Diagnosis ===');
+      console.log('Review ID from URL:', reviewId);
+
+      // Check auth
+      const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
+      console.log('Session:', session?.staffId ? `Staff ID: ${session.staffId}` : 'NO SESSION');
+
+      // Check if review exists
+      try {
+        const reviewResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}&select=*`,
+          {
+            headers: {
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+          },
+        );
+        const reviews = await reviewResponse.json();
+        const review = reviews[0];
+
+        console.log('Review:', review);
+        console.log('Review Error:', !review ? 'No review found' : null);
+
+        if (review) {
+          // Check quote
+          const quoteResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/quotes?id=eq.${review.quote_id}&select=*`,
+            {
+              headers: {
+                apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+            },
+          );
+          const quotes = await quoteResponse.json();
+          const quote = quotes[0];
+
+          console.log('Quote:', quote);
+          console.log('Quote Error:', !quote ? 'No quote found' : null);
+
+          if (quote) {
+            // Check analysis results
+            const analysisResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/ai_analysis_results?quote_id=eq.${quote.id}&select=*`,
+              {
+                headers: {
+                  apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+                  Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+              },
+            );
+            const analysis = await analysisResponse.json();
+
+            console.log('Analysis Results:', analysis);
+            console.log('Analysis Count:', analysis?.length || 0);
+            console.log('Analysis Error:', !analysis || analysis.length === 0 ? 'No analysis found' : null);
+          }
+        }
+      } catch (error) {
+        console.error('Diagnosis Error:', error);
+      }
+
+      console.log('=== End Diagnosis ===');
+    };
+
+    if (reviewId) {
+      diagnose();
+    }
+  }, [reviewId]);
+
   const fetchAllData = async () => {
     setLoading(true);
     try {
