@@ -1174,18 +1174,21 @@ const HITLReviewDetail: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            {!claimedByMe && (
+            {claimedByMe ? (
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                ✓ Claimed by you
+              </span>
+            ) : claimedByOther ? (
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
+                Claimed by {assignedStaffName || "another staff"}
+              </span>
+            ) : (
               <button
-                onClick={claimReview}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                onClick={handleClaimReview}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium"
               >
                 Claim Review
               </button>
-            )}
-            {claimedByMe && (
-              <span className="px-3 py-1 bg-green-100 text-green-800 rounded text-sm">
-                Claimed by you
-              </span>
             )}
           </div>
         </div>
