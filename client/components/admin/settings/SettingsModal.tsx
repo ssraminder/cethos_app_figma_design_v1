@@ -120,7 +120,9 @@ export default function SettingsModal({
                 <div key={field.name}>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {field.label}
-                    {field.required && <span className="text-red-500 ml-1">*</span>}
+                    {field.required && (
+                      <span className="text-red-500 ml-1">*</span>
+                    )}
                   </label>
 
                   {field.type === "text" && (
@@ -137,7 +139,9 @@ export default function SettingsModal({
                     <input
                       type="number"
                       value={formData[field.name] || ""}
-                      onChange={(e) => handleChange(field.name, parseFloat(e.target.value))}
+                      onChange={(e) =>
+                        handleChange(field.name, parseFloat(e.target.value))
+                      }
                       placeholder={field.placeholder}
                       step={field.step}
                       min={field.min}
@@ -175,19 +179,27 @@ export default function SettingsModal({
                       <input
                         type="checkbox"
                         checked={formData[field.name] || false}
-                        onChange={(e) => handleChange(field.name, e.target.checked)}
+                        onChange={(e) =>
+                          handleChange(field.name, e.target.checked)
+                        }
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
-                      <span className="ml-2 text-sm text-gray-600">{field.helperText}</span>
+                      <span className="ml-2 text-sm text-gray-600">
+                        {field.helperText}
+                      </span>
                     </div>
                   )}
 
                   {field.helperText && field.type !== "checkbox" && (
-                    <p className="text-xs text-gray-500 mt-1">{field.helperText}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {field.helperText}
+                    </p>
                   )}
 
                   {errors[field.name] && (
-                    <p className="text-xs text-red-600 mt-1">{errors[field.name]}</p>
+                    <p className="text-xs text-red-600 mt-1">
+                      {errors[field.name]}
+                    </p>
                   )}
                 </div>
               ))}
