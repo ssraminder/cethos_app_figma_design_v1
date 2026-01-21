@@ -102,6 +102,10 @@ const App = () => (
                   path="/admin/settings/hours"
                   element={<BusinessHoursSettings />}
                 />
+                <Route
+                  path="/admin/settings/holidays"
+                  element={<HolidaysSettings />}
+                />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
