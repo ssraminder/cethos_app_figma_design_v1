@@ -211,6 +211,81 @@ export default function AdminSettings() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* Settings Navigation */}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Settings Categories
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Pricing & Complexity */}
+            <button
+              onClick={() => navigate("/admin/settings/pricing")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">Pricing Settings</h3>
+              <p className="text-sm text-gray-600">
+                Base rate, words per page, rounding
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/complexity")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">Complexity Multipliers</h3>
+              <p className="text-sm text-gray-600">
+                Easy, medium, hard pricing multipliers
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/turnaround")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">Turnaround & Rush</h3>
+              <p className="text-sm text-gray-600">
+                Standard delivery times and rush fees
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/document-types")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">Document Types</h3>
+              <p className="text-sm text-gray-600">
+                Manage document categories and complexity
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/certifications")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">Certification Types</h3>
+              <p className="text-sm text-gray-600">
+                Notarization, apostille, and other certifications
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/delivery")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">Delivery Options</h3>
+              <p className="text-sm text-gray-600">
+                Digital and physical delivery methods
+              </p>
+            </button>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-200 pt-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Branding Settings
+          </h2>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Settings Form */}
           <div className="bg-white rounded-lg shadow p-6">
