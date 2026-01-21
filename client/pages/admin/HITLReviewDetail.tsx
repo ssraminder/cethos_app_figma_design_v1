@@ -58,7 +58,11 @@ const HITLReviewDetail: React.FC = () => {
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   const fetchFromSupabase = async (endpoint: string) => {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
+    const url = `${SUPABASE_URL}/rest/v1/${endpoint}`;
+    console.log(`🌐 Fetching: ${url}`);
+    console.log(`🔑 Using anon key: ${SUPABASE_ANON_KEY?.substring(0, 20)}...`);
+
+    const response = await fetch(url, {
       headers: {
         apikey: SUPABASE_ANON_KEY,
         Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
@@ -66,13 +70,17 @@ const HITLReviewDetail: React.FC = () => {
       },
     });
 
+    console.log(`📡 Response status: ${response.status} ${response.statusText}`);
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Fetch failed [${response.status}]:`, errorText);
+      console.error(`❌ Fetch failed [${response.status}]:`, errorText);
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    console.log(`✅ Fetch success, rows returned:`, Array.isArray(data) ? data.length : typeof data);
+    return data;
   };
 
   // ============================================
