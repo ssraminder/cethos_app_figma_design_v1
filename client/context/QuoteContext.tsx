@@ -17,6 +17,19 @@ export interface UploadedFile {
   file: File;
 }
 
+export interface ShippingAddress {
+  firstName: string;
+  lastName: string;
+  company: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  phone: string;
+}
+
 export interface QuoteState {
   currentStep: number;
   quoteId: string;
@@ -36,6 +49,12 @@ export interface QuoteState {
   isProcessing: boolean;
   emailQuoteMode: boolean;
   emailQuoteSent: boolean;
+  // Delivery options
+  deliverySpeed: "standard" | "rush" | "same_day";
+  digitalDeliveryOptions: string[];
+  physicalDeliveryOption: string | null;
+  pickupLocationId: string | null;
+  shippingAddress: ShippingAddress | null;
 }
 
 interface QuoteContextType {
