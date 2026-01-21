@@ -36,6 +36,7 @@ import CertificationTypesSettings from "./pages/admin/settings/CertificationType
 import DeliveryOptionsSettings from "./pages/admin/settings/DeliveryOptionsSettings";
 import TaxRatesSettings from "./pages/admin/settings/TaxRatesSettings";
 import BusinessHoursSettings from "./pages/admin/settings/BusinessHoursSettings";
+import HolidaysSettings from "./pages/admin/settings/HolidaysSettings";
 
 const queryClient = new QueryClient();
 
