@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import AdminSettingsLayout from "@/components/admin/settings/AdminSettingsLayout";
 import SettingsTable from "@/components/admin/settings/SettingsTable";
 import SettingsModal from "@/components/admin/settings/SettingsModal";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { useAdminAuth } from "@/context/AdminAuthContext";
 
 interface LanguageTier {
   id: string;
@@ -18,7 +18,7 @@ interface LanguageTier {
 }
 
 export default function LanguageTiersSettings() {
-  const navigate = useNavigate();
+  const { session } = useAdminAuth();
   const [loading, setLoading] = useState(true);
   const [tiers, setTiers] = useState<LanguageTier[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -26,16 +26,8 @@ export default function LanguageTiersSettings() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    checkAuth();
     fetchTiers();
   }, []);
-
-  const checkAuth = () => {
-    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
-    if (!session.loggedIn) {
-      navigate("/admin/login");
-    }
-  };
 
   const fetchTiers = async () => {
     setLoading(true);
@@ -243,6 +235,27 @@ export default function LanguageTiersSettings() {
       ]}
       loading={loading}
       error={error}
+      actions={
+        <button
+          onClick={handleAdd}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+          Add Tier
+        </button>
+      }
     >
       <div className="space-y-6">
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-900">
@@ -255,8 +268,6 @@ export default function LanguageTiersSettings() {
           data={tiers}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          onAdd={handleAdd}
-          addButtonLabel="+ Add Tier"
           emptyMessage="No language tiers configured. Click 'Add Tier' to create one."
           getRowKey={(tier) => tier.id}
         />
