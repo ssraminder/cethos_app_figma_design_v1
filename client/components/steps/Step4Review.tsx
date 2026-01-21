@@ -42,9 +42,46 @@ export default function Step4Review() {
   const { documents, totals, isRush, isLoading, isReady, error } =
     useQuotePricing(state.quoteId);
 
-  const handleRequestReview = () => {
-    console.log("Human review requested");
-    // Handle human review request
+  // HITL Modal State
+  const [showHitlModal, setShowHitlModal] = useState(false);
+  const [hitlNote, setHitlNote] = useState('');
+  const [isSubmittingHitl, setIsSubmittingHitl] = useState(false);
+  const [hitlSubmitted, setHitlSubmitted] = useState(false);
+
+  const handleRequestReview = async () => {
+    setIsSubmittingHitl(true);
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-hitl-review`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            quoteId: state.quoteId,
+            reasons: ['customer_requested'],
+            isCustomerRequested: true,
+            customerNote: hitlNote || null
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setHitlSubmitted(true);
+      } else {
+        throw new Error(result.error || 'Failed to submit request');
+      }
+    } catch (error) {
+      console.error('Error requesting HITL:', error);
+      alert('Error submitting request. Please try again.');
+    } finally {
+      setIsSubmittingHitl(false);
+    }
   };
 
   // Get language names from IDs
