@@ -219,9 +219,11 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   const fetchReviewData = async () => {
-    // Fetch review details
+    console.log("🔍 Fetching review data for ID:", reviewId);
+
+    // Fetch review details (without nested select to avoid relationship issues)
     const reviewResponse = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}&select=*,quotes(*)`,
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}&select=*`,
       {
         headers: {
           apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -231,16 +233,49 @@ const HITLReviewDetail: React.FC = () => {
     );
     const reviews = await reviewResponse.json();
     const review = reviews[0];
-    setReviewData(review);
+
+    console.log("📄 Review data:", review);
+
+    if (!review) {
+      console.error("❌ No review found for ID:", reviewId);
+      return;
+    }
+
+    if (!review.quote_id) {
+      console.error("❌ Review has no quote_id:", review);
+      setReviewData(review);
+      return;
+    }
+
+    // Fetch the quote separately
+    const quoteResponse = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/quotes?id=eq.${review.quote_id}&select=*`,
+      {
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+      },
+    );
+    const quotes = await quoteResponse.json();
+    const quote = quotes[0];
+
+    console.log("💰 Quote data:", quote);
+
+    // Merge quote into review data
+    const reviewWithQuote = { ...review, quotes: quote };
+    setReviewData(reviewWithQuote);
 
     // Check if claimed by current user
     const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
     setClaimedByMe(review?.assigned_to === session.staffId);
 
-    if (review?.quotes?.id) {
+    if (quote?.id) {
+      console.log("🔍 Fetching analysis results for quote:", quote.id);
+
       // Fetch analysis results
       const analysisResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/ai_analysis_results?quote_id=eq.${review.quotes.id}&select=*,quote_file:quote_files(*)`,
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/ai_analysis_results?quote_id=eq.${quote.id}&select=*,quote_file:quote_files(*)`,
         {
           headers: {
             apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -249,6 +284,10 @@ const HITLReviewDetail: React.FC = () => {
         },
       );
       const analysis = await analysisResponse.json();
+
+      console.log("📊 Analysis results:", analysis);
+      console.log("📊 Analysis count:", analysis?.length || 0);
+
       setAnalysisResults(analysis);
 
       // Fetch pages for each file
