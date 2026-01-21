@@ -983,6 +983,19 @@ const HITLReviewDetail: React.FC = () => {
                                             parseInt(e.target.value) || 0,
                                           )
                                         }
+                                        onBlur={(e) => {
+                                          const newValue = parseInt(e.target.value) || 0;
+                                          if (newValue !== page.word_count) {
+                                            handleFieldEdit(
+                                              'page_word_count',
+                                              page.word_count,
+                                              newValue,
+                                              page.quote_file_id,
+                                              undefined,
+                                              page.id
+                                            );
+                                          }
+                                        }}
                                         className="w-20 text-right border rounded px-2 py-1 text-sm"
                                         min="0"
                                       />
