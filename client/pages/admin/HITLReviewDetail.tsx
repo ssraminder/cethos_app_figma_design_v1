@@ -220,127 +220,124 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   const fetchReviewData = async () => {
+    if (!supabase) {
+      console.error("❌ Supabase client not initialized");
+      return;
+    }
+
     console.log("🔍 Fetching review data for ID:", reviewId);
 
-    // Fetch review details (without nested select to avoid relationship issues)
-    const reviewResponse = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}&select=*`,
-      {
-        headers: {
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-      },
-    );
-    const reviews = await reviewResponse.json();
-    const review = reviews[0];
+    try {
+      // Fetch review details using Supabase client
+      const { data: review, error: reviewError } = await supabase
+        .from("hitl_reviews")
+        .select("*")
+        .eq("id", reviewId)
+        .single();
 
-    console.log("📄 Review data:", review);
+      console.log("📄 Review data:", review);
+      console.log("📄 Review error:", reviewError);
 
-    if (!review) {
-      console.error("❌ No review found for ID:", reviewId);
-      return;
-    }
+      if (reviewError || !review) {
+        console.error("❌ No review found for ID:", reviewId, reviewError);
+        return;
+      }
 
-    if (!review.quote_id) {
-      console.error("❌ Review has no quote_id:", review);
-      setReviewData(review);
-      return;
-    }
+      if (!review.quote_id) {
+        console.error("❌ Review has no quote_id:", review);
+        setReviewData(review);
+        return;
+      }
 
-    // Fetch the quote separately
-    const quoteResponse = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/quotes?id=eq.${review.quote_id}&select=*`,
-      {
-        headers: {
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-      },
-    );
-    const quotes = await quoteResponse.json();
-    const quote = quotes[0];
+      // Fetch the quote separately
+      const { data: quote, error: quoteError } = await supabase
+        .from("quotes")
+        .select("*")
+        .eq("id", review.quote_id)
+        .single();
 
-    console.log("💰 Quote data:", quote);
+      console.log("💰 Quote data:", quote);
+      console.log("💰 Quote error:", quoteError);
 
-    // Merge quote into review data
-    const reviewWithQuote = { ...review, quotes: quote };
-    setReviewData(reviewWithQuote);
+      if (quoteError) {
+        console.error("❌ Error fetching quote:", quoteError);
+      }
 
-    // Check if claimed by current user
-    const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
-    setClaimedByMe(review?.assigned_to === session.staffId);
+      // Merge quote into review data
+      const reviewWithQuote = { ...review, quotes: quote };
+      setReviewData(reviewWithQuote);
 
-    if (quote?.id) {
-      console.log("🔍 Fetching analysis results for quote:", quote.id);
+      // Check if claimed by current user
+      const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
+      setClaimedByMe(review?.assigned_to === session.staffId);
 
-      // Fetch analysis results
-      const analysisResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/ai_analysis_results?quote_id=eq.${quote.id}&select=*,quote_file:quote_files(*)`,
-        {
-          headers: {
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-        },
-      );
-      const analysis = await analysisResponse.json();
+      if (quote?.id) {
+        console.log("🔍 Fetching analysis results for quote:", quote.id);
 
-      console.log("📊 Analysis results:", analysis);
-      console.log("📊 Analysis count:", analysis?.length || 0);
+        // Fetch analysis results with quote_file relationship
+        const { data: analysis, error: analysisError } = await supabase
+          .from("ai_analysis_results")
+          .select("*, quote_file:quote_files(*)")
+          .eq("quote_id", quote.id);
 
-      setAnalysisResults(analysis);
+        console.log("📊 Analysis results:", analysis);
+        console.log("📊 Analysis count:", analysis?.length || 0);
+        console.log("📊 Analysis error:", analysisError);
 
-      // Fetch pages for each file
-      const pagePromises = analysis.map(async (a: any) => {
-        const pageResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/quote_pages?quote_file_id=eq.${a.quote_file_id}&order=page_number`,
-          {
-            headers: {
-              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
-          },
-        );
-        return { fileId: a.quote_file_id, pages: await pageResponse.json() };
-      });
+        if (analysisError) {
+          console.error("❌ Error fetching analysis:", analysisError);
+        }
 
-      const pagesResults = await Promise.all(pagePromises);
-      const pagesMap: Record<string, PageData[]> = {};
-      pagesResults.forEach((r) => {
-        pagesMap[r.fileId] = r.pages;
-      });
-      setPageData(pagesMap);
+        setAnalysisResults(analysis || []);
 
-      // Fetch additional certifications
-      const certPromises = analysis.map(async (a: any) => {
-        const certResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/document_certifications?analysis_id=eq.${a.id}&is_primary=eq.false&select=*,certification_types(name,code)`,
-          {
-            headers: {
-              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
-          },
-        );
-        const certs = await certResponse.json();
-        return {
-          fileId: a.quote_file_id,
-          certs: certs.map((c: any) => ({
-            id: c.id,
-            certification_type_id: c.certification_type_id,
-            name: c.certification_types?.name || "Unknown",
-            price: c.price,
-          })),
-        };
-      });
+        if (analysis && analysis.length > 0) {
+          // Fetch pages for each file
+          const pagePromises = analysis.map(async (a: any) => {
+            const { data: pages } = await supabase
+              .from("quote_pages")
+              .select("*")
+              .eq("quote_file_id", a.quote_file_id)
+              .order("page_number");
 
-      const certsResults = await Promise.all(certPromises);
-      const certsMap: Record<string, AdditionalCert[]> = {};
-      certsResults.forEach((r) => {
-        certsMap[r.fileId] = r.certs;
-      });
-      setAdditionalCerts(certsMap);
+            return { fileId: a.quote_file_id, pages: pages || [] };
+          });
+
+          const pagesResults = await Promise.all(pagePromises);
+          const pagesMap: Record<string, PageData[]> = {};
+          pagesResults.forEach((r) => {
+            pagesMap[r.fileId] = r.pages;
+          });
+          setPageData(pagesMap);
+
+          // Fetch additional certifications
+          const certPromises = analysis.map(async (a: any) => {
+            const { data: certs } = await supabase
+              .from("document_certifications")
+              .select("*, certification_types(name, code)")
+              .eq("analysis_id", a.id)
+              .eq("is_primary", false);
+
+            return {
+              fileId: a.quote_file_id,
+              certs: (certs || []).map((c: any) => ({
+                id: c.id,
+                certification_type_id: c.certification_type_id,
+                name: c.certification_types?.name || "Unknown",
+                price: c.price,
+              })),
+            };
+          });
+
+          const certsResults = await Promise.all(certPromises);
+          const certsMap: Record<string, AdditionalCert[]> = {};
+          certsResults.forEach((r) => {
+            certsMap[r.fileId] = r.certs;
+          });
+          setAdditionalCerts(certsMap);
+        }
+      }
+    } catch (error) {
+      console.error("❌ Unexpected error in fetchReviewData:", error);
     }
   };
 
