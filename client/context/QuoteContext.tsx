@@ -90,6 +90,11 @@ const initialState: QuoteState = {
   isProcessing: false,
   emailQuoteMode: false,
   emailQuoteSent: false,
+  deliverySpeed: "standard",
+  digitalDeliveryOptions: ["online_portal"],
+  physicalDeliveryOption: null,
+  pickupLocationId: null,
+  shippingAddress: null,
 };
 
 const QuoteContext = createContext<QuoteContextType | undefined>(undefined);
