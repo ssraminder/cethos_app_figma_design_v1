@@ -41,6 +41,7 @@ import AIPromptsSettings from "./pages/admin/settings/AIPromptsSettings";
 import OCRSettings from "./pages/admin/settings/OCRSettings";
 import HITLThresholdsSettings from "./pages/admin/settings/HITLThresholdsSettings";
 import IntendedUsesSettings from "./pages/admin/settings/IntendedUsesSettings";
+import PickupLocationsSettings from "./pages/admin/settings/PickupLocationsSettings";
 
 const queryClient = new QueryClient();
 
@@ -125,6 +126,10 @@ const App = () => (
                 <Route
                   path="/admin/settings/intended-uses"
                   element={<IntendedUsesSettings />}
+                />
+                <Route
+                  path="/admin/settings/pickup-locations"
+                  element={<PickupLocationsSettings />}
                 />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
