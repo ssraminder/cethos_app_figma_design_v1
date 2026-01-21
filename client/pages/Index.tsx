@@ -86,6 +86,36 @@ export default function Index() {
     goToPreviousStep();
   };
 
+  const handleSaveForLater = () => {
+    setShowSaveModal(true);
+  };
+
+  const handleSendSaveLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSending(true);
+
+    try {
+      // TODO: Implement actual email sending logic
+      // For now, just simulate the success
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      console.log("Save for later email:", saveEmail, "Quote ID:", state.quoteId);
+      setSaveSent(true);
+
+      // Reset after 3 seconds
+      setTimeout(() => {
+        setShowSaveModal(false);
+        setSaveEmail("");
+        setSaveSent(false);
+      }, 3000);
+    } catch (error) {
+      console.error("Error sending save link:", error);
+      alert("Failed to send link. Please try again.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
