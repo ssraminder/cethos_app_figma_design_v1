@@ -206,5 +206,15 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
     };
   }, [quoteId]);
 
-  return { documents, totals, isRush, isLoading, isReady, error };
+  return {
+    documents,
+    totals,
+    isRush,
+    hitlRequired,
+    customerEmail,
+    quoteNumber,
+    isLoading,
+    isReady,
+    error
+  };
 }
