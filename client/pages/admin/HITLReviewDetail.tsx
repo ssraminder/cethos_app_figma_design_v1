@@ -243,7 +243,10 @@ const HITLReviewDetail: React.FC = () => {
             console.log("✅ Fetched assigned_to from base table:", assignedTo);
           }
         } catch (error) {
-          console.warn("⚠️ Could not fetch assigned_to from base table (RLS):", error);
+          console.warn(
+            "⚠️ Could not fetch assigned_to from base table (RLS):",
+            error,
+          );
         }
       }
 
@@ -273,7 +276,9 @@ const HITLReviewDetail: React.FC = () => {
       );
       const isClaimed = assignedTo === session.staffId;
       setClaimedByMe(isClaimed);
-      console.log(`🔐 Claimed by me: ${isClaimed} (assigned_to: ${assignedTo}, staffId: ${session.staffId})`);
+      console.log(
+        `🔐 Claimed by me: ${isClaimed} (assigned_to: ${assignedTo}, staffId: ${session.staffId})`,
+      );
 
       if (quote?.id) {
         console.log("🔍 Fetching analysis results for quote:", quote.id);
