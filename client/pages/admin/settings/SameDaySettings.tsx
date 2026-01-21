@@ -203,7 +203,7 @@ export default function SameDaySettings() {
     setShowModal(true);
   };
 
-  const handleDeleteRule = async (id: string) => {
+  const handleDeleteRule = async (rule: SameDayEligibility) => {
     if (!confirm("Are you sure you want to delete this eligibility rule?"))
       return;
 
@@ -211,7 +211,7 @@ export default function SameDaySettings() {
       const { error: deleteError } = await supabase
         .from("same_day_eligibility")
         .delete()
-        .eq("id", id);
+        .eq("id", rule.id);
 
       if (deleteError) throw deleteError;
 
