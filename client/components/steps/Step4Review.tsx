@@ -160,9 +160,12 @@ export default function Step4Review() {
             <div className="flex items-start gap-4">
               <div className="text-amber-500 text-3xl">⏳</div>
               <div>
-                <h2 className="text-lg font-semibold text-amber-800 mb-1">Review Pending</h2>
+                <h2 className="text-lg font-semibold text-amber-800 mb-1">
+                  Review Pending
+                </h2>
                 <p className="text-amber-700 mb-2">
-                  Our team is reviewing your documents. We'll email you within 4 working hours.
+                  Our team is reviewing your documents. We'll email you within 4
+                  working hours.
                 </p>
                 <p className="text-sm text-amber-600">
                   Quote #{state.quoteId?.substring(0, 8)}
@@ -173,17 +176,24 @@ export default function Step4Review() {
 
           {/* Document Summary - Read Only */}
           <div className="bg-white rounded-lg border p-6 mb-6">
-            <h3 className="font-medium text-gray-700 mb-4">Documents Submitted</h3>
+            <h3 className="font-medium text-gray-700 mb-4">
+              Documents Submitted
+            </h3>
 
             {documents.map((doc, index) => (
-              <div key={index} className="flex justify-between items-start py-3 border-b last:border-0">
+              <div
+                key={index}
+                className="flex justify-between items-start py-3 border-b last:border-0"
+              >
                 <div>
                   <p className="font-medium">{doc.filename}</p>
                   <p className="text-sm text-gray-500">
-                    {DOC_TYPE_LABELS[doc.documentType] || doc.documentType} • {doc.languageName} → English
+                    {DOC_TYPE_LABELS[doc.documentType] || doc.documentType} •{" "}
+                    {doc.languageName} → English
                   </p>
                   <p className="text-sm text-gray-500">
-                    {doc.wordCount} words • {doc.pageCount} pages • {doc.billablePages} billable
+                    {doc.wordCount} words • {doc.pageCount} pages •{" "}
+                    {doc.billablePages} billable
                   </p>
                 </div>
                 <p className="font-medium">${doc.lineTotal?.toFixed(2)}</p>
@@ -213,7 +223,7 @@ export default function Step4Review() {
           {/* Action Button */}
           <div className="text-center">
             <button
-              onClick={() => window.location.href = '/'}
+              onClick={() => (window.location.href = "/")}
               className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               Return to Home
