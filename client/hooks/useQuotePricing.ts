@@ -29,6 +29,9 @@ interface QuotePricing {
   documents: DocumentAnalysis[];
   totals: QuoteTotals;
   isRush: boolean;
+  hitlRequired: boolean;
+  customerEmail: string | null;
+  quoteNumber: string | null;
   isLoading: boolean;
   isReady: boolean;
   error: string | null;
