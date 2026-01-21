@@ -2,7 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AdminSettingsLayout from "@/components/admin/settings/AdminSettingsLayout";
 import SettingsCard from "@/components/admin/settings/SettingsCard";
-import SettingsTable, { Column } from "@/components/admin/settings/SettingsTable";
+import SettingsTable, {
+  Column,
+} from "@/components/admin/settings/SettingsTable";
 import SettingsModal from "@/components/admin/settings/SettingsModal";
 import SettingsInput from "@/components/admin/settings/SettingsInput";
 import { supabase } from "@/lib/supabase";
@@ -147,22 +149,22 @@ export default function DeliveryOptionsSettings() {
         if (error) throw error;
         toast.success("Delivery option updated successfully");
       } else {
-        const { error } = await supabase
-          .from("delivery_options")
-          .insert({
-            code: formData.code,
-            name: formData.name,
-            description: formData.description || null,
-            price: formData.price,
-            estimated_days: formData.estimated_days,
-            delivery_group: formData.delivery_group,
-            delivery_type: formData.delivery_type,
-            is_physical,
-            requires_address,
-            is_default_selected: formData.is_default_selected,
-            is_active: formData.is_active,
-            sort_order: data.filter((d) => d.delivery_group === formData.delivery_group).length,
-          });
+        const { error } = await supabase.from("delivery_options").insert({
+          code: formData.code,
+          name: formData.name,
+          description: formData.description || null,
+          price: formData.price,
+          estimated_days: formData.estimated_days,
+          delivery_group: formData.delivery_group,
+          delivery_type: formData.delivery_type,
+          is_physical,
+          requires_address,
+          is_default_selected: formData.is_default_selected,
+          is_active: formData.is_active,
+          sort_order: data.filter(
+            (d) => d.delivery_group === formData.delivery_group,
+          ).length,
+        });
 
         if (error) throw error;
         toast.success("Delivery option created successfully");
@@ -234,13 +236,21 @@ export default function DeliveryOptionsSettings() {
       key: "is_default_selected",
       label: "Default",
       render: (item) =>
-        item.is_default_selected ? <span className="text-blue-600">✓</span> : <span className="text-gray-400">−</span>,
+        item.is_default_selected ? (
+          <span className="text-blue-600">✓</span>
+        ) : (
+          <span className="text-gray-400">−</span>
+        ),
     },
     {
       key: "is_active",
       label: "Active",
       render: (item) =>
-        item.is_active ? <span className="text-green-600">✓</span> : <span className="text-gray-400">−</span>,
+        item.is_active ? (
+          <span className="text-green-600">✓</span>
+        ) : (
+          <span className="text-gray-400">−</span>
+        ),
     },
   ];
 

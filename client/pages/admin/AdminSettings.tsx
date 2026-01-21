@@ -222,7 +222,9 @@ export default function AdminSettings() {
               onClick={() => navigate("/admin/settings/pricing")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
-              <h3 className="font-semibold text-gray-900 mb-1">Pricing Settings</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Pricing Settings
+              </h3>
               <p className="text-sm text-gray-600">
                 Base rate, words per page, rounding
               </p>
@@ -232,7 +234,9 @@ export default function AdminSettings() {
               onClick={() => navigate("/admin/settings/complexity")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
-              <h3 className="font-semibold text-gray-900 mb-1">Complexity Multipliers</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Complexity Multipliers
+              </h3>
               <p className="text-sm text-gray-600">
                 Easy, medium, hard pricing multipliers
               </p>
@@ -242,7 +246,9 @@ export default function AdminSettings() {
               onClick={() => navigate("/admin/settings/turnaround")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
-              <h3 className="font-semibold text-gray-900 mb-1">Turnaround & Rush</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Turnaround & Rush
+              </h3>
               <p className="text-sm text-gray-600">
                 Standard delivery times and rush fees
               </p>
@@ -252,7 +258,9 @@ export default function AdminSettings() {
               onClick={() => navigate("/admin/settings/document-types")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
-              <h3 className="font-semibold text-gray-900 mb-1">Document Types</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Document Types
+              </h3>
               <p className="text-sm text-gray-600">
                 Manage document categories and complexity
               </p>
@@ -262,7 +270,9 @@ export default function AdminSettings() {
               onClick={() => navigate("/admin/settings/certifications")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
-              <h3 className="font-semibold text-gray-900 mb-1">Certification Types</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Certification Types
+              </h3>
               <p className="text-sm text-gray-600">
                 Notarization, apostille, and other certifications
               </p>
@@ -272,7 +282,9 @@ export default function AdminSettings() {
               onClick={() => navigate("/admin/settings/delivery")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
-              <h3 className="font-semibold text-gray-900 mb-1">Delivery Options</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Delivery Options
+              </h3>
               <p className="text-sm text-gray-600">
                 Digital and physical delivery methods
               </p>

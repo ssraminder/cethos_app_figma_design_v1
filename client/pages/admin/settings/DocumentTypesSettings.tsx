@@ -2,7 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AdminSettingsLayout from "@/components/admin/settings/AdminSettingsLayout";
 import SettingsCard from "@/components/admin/settings/SettingsCard";
-import SettingsTable, { Column } from "@/components/admin/settings/SettingsTable";
+import SettingsTable, {
+  Column,
+} from "@/components/admin/settings/SettingsTable";
 import SettingsModal from "@/components/admin/settings/SettingsModal";
 import SettingsInput from "@/components/admin/settings/SettingsInput";
 import { supabase } from "@/lib/supabase";
@@ -20,7 +22,11 @@ interface DocumentType {
 
 const complexityBadges = {
   easy: { label: "Easy", color: "bg-green-100 text-green-800", icon: "🟢" },
-  medium: { label: "Medium", color: "bg-yellow-100 text-yellow-800", icon: "🟡" },
+  medium: {
+    label: "Medium",
+    color: "bg-yellow-100 text-yellow-800",
+    icon: "🟡",
+  },
   hard: { label: "Hard", color: "bg-red-100 text-red-800", icon: "🔴" },
 };
 
@@ -82,14 +88,17 @@ export default function DocumentTypesSettings() {
     let filtered = [...data];
 
     if (searchTerm) {
-      filtered = filtered.filter((item) =>
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.code.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(
+        (item) =>
+          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.code.toLowerCase().includes(searchTerm.toLowerCase()),
       );
     }
 
     if (complexityFilter !== "all") {
-      filtered = filtered.filter((item) => item.typical_complexity === complexityFilter);
+      filtered = filtered.filter(
+        (item) => item.typical_complexity === complexityFilter,
+      );
     }
 
     setFilteredData(filtered);
@@ -143,16 +152,14 @@ export default function DocumentTypesSettings() {
         toast.success("Document type updated successfully");
       } else {
         // Create
-        const { error } = await supabase
-          .from("document_types")
-          .insert({
-            code: formData.code,
-            name: formData.name,
-            description: formData.description || null,
-            typical_complexity: formData.typical_complexity,
-            is_active: formData.is_active,
-            sort_order: data.length,
-          });
+        const { error } = await supabase.from("document_types").insert({
+          code: formData.code,
+          name: formData.name,
+          description: formData.description || null,
+          typical_complexity: formData.typical_complexity,
+          is_active: formData.is_active,
+          sort_order: data.length,
+        });
 
         if (error) throw error;
         toast.success("Document type created successfully");
@@ -202,7 +209,9 @@ export default function DocumentTypesSettings() {
       render: (item) => {
         const badge = complexityBadges[item.typical_complexity];
         return (
-          <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${badge.color}`}>
+          <span
+            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${badge.color}`}
+          >
             <span>{badge.icon}</span>
             {badge.label}
           </span>
@@ -242,7 +251,10 @@ export default function DocumentTypesSettings() {
       actions={actions}
       loading={loading}
     >
-      <SettingsCard title="Document Types" description="Document types are used for classification and help determine typical complexity for pricing">
+      <SettingsCard
+        title="Document Types"
+        description="Document types are used for classification and help determine typical complexity for pricing"
+      >
         {/* Filters */}
         <div className="mb-4 flex gap-4">
           <input
@@ -353,7 +365,10 @@ export default function DocumentTypesSettings() {
               }
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+            <label
+              htmlFor="is_active"
+              className="text-sm font-medium text-gray-700"
+            >
               Active
             </label>
           </div>

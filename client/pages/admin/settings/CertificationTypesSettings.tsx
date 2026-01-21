@@ -2,7 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AdminSettingsLayout from "@/components/admin/settings/AdminSettingsLayout";
 import SettingsCard from "@/components/admin/settings/SettingsCard";
-import SettingsTable, { Column } from "@/components/admin/settings/SettingsTable";
+import SettingsTable, {
+  Column,
+} from "@/components/admin/settings/SettingsTable";
 import SettingsModal from "@/components/admin/settings/SettingsModal";
 import SettingsInput from "@/components/admin/settings/SettingsInput";
 import { supabase } from "@/lib/supabase";
@@ -129,17 +131,15 @@ export default function CertificationTypesSettings() {
         toast.success("Certification type updated successfully");
       } else {
         // Create
-        const { error } = await supabase
-          .from("certification_types")
-          .insert({
-            code: formData.code,
-            name: formData.name,
-            description: formData.description || null,
-            price: formData.price,
-            is_default: formData.is_default,
-            is_active: formData.is_active,
-            sort_order: data.length,
-          });
+        const { error } = await supabase.from("certification_types").insert({
+          code: formData.code,
+          name: formData.name,
+          description: formData.description || null,
+          price: formData.price,
+          is_default: formData.is_default,
+          is_active: formData.is_active,
+          sort_order: data.length,
+        });
 
         if (error) throw error;
         toast.success("Certification type created successfully");
