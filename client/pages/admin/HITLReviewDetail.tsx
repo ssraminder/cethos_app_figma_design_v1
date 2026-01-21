@@ -244,7 +244,8 @@ const HITLReviewDetail: React.FC = () => {
       const session = JSON.parse(
         sessionStorage.getItem("staffSession") || "{}",
       );
-      setClaimedByMe(review?.assigned_to === session.staffId);
+      // Note: view may not have assigned_to field, will default to false
+      setClaimedByMe(false); // Will be updated after we fetch full review data
 
       if (quote?.id) {
         console.log("🔍 Fetching analysis results for quote:", quote.id);
