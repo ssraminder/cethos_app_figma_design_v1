@@ -229,7 +229,25 @@ const HITLReviewDetail: React.FC = () => {
         return;
       }
 
-      // Step 3: Construct review object from view data
+      // Step 3: Get assigned_to from view if available, or try to fetch from base table
+      let assignedTo = viewReview.assigned_to || null;
+
+      // If view doesn't have assigned_to, try fetching from base table
+      if (!assignedTo) {
+        try {
+          const baseReviews = await fetchFromSupabase(
+            `hitl_reviews?id=eq.${viewReview.review_id}&select=assigned_to`,
+          );
+          if (baseReviews && baseReviews[0]) {
+            assignedTo = baseReviews[0].assigned_to;
+            console.log("✅ Fetched assigned_to from base table:", assignedTo);
+          }
+        } catch (error) {
+          console.warn("⚠️ Could not fetch assigned_to from base table (RLS):", error);
+        }
+      }
+
+      // Construct review object from view data
       const review = {
         id: viewReview.review_id,
         quote_id: quote.id,
@@ -240,6 +258,7 @@ const HITLReviewDetail: React.FC = () => {
         priority: viewReview.priority,
         sla_status: viewReview.sla_status,
         minutes_to_sla: viewReview.minutes_to_sla,
+        assigned_to: assignedTo,
       };
 
       console.log("📄 Constructed review data:", review);
@@ -252,8 +271,9 @@ const HITLReviewDetail: React.FC = () => {
       const session = JSON.parse(
         sessionStorage.getItem("staffSession") || "{}",
       );
-      // Note: view may not have assigned_to field, will default to false
-      setClaimedByMe(false); // Will be updated after we fetch full review data
+      const isClaimed = assignedTo === session.staffId;
+      setClaimedByMe(isClaimed);
+      console.log(`🔐 Claimed by me: ${isClaimed} (assigned_to: ${assignedTo}, staffId: ${session.staffId})`);
 
       if (quote?.id) {
         console.log("🔍 Fetching analysis results for quote:", quote.id);
