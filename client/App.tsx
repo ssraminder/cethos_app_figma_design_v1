@@ -38,6 +38,7 @@ import TaxRatesSettings from "./pages/admin/settings/TaxRatesSettings";
 import BusinessHoursSettings from "./pages/admin/settings/BusinessHoursSettings";
 import HolidaysSettings from "./pages/admin/settings/HolidaysSettings";
 import AIPromptsSettings from "./pages/admin/settings/AIPromptsSettings";
+import OCRSettings from "./pages/admin/settings/OCRSettings";
 
 const queryClient = new QueryClient();
 
@@ -110,6 +111,10 @@ const App = () => (
                 <Route
                   path="/admin/settings/ai-prompts"
                   element={<AIPromptsSettings />}
+                />
+                <Route
+                  path="/admin/settings/ocr"
+                  element={<OCRSettings />}
                 />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
