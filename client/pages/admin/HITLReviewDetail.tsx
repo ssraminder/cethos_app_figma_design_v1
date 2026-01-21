@@ -168,15 +168,6 @@ const HITLReviewDetail: React.FC = () => {
   const [splitDocumentName, setSplitDocumentName] = useState("");
   const [targetDocumentId, setTargetDocumentId] = useState("");
 
-  // Correction reason modal
-  const [correctionModal, setCorrectionModal] = useState<{
-    isOpen: boolean;
-    field: string;
-    aiValue: string | number | null;
-    correctedValue: string | number;
-    callback: (reason: string) => void;
-  } | null>(null);
-
   // ============================================
   // DATA FETCHING
   // ============================================
