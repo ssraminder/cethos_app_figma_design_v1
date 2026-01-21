@@ -1234,6 +1234,50 @@ const HITLReviewDetail: React.FC = () => {
           </div>
         )}
 
+        {/* Page Selection Toolbar */}
+        {claimedByMe && analysisResults.length > 0 && (
+          <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSplitMode(!splitMode)}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                  splitMode
+                    ? "bg-blue-600 text-white"
+                    : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {splitMode ? "✓ Selection Mode" : "Select Pages"}
+              </button>
+
+              {splitMode && selectedPages.size > 0 && (
+                <>
+                  <span className="text-sm text-gray-600">
+                    {selectedPages.size} page(s) selected
+                  </span>
+                  <button
+                    onClick={() => setShowSplitModal(true)}
+                    className="px-3 py-1.5 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
+                  >
+                    Split to New Document
+                  </button>
+                  <button
+                    onClick={() => setShowCombineModal(true)}
+                    className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700"
+                  >
+                    Combine Into...
+                  </button>
+                  <button
+                    onClick={clearSelection}
+                    className="px-3 py-1.5 text-gray-600 hover:text-gray-800 text-sm"
+                  >
+                    Clear
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Document List */}
         <div className="space-y-4">
           {analysisResults.map((analysis, index) => {
