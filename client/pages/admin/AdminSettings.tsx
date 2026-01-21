@@ -289,6 +289,78 @@ export default function AdminSettings() {
                 Digital and physical delivery methods
               </p>
             </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/tax")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Tax Rates
+              </h3>
+              <p className="text-sm text-gray-600">
+                Regional tax configuration
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/hours")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Business Hours
+              </h3>
+              <p className="text-sm text-gray-600">
+                Working hours and timezone
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/holidays")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Holidays
+              </h3>
+              <p className="text-sm text-gray-600">
+                Holiday calendar for business days
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/ai-prompts")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                AI Prompts
+              </h3>
+              <p className="text-sm text-gray-600">
+                Configure AI analysis prompts
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/ocr")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                OCR Settings
+              </h3>
+              <p className="text-sm text-gray-600">
+                OCR provider and configuration
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/hitl")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                HITL Thresholds
+              </h3>
+              <p className="text-sm text-gray-600">
+                Confidence thresholds and triggers
+              </p>
+            </button>
           </div>
         </div>
 
