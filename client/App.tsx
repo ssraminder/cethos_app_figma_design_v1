@@ -65,8 +65,14 @@ const AdminRoutes = () => (
       <Route path="/settings/pricing" element={<PricingSettings />} />
       <Route path="/settings/complexity" element={<ComplexitySettings />} />
       <Route path="/settings/turnaround" element={<TurnaroundSettings />} />
-      <Route path="/settings/document-types" element={<DocumentTypesSettings />} />
-      <Route path="/settings/certifications" element={<CertificationTypesSettings />} />
+      <Route
+        path="/settings/document-types"
+        element={<DocumentTypesSettings />}
+      />
+      <Route
+        path="/settings/certifications"
+        element={<CertificationTypesSettings />}
+      />
       <Route path="/settings/delivery" element={<DeliveryOptionsSettings />} />
       <Route path="/settings/tax" element={<TaxRatesSettings />} />
       <Route path="/settings/hours" element={<BusinessHoursSettings />} />
@@ -74,10 +80,19 @@ const AdminRoutes = () => (
       <Route path="/settings/ai-prompts" element={<AIPromptsSettings />} />
       <Route path="/settings/ocr" element={<OCRSettings />} />
       <Route path="/settings/hitl" element={<HITLThresholdsSettings />} />
-      <Route path="/settings/intended-uses" element={<IntendedUsesSettings />} />
-      <Route path="/settings/pickup-locations" element={<PickupLocationsSettings />} />
+      <Route
+        path="/settings/intended-uses"
+        element={<IntendedUsesSettings />}
+      />
+      <Route
+        path="/settings/pickup-locations"
+        element={<PickupLocationsSettings />}
+      />
       <Route path="/settings/same-day" element={<SameDaySettings />} />
-      <Route path="/settings/language-tiers" element={<LanguageTiersSettings />} />
+      <Route
+        path="/settings/language-tiers"
+        element={<LanguageTiersSettings />}
+      />
       <Route path="/settings/languages" element={<LanguagesSettings />} />
     </Routes>
   </AdminAuthProvider>

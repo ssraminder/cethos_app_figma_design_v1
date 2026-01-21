@@ -283,7 +283,8 @@ export default function Step4Delivery() {
       }
 
       // Calculate rush/same-day fee
-      const baseSubtotal = pricing.translation_total + pricing.certification_total;
+      const baseSubtotal =
+        pricing.translation_total + pricing.certification_total;
       let rushFee = 0;
       if (state.deliverySpeed === "rush") {
         rushFee = baseSubtotal * (rushMultiplier - 1);
@@ -615,7 +616,9 @@ export default function Step4Delivery() {
                     {option.name}
                   </span>
                   <span className="text-green-600 font-medium">
-                    {option.price === 0 ? "FREE" : `$${option.price.toFixed(2)}`}
+                    {option.price === 0
+                      ? "FREE"
+                      : `$${option.price.toFixed(2)}`}
                   </span>
                 </div>
                 <p className="text-sm text-gray-600">{option.description}</p>
@@ -642,7 +645,10 @@ export default function Step4Delivery() {
               type="radio"
               name="physicalDelivery"
               value="none"
-              checked={!state.physicalDeliveryOption || state.physicalDeliveryOption === "none"}
+              checked={
+                !state.physicalDeliveryOption ||
+                state.physicalDeliveryOption === "none"
+              }
               onChange={() => handlePhysicalDeliveryChange("none")}
               className="mt-1"
             />
@@ -955,9 +961,7 @@ export default function Step4Delivery() {
               </div>
             )}
             <div className="flex justify-between">
-              <span>
-                Tax ({(pricing.tax_rate * 100).toFixed(2)}%)
-              </span>
+              <span>Tax ({(pricing.tax_rate * 100).toFixed(2)}%)</span>
               <span>${pricing.tax_amount.toFixed(2)}</span>
             </div>
             <div className="border-t-2 border-gray-400 pt-2 flex justify-between font-bold text-lg">
