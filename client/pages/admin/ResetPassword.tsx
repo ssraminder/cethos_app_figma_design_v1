@@ -11,6 +11,7 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const hasHandledLink = useRef(false);
 
   // Handle the code parameter from Supabase email link
   useEffect(() => {
