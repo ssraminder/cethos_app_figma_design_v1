@@ -215,6 +215,6 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
     quoteNumber,
     isLoading,
     isReady,
-    error
+    error,
   };
 }
