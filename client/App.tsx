@@ -34,6 +34,7 @@ import TurnaroundSettings from "./pages/admin/settings/TurnaroundSettings";
 import DocumentTypesSettings from "./pages/admin/settings/DocumentTypesSettings";
 import CertificationTypesSettings from "./pages/admin/settings/CertificationTypesSettings";
 import DeliveryOptionsSettings from "./pages/admin/settings/DeliveryOptionsSettings";
+import TaxRatesSettings from "./pages/admin/settings/TaxRatesSettings";
 
 const queryClient = new QueryClient();
 
