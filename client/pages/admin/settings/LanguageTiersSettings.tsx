@@ -76,9 +76,8 @@ export default function LanguageTiersSettings() {
     setShowModal(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (tier: LanguageTier) => {
     // Check language count first
-    const tier = tiers.find((t) => t.id === id);
     if (tier && tier.language_count && tier.language_count > 0) {
       toast.error(
         `Cannot delete tier with ${tier.language_count} languages assigned. Reassign languages first.`,
@@ -92,7 +91,7 @@ export default function LanguageTiersSettings() {
       const { error: deleteError } = await supabase
         .from("language_tiers")
         .delete()
-        .eq("id", id);
+        .eq("id", tier.id);
 
       if (deleteError) throw deleteError;
 
