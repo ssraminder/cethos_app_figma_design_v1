@@ -70,7 +70,9 @@ const HITLReviewDetail: React.FC = () => {
       },
     });
 
-    console.log(`📡 Response status: ${response.status} ${response.statusText}`);
+    console.log(
+      `📡 Response status: ${response.status} ${response.statusText}`,
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -79,7 +81,10 @@ const HITLReviewDetail: React.FC = () => {
     }
 
     const data = await response.json();
-    console.log(`✅ Fetch success, rows returned:`, Array.isArray(data) ? data.length : typeof data);
+    console.log(
+      `✅ Fetch success, rows returned:`,
+      Array.isArray(data) ? data.length : typeof data,
+    );
     return data;
   };
 
@@ -217,7 +222,10 @@ const HITLReviewDetail: React.FC = () => {
       console.log("💰 Quote found:", quote);
 
       if (!quote) {
-        console.error("❌ No quote found for quote_number:", viewReview.quote_number);
+        console.error(
+          "❌ No quote found for quote_number:",
+          viewReview.quote_number,
+        );
         return;
       }
 
