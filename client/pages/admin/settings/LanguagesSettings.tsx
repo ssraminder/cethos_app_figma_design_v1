@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import AdminSettingsLayout from "@/components/admin/settings/AdminSettingsLayout";
 import SettingsTable from "@/components/admin/settings/SettingsTable";
 import SettingsModal from "@/components/admin/settings/SettingsModal";
@@ -26,7 +25,6 @@ interface Language {
 }
 
 export default function LanguagesSettings() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [languages, setLanguages] = useState<Language[]>([]);
   const [filteredLanguages, setFilteredLanguages] = useState<Language[]>([]);
@@ -38,20 +36,12 @@ export default function LanguagesSettings() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    checkAuth();
     fetchData();
   }, []);
 
   useEffect(() => {
     filterLanguages();
   }, [languages, searchQuery, filterTier]);
-
-  const checkAuth = () => {
-    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
-    if (!session.loggedIn) {
-      navigate("/admin/login");
-    }
-  };
 
   const fetchData = async () => {
     setLoading(true);
