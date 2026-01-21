@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { useAdminAuth } from "@/context/AdminAuthContext";
 
+// Language Tiers Settings - Force rebuild 2026-01-21
 interface LanguageTier {
   id: string;
   code: string;
