@@ -39,6 +39,7 @@ import BusinessHoursSettings from "./pages/admin/settings/BusinessHoursSettings"
 import HolidaysSettings from "./pages/admin/settings/HolidaysSettings";
 import AIPromptsSettings from "./pages/admin/settings/AIPromptsSettings";
 import OCRSettings from "./pages/admin/settings/OCRSettings";
+import HITLThresholdsSettings from "./pages/admin/settings/HITLThresholdsSettings";
 
 const queryClient = new QueryClient();
 
@@ -115,6 +116,10 @@ const App = () => (
                 <Route
                   path="/admin/settings/ocr"
                   element={<OCRSettings />}
+                />
+                <Route
+                  path="/admin/settings/hitl"
+                  element={<HITLThresholdsSettings />}
                 />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
