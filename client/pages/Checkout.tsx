@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 
 export default function Checkout() {
   const { quoteId } = useParams();
@@ -8,7 +8,7 @@ export default function Checkout() {
   const [quote, setQuote] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetchQuote();
@@ -17,8 +17,9 @@ export default function Checkout() {
   const fetchQuote = async () => {
     try {
       const { data, error } = await supabase
-        .from('quotes')
-        .select(`
+        .from("quotes")
+        .select(
+          `
           *,
           customer:customers(*),
           files:quote_files(
@@ -26,21 +27,22 @@ export default function Checkout() {
             original_filename,
             analysis:ai_analysis_results(*)
           )
-        `)
-        .eq('id', quoteId)
+        `,
+        )
+        .eq("id", quoteId)
         .single();
 
       if (error) throw error;
-      
+
       // Check if quote is ready for payment
-      if (!['approved', 'quote_ready'].includes(data.status)) {
-        setError('This quote is not ready for payment.');
+      if (!["approved", "quote_ready"].includes(data.status)) {
+        setError("This quote is not ready for payment.");
       }
-      
+
       setQuote(data);
     } catch (err) {
-      console.error('Error fetching quote:', err);
-      setError('Failed to load quote');
+      console.error("Error fetching quote:", err);
+      setError("Failed to load quote");
     } finally {
       setLoading(false);
     }
@@ -48,19 +50,19 @@ export default function Checkout() {
 
   const handlePayment = async () => {
     setProcessing(true);
-    setError('');
+    setError("");
 
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({ quoteId }),
-        }
+        },
       );
 
       const result = await response.json();
@@ -69,11 +71,11 @@ export default function Checkout() {
         // Redirect to Stripe Checkout
         window.location.href = result.checkoutUrl;
       } else {
-        throw new Error(result.error || 'Failed to create checkout session');
+        throw new Error(result.error || "Failed to create checkout session");
       }
     } catch (err: any) {
-      console.error('Payment error:', err);
-      setError(err.message || 'Failed to initiate payment');
+      console.error("Payment error:", err);
+      setError(err.message || "Failed to initiate payment");
       setProcessing(false);
     }
   };
@@ -92,7 +94,7 @@ export default function Checkout() {
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate("/")}
             className="text-blue-600 hover:underline"
           >
             Return to Home
@@ -109,7 +111,9 @@ export default function Checkout() {
       <div className="max-w-2xl mx-auto px-4">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Complete Your Order</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Complete Your Order
+          </h1>
           <p className="text-gray-600 mt-2">Quote #{quote?.quote_number}</p>
         </div>
 
@@ -122,15 +126,22 @@ export default function Checkout() {
             {quote?.files?.map((file: any, idx: number) => {
               const analysis = file.analysis?.[0] || file.analysis;
               return (
-                <div key={idx} className="flex justify-between items-start py-2 border-b">
+                <div
+                  key={idx}
+                  className="flex justify-between items-start py-2 border-b"
+                >
                   <div>
-                    <p className="font-medium text-gray-800">{file.original_filename}</p>
+                    <p className="font-medium text-gray-800">
+                      {file.original_filename}
+                    </p>
                     <p className="text-sm text-gray-500">
-                      {analysis?.detected_document_type || 'Document'} • 
+                      {analysis?.detected_document_type || "Document"} •
                       {analysis?.word_count || 0} words
                     </p>
                   </div>
-                  <p className="font-medium">${analysis?.line_total?.toFixed(2) || '0.00'}</p>
+                  <p className="font-medium">
+                    ${analysis?.line_total?.toFixed(2) || "0.00"}
+                  </p>
                 </div>
               );
             })}
@@ -140,36 +151,36 @@ export default function Checkout() {
           <div className="space-y-2 border-t pt-4">
             <div className="flex justify-between text-gray-600">
               <span>Translation</span>
-              <span>${totals.translation_total?.toFixed(2) || '0.00'}</span>
+              <span>${totals.translation_total?.toFixed(2) || "0.00"}</span>
             </div>
-            
+
             {totals.certification_total > 0 && (
               <div className="flex justify-between text-gray-600">
                 <span>Certification</span>
                 <span>${totals.certification_total?.toFixed(2)}</span>
               </div>
             )}
-            
+
             {totals.rush_fee > 0 && (
               <div className="flex justify-between text-gray-600">
                 <span>Rush Fee</span>
                 <span>${totals.rush_fee?.toFixed(2)}</span>
               </div>
             )}
-            
+
             <div className="flex justify-between text-gray-600">
               <span>Subtotal</span>
-              <span>${totals.subtotal?.toFixed(2) || '0.00'}</span>
+              <span>${totals.subtotal?.toFixed(2) || "0.00"}</span>
             </div>
-            
+
             <div className="flex justify-between text-gray-600">
               <span>GST (5%)</span>
-              <span>${totals.tax_amount?.toFixed(2) || '0.00'}</span>
+              <span>${totals.tax_amount?.toFixed(2) || "0.00"}</span>
             </div>
-            
+
             <div className="flex justify-between text-xl font-bold pt-2 border-t">
               <span>Total</span>
-              <span>${totals.total?.toFixed(2) || '0.00'} CAD</span>
+              <span>${totals.total?.toFixed(2) || "0.00"} CAD</span>
             </div>
           </div>
         </div>
@@ -178,7 +189,9 @@ export default function Checkout() {
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Customer Information</h2>
           <div className="text-gray-600">
-            <p className="font-medium text-gray-800">{quote?.customer?.full_name}</p>
+            <p className="font-medium text-gray-800">
+              {quote?.customer?.full_name}
+            </p>
             <p>{quote?.customer?.email}</p>
             {quote?.customer?.phone && <p>{quote?.customer?.phone}</p>}
           </div>
@@ -205,9 +218,7 @@ export default function Checkout() {
               Processing...
             </>
           ) : (
-            <>
-              🔒 Pay ${totals.total?.toFixed(2) || '0.00'} CAD
-            </>
+            <>🔒 Pay ${totals.total?.toFixed(2) || "0.00"} CAD</>
           )}
         </button>
 
