@@ -14,42 +14,71 @@ export default function ResetPassword() {
 
   // Handle the code parameter from Supabase email link
   useEffect(() => {
+    const code = searchParams.get("code");
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = hashParams.get("access_token");
+    const type = hashParams.get("type");
+
+    // If no code or token, show error
+    if (!code && !(accessToken && type === "recovery")) {
+      setError(
+        "Invalid reset link. Please request a new one from the login page.",
+      );
+      setLoading(false);
+      return;
+    }
+
+    let timeout: NodeJS.Timeout;
+    let unsubscribe: (() => void) | undefined;
+
     const handleCodeExchange = async () => {
       setLoading(true);
       setError("");
 
       try {
-        // Check for code in query params (PKCE flow)
-        const code = searchParams.get("code");
-
-        // Check for hash params (implicit flow - legacy)
-        const hashParams = new URLSearchParams(
-          window.location.hash.substring(1),
-        );
-        const accessToken = hashParams.get("access_token");
-        const type = hashParams.get("type");
-
         if (code) {
           // PKCE flow - Supabase client automatically handles code exchange
-          // via detectSessionInUrl: true, so we just need to wait and check for session
-          console.log("Waiting for automatic session establishment...");
+          // via detectSessionInUrl: true, so we listen for auth state changes
+          console.log(
+            "Waiting for automatic PKCE code exchange (detectSessionInUrl)...",
+          );
 
-          // Give Supabase time to automatically exchange the code
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          // Listen for auth state changes
+          const { data: authListener } = supabase.auth.onAuthStateChange(
+            (event, session) => {
+              console.log("Auth state changed:", event, session?.user?.id);
 
-          // Check if session was established
-          const {
-            data: { session },
-          } = await supabase.auth.getSession();
+              if (event === "SIGNED_IN" && session) {
+                console.log("Session established successfully via PKCE");
+                setSessionReady(true);
+                setLoading(false);
+              } else if (event === "PASSWORD_RECOVERY") {
+                console.log("Password recovery event detected");
+                setSessionReady(true);
+                setLoading(false);
+              }
+            },
+          );
 
-          if (session) {
-            console.log("Session established successfully");
-            setSessionReady(true);
-          } else {
-            throw new Error(
-              "Failed to establish session. Please request a new reset link.",
-            );
-          }
+          unsubscribe = authListener.subscription.unsubscribe;
+
+          // Fallback: Check session after 3 seconds
+          timeout = setTimeout(async () => {
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
+
+            if (session) {
+              console.log("Session found via fallback check");
+              setSessionReady(true);
+              setLoading(false);
+            } else {
+              setError(
+                "Failed to establish session. The link may have expired. Please request a new one.",
+              );
+              setLoading(false);
+            }
+          }, 3000);
         } else if (accessToken && type === "recovery") {
           // Legacy implicit flow
           console.log("Using access token from hash...");
@@ -67,21 +96,22 @@ export default function ResetPassword() {
           if (data.session) {
             setSessionReady(true);
           }
-        } else {
-          // No code or token found
-          throw new Error(
-            "Invalid reset link. Please request a new one from the login page.",
-          );
+          setLoading(false);
         }
       } catch (err: any) {
         console.error("Reset password init error:", err);
         setError(err.message || "Failed to verify reset link");
-      } finally {
         setLoading(false);
       }
     };
 
     handleCodeExchange();
+
+    // Cleanup
+    return () => {
+      if (timeout) clearTimeout(timeout);
+      if (unsubscribe) unsubscribe();
+    };
   }, [searchParams]);
 
   const handleResetPassword = async (e: React.FormEvent) => {
