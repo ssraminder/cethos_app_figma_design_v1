@@ -32,7 +32,8 @@ const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     storageKey: "cethos-auth",
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: false,
+    // PKCE flow is handled manually in the ResetPassword page
     flowType: "pkce",
   },
   global: {
