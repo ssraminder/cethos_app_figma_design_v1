@@ -37,6 +37,7 @@ import DeliveryOptionsSettings from "./pages/admin/settings/DeliveryOptionsSetti
 import TaxRatesSettings from "./pages/admin/settings/TaxRatesSettings";
 import BusinessHoursSettings from "./pages/admin/settings/BusinessHoursSettings";
 import HolidaysSettings from "./pages/admin/settings/HolidaysSettings";
+import AIPromptsSettings from "./pages/admin/settings/AIPromptsSettings";
 
 const queryClient = new QueryClient();
 
@@ -105,6 +106,10 @@ const App = () => (
                 <Route
                   path="/admin/settings/holidays"
                   element={<HolidaysSettings />}
+                />
+                <Route
+                  path="/admin/settings/ai-prompts"
+                  element={<AIPromptsSettings />}
                 />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
