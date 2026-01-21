@@ -1,7 +1,7 @@
 // HITLReviewDetail.tsx - Complete implementation with certification management
 
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 
 interface PageData {
   id: string;
@@ -49,41 +49,54 @@ interface AnalysisResult {
 const HITLReviewDetail: React.FC = () => {
   const { reviewId } = useParams();
   const navigate = useNavigate();
-  
+
   // ============================================
   // STATE
   // ============================================
-  
+
   // Review data
   const [reviewData, setReviewData] = useState<any>(null);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const [pageData, setPageData] = useState<Record<string, PageData[]>>({});
-  
+
   // Certification data
-  const [certificationTypes, setCertificationTypes] = useState<CertificationType[]>([]);
-  const [additionalCerts, setAdditionalCerts] = useState<Record<string, AdditionalCert[]>>({});
-  
+  const [certificationTypes, setCertificationTypes] = useState<
+    CertificationType[]
+  >([]);
+  const [additionalCerts, setAdditionalCerts] = useState<
+    Record<string, AdditionalCert[]>
+  >({});
+
   // Language data
-  const [languages, setLanguages] = useState<Array<{id: string; code: string; name: string; price_multiplier: number}>>([]);
-  
+  const [languages, setLanguages] = useState<
+    Array<{ id: string; code: string; name: string; price_multiplier: number }>
+  >([]);
+
   // Settings from database
   const [baseRate, setBaseRate] = useState(65);
   const [wordsPerPage, setWordsPerPage] = useState(225);
-  
+
   // UI state
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showAddCertModal, setShowAddCertModal] = useState<string | null>(null);
-  
+
   // Edit tracking
-  const [localEdits, setLocalEdits] = useState<Record<string, Record<string, any>>>({});
-  const [localPageEdits, setLocalPageEdits] = useState<Record<string, {
-    wordCount: number;
-    originalWordCount: number;
-    fileId: string;
-  }>>({});
-  
+  const [localEdits, setLocalEdits] = useState<
+    Record<string, Record<string, any>>
+  >({});
+  const [localPageEdits, setLocalPageEdits] = useState<
+    Record<
+      string,
+      {
+        wordCount: number;
+        originalWordCount: number;
+        fileId: string;
+      }
+    >
+  >({});
+
   // Staff session
   const [staffSession, setStaffSession] = useState<any>(null);
   const [claimedByMe, setClaimedByMe] = useState(false);
@@ -91,16 +104,16 @@ const HITLReviewDetail: React.FC = () => {
   // ============================================
   // DATA FETCHING
   // ============================================
-  
+
   useEffect(() => {
-    const session = JSON.parse(sessionStorage.getItem('staffSession') || '{}');
+    const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
     setStaffSession(session);
-    
+
     if (!session.staffId) {
-      navigate('/admin/login');
+      navigate("/admin/login");
       return;
     }
-    
+
     fetchAllData();
   }, [reviewId]);
 
@@ -111,10 +124,10 @@ const HITLReviewDetail: React.FC = () => {
         fetchReviewData(),
         fetchCertificationTypes(),
         fetchLanguages(),
-        fetchSettings()
+        fetchSettings(),
       ]);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error("Error fetching data:", error);
     }
     setLoading(false);
   };
@@ -125,78 +138,82 @@ const HITLReviewDetail: React.FC = () => {
       `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}&select=*,quotes(*)`,
       {
         headers: {
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        }
-      }
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+      },
     );
     const reviews = await reviewResponse.json();
     const review = reviews[0];
     setReviewData(review);
-    
+
     // Check if claimed by current user
-    const session = JSON.parse(sessionStorage.getItem('staffSession') || '{}');
+    const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
     setClaimedByMe(review?.assigned_to === session.staffId);
-    
+
     if (review?.quotes?.id) {
       // Fetch analysis results
       const analysisResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/ai_analysis_results?quote_id=eq.${review.quotes.id}&select=*,quote_file:quote_files(*)`,
         {
           headers: {
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          }
-        }
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        },
       );
       const analysis = await analysisResponse.json();
       setAnalysisResults(analysis);
-      
+
       // Fetch pages for each file
       const pagePromises = analysis.map(async (a: any) => {
         const pageResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/quote_pages?quote_file_id=eq.${a.quote_file_id}&order=page_number`,
           {
             headers: {
-              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-            }
-          }
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+          },
         );
         return { fileId: a.quote_file_id, pages: await pageResponse.json() };
       });
-      
+
       const pagesResults = await Promise.all(pagePromises);
       const pagesMap: Record<string, PageData[]> = {};
-      pagesResults.forEach(r => { pagesMap[r.fileId] = r.pages; });
+      pagesResults.forEach((r) => {
+        pagesMap[r.fileId] = r.pages;
+      });
       setPageData(pagesMap);
-      
+
       // Fetch additional certifications
       const certPromises = analysis.map(async (a: any) => {
         const certResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/document_certifications?analysis_id=eq.${a.id}&is_primary=eq.false&select=*,certification_types(name,code)`,
           {
             headers: {
-              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-            }
-          }
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+          },
         );
         const certs = await certResponse.json();
-        return { 
-          fileId: a.quote_file_id, 
+        return {
+          fileId: a.quote_file_id,
           certs: certs.map((c: any) => ({
             id: c.id,
             certification_type_id: c.certification_type_id,
-            name: c.certification_types?.name || 'Unknown',
-            price: c.price
-          }))
+            name: c.certification_types?.name || "Unknown",
+            price: c.price,
+          })),
         };
       });
-      
+
       const certsResults = await Promise.all(certPromises);
       const certsMap: Record<string, AdditionalCert[]> = {};
-      certsResults.forEach(r => { certsMap[r.fileId] = r.certs; });
+      certsResults.forEach((r) => {
+        certsMap[r.fileId] = r.certs;
+      });
       setAdditionalCerts(certsMap);
     }
   };
@@ -206,10 +223,10 @@ const HITLReviewDetail: React.FC = () => {
       `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/certification_types?is_active=eq.true&order=sort_order`,
       {
         headers: {
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        }
-      }
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+      },
     );
     setCertificationTypes(await response.json());
   };
@@ -219,10 +236,10 @@ const HITLReviewDetail: React.FC = () => {
       `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/languages?is_active=eq.true&order=sort_order`,
       {
         headers: {
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        }
-      }
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+      },
     );
     setLanguages(await response.json());
   };
@@ -232,33 +249,35 @@ const HITLReviewDetail: React.FC = () => {
       `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/app_settings?setting_key=in.(base_rate,words_per_page)`,
       {
         headers: {
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        }
-      }
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+      },
     );
     const settings = await response.json();
     settings.forEach((s: any) => {
-      if (s.setting_key === 'base_rate') setBaseRate(parseFloat(s.setting_value));
-      if (s.setting_key === 'words_per_page') setWordsPerPage(parseInt(s.setting_value));
+      if (s.setting_key === "base_rate")
+        setBaseRate(parseFloat(s.setting_value));
+      if (s.setting_key === "words_per_page")
+        setWordsPerPage(parseInt(s.setting_value));
     });
   };
 
   // ============================================
   // EDIT HELPERS
   // ============================================
-  
+
   const getValue = (fileId: string, field: string, original: any) => {
     return localEdits[fileId]?.[field] ?? original;
   };
 
   const updateLocalEdit = (fileId: string, field: string, value: any) => {
-    setLocalEdits(prev => ({
+    setLocalEdits((prev) => ({
       ...prev,
       [fileId]: {
         ...prev[fileId],
-        [field]: value
-      }
+        [field]: value,
+      },
     }));
   };
 
@@ -267,24 +286,30 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   const updatePageWordCount = (page: PageData, newWordCount: number) => {
-    setLocalPageEdits(prev => ({
+    setLocalPageEdits((prev) => ({
       ...prev,
       [page.id]: {
         wordCount: newWordCount,
         originalWordCount: page.word_count,
-        fileId: page.quote_file_id
-      }
+        fileId: page.quote_file_id,
+      },
     }));
   };
 
   const hasChanges = (fileId: string) => {
-    const hasFileEdits = localEdits[fileId] && Object.keys(localEdits[fileId]).length > 0;
-    const hasPageEdits = Object.values(localPageEdits).some(e => e.fileId === fileId);
+    const hasFileEdits =
+      localEdits[fileId] && Object.keys(localEdits[fileId]).length > 0;
+    const hasPageEdits = Object.values(localPageEdits).some(
+      (e) => e.fileId === fileId,
+    );
     return hasFileEdits || hasPageEdits;
   };
 
   const hasAnyChanges = () => {
-    return Object.keys(localEdits).length > 0 || Object.keys(localPageEdits).length > 0;
+    return (
+      Object.keys(localEdits).length > 0 ||
+      Object.keys(localPageEdits).length > 0
+    );
   };
 
   // ============================================
@@ -293,17 +318,21 @@ const HITLReviewDetail: React.FC = () => {
 
   const getComplexityMultiplier = (complexity: string) => {
     switch (complexity) {
-      case 'easy': return 1.00;
-      case 'medium': return 1.15;
-      case 'hard': return 1.25;
-      default: return 1.00;
+      case "easy":
+        return 1.0;
+      case "medium":
+        return 1.15;
+      case "hard":
+        return 1.25;
+      default:
+        return 1.0;
     }
   };
 
   const handleComplexityChange = (fileId: string, newComplexity: string) => {
     const multiplier = getComplexityMultiplier(newComplexity);
-    updateLocalEdit(fileId, 'assessed_complexity', newComplexity);
-    updateLocalEdit(fileId, 'complexity_multiplier', multiplier);
+    updateLocalEdit(fileId, "assessed_complexity", newComplexity);
+    updateLocalEdit(fileId, "complexity_multiplier", multiplier);
   };
 
   // ============================================
@@ -311,62 +340,80 @@ const HITLReviewDetail: React.FC = () => {
   // ============================================
 
   const handleCertificationChange = (fileId: string, certTypeId: string) => {
-    const cert = certificationTypes.find(c => c.id === certTypeId);
-    updateLocalEdit(fileId, 'certification_type_id', certTypeId);
-    updateLocalEdit(fileId, 'certification_price', cert?.price || 0);
+    const cert = certificationTypes.find((c) => c.id === certTypeId);
+    updateLocalEdit(fileId, "certification_type_id", certTypeId);
+    updateLocalEdit(fileId, "certification_price", cert?.price || 0);
   };
 
-  const calculateCertificationTotal = (fileId: string, analysis: AnalysisResult) => {
-    const primaryCertId = getValue(fileId, 'certification_type_id', analysis.certification_type_id);
-    const primaryPrice = certificationTypes.find(c => c.id === primaryCertId)?.price || 0;
-    const additionalPrice = (additionalCerts[fileId] || []).reduce((sum, cert) => sum + cert.price, 0);
+  const calculateCertificationTotal = (
+    fileId: string,
+    analysis: AnalysisResult,
+  ) => {
+    const primaryCertId = getValue(
+      fileId,
+      "certification_type_id",
+      analysis.certification_type_id,
+    );
+    const primaryPrice =
+      certificationTypes.find((c) => c.id === primaryCertId)?.price || 0;
+    const additionalPrice = (additionalCerts[fileId] || []).reduce(
+      (sum, cert) => sum + cert.price,
+      0,
+    );
     return primaryPrice + additionalPrice;
   };
 
-  const addAdditionalCert = async (fileId: string, analysisId: string, certTypeId: string) => {
-    const cert = certificationTypes.find(c => c.id === certTypeId);
+  const addAdditionalCert = async (
+    fileId: string,
+    analysisId: string,
+    certTypeId: string,
+  ) => {
+    const cert = certificationTypes.find((c) => c.id === certTypeId);
     if (!cert) return;
 
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             reviewId,
             staffId: staffSession.staffId,
-            field: 'add_certification',
+            field: "add_certification",
             correctedValue: JSON.stringify({
               certification_type_id: certTypeId,
-              price: cert.price
+              price: cert.price,
             }),
             fileId,
-            analysisId
-          })
-        }
+            analysisId,
+          }),
+        },
       );
 
       if (response.ok) {
-        setAdditionalCerts(prev => ({
+        setAdditionalCerts((prev) => ({
           ...prev,
-          [fileId]: [...(prev[fileId] || []), {
-            id: crypto.randomUUID(), // Temporary, will refresh
-            certification_type_id: certTypeId,
-            name: cert.name,
-            price: cert.price
-          }]
+          [fileId]: [
+            ...(prev[fileId] || []),
+            {
+              id: crypto.randomUUID(), // Temporary, will refresh
+              certification_type_id: certTypeId,
+              name: cert.name,
+              price: cert.price,
+            },
+          ],
         }));
         setShowAddCertModal(null);
         // Refresh to get actual IDs
         await fetchReviewData();
       }
     } catch (error) {
-      console.error('Error adding certification:', error);
-      alert('Failed to add certification');
+      console.error("Error adding certification:", error);
+      alert("Failed to add certification");
     }
   };
 
@@ -375,28 +422,28 @@ const HITLReviewDetail: React.FC = () => {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             reviewId,
             staffId: staffSession.staffId,
-            field: 'remove_certification',
-            correctedValue: certId
-          })
-        }
+            field: "remove_certification",
+            correctedValue: certId,
+          }),
+        },
       );
 
       if (response.ok) {
-        setAdditionalCerts(prev => ({
+        setAdditionalCerts((prev) => ({
           ...prev,
-          [fileId]: (prev[fileId] || []).filter(c => c.id !== certId)
+          [fileId]: (prev[fileId] || []).filter((c) => c.id !== certId),
         }));
       }
     } catch (error) {
-      console.error('Error removing certification:', error);
+      console.error("Error removing certification:", error);
     }
   };
 
@@ -404,40 +451,61 @@ const HITLReviewDetail: React.FC = () => {
   // PRICING CALCULATIONS
   // ============================================
 
-  const calculatePageBillable = (wordCount: number, complexityMultiplier: number) => {
+  const calculatePageBillable = (
+    wordCount: number,
+    complexityMultiplier: number,
+  ) => {
     // CEIL((words / 225) × complexity × 10) / 10 = Round UP to 0.10
-    return Math.ceil((wordCount / wordsPerPage) * complexityMultiplier * 10) / 10;
+    return (
+      Math.ceil((wordCount / wordsPerPage) * complexityMultiplier * 10) / 10
+    );
   };
 
-  const calculateDocumentBillable = (fileId: string, analysis: AnalysisResult) => {
-    const complexity = getValue(fileId, 'complexity_multiplier', analysis.complexity_multiplier) || 1.0;
+  const calculateDocumentBillable = (
+    fileId: string,
+    analysis: AnalysisResult,
+  ) => {
+    const complexity =
+      getValue(
+        fileId,
+        "complexity_multiplier",
+        analysis.complexity_multiplier,
+      ) || 1.0;
     const pages = pageData[fileId] || [];
-    
+
     let totalBillable = 0;
-    pages.forEach(page => {
+    pages.forEach((page) => {
       const words = getPageWordCount(page);
       totalBillable += calculatePageBillable(words, complexity);
     });
-    
+
     // Minimum 1.00 per document
     return Math.max(totalBillable, 1.0);
   };
 
-  const calculateTranslationCost = (fileId: string, analysis: AnalysisResult) => {
+  const calculateTranslationCost = (
+    fileId: string,
+    analysis: AnalysisResult,
+  ) => {
     const billablePages = calculateDocumentBillable(fileId, analysis);
-    const languageMultiplier = getLanguageMultiplier(analysis.detected_language);
-    
+    const languageMultiplier = getLanguageMultiplier(
+      analysis.detected_language,
+    );
+
     // Round UP to nearest $2.50
     const rawCost = billablePages * baseRate * languageMultiplier;
     return Math.ceil(rawCost / 2.5) * 2.5;
   };
 
   const calculateLineTotal = (fileId: string, analysis: AnalysisResult) => {
-    return calculateTranslationCost(fileId, analysis) + calculateCertificationTotal(fileId, analysis);
+    return (
+      calculateTranslationCost(fileId, analysis) +
+      calculateCertificationTotal(fileId, analysis)
+    );
   };
 
   const getLanguageMultiplier = (languageCode: string) => {
-    const lang = languages.find(l => l.code === languageCode);
+    const lang = languages.find((l) => l.code === languageCode);
     return lang?.price_multiplier || 1.0;
   };
 
@@ -447,7 +515,7 @@ const HITLReviewDetail: React.FC = () => {
 
   const saveAllCorrections = async () => {
     if (!staffSession?.staffId) {
-      alert('Session expired. Please login again.');
+      alert("Session expired. Please login again.");
       return;
     }
 
@@ -455,7 +523,7 @@ const HITLReviewDetail: React.FC = () => {
     const hasPageEdits = Object.keys(localPageEdits).length > 0;
 
     if (!hasFileEdits && !hasPageEdits) {
-      alert('No changes to save');
+      alert("No changes to save");
       return;
     }
 
@@ -464,27 +532,29 @@ const HITLReviewDetail: React.FC = () => {
     try {
       // Save file-level edits
       for (const [fileId, edits] of Object.entries(localEdits)) {
-        const analysis = analysisResults.find(a => a.quote_file_id === fileId);
-        
+        const analysis = analysisResults.find(
+          (a) => a.quote_file_id === fileId,
+        );
+
         for (const [field, value] of Object.entries(edits)) {
           await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
             {
-              method: 'POST',
+              method: "POST",
               headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
               },
               body: JSON.stringify({
                 reviewId,
                 staffId: staffSession.staffId,
                 field,
-                originalValue: String((analysis as any)?.[field] || ''),
+                originalValue: String((analysis as any)?.[field] || ""),
                 correctedValue: String(value),
                 fileId,
-                analysisId: analysis?.id
-              })
-            }
+                analysisId: analysis?.id,
+              }),
+            },
           );
         }
       }
@@ -494,34 +564,33 @@ const HITLReviewDetail: React.FC = () => {
         await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
           {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             },
             body: JSON.stringify({
               reviewId,
               staffId: staffSession.staffId,
-              field: 'page_word_count',
+              field: "page_word_count",
               originalValue: String(editData.originalWordCount),
               correctedValue: String(editData.wordCount),
               fileId: editData.fileId,
-              pageId // CRITICAL: Include pageId
-            })
-          }
+              pageId, // CRITICAL: Include pageId
+            }),
+          },
         );
       }
 
-      alert('Corrections saved successfully!');
+      alert("Corrections saved successfully!");
       setLocalEdits({});
       setLocalPageEdits({});
-      
+
       // Refresh data
       await fetchReviewData();
-
     } catch (error) {
-      console.error('Save error:', error);
-      alert('Error saving corrections: ' + error);
+      console.error("Save error:", error);
+      alert("Error saving corrections: " + error);
     } finally {
       setIsSaving(false);
     }
@@ -536,16 +605,16 @@ const HITLReviewDetail: React.FC = () => {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/claim-hitl-review`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             reviewId,
-            staffId: staffSession.staffId
-          })
-        }
+            staffId: staffSession.staffId,
+          }),
+        },
       );
 
       if (response.ok) {
@@ -553,7 +622,7 @@ const HITLReviewDetail: React.FC = () => {
         await fetchReviewData();
       }
     } catch (error) {
-      console.error('Error claiming review:', error);
+      console.error("Error claiming review:", error);
     }
   };
 
@@ -575,8 +644,8 @@ const HITLReviewDetail: React.FC = () => {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => navigate('/admin/hitl')}
+            <button
+              onClick={() => navigate("/admin/hitl")}
               className="text-gray-600 hover:text-gray-900"
             >
               ← Back to Queue
@@ -585,7 +654,7 @@ const HITLReviewDetail: React.FC = () => {
               Review: {reviewData?.quotes?.quote_number}
             </h1>
           </div>
-          
+
           <div className="flex items-center gap-4">
             {!claimedByMe && (
               <button
@@ -610,13 +679,23 @@ const HITLReviewDetail: React.FC = () => {
         <div className="space-y-4">
           {analysisResults.map((analysis, index) => {
             const pages = pageData[analysis.quote_file_id] || [];
-            const totalWords = pages.reduce((sum, p) => sum + getPageWordCount(p), 0);
-            
+            const totalWords = pages.reduce(
+              (sum, p) => sum + getPageWordCount(p),
+              0,
+            );
+
             return (
-              <div key={analysis.id} className="bg-white rounded-lg shadow overflow-hidden">
+              <div
+                key={analysis.id}
+                className="bg-white rounded-lg shadow overflow-hidden"
+              >
                 {/* File Header */}
                 <button
-                  onClick={() => setExpandedFile(expandedFile === analysis.id ? null : analysis.id)}
+                  onClick={() =>
+                    setExpandedFile(
+                      expandedFile === analysis.id ? null : analysis.id,
+                    )
+                  }
                   className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
                 >
                   <div className="flex items-center gap-4">
@@ -634,10 +713,14 @@ const HITLReviewDetail: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="text-lg font-bold text-blue-600">
-                      ${calculateLineTotal(analysis.quote_file_id, analysis).toFixed(2)}
+                      $
+                      {calculateLineTotal(
+                        analysis.quote_file_id,
+                        analysis,
+                      ).toFixed(2)}
                     </span>
                     <span className="text-gray-400">
-                      {expandedFile === analysis.id ? '▼' : '▶'}
+                      {expandedFile === analysis.id ? "▼" : "▶"}
                     </span>
                   </div>
                 </button>
@@ -655,12 +738,20 @@ const HITLReviewDetail: React.FC = () => {
                             alt={analysis.quote_file?.original_filename}
                             className="w-full max-h-[400px] object-contain"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
+                              (e.target as HTMLImageElement).style.display =
+                                "none";
                             }}
                           />
                         </div>
                         <div className="mt-2 flex justify-between text-sm text-gray-500">
-                          <span>{(analysis.quote_file?.file_size / 1024 / 1024).toFixed(2)} MB</span>
+                          <span>
+                            {(
+                              analysis.quote_file?.file_size /
+                              1024 /
+                              1024
+                            ).toFixed(2)}{" "}
+                            MB
+                          </span>
                           <a
                             href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
                             target="_blank"
@@ -675,46 +766,91 @@ const HITLReviewDetail: React.FC = () => {
                       <div className="space-y-4">
                         {/* Document Type */}
                         <div className="bg-white border rounded p-3">
-                          <label className="text-sm text-gray-500 block mb-1">Document Type</label>
+                          <label className="text-sm text-gray-500 block mb-1">
+                            Document Type
+                          </label>
                           {claimedByMe ? (
                             <input
                               type="text"
-                              value={getValue(analysis.quote_file_id, 'detected_document_type', analysis.detected_document_type) || ''}
-                              onChange={(e) => updateLocalEdit(analysis.quote_file_id, 'detected_document_type', e.target.value)}
+                              value={
+                                getValue(
+                                  analysis.quote_file_id,
+                                  "detected_document_type",
+                                  analysis.detected_document_type,
+                                ) || ""
+                              }
+                              onChange={(e) =>
+                                updateLocalEdit(
+                                  analysis.quote_file_id,
+                                  "detected_document_type",
+                                  e.target.value,
+                                )
+                              }
                               className="w-full border rounded px-3 py-2"
                             />
                           ) : (
-                            <div className="font-medium">{analysis.detected_document_type}</div>
+                            <div className="font-medium">
+                              {analysis.detected_document_type}
+                            </div>
                           )}
                         </div>
 
                         {/* Language */}
                         <div className="bg-white border rounded p-3">
-                          <label className="text-sm text-gray-500 block mb-1">Detected Language</label>
+                          <label className="text-sm text-gray-500 block mb-1">
+                            Detected Language
+                          </label>
                           {claimedByMe ? (
                             <select
-                              value={getValue(analysis.quote_file_id, 'detected_language', analysis.detected_language) || ''}
-                              onChange={(e) => updateLocalEdit(analysis.quote_file_id, 'detected_language', e.target.value)}
+                              value={
+                                getValue(
+                                  analysis.quote_file_id,
+                                  "detected_language",
+                                  analysis.detected_language,
+                                ) || ""
+                              }
+                              onChange={(e) =>
+                                updateLocalEdit(
+                                  analysis.quote_file_id,
+                                  "detected_language",
+                                  e.target.value,
+                                )
+                              }
                               className="w-full border rounded px-3 py-2"
                             >
-                              {languages.map(lang => (
+                              {languages.map((lang) => (
                                 <option key={lang.code} value={lang.code}>
                                   {lang.name} ({lang.price_multiplier}x)
                                 </option>
                               ))}
                             </select>
                           ) : (
-                            <div className="font-medium">{analysis.detected_language}</div>
+                            <div className="font-medium">
+                              {analysis.detected_language}
+                            </div>
                           )}
                         </div>
 
                         {/* Complexity */}
                         <div className="bg-white border rounded p-3">
-                          <label className="text-sm text-gray-500 block mb-1">Complexity</label>
+                          <label className="text-sm text-gray-500 block mb-1">
+                            Complexity
+                          </label>
                           {claimedByMe ? (
                             <select
-                              value={getValue(analysis.quote_file_id, 'assessed_complexity', analysis.assessed_complexity) || 'easy'}
-                              onChange={(e) => handleComplexityChange(analysis.quote_file_id, e.target.value)}
+                              value={
+                                getValue(
+                                  analysis.quote_file_id,
+                                  "assessed_complexity",
+                                  analysis.assessed_complexity,
+                                ) || "easy"
+                              }
+                              onChange={(e) =>
+                                handleComplexityChange(
+                                  analysis.quote_file_id,
+                                  e.target.value,
+                                )
+                              }
                               className="w-full border rounded px-3 py-2"
                             >
                               <option value="easy">Easy (1.0x)</option>
@@ -723,7 +859,8 @@ const HITLReviewDetail: React.FC = () => {
                             </select>
                           ) : (
                             <div className="font-medium capitalize">
-                              {analysis.assessed_complexity} ({analysis.complexity_multiplier}x)
+                              {analysis.assessed_complexity} (
+                              {analysis.complexity_multiplier}x)
                             </div>
                           )}
                         </div>
@@ -731,30 +868,51 @@ const HITLReviewDetail: React.FC = () => {
                         {/* Page Breakdown */}
                         <div className="bg-white border rounded p-3">
                           <label className="text-sm text-gray-500 block mb-2">
-                            Page Breakdown ({pages.length} page{pages.length !== 1 ? 's' : ''})
+                            Page Breakdown ({pages.length} page
+                            {pages.length !== 1 ? "s" : ""})
                           </label>
                           <div className="space-y-2">
                             {pages.map((page, idx) => {
                               const words = getPageWordCount(page);
-                              const complexity = getValue(analysis.quote_file_id, 'complexity_multiplier', analysis.complexity_multiplier) || 1.0;
-                              const pageBillable = calculatePageBillable(words, complexity);
-                              
+                              const complexity =
+                                getValue(
+                                  analysis.quote_file_id,
+                                  "complexity_multiplier",
+                                  analysis.complexity_multiplier,
+                                ) || 1.0;
+                              const pageBillable = calculatePageBillable(
+                                words,
+                                complexity,
+                              );
+
                               return (
-                                <div key={page.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                                  <span className="text-sm font-medium">Page {idx + 1}</span>
+                                <div
+                                  key={page.id}
+                                  className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                                >
+                                  <span className="text-sm font-medium">
+                                    Page {idx + 1}
+                                  </span>
                                   <div className="flex items-center gap-3">
                                     {claimedByMe ? (
                                       <input
                                         type="number"
                                         value={words}
-                                        onChange={(e) => updatePageWordCount(page, parseInt(e.target.value) || 0)}
+                                        onChange={(e) =>
+                                          updatePageWordCount(
+                                            page,
+                                            parseInt(e.target.value) || 0,
+                                          )
+                                        }
                                         className="w-20 text-right border rounded px-2 py-1 text-sm"
                                         min="0"
                                       />
                                     ) : (
                                       <span className="text-sm">{words}</span>
                                     )}
-                                    <span className="text-xs text-gray-500">words</span>
+                                    <span className="text-xs text-gray-500">
+                                      words
+                                    </span>
                                     <span className="text-xs text-blue-600 font-medium">
                                       = {pageBillable.toFixed(2)} bp
                                     </span>
@@ -763,35 +921,71 @@ const HITLReviewDetail: React.FC = () => {
                               );
                             })}
                           </div>
-                          
+
                           {/* Document Billable Total */}
                           <div className="flex justify-between mt-3 pt-2 border-t font-medium">
                             <span>Document Billable:</span>
-                            <span>{calculateDocumentBillable(analysis.quote_file_id, analysis).toFixed(2)} pages</span>
+                            <span>
+                              {calculateDocumentBillable(
+                                analysis.quote_file_id,
+                                analysis,
+                              ).toFixed(2)}{" "}
+                              pages
+                            </span>
                           </div>
-                          {calculateDocumentBillable(analysis.quote_file_id, analysis) === 1.0 && 
-                           pages.reduce((sum, p) => sum + calculatePageBillable(getPageWordCount(p), getValue(analysis.quote_file_id, 'complexity_multiplier', analysis.complexity_multiplier) || 1.0), 0) < 1.0 && (
-                            <div className="text-xs text-orange-600 mt-1">
-                              * Minimum 1.00 applied
-                            </div>
-                          )}
+                          {calculateDocumentBillable(
+                            analysis.quote_file_id,
+                            analysis,
+                          ) === 1.0 &&
+                            pages.reduce(
+                              (sum, p) =>
+                                sum +
+                                calculatePageBillable(
+                                  getPageWordCount(p),
+                                  getValue(
+                                    analysis.quote_file_id,
+                                    "complexity_multiplier",
+                                    analysis.complexity_multiplier,
+                                  ) || 1.0,
+                                ),
+                              0,
+                            ) < 1.0 && (
+                              <div className="text-xs text-orange-600 mt-1">
+                                * Minimum 1.00 applied
+                              </div>
+                            )}
                         </div>
 
                         {/* CERTIFICATION SECTION */}
                         <div className="bg-white border rounded p-3">
-                          <label className="text-sm text-gray-500 block mb-2">Certification</label>
-                          
+                          <label className="text-sm text-gray-500 block mb-2">
+                            Certification
+                          </label>
+
                           {/* Primary Certification */}
                           <div className="flex items-center justify-between mb-3">
-                            <span className="text-sm font-medium">Primary:</span>
+                            <span className="text-sm font-medium">
+                              Primary:
+                            </span>
                             <div className="flex items-center gap-2 flex-1 ml-4">
                               {claimedByMe ? (
                                 <select
-                                  value={getValue(analysis.quote_file_id, 'certification_type_id', analysis.certification_type_id) || ''}
-                                  onChange={(e) => handleCertificationChange(analysis.quote_file_id, e.target.value)}
+                                  value={
+                                    getValue(
+                                      analysis.quote_file_id,
+                                      "certification_type_id",
+                                      analysis.certification_type_id,
+                                    ) || ""
+                                  }
+                                  onChange={(e) =>
+                                    handleCertificationChange(
+                                      analysis.quote_file_id,
+                                      e.target.value,
+                                    )
+                                  }
                                   className="flex-1 border rounded px-3 py-1 text-sm"
                                 >
-                                  {certificationTypes.map(cert => (
+                                  {certificationTypes.map((cert) => (
                                     <option key={cert.id} value={cert.id}>
                                       {cert.name} (${cert.price.toFixed(2)})
                                     </option>
@@ -799,31 +993,62 @@ const HITLReviewDetail: React.FC = () => {
                                 </select>
                               ) : (
                                 <span className="text-sm flex-1">
-                                  {certificationTypes.find(c => c.id === analysis.certification_type_id)?.name || 'Not set'}
+                                  {certificationTypes.find(
+                                    (c) =>
+                                      c.id === analysis.certification_type_id,
+                                  )?.name || "Not set"}
                                 </span>
                               )}
                               <span className="text-sm font-medium w-20 text-right">
-                                ${(certificationTypes.find(c => c.id === getValue(analysis.quote_file_id, 'certification_type_id', analysis.certification_type_id))?.price || 0).toFixed(2)}
+                                $
+                                {(
+                                  certificationTypes.find(
+                                    (c) =>
+                                      c.id ===
+                                      getValue(
+                                        analysis.quote_file_id,
+                                        "certification_type_id",
+                                        analysis.certification_type_id,
+                                      ),
+                                  )?.price || 0
+                                ).toFixed(2)}
                               </span>
                             </div>
                           </div>
 
                           {/* Additional Certifications */}
                           <div className="border-t pt-2">
-                            <div className="text-xs text-gray-500 mb-2">Additional Certifications:</div>
-                            
-                            {(additionalCerts[analysis.quote_file_id] || []).length === 0 ? (
-                              <p className="text-xs text-gray-400 italic">None added</p>
+                            <div className="text-xs text-gray-500 mb-2">
+                              Additional Certifications:
+                            </div>
+
+                            {(additionalCerts[analysis.quote_file_id] || [])
+                              .length === 0 ? (
+                              <p className="text-xs text-gray-400 italic">
+                                None added
+                              </p>
                             ) : (
                               <div className="space-y-1">
-                                {(additionalCerts[analysis.quote_file_id] || []).map(cert => (
-                                  <div key={cert.id} className="flex items-center justify-between py-1 px-2 bg-gray-50 rounded">
+                                {(
+                                  additionalCerts[analysis.quote_file_id] || []
+                                ).map((cert) => (
+                                  <div
+                                    key={cert.id}
+                                    className="flex items-center justify-between py-1 px-2 bg-gray-50 rounded"
+                                  >
                                     <span className="text-sm">{cert.name}</span>
                                     <div className="flex items-center gap-2">
-                                      <span className="text-sm">${cert.price.toFixed(2)}</span>
+                                      <span className="text-sm">
+                                        ${cert.price.toFixed(2)}
+                                      </span>
                                       {claimedByMe && (
                                         <button
-                                          onClick={() => removeAdditionalCert(analysis.quote_file_id, cert.id)}
+                                          onClick={() =>
+                                            removeAdditionalCert(
+                                              analysis.quote_file_id,
+                                              cert.id,
+                                            )
+                                          }
                                           className="text-red-500 text-xs hover:text-red-700"
                                         >
                                           ✕
@@ -837,7 +1062,9 @@ const HITLReviewDetail: React.FC = () => {
 
                             {claimedByMe && (
                               <button
-                                onClick={() => setShowAddCertModal(analysis.quote_file_id)}
+                                onClick={() =>
+                                  setShowAddCertModal(analysis.quote_file_id)
+                                }
                                 className="text-blue-600 text-sm mt-2 hover:underline"
                               >
                                 + Add Certification
@@ -847,32 +1074,63 @@ const HITLReviewDetail: React.FC = () => {
 
                           {/* Certification Total */}
                           <div className="border-t pt-2 mt-3 flex justify-between">
-                            <span className="text-sm font-medium">Certification Total:</span>
+                            <span className="text-sm font-medium">
+                              Certification Total:
+                            </span>
                             <span className="text-sm font-bold">
-                              ${calculateCertificationTotal(analysis.quote_file_id, analysis).toFixed(2)}
+                              $
+                              {calculateCertificationTotal(
+                                analysis.quote_file_id,
+                                analysis,
+                              ).toFixed(2)}
                             </span>
                           </div>
                         </div>
 
                         {/* PRICING SUMMARY */}
                         <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                          <h4 className="text-sm font-semibold text-blue-800 mb-2">Document Total</h4>
+                          <h4 className="text-sm font-semibold text-blue-800 mb-2">
+                            Document Total
+                          </h4>
                           <div className="space-y-1 text-sm">
                             <div className="flex justify-between">
                               <span>Billable Pages:</span>
-                              <span>{calculateDocumentBillable(analysis.quote_file_id, analysis).toFixed(2)}</span>
+                              <span>
+                                {calculateDocumentBillable(
+                                  analysis.quote_file_id,
+                                  analysis,
+                                ).toFixed(2)}
+                              </span>
                             </div>
                             <div className="flex justify-between">
                               <span>Translation:</span>
-                              <span>${calculateTranslationCost(analysis.quote_file_id, analysis).toFixed(2)}</span>
+                              <span>
+                                $
+                                {calculateTranslationCost(
+                                  analysis.quote_file_id,
+                                  analysis,
+                                ).toFixed(2)}
+                              </span>
                             </div>
                             <div className="flex justify-between">
                               <span>Certification:</span>
-                              <span>${calculateCertificationTotal(analysis.quote_file_id, analysis).toFixed(2)}</span>
+                              <span>
+                                $
+                                {calculateCertificationTotal(
+                                  analysis.quote_file_id,
+                                  analysis,
+                                ).toFixed(2)}
+                              </span>
                             </div>
                             <div className="flex justify-between font-bold border-t pt-1 mt-1 text-blue-800">
                               <span>Line Total:</span>
-                              <span>${calculateLineTotal(analysis.quote_file_id, analysis).toFixed(2)}</span>
+                              <span>
+                                $
+                                {calculateLineTotal(
+                                  analysis.quote_file_id,
+                                  analysis,
+                                ).toFixed(2)}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -892,10 +1150,10 @@ const HITLReviewDetail: React.FC = () => {
               onClick={saveAllCorrections}
               disabled={isSaving}
               className={`px-6 py-3 rounded-lg shadow-lg text-white font-medium ${
-                isSaving ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'
+                isSaving ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
               }`}
             >
-              {isSaving ? 'Saving...' : 'Save All Corrections'}
+              {isSaving ? "Saving..." : "Save All Corrections"}
             </button>
           </div>
         )}
@@ -906,32 +1164,48 @@ const HITLReviewDetail: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">Add Certification</h3>
-            
+
             <div className="space-y-2">
               {certificationTypes
-                .filter(cert => {
-                  const analysis = analysisResults.find(a => a.quote_file_id === showAddCertModal);
+                .filter((cert) => {
+                  const analysis = analysisResults.find(
+                    (a) => a.quote_file_id === showAddCertModal,
+                  );
                   const existing = additionalCerts[showAddCertModal] || [];
-                  const isPrimary = getValue(showAddCertModal, 'certification_type_id', analysis?.certification_type_id) === cert.id;
-                  const isAdded = existing.some(e => e.certification_type_id === cert.id);
+                  const isPrimary =
+                    getValue(
+                      showAddCertModal,
+                      "certification_type_id",
+                      analysis?.certification_type_id,
+                    ) === cert.id;
+                  const isAdded = existing.some(
+                    (e) => e.certification_type_id === cert.id,
+                  );
                   return !isPrimary && !isAdded;
                 })
-                .map(cert => (
+                .map((cert) => (
                   <button
                     key={cert.id}
                     onClick={() => {
-                      const analysis = analysisResults.find(a => a.quote_file_id === showAddCertModal);
+                      const analysis = analysisResults.find(
+                        (a) => a.quote_file_id === showAddCertModal,
+                      );
                       if (analysis) {
-                        addAdditionalCert(showAddCertModal, analysis.id, cert.id);
+                        addAdditionalCert(
+                          showAddCertModal,
+                          analysis.id,
+                          cert.id,
+                        );
                       }
                     }}
                     className="w-full text-left p-3 border rounded hover:bg-gray-50 flex justify-between"
                   >
                     <span>{cert.name}</span>
-                    <span className="font-medium">${cert.price.toFixed(2)}</span>
+                    <span className="font-medium">
+                      ${cert.price.toFixed(2)}
+                    </span>
                   </button>
-                ))
-              }
+                ))}
             </div>
 
             <button
