@@ -164,8 +164,115 @@ export default function Step4Review() {
 
   return (
     <>
-      {hitlRequestSubmitted ? (
-        // ========== HITL PENDING STATE ==========
+      {isSystemTriggeredHitl ? (
+        // ========== SYSTEM-TRIGGERED HITL STATE ==========
+        <div className="max-w-2xl mx-auto px-4 py-8">
+          {/* Pending Banner - Amber/Yellow theme */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6">
+            <div className="flex items-start gap-4">
+              <div className="text-amber-500 text-3xl">⏳</div>
+              <div>
+                <h2 className="text-xl font-semibold text-amber-800 mb-2">
+                  Additional Review Required
+                </h2>
+                <p className="text-amber-700 mb-3">
+                  Our team needs to verify some details before we can finalize your quote.
+                  This typically happens when:
+                </p>
+                <ul className="text-sm text-amber-700 space-y-1 mb-3">
+                  <li>• Documents have unusual formatting</li>
+                  <li>• Text is partially obscured or handwritten</li>
+                  <li>• We want to ensure pricing accuracy</li>
+                </ul>
+                <p className="text-amber-700 font-medium">
+                  We'll email you within 4 working hours with your confirmed quote.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quote Reference */}
+          <div className="bg-white rounded-lg border p-4 mb-6">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Quote Reference</span>
+              <span className="font-mono font-medium">{quoteNumber || 'N/A'}</span>
+            </div>
+          </div>
+
+          {/* Document Summary - Read Only */}
+          <div className="bg-white rounded-lg border p-6 mb-6">
+            <h3 className="font-medium text-gray-700 mb-4">Documents Submitted</h3>
+
+            {documents.map((doc, index) => (
+              <div key={index} className="flex justify-between items-start py-3 border-b last:border-0">
+                <div>
+                  <p className="font-medium text-gray-800">{doc.filename}</p>
+                  <p className="text-sm text-gray-500">
+                    {DOC_TYPE_LABELS[doc.documentType] || doc.documentType} • {doc.languageName} → English
+                  </p>
+                  <div className="flex gap-4 text-sm text-gray-500 mt-1">
+                    <span>{doc.wordCount || 0} words</span>
+                    <span>{doc.pageCount || 0} pages</span>
+                    <span>{doc.billablePages || 0} billable</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium text-gray-400">Pending</p>
+                  <p className="text-xs text-gray-400">Price TBD</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* What Happens Next */}
+          <div className="bg-gray-50 rounded-lg p-6 mb-6">
+            <h3 className="font-medium text-gray-800 mb-3">What happens next?</h3>
+            <ol className="space-y-3 text-sm text-gray-600">
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-6 h-6 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center font-medium">1</span>
+                <span>Our team reviews your documents for accuracy</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-6 h-6 bg-gray-200 text-gray-600 rounded-full flex items-center justify-center font-medium">2</span>
+                <span>We'll email you a confirmed quote with final pricing</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-6 h-6 bg-gray-200 text-gray-600 rounded-full flex items-center justify-center font-medium">3</span>
+                <span>You can then proceed to payment</span>
+              </li>
+            </ol>
+          </div>
+
+          {/* Contact Info Reminder */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <p className="text-sm text-blue-800">
+              <span className="font-medium">We'll contact you at:</span> {customerEmail || 'your registered email'}
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => window.location.href = '/'}
+              className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium"
+            >
+              Return to Home
+            </button>
+            <button
+              onClick={() => window.location.href = '/contact'}
+              className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              Contact Support
+            </button>
+          </div>
+
+          <p className="text-center text-sm text-gray-500 mt-4">
+            Questions? Email us at support@cethos.com
+          </p>
+        </div>
+
+      ) : hitlRequestSubmitted ? (
+        // ========== CUSTOMER-REQUESTED HITL STATE ==========
         <div className="max-w-2xl mx-auto px-4 py-8">
           {/* Pending Banner */}
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6">
