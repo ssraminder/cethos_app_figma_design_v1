@@ -3,20 +3,26 @@ import { Calendar } from "lucide-react";
 interface QuoteSummaryProps {
   translationTotal: number;
   certificationTotal: number;
-  taxRate?: number;
+  subtotal: number;
+  rushFee: number;
+  taxRate: number;
+  taxAmount: number;
+  grandTotal: number;
+  isRush?: boolean;
   estimatedDays?: string;
 }
 
 export default function QuoteSummary({
   translationTotal,
   certificationTotal,
-  taxRate = 0.05,
+  subtotal,
+  rushFee,
+  taxRate,
+  taxAmount,
+  grandTotal,
+  isRush = false,
   estimatedDays = "2-3 business days",
 }: QuoteSummaryProps) {
-  const subtotal = translationTotal + certificationTotal;
-  const tax = subtotal * taxRate;
-  const total = subtotal + tax;
-
   return (
     <div className="bg-background rounded-xl p-6">
       <h3 className="text-cethos-slate-dark font-semibold text-base mb-4">
@@ -49,13 +55,25 @@ export default function QuoteSummary({
         </div>
       </div>
 
+      {/* Rush Fee (if applicable) */}
+      {rushFee > 0 && (
+        <div className="flex justify-between items-center text-sm mb-3">
+          <span className="text-orange-600 font-medium">
+            Rush Fee (30%)
+          </span>
+          <span className="text-orange-600 font-medium">
+            ${rushFee.toFixed(2)}
+          </span>
+        </div>
+      )}
+
       {/* Tax */}
       <div className="flex justify-between items-center text-sm mb-4">
         <span className="text-cethos-slate">
           GST ({(taxRate * 100).toFixed(0)}%)
         </span>
         <span className="text-cethos-slate-dark font-medium">
-          ${tax.toFixed(2)}
+          ${taxAmount.toFixed(2)}
         </span>
       </div>
 
@@ -66,7 +84,7 @@ export default function QuoteSummary({
             TOTAL CAD
           </span>
           <span className="text-cethos-navy font-bold text-2xl">
-            ${total.toFixed(2)}
+            ${grandTotal.toFixed(2)}
           </span>
         </div>
       </div>
@@ -74,7 +92,9 @@ export default function QuoteSummary({
       {/* Estimated Delivery */}
       <div className="flex items-center gap-2 text-sm text-cethos-slate">
         <Calendar className="w-4 h-4" />
-        <span>Estimated delivery: {estimatedDays}</span>
+        <span>
+          Estimated delivery: {isRush ? "24 hours" : estimatedDays}
+        </span>
       </div>
     </div>
   );
