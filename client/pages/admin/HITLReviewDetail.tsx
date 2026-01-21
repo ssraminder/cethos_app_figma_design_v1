@@ -1491,11 +1491,25 @@ const HITLReviewDetail: React.FC = () => {
                               return (
                                 <div
                                   key={page.id}
-                                  className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                                  className={`flex items-center justify-between p-2 rounded ${
+                                    selectedPages.has(page.id)
+                                      ? "bg-blue-50 border border-blue-200"
+                                      : "bg-gray-50"
+                                  }`}
                                 >
-                                  <span className="text-sm font-medium">
-                                    Page {idx + 1}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    {splitMode && (
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedPages.has(page.id)}
+                                        onChange={() => togglePageSelection(page.id)}
+                                        className="w-4 h-4 text-blue-600 rounded cursor-pointer"
+                                      />
+                                    )}
+                                    <span className="text-sm font-medium">
+                                      Page {idx + 1}
+                                    </span>
+                                  </div>
                                   <div className="flex items-center gap-3">
                                     {claimedByMe ? (
                                       <input
