@@ -503,8 +503,29 @@ export default function SameDaySettings() {
         {/* Eligibility Matrix */}
         <SettingsCard title="Eligibility Matrix" description="">
           <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-900">
-              Same-day is only available when ALL 4 criteria match
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-900 flex-1">
+                Same-day is only available when ALL 4 criteria match
+              </div>
+              <button
+                onClick={handleAddRule}
+                className="ml-4 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Add Rule
+              </button>
             </div>
 
             <div className="flex gap-3">
@@ -553,8 +574,6 @@ export default function SameDaySettings() {
               data={filteredRules}
               onEdit={handleEditRule}
               onDelete={handleDeleteRule}
-              onAdd={handleAddRule}
-              addButtonLabel="+ Add Rule"
               emptyMessage="No eligibility rules configured. Click 'Add Rule' to create one."
               getRowKey={(rule) => rule.id}
             />
