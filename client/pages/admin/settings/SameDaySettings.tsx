@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import AdminSettingsLayout from "@/components/admin/settings/AdminSettingsLayout";
 import SettingsCard from "@/components/admin/settings/SettingsCard";
 import SettingsInput from "@/components/admin/settings/SettingsInput";
@@ -39,7 +38,6 @@ interface IntendedUse {
 }
 
 export default function SameDaySettings() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,16 +73,8 @@ export default function SameDaySettings() {
   const [filterDocType, setFilterDocType] = useState("all");
 
   useEffect(() => {
-    checkAuth();
     fetchData();
   }, []);
-
-  const checkAuth = () => {
-    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
-    if (!session.loggedIn) {
-      navigate("/admin/login");
-    }
-  };
 
   const fetchData = async () => {
     setLoading(true);

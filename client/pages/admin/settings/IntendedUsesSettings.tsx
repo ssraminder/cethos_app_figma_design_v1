@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import AdminSettingsLayout from "@/components/admin/settings/AdminSettingsLayout";
 import SettingsTable from "@/components/admin/settings/SettingsTable";
 import SettingsModal from "@/components/admin/settings/SettingsModal";
@@ -24,7 +23,6 @@ interface IntendedUse {
 }
 
 export default function IntendedUsesSettings() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [intendedUses, setIntendedUses] = useState<IntendedUse[]>([]);
   const [certificationTypes, setCertificationTypes] = useState<
@@ -35,16 +33,8 @@ export default function IntendedUsesSettings() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    checkAuth();
     fetchData();
   }, []);
-
-  const checkAuth = () => {
-    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
-    if (!session.loggedIn) {
-      navigate("/admin/login");
-    }
-  };
 
   const fetchData = async () => {
     setLoading(true);
