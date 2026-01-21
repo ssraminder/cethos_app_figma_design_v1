@@ -194,52 +194,47 @@ const HITLReviewDetail: React.FC = () => {
     }
 
     try {
-      // Fetch review details using v_hitl_queue view (same as Queue page)
-      // This view has RLS policies that allow anon key access
-      const reviews = await fetchFromSupabase(
+      // Step 1: Fetch review from v_hitl_queue view (bypasses RLS)
+      const viewReviews = await fetchFromSupabase(
         `v_hitl_queue?review_id=eq.${reviewId}`,
       );
-      console.log(`📋 Reviews fetched from view:`, reviews);
-      const reviewFromView = reviews[0];
+      console.log(`📋 View data:`, viewReviews);
+      const viewReview = viewReviews[0];
 
-      if (!reviewFromView) {
+      if (!viewReview) {
         console.error("❌ No review found in v_hitl_queue for ID:", reviewId);
-
-        // Try the base table as fallback
-        console.log("🔄 Trying base hitl_reviews table...");
-        const fallbackReviews = await fetchFromSupabase(
-          `hitl_reviews?id=eq.${reviewId}&select=*`,
-        );
-        console.log(`📋 Fallback reviews:`, fallbackReviews);
-      }
-
-      // Map view columns to expected review structure
-      const review = reviewFromView ? {
-        id: reviewFromView.review_id,
-        quote_id: reviewFromView.quote_id, // Assuming view has this
-        status: reviewFromView.status,
-        assigned_to: reviewFromView.assigned_to,
-        // Add other fields as needed from the view
-      } : null;
-
-      console.log("📄 Review data:", review);
-
-      if (!review) {
-        console.error("❌ No review found for ID:", reviewId);
         return;
       }
 
-      if (!review.quote_id) {
-        console.error("❌ Review has no quote_id:", review);
-        setReviewData(review);
-        return;
-      }
+      console.log("✅ Found review in view:", viewReview);
 
-      // Fetch the quote separately
+      // Step 2: Fetch quote using quote_number from view
       const quotes = await fetchFromSupabase(
-        `quotes?id=eq.${review.quote_id}&select=*`,
+        `quotes?quote_number=eq.${viewReview.quote_number}&select=*`,
       );
       const quote = quotes[0];
+
+      console.log("💰 Quote found:", quote);
+
+      if (!quote) {
+        console.error("❌ No quote found for quote_number:", viewReview.quote_number);
+        return;
+      }
+
+      // Step 3: Construct review object from view data
+      const review = {
+        id: viewReview.review_id,
+        quote_id: quote.id,
+        status: viewReview.status,
+        quote_number: viewReview.quote_number,
+        customer_name: viewReview.customer_name,
+        customer_email: viewReview.customer_email,
+        priority: viewReview.priority,
+        sla_status: viewReview.sla_status,
+        minutes_to_sla: viewReview.minutes_to_sla,
+      };
+
+      console.log("📄 Constructed review data:", review);
 
       console.log("💰 Quote data:", quote);
 
