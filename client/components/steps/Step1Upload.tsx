@@ -1,5 +1,4 @@
 import FileUpload from "@/components/FileUpload";
-import SaveForLater from "@/components/SaveForLater";
 
 export default function Step1Upload() {
   return (
@@ -15,14 +14,7 @@ export default function Step1Upload() {
       </div>
 
       {/* File Upload Section */}
-      <div className="mb-6">
-        <FileUpload />
-      </div>
-
-      {/* Save for Later Section */}
-      <div>
-        <SaveForLater />
-      </div>
+      <FileUpload />
     </>
   );
 }
