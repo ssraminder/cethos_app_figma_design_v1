@@ -66,6 +66,7 @@ export default function LanguageTiersSettings() {
   };
 
   const handleAdd = () => {
+    console.log("Opening Add Tier modal");
     setEditingItem(null);
     setShowModal(true);
   };
