@@ -353,6 +353,66 @@ export default function AdminSettings() {
                 Confidence thresholds and triggers
               </p>
             </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/intended-uses")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Intended Uses
+              </h3>
+              <p className="text-sm text-gray-600">
+                Manage intended uses with certifications
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/pickup-locations")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Pickup Locations
+              </h3>
+              <p className="text-sm text-gray-600">
+                Manage pickup addresses
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/same-day")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Same-Day Eligibility
+              </h3>
+              <p className="text-sm text-gray-600">
+                Same-day delivery rules
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/language-tiers")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Language Tiers
+              </h3>
+              <p className="text-sm text-gray-600">
+                Manage pricing tiers
+              </p>
+            </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/languages")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Languages
+              </h3>
+              <p className="text-sm text-gray-600">
+                Manage languages
+              </p>
+            </button>
           </div>
         </div>
 
