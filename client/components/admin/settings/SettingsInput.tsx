@@ -36,7 +36,9 @@ export default function SettingsInput({
   className = "",
 }: SettingsInputProps) {
   const inputClasses = `w-full rounded-md border ${
-    error ? "border-red-300 focus:ring-red-500 focus:border-red-500" : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+    error
+      ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+      : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
   } px-3 py-2 text-sm focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed`;
 
   return (

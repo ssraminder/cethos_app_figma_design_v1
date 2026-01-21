@@ -64,9 +64,18 @@ const App = () => (
                 <Route path="/admin/thresholds" element={<Thresholds />} />
 
                 {/* Admin Settings screens */}
-                <Route path="/admin/settings/pricing" element={<PricingSettings />} />
-                <Route path="/admin/settings/complexity" element={<ComplexitySettings />} />
-                <Route path="/admin/settings/turnaround" element={<TurnaroundSettings />} />
+                <Route
+                  path="/admin/settings/pricing"
+                  element={<PricingSettings />}
+                />
+                <Route
+                  path="/admin/settings/complexity"
+                  element={<ComplexitySettings />}
+                />
+                <Route
+                  path="/admin/settings/turnaround"
+                  element={<TurnaroundSettings />}
+                />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />

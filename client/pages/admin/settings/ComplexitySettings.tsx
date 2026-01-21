@@ -62,10 +62,13 @@ export default function ComplexitySettings() {
 
       if (fetchError) throw fetchError;
 
-      const settings = data.reduce((acc, setting) => {
-        acc[setting.setting_key] = parseFloat(setting.setting_value);
-        return acc;
-      }, {} as Record<string, number>);
+      const settings = data.reduce(
+        (acc, setting) => {
+          acc[setting.setting_key] = parseFloat(setting.setting_value);
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
 
       const loadedValues = {
         complexity_easy: settings.complexity_easy || 1.0,
@@ -188,9 +191,7 @@ export default function ComplexitySettings() {
 
           {/* Medium */}
           <div className="border-b border-gray-200 pb-6">
-            <h4 className="text-sm font-semibold text-gray-900 mb-1">
-              Medium
-            </h4>
+            <h4 className="text-sm font-semibold text-gray-900 mb-1">Medium</h4>
             <p className="text-sm text-gray-600 mb-3">
               Some handwriting, tables, stamps, or technical terms
             </p>

@@ -62,10 +62,13 @@ export default function PricingSettings() {
 
       if (fetchError) throw fetchError;
 
-      const settings = data.reduce((acc, setting) => {
-        acc[setting.setting_key] = parseFloat(setting.setting_value);
-        return acc;
-      }, {} as Record<string, number>);
+      const settings = data.reduce(
+        (acc, setting) => {
+          acc[setting.setting_key] = parseFloat(setting.setting_value);
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
 
       const loadedValues = {
         base_rate: settings.base_rate || 65.0,
@@ -122,7 +125,9 @@ export default function PricingSettings() {
   const calculateExample = () => {
     const words = 450;
     const rawPages = words / values.words_per_page;
-    const roundedPages = Math.ceil(rawPages / values.rounding_precision) * values.rounding_precision;
+    const roundedPages =
+      Math.ceil(rawPages / values.rounding_precision) *
+      values.rounding_precision;
     const billablePages = Math.max(roundedPages, values.min_billable_pages);
     const cost = billablePages * values.base_rate;
 
@@ -171,7 +176,10 @@ export default function PricingSettings() {
     >
       <div className="space-y-6">
         {/* Base Pricing Card */}
-        <SettingsCard title="Base Pricing" description="Core pricing parameters">
+        <SettingsCard
+          title="Base Pricing"
+          description="Core pricing parameters"
+        >
           <div className="grid grid-cols-2 gap-6">
             <SettingsInput
               label="Base Rate per Billable Page"
@@ -237,7 +245,10 @@ export default function PricingSettings() {
         </SettingsCard>
 
         {/* Example Calculation Card */}
-        <SettingsCard title="Example Calculation" description="Live preview of pricing logic">
+        <SettingsCard
+          title="Example Calculation"
+          description="Live preview of pricing logic"
+        >
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2 text-sm">
             <p className="font-medium text-blue-900">
               A document with {example.words} words:
@@ -247,10 +258,12 @@ export default function PricingSettings() {
                 • Raw pages: {example.words} ÷ {values.words_per_page} ={" "}
                 {example.rawPages} pages
               </li>
-              <li>• Billable pages: {example.billablePages} (after rounding)</li>
               <li>
-                • Translation cost: {example.billablePages} × ${values.base_rate.toFixed(2)} = $
-                {example.cost}
+                • Billable pages: {example.billablePages} (after rounding)
+              </li>
+              <li>
+                • Translation cost: {example.billablePages} × $
+                {values.base_rate.toFixed(2)} = ${example.cost}
               </li>
             </ul>
           </div>

@@ -61,10 +61,13 @@ export default function TurnaroundSettings() {
 
       if (fetchError) throw fetchError;
 
-      const settings = data.reduce((acc, setting) => {
-        acc[setting.setting_key] = parseFloat(setting.setting_value);
-        return acc;
-      }, {} as Record<string, number>);
+      const settings = data.reduce(
+        (acc, setting) => {
+          acc[setting.setting_key] = parseFloat(setting.setting_value);
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
 
       const loadedValues = {
         turnaround_base_days: settings.turnaround_base_days || 2,
