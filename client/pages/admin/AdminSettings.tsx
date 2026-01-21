@@ -294,9 +294,7 @@ export default function AdminSettings() {
               onClick={() => navigate("/admin/settings/tax")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
-              <h3 className="font-semibold text-gray-900 mb-1">
-                Tax Rates
-              </h3>
+              <h3 className="font-semibold text-gray-900 mb-1">Tax Rates</h3>
               <p className="text-sm text-gray-600">
                 Regional tax configuration
               </p>
@@ -318,9 +316,7 @@ export default function AdminSettings() {
               onClick={() => navigate("/admin/settings/holidays")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
-              <h3 className="font-semibold text-gray-900 mb-1">
-                Holidays
-              </h3>
+              <h3 className="font-semibold text-gray-900 mb-1">Holidays</h3>
               <p className="text-sm text-gray-600">
                 Holiday calendar for business days
               </p>
@@ -330,9 +326,7 @@ export default function AdminSettings() {
               onClick={() => navigate("/admin/settings/ai-prompts")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
-              <h3 className="font-semibold text-gray-900 mb-1">
-                AI Prompts
-              </h3>
+              <h3 className="font-semibold text-gray-900 mb-1">AI Prompts</h3>
               <p className="text-sm text-gray-600">
                 Configure AI analysis prompts
               </p>
@@ -342,9 +336,7 @@ export default function AdminSettings() {
               onClick={() => navigate("/admin/settings/ocr")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
-              <h3 className="font-semibold text-gray-900 mb-1">
-                OCR Settings
-              </h3>
+              <h3 className="font-semibold text-gray-900 mb-1">OCR Settings</h3>
               <p className="text-sm text-gray-600">
                 OCR provider and configuration
               </p>

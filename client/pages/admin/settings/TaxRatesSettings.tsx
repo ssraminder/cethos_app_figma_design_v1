@@ -99,17 +99,14 @@ export default function TaxRatesSettings() {
 
       if (fetchError) throw fetchError;
 
-      const settings = data.reduce(
-        (acc, setting) => {
-          if (setting.setting_key === "tax_rate_default") {
-            acc.tax_rate_default = parseFloat(setting.setting_value);
-          } else if (setting.setting_key === "tax_name_default") {
-            acc.tax_name_default = setting.setting_value;
-          }
-          return acc;
-        },
-        {} as DefaultTaxSettings,
-      );
+      const settings = data.reduce((acc, setting) => {
+        if (setting.setting_key === "tax_rate_default") {
+          acc.tax_rate_default = parseFloat(setting.setting_value);
+        } else if (setting.setting_key === "tax_name_default") {
+          acc.tax_name_default = setting.setting_value;
+        }
+        return acc;
+      }, {} as DefaultTaxSettings);
 
       const loadedDefaults = {
         tax_rate_default: settings.tax_rate_default || 0.05,
@@ -389,7 +386,10 @@ export default function TaxRatesSettings() {
               label="Default Tax Name"
               value={defaultSettings.tax_name_default}
               onChange={(val) =>
-                setDefaultSettings({ ...defaultSettings, tax_name_default: val })
+                setDefaultSettings({
+                  ...defaultSettings,
+                  tax_name_default: val,
+                })
               }
               type="text"
               placeholder="GST"
@@ -507,7 +507,10 @@ function TaxRateModal({ rate, onClose, onSave }: TaxRateModalProps) {
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  region_type: e.target.value as "country" | "state" | "province",
+                  region_type: e.target.value as
+                    | "country"
+                    | "state"
+                    | "province",
                 })
               }
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"

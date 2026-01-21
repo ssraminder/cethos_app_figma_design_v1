@@ -309,11 +309,16 @@ export default function HITLThresholdsSettings() {
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">
                     Trigger HITL if language confidence &lt;{" "}
-                    {(values.hitl_language_confidence_threshold * 100).toFixed(0)}
+                    {(values.hitl_language_confidence_threshold * 100).toFixed(
+                      0,
+                    )}
                     %
                   </span>
                   <span className="font-medium text-gray-900">
-                    {(values.hitl_language_confidence_threshold * 100).toFixed(0)}%
+                    {(values.hitl_language_confidence_threshold * 100).toFixed(
+                      0,
+                    )}
+                    %
                   </span>
                 </div>
               </div>
@@ -384,15 +389,15 @@ export default function HITLThresholdsSettings() {
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">
                     Trigger HITL if complexity confidence &lt;{" "}
-                    {(values.hitl_complexity_confidence_threshold * 100).toFixed(
-                      0,
-                    )}
+                    {(
+                      values.hitl_complexity_confidence_threshold * 100
+                    ).toFixed(0)}
                     %
                   </span>
                   <span className="font-medium text-gray-900">
-                    {(values.hitl_complexity_confidence_threshold * 100).toFixed(
-                      0,
-                    )}
+                    {(
+                      values.hitl_complexity_confidence_threshold * 100
+                    ).toFixed(0)}
                     %
                   </span>
                 </div>

@@ -130,8 +130,9 @@ export default function AIPromptsSettings() {
                     <div>
                       <span className="text-gray-500">Provider:</span>{" "}
                       <span className="font-medium text-gray-900">
-                        {PROVIDERS[prompt.llm_provider as keyof typeof PROVIDERS]
-                          ?.name || prompt.llm_provider}
+                        {PROVIDERS[
+                          prompt.llm_provider as keyof typeof PROVIDERS
+                        ]?.name || prompt.llm_provider}
                       </span>
                     </div>
                     <div>
@@ -387,7 +388,8 @@ function AIPromptModal({ prompt, onClose, onSave }: AIPromptModalProps) {
               required
             />
             <p className="text-xs text-gray-500 mt-1">
-              Available variables: {"{ocr_text}"}, {"{document_type}"}, {"{word_count}"}
+              Available variables: {"{ocr_text}"}, {"{document_type}"},{" "}
+              {"{word_count}"}
             </p>
           </div>
 

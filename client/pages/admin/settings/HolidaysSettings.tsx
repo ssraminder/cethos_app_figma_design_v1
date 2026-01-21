@@ -165,7 +165,12 @@ export default function HolidaysSettings() {
           ]
         : [
             { name: "New Year's Day", month: 1, day: 1, region: "all" },
-            { name: "Martin Luther King Jr. Day", month: 1, day: 20, region: "all" },
+            {
+              name: "Martin Luther King Jr. Day",
+              month: 1,
+              day: 20,
+              region: "all",
+            },
             { name: "Presidents' Day", month: 2, day: 17, region: "all" },
             { name: "Memorial Day", month: 5, day: 26, region: "all" },
             { name: "Independence Day", month: 7, day: 4, region: "all" },
@@ -192,7 +197,9 @@ export default function HolidaysSettings() {
 
       if (insertError) throw insertError;
 
-      toast.success(`Added ${commonHolidays.length} ${country} holidays for ${year}`);
+      toast.success(
+        `Added ${commonHolidays.length} ${country} holidays for ${year}`,
+      );
       fetchHolidays();
     } catch (err) {
       console.error("Error adding bulk holidays:", err);

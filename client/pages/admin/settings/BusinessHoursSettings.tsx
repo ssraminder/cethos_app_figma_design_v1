@@ -134,7 +134,9 @@ export default function BusinessHoursSettings() {
         business_hours_start: settings.business_hours_start || 9,
         business_hours_end: settings.business_hours_end || 17,
         business_timezone: settings.business_timezone || "America/Edmonton",
-        business_working_days: settings.business_working_days || [1, 2, 3, 4, 5],
+        business_working_days: settings.business_working_days || [
+          1, 2, 3, 4, 5,
+        ],
       };
 
       setValues(loadedValues);
@@ -164,7 +166,10 @@ export default function BusinessHoursSettings() {
 
     try {
       const updates = [
-        { key: "business_hours_start", value: String(values.business_hours_start) },
+        {
+          key: "business_hours_start",
+          value: String(values.business_hours_start),
+        },
         { key: "business_hours_end", value: String(values.business_hours_end) },
         { key: "business_timezone", value: values.business_timezone },
         {
@@ -200,7 +205,9 @@ export default function BusinessHoursSettings() {
     if (values.business_working_days.includes(day)) {
       setValues({
         ...values,
-        business_working_days: values.business_working_days.filter((d) => d !== day),
+        business_working_days: values.business_working_days.filter(
+          (d) => d !== day,
+        ),
       });
     } else {
       setValues({
