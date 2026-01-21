@@ -236,12 +236,6 @@ const HITLReviewDetail: React.FC = () => {
 
       console.log("📄 Constructed review data:", review);
 
-      console.log("💰 Quote data:", quote);
-
-      if (!quote) {
-        console.error("❌ No quote found for ID:", review.quote_id);
-      }
-
       // Merge quote into review data
       const reviewWithQuote = { ...review, quotes: quote };
       setReviewData(reviewWithQuote);
