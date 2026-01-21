@@ -58,7 +58,7 @@ export default function AdminSettings() {
   }, [currentBranding.loading]);
 
   const checkSession = () => {
-    const stored = sessionStorage.getItem("staffSession");
+    const stored = localStorage.getItem("staffSession");
 
     if (!stored) {
       navigate("/admin/login", { replace: true });

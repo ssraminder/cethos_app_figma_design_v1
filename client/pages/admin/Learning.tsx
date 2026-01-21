@@ -83,7 +83,7 @@ export default function Learning() {
 
   // Session check
   useEffect(() => {
-    const session = sessionStorage.getItem("staffSession");
+    const session = localStorage.getItem("staffSession");
     if (!session) {
       navigate("/admin/login", { replace: true });
       return;

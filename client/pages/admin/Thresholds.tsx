@@ -68,7 +68,7 @@ export default function Thresholds() {
 
   // Session check and role verification
   useEffect(() => {
-    const session = sessionStorage.getItem("staffSession");
+    const session = localStorage.getItem("staffSession");
     if (!session) {
       navigate("/admin/login", { replace: true });
       return;

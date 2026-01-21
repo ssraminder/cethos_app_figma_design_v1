@@ -66,7 +66,7 @@ export default function Analytics() {
 
   // Session check - redirect to login if not authenticated
   useEffect(() => {
-    const sessionData = sessionStorage.getItem("staffSession");
+    const sessionData = localStorage.getItem("staffSession");
     if (!sessionData) {
       navigate("/admin/login", { replace: true });
       return;
