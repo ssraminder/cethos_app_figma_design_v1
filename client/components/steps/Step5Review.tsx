@@ -36,7 +36,7 @@ const COMPLEXITY_LABELS: Record<string, string> = {
   hard: "Complex",
 };
 
-export default function Step4Review() {
+export default function Step5Review() {
   const { state, completeProcessing, skipToEmail } = useQuote();
   const { languages, loading: optionsLoading } = useDropdownOptions();
   const {
