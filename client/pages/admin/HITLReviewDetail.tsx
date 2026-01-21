@@ -150,21 +150,23 @@ const HITLReviewDetail: React.FC = () => {
   const [staffSession, setStaffSession] = useState<any>(null);
   const [claimedByMe, setClaimedByMe] = useState(false);
   const [claimedByOther, setClaimedByOther] = useState(false);
-  const [assignedStaffName, setAssignedStaffName] = useState<string | null>(null);
+  const [assignedStaffName, setAssignedStaffName] = useState<string | null>(
+    null,
+  );
 
   // Action buttons
-  const [internalNotes, setInternalNotes] = useState('');
+  const [internalNotes, setInternalNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
+  const [rejectReason, setRejectReason] = useState("");
 
   // Page splitting/combining
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
   const [splitMode, setSplitMode] = useState(false);
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showCombineModal, setShowCombineModal] = useState(false);
-  const [splitDocumentName, setSplitDocumentName] = useState('');
-  const [targetDocumentId, setTargetDocumentId] = useState('');
+  const [splitDocumentName, setSplitDocumentName] = useState("");
+  const [targetDocumentId, setTargetDocumentId] = useState("");
 
   // Correction reason modal
   const [correctionModal, setCorrectionModal] = useState<{
@@ -455,7 +457,11 @@ const HITLReviewDetail: React.FC = () => {
   const handleApproveReview = async () => {
     const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
 
-    if (!confirm("Approve this quote? The customer will be notified and can proceed to payment.")) {
+    if (
+      !confirm(
+        "Approve this quote? The customer will be notified and can proceed to payment.",
+      )
+    ) {
       return;
     }
 
@@ -486,7 +492,6 @@ const HITLReviewDetail: React.FC = () => {
 
       alert("✅ Quote approved! Customer will be notified via email.");
       navigate("/admin/hitl");
-
     } catch (error) {
       console.error("Approve error:", error);
       alert("Error approving review: " + (error as Error).message);
@@ -534,7 +539,6 @@ const HITLReviewDetail: React.FC = () => {
       alert("📧 Better scan requested. Customer will be notified via email.");
       setShowRejectModal(false);
       navigate("/admin/hitl");
-
     } catch (error) {
       console.error("Reject error:", error);
       alert("Error rejecting review: " + (error as Error).message);
@@ -546,7 +550,9 @@ const HITLReviewDetail: React.FC = () => {
   const handleEscalateReview = async () => {
     const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
 
-    const escalateReason = prompt("Please provide a reason for escalating this review:");
+    const escalateReason = prompt(
+      "Please provide a reason for escalating this review:",
+    );
 
     if (!escalateReason || !escalateReason.trim()) {
       return;
@@ -559,27 +565,23 @@ const HITLReviewDetail: React.FC = () => {
         `hitl_reviews?id=eq.${reviewId}`,
       );
 
-      await fetch(
-        `${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`,
-        {
-          method: "PATCH",
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            "Content-Type": "application/json",
-            Prefer: "return=minimal",
-          },
-          body: JSON.stringify({
-            status: "escalated",
-            resolution_notes: escalateReason.trim(),
-            updated_at: new Date().toISOString(),
-          }),
+      await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
         },
-      );
+        body: JSON.stringify({
+          status: "escalated",
+          resolution_notes: escalateReason.trim(),
+          updated_at: new Date().toISOString(),
+        }),
+      });
 
       alert("⚠️ Review escalated to admin.");
       navigate("/admin/hitl");
-
     } catch (error) {
       console.error("Escalate error:", error);
       alert("Error escalating review: " + (error as Error).message);
@@ -801,7 +803,9 @@ const HITLReviewDetail: React.FC = () => {
 
     for (const [fileId, pages] of Object.entries(pageData)) {
       if (pages.some((p) => p.id === firstPageId)) {
-        const analysis = analysisResults.find((a) => a.quote_file_id === fileId);
+        const analysis = analysisResults.find(
+          (a) => a.quote_file_id === fileId,
+        );
         sourceAnalysisId = analysis?.id || null;
         break;
       }
@@ -838,7 +842,9 @@ const HITLReviewDetail: React.FC = () => {
       const result = await response.json();
 
       if (result.success) {
-        alert(`✅ Created new document: ${splitDocumentName || "Split Document"}`);
+        alert(
+          `✅ Created new document: ${splitDocumentName || "Split Document"}`,
+        );
         clearSelection();
         setShowSplitModal(false);
         setSplitDocumentName("");
@@ -1502,7 +1508,9 @@ const HITLReviewDetail: React.FC = () => {
                                       <input
                                         type="checkbox"
                                         checked={selectedPages.has(page.id)}
-                                        onChange={() => togglePageSelection(page.id)}
+                                        onChange={() =>
+                                          togglePageSelection(page.id)
+                                        }
                                         className="w-4 h-4 text-blue-600 rounded cursor-pointer"
                                       />
                                     )}
@@ -1923,7 +1931,8 @@ const HITLReviewDetail: React.FC = () => {
             <h3 className="text-lg font-semibold mb-4">Request Better Scan</h3>
 
             <p className="text-gray-600 mb-4">
-              The customer will be notified that a clearer scan is needed. Please explain the issue:
+              The customer will be notified that a clearer scan is needed.
+              Please explain the issue:
             </p>
 
             <div className="mb-4">
@@ -1948,7 +1957,9 @@ const HITLReviewDetail: React.FC = () => {
                 <option value="Document appears to be incomplete">
                   Document appears to be incomplete
                 </option>
-                <option value="Wrong document uploaded">Wrong document uploaded</option>
+                <option value="Wrong document uploaded">
+                  Wrong document uploaded
+                </option>
                 <option value="Other (see notes)">Other (see notes)</option>
               </select>
 
@@ -1987,7 +1998,9 @@ const HITLReviewDetail: React.FC = () => {
       {showSplitModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-            <h3 className="text-lg font-semibold mb-4">Split Pages to New Document</h3>
+            <h3 className="text-lg font-semibold mb-4">
+              Split Pages to New Document
+            </h3>
 
             <p className="text-gray-600 mb-4">
               Create a new document from {selectedPages.size} selected page(s).
@@ -2031,10 +2044,13 @@ const HITLReviewDetail: React.FC = () => {
       {showCombineModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-            <h3 className="text-lg font-semibold mb-4">Combine Pages Into Document</h3>
+            <h3 className="text-lg font-semibold mb-4">
+              Combine Pages Into Document
+            </h3>
 
             <p className="text-gray-600 mb-4">
-              Move {selectedPages.size} selected page(s) into an existing document.
+              Move {selectedPages.size} selected page(s) into an existing
+              document.
             </p>
 
             <div className="mb-4">
