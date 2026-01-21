@@ -525,6 +525,73 @@ const HITLReviewDetail: React.FC = () => {
   // SAVE CORRECTIONS
   // ============================================
 
+  // Handle field edit - shows modal before saving
+  const handleFieldEdit = (
+    field: string,
+    aiValue: string | number,
+    correctedValue: string | number,
+    fileId?: string,
+    analysisId?: string,
+    pageId?: string
+  ) => {
+    // Only show modal if value actually changed
+    if (String(aiValue) === String(correctedValue)) return;
+
+    setCorrectionModal({
+      isOpen: true,
+      field,
+      aiValue,
+      correctedValue,
+      fileId,
+      analysisId,
+      pageId,
+    });
+  };
+
+  // Save individual correction with reason
+  const saveCorrection = async (reason: string) => {
+    if (!correctionModal || !staffSession?.staffId) return;
+
+    setIsSaving(true);
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            reviewId,
+            staffId: staffSession.staffId,
+            field: correctionModal.field,
+            originalValue: String(correctionModal.aiValue),
+            correctedValue: String(correctionModal.correctedValue),
+            fileId: correctionModal.fileId,
+            analysisId: correctionModal.analysisId,
+            pageId: correctionModal.pageId,
+            reason: reason, // ← NOW INCLUDED
+          })
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to save correction');
+
+      // Close modal and refresh data
+      setCorrectionModal(null);
+      alert('Correction saved successfully!');
+      await fetchReviewData();
+
+    } catch (error) {
+      console.error('Error saving correction:', error);
+      alert('Failed to save correction: ' + error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const saveAllCorrections = async () => {
     if (!staffSession?.staffId) {
       alert("Session expired. Please login again.");
