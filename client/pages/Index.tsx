@@ -183,6 +183,76 @@ export default function Index() {
             }
           />
         )}
+
+      {/* Save for Later Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            {!saveSent ? (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-bold text-cethos-navy">
+                    Save for Later
+                  </h3>
+                  <button
+                    onClick={() => setShowSaveModal(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <p className="text-cethos-slate mb-4">
+                  We'll email you a link to return to your quote anytime.
+                </p>
+
+                <form onSubmit={handleSendSaveLink} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-cethos-navy mb-2">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={saveEmail}
+                      onChange={(e) => setSaveEmail(e.target.value)}
+                      placeholder="your@email.com"
+                      required
+                      className="w-full px-4 py-3 border border-cethos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent"
+                    />
+                  </div>
+
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowSaveModal(false)}
+                      className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSending}
+                      className="px-5 py-2.5 bg-cethos-blue text-white rounded-lg hover:bg-blue-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSending ? "Sending..." : "Send Link"}
+                    </button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <div className="text-green-500 text-6xl mb-4">✓</div>
+                <h3 className="text-xl font-bold text-cethos-navy mb-2">
+                  Link Sent!
+                </h3>
+                <p className="text-cethos-slate">
+                  Check your email for a link to return to your quote.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
