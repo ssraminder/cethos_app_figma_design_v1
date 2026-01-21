@@ -27,7 +27,9 @@ export default function IntendedUsesSettings() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [intendedUses, setIntendedUses] = useState<IntendedUse[]>([]);
-  const [certificationTypes, setCertificationTypes] = useState<CertificationType[]>([]);
+  const [certificationTypes, setCertificationTypes] = useState<
+    CertificationType[]
+  >([]);
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<IntendedUse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,10 +52,12 @@ export default function IntendedUsesSettings() {
       // Fetch intended uses with certification join
       const { data: usesData, error: usesError } = await supabase
         .from("intended_uses")
-        .select(`
+        .select(
+          `
           *,
           certification:certification_types(id, name, price)
-        `)
+        `,
+        )
         .order("sort_order");
 
       if (usesError) throw usesError;
@@ -116,7 +120,8 @@ export default function IntendedUsesSettings() {
             code: formData.code,
             name: formData.name,
             description: formData.description,
-            default_certification_type_id: formData.default_certification_type_id || null,
+            default_certification_type_id:
+              formData.default_certification_type_id || null,
             is_active: formData.is_active,
           })
           .eq("id", editingItem.id);
@@ -140,7 +145,8 @@ export default function IntendedUsesSettings() {
             code: formData.code,
             name: formData.name,
             description: formData.description,
-            default_certification_type_id: formData.default_certification_type_id || null,
+            default_certification_type_id:
+              formData.default_certification_type_id || null,
             is_active: formData.is_active ?? true,
             sort_order: nextSortOrder,
           });
@@ -159,9 +165,12 @@ export default function IntendedUsesSettings() {
     }
   };
 
-  const formatCertification = (certification: CertificationType | undefined) => {
+  const formatCertification = (
+    certification: CertificationType | undefined,
+  ) => {
     if (!certification) return "None";
-    const price = certification.price === 0 ? "FREE" : `$${certification.price.toFixed(2)}`;
+    const price =
+      certification.price === 0 ? "FREE" : `$${certification.price.toFixed(2)}`;
     return `${certification.name} (${price})`;
   };
 
@@ -263,13 +272,15 @@ export default function IntendedUsesSettings() {
         <SettingsModal
           title={editingItem ? "Edit Intended Use" : "Add Intended Use"}
           fields={modalFields}
-          initialData={editingItem || {
-            code: "",
-            name: "",
-            description: "",
-            default_certification_type_id: "",
-            is_active: true,
-          }}
+          initialData={
+            editingItem || {
+              code: "",
+              name: "",
+              description: "",
+              default_certification_type_id: "",
+              is_active: true,
+            }
+          }
           onSave={handleSave}
           onClose={() => {
             setShowModal(false);

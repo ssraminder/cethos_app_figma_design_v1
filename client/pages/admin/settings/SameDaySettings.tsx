@@ -59,7 +59,9 @@ export default function SameDaySettings() {
   // Eligibility rules
   const [rules, setRules] = useState<SameDayEligibility[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [editingRule, setEditingRule] = useState<SameDayEligibility | null>(null);
+  const [editingRule, setEditingRule] = useState<SameDayEligibility | null>(
+    null,
+  );
 
   // Lookup data
   const [sourceLanguages, setSourceLanguages] = useState<Language[]>([]);
@@ -165,9 +167,18 @@ export default function SameDaySettings() {
     setSaving(true);
     try {
       const updates = [
-        { key: "same_day_multiplier", value: String(settings.same_day_multiplier) },
-        { key: "same_day_cutoff_hour", value: String(settings.same_day_cutoff_hour) },
-        { key: "same_day_cutoff_minute", value: String(settings.same_day_cutoff_minute) },
+        {
+          key: "same_day_multiplier",
+          value: String(settings.same_day_multiplier),
+        },
+        {
+          key: "same_day_cutoff_hour",
+          value: String(settings.same_day_cutoff_hour),
+        },
+        {
+          key: "same_day_cutoff_minute",
+          value: String(settings.same_day_cutoff_minute),
+        },
       ];
 
       for (const update of updates) {
@@ -203,7 +214,8 @@ export default function SameDaySettings() {
   };
 
   const handleDeleteRule = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this eligibility rule?")) return;
+    if (!confirm("Are you sure you want to delete this eligibility rule?"))
+      return;
 
     try {
       const { error: deleteError } = await supabase
@@ -282,7 +294,9 @@ export default function SameDaySettings() {
   };
 
   const getLanguageName = (code: string) => {
-    const lang = [...sourceLanguages, ...targetLanguages].find((l) => l.code === code);
+    const lang = [...sourceLanguages, ...targetLanguages].find(
+      (l) => l.code === code,
+    );
     return lang?.name || code;
   };
 
@@ -297,9 +311,12 @@ export default function SameDaySettings() {
   };
 
   const filteredRules = rules.filter((rule) => {
-    if (filterSource !== "all" && rule.source_language !== filterSource) return false;
-    if (filterTarget !== "all" && rule.target_language !== filterTarget) return false;
-    if (filterDocType !== "all" && rule.document_type !== filterDocType) return false;
+    if (filterSource !== "all" && rule.source_language !== filterSource)
+      return false;
+    if (filterTarget !== "all" && rule.target_language !== filterTarget)
+      return false;
+    if (filterDocType !== "all" && rule.document_type !== filterDocType)
+      return false;
     return true;
   });
 
@@ -307,12 +324,14 @@ export default function SameDaySettings() {
     {
       key: "source_language",
       label: "Source",
-      render: (rule: SameDayEligibility) => getLanguageName(rule.source_language),
+      render: (rule: SameDayEligibility) =>
+        getLanguageName(rule.source_language),
     },
     {
       key: "target_language",
       label: "Target",
-      render: (rule: SameDayEligibility) => getLanguageName(rule.target_language),
+      render: (rule: SameDayEligibility) =>
+        getLanguageName(rule.target_language),
     },
     {
       key: "document_type",
@@ -322,7 +341,8 @@ export default function SameDaySettings() {
     {
       key: "intended_use",
       label: "Intended Use",
-      render: (rule: SameDayEligibility) => getIntendedUseName(rule.intended_use),
+      render: (rule: SameDayEligibility) =>
+        getIntendedUseName(rule.intended_use),
     },
     {
       key: "is_active",
@@ -416,7 +436,10 @@ export default function SameDaySettings() {
               label="Same-Day Fee Multiplier"
               value={settings.same_day_multiplier}
               onChange={(val) =>
-                setSettings({ ...settings, same_day_multiplier: parseFloat(val) || 0 })
+                setSettings({
+                  ...settings,
+                  same_day_multiplier: parseFloat(val) || 0,
+                })
               }
               type="number"
               suffix="x"
@@ -465,8 +488,10 @@ export default function SameDaySettings() {
                 </select>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Order by {settings.same_day_cutoff_hour.toString().padStart(2, "0")}:
-                {settings.same_day_cutoff_minute.toString().padStart(2, "0")} MST
+                Order by{" "}
+                {settings.same_day_cutoff_hour.toString().padStart(2, "0")}:
+                {settings.same_day_cutoff_minute.toString().padStart(2, "0")}{" "}
+                MST
               </p>
             </div>
           </div>

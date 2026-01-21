@@ -118,10 +118,7 @@ const App = () => (
                   path="/admin/settings/ai-prompts"
                   element={<AIPromptsSettings />}
                 />
-                <Route
-                  path="/admin/settings/ocr"
-                  element={<OCRSettings />}
-                />
+                <Route path="/admin/settings/ocr" element={<OCRSettings />} />
                 <Route
                   path="/admin/settings/hitl"
                   element={<HITLThresholdsSettings />}

@@ -78,7 +78,8 @@ export default function PickupLocationsSettings() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this pickup location?")) return;
+    if (!confirm("Are you sure you want to delete this pickup location?"))
+      return;
 
     try {
       const { error: deleteError } = await supabase
@@ -270,7 +271,8 @@ export default function PickupLocationsSettings() {
         {locations.length === 0 && !loading ? (
           <SettingsCard title="" description="">
             <div className="text-center py-8 text-gray-500">
-              No pickup locations configured. Click "Add Location" to create one.
+              No pickup locations configured. Click "Add Location" to create
+              one.
             </div>
           </SettingsCard>
         ) : (
@@ -287,9 +289,12 @@ export default function PickupLocationsSettings() {
 
                       <div className="text-sm text-gray-600 space-y-1 mb-3">
                         <p>{location.address_line1}</p>
-                        {location.address_line2 && <p>{location.address_line2}</p>}
+                        {location.address_line2 && (
+                          <p>{location.address_line2}</p>
+                        )}
                         <p>
-                          {location.city}, {location.state} {location.postal_code}
+                          {location.city}, {location.state}{" "}
+                          {location.postal_code}
                         </p>
                         <p>{location.country}</p>
                       </div>
@@ -320,7 +325,8 @@ export default function PickupLocationsSettings() {
                               : "text-orange-600"
                           }`}
                         >
-                          Status: {location.is_active ? "✅ Active" : "⚠️ Inactive"}
+                          Status:{" "}
+                          {location.is_active ? "✅ Active" : "⚠️ Inactive"}
                         </span>
                       </div>
                     </div>

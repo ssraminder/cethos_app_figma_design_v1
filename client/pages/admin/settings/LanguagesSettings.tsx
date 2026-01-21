@@ -59,10 +59,12 @@ export default function LanguagesSettings() {
       // Fetch languages with tier join
       const { data: langsData, error: langsError } = await supabase
         .from("languages")
-        .select(`
+        .select(
+          `
           *,
           tier:language_tiers(id, name, multiplier)
-        `)
+        `,
+        )
         .order("sort_order");
 
       if (langsError) throw langsError;
@@ -165,18 +167,16 @@ export default function LanguagesSettings() {
 
         const nextSortOrder = (maxData?.sort_order || 0) + 1;
 
-        const { error: insertError } = await supabase
-          .from("languages")
-          .insert({
-            code: formData.code,
-            name: formData.name,
-            native_name: formData.native_name || null,
-            tier_id: formData.tier_id || null,
-            is_source_available: formData.is_source_available ?? false,
-            is_target_available: formData.is_target_available ?? false,
-            is_active: formData.is_active ?? true,
-            sort_order: nextSortOrder,
-          });
+        const { error: insertError } = await supabase.from("languages").insert({
+          code: formData.code,
+          name: formData.name,
+          native_name: formData.native_name || null,
+          tier_id: formData.tier_id || null,
+          is_source_available: formData.is_source_available ?? false,
+          is_target_available: formData.is_target_available ?? false,
+          is_active: formData.is_active ?? true,
+          sort_order: nextSortOrder,
+        });
 
         if (insertError) throw insertError;
         toast.success("Language added successfully");

@@ -263,9 +263,7 @@ export default function LanguageTiersSettings() {
 
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-700">
           <p className="font-medium mb-1">Pricing Formula</p>
-          <p>
-            ℹ️ Pricing = Base Rate × Language Multiplier × Complexity
-          </p>
+          <p>ℹ️ Pricing = Base Rate × Language Multiplier × Complexity</p>
           <p className="text-xs mt-2 text-gray-600">
             Example: $65 × 1.20 (Tier 2) × 1.15 (Medium) = $89.70/page
           </p>
