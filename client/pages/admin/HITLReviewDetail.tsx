@@ -122,7 +122,12 @@ const HITLReviewDetail: React.FC = () => {
     const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
     setStaffSession(session);
 
+    console.log("🔐 Session check:", session);
+    console.log("🔐 Has staffId:", !!session.staffId);
+
     if (!session.staffId) {
+      console.warn("⚠️ No staff session found - redirecting to login");
+      console.warn("⚠️ If you need to test, temporarily add a session to sessionStorage");
       navigate("/admin/login");
       return;
     }
