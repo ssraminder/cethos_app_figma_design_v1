@@ -1,5 +1,5 @@
-import React, { createContext, useContext, ReactNode } from 'react';
-import { useAdminAuth, StaffSession } from '../hooks/useAdminAuth';
+import React, { createContext, useContext, ReactNode } from "react";
+import { useAdminAuth, StaffSession } from "../hooks/useAdminAuth";
 
 interface AdminAuthContextType {
   session: StaffSession | null;
@@ -12,7 +12,9 @@ interface AdminAuthContextType {
   isSuperAdmin: boolean;
 }
 
-const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
+const AdminAuthContext = createContext<AdminAuthContextType | undefined>(
+  undefined,
+);
 
 interface AdminAuthProviderProps {
   children: ReactNode;
@@ -28,8 +30,9 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
     signOut,
     refreshSession,
     isAuthenticated: !!session,
-    isAdmin: session?.staffRole === 'admin' || session?.staffRole === 'super_admin',
-    isSuperAdmin: session?.staffRole === 'super_admin',
+    isAdmin:
+      session?.staffRole === "admin" || session?.staffRole === "super_admin",
+    isSuperAdmin: session?.staffRole === "super_admin",
   };
 
   return (
@@ -42,10 +45,12 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
 export function useAdminAuthContext(): AdminAuthContextType {
   const context = useContext(AdminAuthContext);
   if (context === undefined) {
-    throw new Error('useAdminAuthContext must be used within an AdminAuthProvider');
+    throw new Error(
+      "useAdminAuthContext must be used within an AdminAuthProvider",
+    );
   }
   return context;
 }
 
 // Export useAdminAuth as well for backward compatibility
-export { useAdminAuth } from '../hooks/useAdminAuth';
+export { useAdminAuth } from "../hooks/useAdminAuth";
