@@ -866,6 +866,30 @@ const HITLReviewDetail: React.FC = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
+        {/* No Data Warning */}
+        {!reviewData && !loading && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+            <p className="text-yellow-800 font-medium">No review data found</p>
+            <p className="text-yellow-600 text-sm mt-2">Review ID: {reviewId}</p>
+            <p className="text-xs text-gray-500 mt-2">Check browser console for details</p>
+          </div>
+        )}
+
+        {reviewData && !reviewData.quotes && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 text-center">
+            <p className="text-orange-800 font-medium">No quote found for this review</p>
+            <p className="text-orange-600 text-sm mt-2">Quote ID: {reviewData.quote_id}</p>
+          </div>
+        )}
+
+        {reviewData && reviewData.quotes && analysisResults.length === 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
+            <p className="text-blue-800 font-medium">No documents found for this quote</p>
+            <p className="text-blue-600 text-sm mt-2">Quote: {reviewData.quotes.quote_number}</p>
+            <p className="text-xs text-gray-500 mt-2">The AI analysis may not have completed yet</p>
+          </div>
+        )}
+
         {/* Document List */}
         <div className="space-y-4">
           {analysisResults.map((analysis, index) => {
