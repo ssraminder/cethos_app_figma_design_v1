@@ -47,6 +47,7 @@ export default function Step4Review() {
   const [hitlNote, setHitlNote] = useState("");
   const [isSubmittingHitl, setIsSubmittingHitl] = useState(false);
   const [hitlSubmitted, setHitlSubmitted] = useState(false);
+  const [hitlRequestSubmitted, setHitlRequestSubmitted] = useState(false);
 
   const handleRequestReview = async () => {
     setIsSubmittingHitl(true);
@@ -72,7 +73,8 @@ export default function Step4Review() {
       const result = await response.json();
 
       if (response.ok && result.success) {
-        setHitlSubmitted(true);
+        setHitlSubmitted(true); // Shows modal success
+        setHitlRequestSubmitted(true); // Transforms the page
       } else {
         throw new Error(result.error || "Failed to submit request");
       }
