@@ -150,7 +150,9 @@ const HITLReviewDetail: React.FC = () => {
 
     if (!session.staffId) {
       console.warn("⚠️ No staff session found - redirecting to login");
-      console.warn("⚠️ If you need to test, temporarily add a session to sessionStorage");
+      console.warn(
+        "⚠️ If you need to test, temporarily add a session to sessionStorage",
+      );
       navigate("/admin/login");
       return;
     }
@@ -178,7 +180,9 @@ const HITLReviewDetail: React.FC = () => {
 
     try {
       // Fetch review details using raw fetch (bypasses RLS like Queue does)
-      const reviews = await fetchFromSupabase(`hitl_reviews?id=eq.${reviewId}&select=*`);
+      const reviews = await fetchFromSupabase(
+        `hitl_reviews?id=eq.${reviewId}&select=*`,
+      );
       const review = reviews[0];
 
       console.log("📄 Review data:", review);
@@ -195,7 +199,9 @@ const HITLReviewDetail: React.FC = () => {
       }
 
       // Fetch the quote separately
-      const quotes = await fetchFromSupabase(`quotes?id=eq.${review.quote_id}&select=*`);
+      const quotes = await fetchFromSupabase(
+        `quotes?id=eq.${review.quote_id}&select=*`,
+      );
       const quote = quotes[0];
 
       console.log("💰 Quote data:", quote);
@@ -209,7 +215,9 @@ const HITLReviewDetail: React.FC = () => {
       setReviewData(reviewWithQuote);
 
       // Check if claimed by current user
-      const session = JSON.parse(sessionStorage.getItem("staffSession") || "{}");
+      const session = JSON.parse(
+        sessionStorage.getItem("staffSession") || "{}",
+      );
       setClaimedByMe(review?.assigned_to === session.staffId);
 
       if (quote?.id) {
@@ -217,7 +225,7 @@ const HITLReviewDetail: React.FC = () => {
 
         // Fetch analysis results with quote_file relationship (using nested select)
         const analysis = await fetchFromSupabase(
-          `ai_analysis_results?quote_id=eq.${quote.id}&select=*,quote_file:quote_files(*)`
+          `ai_analysis_results?quote_id=eq.${quote.id}&select=*,quote_file:quote_files(*)`,
         );
 
         console.log("📊 Analysis results:", analysis);
@@ -229,7 +237,7 @@ const HITLReviewDetail: React.FC = () => {
           // Fetch pages for each file
           const pagePromises = analysis.map(async (a: any) => {
             const pages = await fetchFromSupabase(
-              `quote_pages?quote_file_id=eq.${a.quote_file_id}&order=page_number`
+              `quote_pages?quote_file_id=eq.${a.quote_file_id}&order=page_number`,
             );
             return { fileId: a.quote_file_id, pages: pages || [] };
           });
@@ -244,7 +252,7 @@ const HITLReviewDetail: React.FC = () => {
           // Fetch additional certifications
           const certPromises = analysis.map(async (a: any) => {
             const certs = await fetchFromSupabase(
-              `document_certifications?analysis_id=eq.${a.id}&is_primary=eq.false&select=*,certification_types(name,code)`
+              `document_certifications?analysis_id=eq.${a.id}&is_primary=eq.false&select=*,certification_types(name,code)`,
             );
 
             return {
@@ -274,7 +282,7 @@ const HITLReviewDetail: React.FC = () => {
   const fetchCertificationTypes = async () => {
     try {
       const data = await fetchFromSupabase(
-        "certification_types?is_active=eq.true&order=sort_order"
+        "certification_types?is_active=eq.true&order=sort_order",
       );
       setCertificationTypes(data || []);
     } catch (error) {
@@ -286,7 +294,7 @@ const HITLReviewDetail: React.FC = () => {
   const fetchLanguages = async () => {
     try {
       const data = await fetchFromSupabase(
-        "languages?is_active=eq.true&order=sort_order"
+        "languages?is_active=eq.true&order=sort_order",
       );
       setLanguages(data || []);
     } catch (error) {
@@ -298,7 +306,7 @@ const HITLReviewDetail: React.FC = () => {
   const fetchSettings = async () => {
     try {
       const settings = await fetchFromSupabase(
-        "app_settings?setting_key=in.(base_rate,words_per_page)"
+        "app_settings?setting_key=in.(base_rate,words_per_page)",
       );
 
       (settings || []).forEach((s: any) => {
@@ -794,23 +802,37 @@ const HITLReviewDetail: React.FC = () => {
         {!reviewData && !loading && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
             <p className="text-yellow-800 font-medium">No review data found</p>
-            <p className="text-yellow-600 text-sm mt-2">Review ID: {reviewId}</p>
-            <p className="text-xs text-gray-500 mt-2">Check browser console for details</p>
+            <p className="text-yellow-600 text-sm mt-2">
+              Review ID: {reviewId}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              Check browser console for details
+            </p>
           </div>
         )}
 
         {reviewData && !reviewData.quotes && (
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 text-center">
-            <p className="text-orange-800 font-medium">No quote found for this review</p>
-            <p className="text-orange-600 text-sm mt-2">Quote ID: {reviewData.quote_id}</p>
+            <p className="text-orange-800 font-medium">
+              No quote found for this review
+            </p>
+            <p className="text-orange-600 text-sm mt-2">
+              Quote ID: {reviewData.quote_id}
+            </p>
           </div>
         )}
 
         {reviewData && reviewData.quotes && analysisResults.length === 0 && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-            <p className="text-blue-800 font-medium">No documents found for this quote</p>
-            <p className="text-blue-600 text-sm mt-2">Quote: {reviewData.quotes.quote_number}</p>
-            <p className="text-xs text-gray-500 mt-2">The AI analysis may not have completed yet</p>
+            <p className="text-blue-800 font-medium">
+              No documents found for this quote
+            </p>
+            <p className="text-blue-600 text-sm mt-2">
+              Quote: {reviewData.quotes.quote_number}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              The AI analysis may not have completed yet
+            </p>
           </div>
         )}
 
