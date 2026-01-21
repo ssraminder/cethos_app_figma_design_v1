@@ -298,9 +298,14 @@ const HITLReviewDetail: React.FC = () => {
       // Check if claimed by current user
       const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
       const isClaimed = assignedTo === session.staffId;
+      const isClaimedByOther = assignedTo && assignedTo !== session.staffId;
+
       setClaimedByMe(isClaimed);
+      setClaimedByOther(!!isClaimedByOther);
+      setAssignedStaffName(null); // Will be set if we fetch from base table with staff join
+
       console.log(
-        `🔐 Claimed by me: ${isClaimed} (assigned_to: ${assignedTo}, staffId: ${session.staffId})`,
+        `🔐 Claimed by me: ${isClaimed}, by other: ${!!isClaimedByOther} (assigned_to: ${assignedTo}, staffId: ${session.staffId})`,
       );
 
       if (quote?.id) {
