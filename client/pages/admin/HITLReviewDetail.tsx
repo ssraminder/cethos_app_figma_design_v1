@@ -248,26 +248,17 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   const fetchReviewData = async () => {
-    if (!supabase) {
-      console.error("❌ Supabase client not initialized");
-      return;
-    }
-
     console.log("🔍 Fetching review data for ID:", reviewId);
 
     try {
-      // Fetch review details using Supabase client
-      const { data: review, error: reviewError } = await supabase
-        .from("hitl_reviews")
-        .select("*")
-        .eq("id", reviewId)
-        .single();
+      // Fetch review details using raw fetch (bypasses RLS like Queue does)
+      const reviews = await fetchFromSupabase(`hitl_reviews?id=eq.${reviewId}&select=*`);
+      const review = reviews[0];
 
       console.log("📄 Review data:", review);
-      console.log("📄 Review error:", reviewError);
 
-      if (reviewError || !review) {
-        console.error("❌ No review found for ID:", reviewId, reviewError);
+      if (!review) {
+        console.error("❌ No review found for ID:", reviewId);
         return;
       }
 
@@ -278,17 +269,13 @@ const HITLReviewDetail: React.FC = () => {
       }
 
       // Fetch the quote separately
-      const { data: quote, error: quoteError } = await supabase
-        .from("quotes")
-        .select("*")
-        .eq("id", review.quote_id)
-        .single();
+      const quotes = await fetchFromSupabase(`quotes?id=eq.${review.quote_id}&select=*`);
+      const quote = quotes[0];
 
       console.log("💰 Quote data:", quote);
-      console.log("💰 Quote error:", quoteError);
 
-      if (quoteError) {
-        console.error("❌ Error fetching quote:", quoteError);
+      if (!quote) {
+        console.error("❌ No quote found for ID:", review.quote_id);
       }
 
       // Merge quote into review data
@@ -302,31 +289,22 @@ const HITLReviewDetail: React.FC = () => {
       if (quote?.id) {
         console.log("🔍 Fetching analysis results for quote:", quote.id);
 
-        // Fetch analysis results with quote_file relationship
-        const { data: analysis, error: analysisError } = await supabase
-          .from("ai_analysis_results")
-          .select("*, quote_file:quote_files(*)")
-          .eq("quote_id", quote.id);
+        // Fetch analysis results with quote_file relationship (using nested select)
+        const analysis = await fetchFromSupabase(
+          `ai_analysis_results?quote_id=eq.${quote.id}&select=*,quote_file:quote_files(*)`
+        );
 
         console.log("📊 Analysis results:", analysis);
         console.log("📊 Analysis count:", analysis?.length || 0);
-        console.log("📊 Analysis error:", analysisError);
-
-        if (analysisError) {
-          console.error("❌ Error fetching analysis:", analysisError);
-        }
 
         setAnalysisResults(analysis || []);
 
         if (analysis && analysis.length > 0) {
           // Fetch pages for each file
           const pagePromises = analysis.map(async (a: any) => {
-            const { data: pages } = await supabase
-              .from("quote_pages")
-              .select("*")
-              .eq("quote_file_id", a.quote_file_id)
-              .order("page_number");
-
+            const pages = await fetchFromSupabase(
+              `quote_pages?quote_file_id=eq.${a.quote_file_id}&order=page_number`
+            );
             return { fileId: a.quote_file_id, pages: pages || [] };
           });
 
@@ -339,11 +317,9 @@ const HITLReviewDetail: React.FC = () => {
 
           // Fetch additional certifications
           const certPromises = analysis.map(async (a: any) => {
-            const { data: certs } = await supabase
-              .from("document_certifications")
-              .select("*, certification_types(name, code)")
-              .eq("analysis_id", a.id)
-              .eq("is_primary", false);
+            const certs = await fetchFromSupabase(
+              `document_certifications?analysis_id=eq.${a.id}&is_primary=eq.false&select=*,certification_types(name,code)`
+            );
 
             return {
               fileId: a.quote_file_id,
