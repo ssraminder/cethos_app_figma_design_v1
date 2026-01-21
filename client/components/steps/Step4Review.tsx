@@ -44,7 +44,7 @@ export default function Step4Review() {
 
   // HITL Modal State
   const [showHitlModal, setShowHitlModal] = useState(false);
-  const [hitlNote, setHitlNote] = useState("");
+  const [hitlNote, setHitlNote] = useState('');
   const [isSubmittingHitl, setIsSubmittingHitl] = useState(false);
   const [hitlSubmitted, setHitlSubmitted] = useState(false);
 
@@ -55,18 +55,18 @@ export default function Step4Review() {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-hitl-review`,
         {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
           },
           body: JSON.stringify({
             quoteId: state.quoteId,
-            reasons: ["customer_requested"],
+            triggerReasons: ['customer_requested'], // ✅ CORRECT
             isCustomerRequested: true,
-            customerNote: hitlNote || null,
-          }),
-        },
+            customerNote: hitlNote || null
+          })
+        }
       );
 
       const result = await response.json();
@@ -74,11 +74,11 @@ export default function Step4Review() {
       if (response.ok && result.success) {
         setHitlSubmitted(true);
       } else {
-        throw new Error(result.error || "Failed to submit request");
+        throw new Error(result.error || 'Failed to submit request');
       }
     } catch (error) {
-      console.error("Error requesting HITL:", error);
-      alert("Error submitting request. Please try again.");
+      console.error('Error requesting HITL:', error);
+      alert('Error submitting request. Please try again.');
     } finally {
       setIsSubmittingHitl(false);
     }
@@ -240,9 +240,7 @@ export default function Step4Review() {
             {!hitlSubmitted ? (
               <>
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">
-                    Request Human Review
-                  </h3>
+                  <h3 className="text-lg font-semibold">Request Human Review</h3>
                   <button
                     onClick={() => setShowHitlModal(false)}
                     className="text-gray-400 hover:text-gray-600 text-xl"
@@ -252,8 +250,7 @@ export default function Step4Review() {
                 </div>
 
                 <p className="text-gray-600 mb-4">
-                  Our team will review your documents and email you an updated
-                  quote within 4 working hours.
+                  Our team will review your documents and email you an updated quote within 4 working hours.
                 </p>
 
                 <div className="mb-4">
@@ -280,7 +277,7 @@ export default function Step4Review() {
                     disabled={isSubmittingHitl}
                     className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:bg-gray-400"
                   >
-                    {isSubmittingHitl ? "Submitting..." : "Submit Request"}
+                    {isSubmittingHitl ? 'Submitting...' : 'Submit Request'}
                   </button>
                 </div>
               </>
@@ -289,15 +286,14 @@ export default function Step4Review() {
                 <div className="text-green-500 text-5xl mb-4">✓</div>
                 <h3 className="text-lg font-semibold mb-2">Review Requested</h3>
                 <p className="text-gray-600 mb-4">
-                  Your quote is being reviewed by our team.
-                  <br />
+                  Your quote is being reviewed by our team.<br/>
                   We'll email you within 4 working hours.
                 </p>
                 <button
                   onClick={() => {
                     setShowHitlModal(false);
                     setHitlSubmitted(false);
-                    setHitlNote("");
+                    setHitlNote('');
                   }}
                   className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600"
                 >
