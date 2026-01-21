@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuote } from "@/context/QuoteContext";
 import { useDocumentProcessing } from "@/hooks/useDocumentProcessing";
@@ -11,6 +12,7 @@ import Step2Details from "@/components/steps/Step2Details";
 import Step3Contact from "@/components/steps/Step3Contact";
 import Step4Delivery from "@/components/quote/Step4Delivery";
 import Step5Review from "@/components/steps/Step5Review";
+import { X } from "lucide-react";
 
 export default function Index() {
   const navigate = useNavigate();
@@ -25,6 +27,12 @@ export default function Index() {
   } = useQuote();
 
   const { triggerProcessing } = useDocumentProcessing();
+
+  // Save for Later modal state
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveEmail, setSaveEmail] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [saveSent, setSaveSent] = useState(false);
 
   const handleContinue = async () => {
     const currentStep = state.currentStep;
