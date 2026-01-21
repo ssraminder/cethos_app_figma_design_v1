@@ -42,6 +42,8 @@ const App = () => (
                 {/* Customer routes */}
                 <Route path="/" element={<Index />} />
                 <Route path="/success" element={<Success />} />
+                <Route path="/quote/:quoteId/checkout" element={<Checkout />} />
+                <Route path="/order/success" element={<OrderSuccess />} />
 
                 {/* Admin routes */}
                 <Route path="/admin/login" element={<AdminLogin />} />
