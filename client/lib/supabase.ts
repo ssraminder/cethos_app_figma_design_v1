@@ -16,7 +16,10 @@ if (!hasCredentials) {
 // Log initialization (only once)
 console.log("=== SUPABASE CLIENT INITIALIZATION ===");
 console.log("VITE_SUPABASE_URL:", supabaseUrl);
-console.log("VITE_SUPABASE_ANON_KEY (first 20 chars):", supabaseAnonKey?.substring(0, 20) + "...");
+console.log(
+  "VITE_SUPABASE_ANON_KEY (first 20 chars):",
+  supabaseAnonKey?.substring(0, 20) + "...",
+);
 console.log("URL is valid:", Boolean(supabaseUrl?.startsWith("https://")));
 console.log("Key is valid:", Boolean(supabaseAnonKey?.startsWith("eyJ")));
 console.log("hasCredentials:", hasCredentials);
