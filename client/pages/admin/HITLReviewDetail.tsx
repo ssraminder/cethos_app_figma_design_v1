@@ -342,43 +342,38 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   const fetchCertificationTypes = async () => {
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/certification_types?is_active=eq.true&order=sort_order`,
-      {
-        headers: {
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-      },
-    );
-    setCertificationTypes(await response.json());
+    if (!supabase) return;
+
+    const { data } = await supabase
+      .from("certification_types")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order");
+
+    setCertificationTypes(data || []);
   };
 
   const fetchLanguages = async () => {
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/languages?is_active=eq.true&order=sort_order`,
-      {
-        headers: {
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-      },
-    );
-    setLanguages(await response.json());
+    if (!supabase) return;
+
+    const { data } = await supabase
+      .from("languages")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order");
+
+    setLanguages(data || []);
   };
 
   const fetchSettings = async () => {
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/app_settings?setting_key=in.(base_rate,words_per_page)`,
-      {
-        headers: {
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-      },
-    );
-    const settings = await response.json();
-    settings.forEach((s: any) => {
+    if (!supabase) return;
+
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("*")
+      .in("setting_key", ["base_rate", "words_per_page"]);
+
+    (settings || []).forEach((s: any) => {
       if (s.setting_key === "base_rate")
         setBaseRate(parseFloat(s.setting_value));
       if (s.setting_key === "words_per_page")
