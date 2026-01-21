@@ -143,137 +143,137 @@ const App = () => (
                 <Route
                   path="/admin/settings/pricing"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <PricingSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/complexity"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <ComplexitySettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/turnaround"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <TurnaroundSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/document-types"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <DocumentTypesSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/certifications"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <CertificationTypesSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/delivery"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <DeliveryOptionsSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/tax"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <TaxRatesSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/hours"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <BusinessHoursSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/holidays"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <HolidaysSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/ai-prompts"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <AIPromptsSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/ocr"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <OCRSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/hitl"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <HITLThresholdsSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/intended-uses"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <IntendedUsesSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/pickup-locations"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <PickupLocationsSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/same-day"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <SameDaySettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/language-tiers"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <LanguageTiersSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings/languages"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <LanguagesSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
 
