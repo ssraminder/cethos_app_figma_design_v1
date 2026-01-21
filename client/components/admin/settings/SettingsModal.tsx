@@ -116,8 +116,8 @@ export default function SettingsModal(props: SettingsModalProps) {
   };
 
   const handleSaveClick = () => {
-    if (!isFieldsBased && "onSave" in props && typeof props.onSave === "function") {
-      props.onSave();
+    if (!isFieldsBased) {
+      (props as SettingsModalChildrenProps).onSave();
     }
   };
 
