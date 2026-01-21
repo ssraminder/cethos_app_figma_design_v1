@@ -14,7 +14,8 @@ const steps: Step[] = [
   { number: 1, label: "Upload" },
   { number: 2, label: "Details" },
   { number: 3, label: "Contact" },
-  { number: 4, label: "Review" },
+  { number: 4, label: "Delivery" },
+  { number: 5, label: "Review" },
 ];
 
 export default function StepIndicator({ currentStep }: StepIndicatorProps) {
