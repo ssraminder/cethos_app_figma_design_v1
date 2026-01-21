@@ -81,63 +81,61 @@ const App = () => (
                   element={<ResetPassword />}
                 />
 
-                {/* Protected admin routes - wrapped with AdminAuthProvider */}
+                {/* Protected admin routes */}
                 <Route
                   path="/admin/hitl"
                   element={
-                    <AdminAuthProvider>
-                      <ProtectedAdminRoute>
-                        <HITLQueue />
-                      </ProtectedAdminRoute>
-                    </AdminAuthProvider>
+                    <AdminRoute>
+                      <HITLQueue />
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/hitl/:reviewId"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <HITLReviewDetail />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/settings"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <AdminSettings />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/analytics"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <Analytics />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/patterns"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <Patterns />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/learning"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <Learning />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
                   path="/admin/thresholds"
                   element={
-                    <ProtectedAdminRoute>
+                    <AdminRoute>
                       <Thresholds />
-                    </ProtectedAdminRoute>
+                    </AdminRoute>
                   }
                 />
 
