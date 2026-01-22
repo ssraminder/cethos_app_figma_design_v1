@@ -1,24 +1,24 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { createClient } from "@supabase/supabase-js";
-import { 
-  FileText, 
-  ShoppingCart, 
-  DollarSign, 
-  Clock, 
+import {
+  FileText,
+  ShoppingCart,
+  DollarSign,
+  Clock,
   AlertTriangle,
   TrendingUp,
   TrendingDown,
   Users,
   CheckCircle,
   ArrowRight,
-  RefreshCw
+  RefreshCw,
 } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
 );
 
 interface DashboardStats {
@@ -27,25 +27,25 @@ interface DashboardStats {
   quotesThisWeek: number;
   quotesThisMonth: number;
   quotesTrend: number; // percentage change from previous period
-  
+
   // Orders
   ordersToday: number;
   ordersThisWeek: number;
   ordersThisMonth: number;
   ordersTrend: number;
-  
+
   // Revenue
   revenueToday: number;
   revenueThisWeek: number;
   revenueThisMonth: number;
   revenueTrend: number;
-  
+
   // HITL
   hitlPending: number;
   hitlInReview: number;
   hitlBreached: number;
   avgReviewTime: number; // minutes
-  
+
   // AI
   aiAccuracy: number;
   documentsProcessed: number;
@@ -77,56 +77,88 @@ export default function AdminDashboard() {
 
       // Fetch quotes counts
       const [quotesToday, quotesWeek, quotesMonth] = await Promise.all([
-        supabase.from("quotes").select("id", { count: "exact", head: true })
-          .gte("created_at", todayStart).lte("created_at", todayEnd),
-        supabase.from("quotes").select("id", { count: "exact", head: true })
+        supabase
+          .from("quotes")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", todayStart)
+          .lte("created_at", todayEnd),
+        supabase
+          .from("quotes")
+          .select("id", { count: "exact", head: true })
           .gte("created_at", weekStart),
-        supabase.from("quotes").select("id", { count: "exact", head: true })
+        supabase
+          .from("quotes")
+          .select("id", { count: "exact", head: true })
           .gte("created_at", monthStart),
       ]);
 
       // Fetch orders counts
       const [ordersToday, ordersWeek, ordersMonth] = await Promise.all([
-        supabase.from("orders").select("id", { count: "exact", head: true })
-          .gte("created_at", todayStart).lte("created_at", todayEnd),
-        supabase.from("orders").select("id", { count: "exact", head: true })
+        supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", todayStart)
+          .lte("created_at", todayEnd),
+        supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true })
           .gte("created_at", weekStart),
-        supabase.from("orders").select("id", { count: "exact", head: true })
+        supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true })
           .gte("created_at", monthStart),
       ]);
 
       // Fetch revenue
       const [revenueToday, revenueWeek, revenueMonth] = await Promise.all([
-        supabase.from("orders").select("total_amount")
-          .gte("created_at", todayStart).lte("created_at", todayEnd)
+        supabase
+          .from("orders")
+          .select("total_amount")
+          .gte("created_at", todayStart)
+          .lte("created_at", todayEnd)
           .eq("status", "paid"),
-        supabase.from("orders").select("total_amount")
-          .gte("created_at", weekStart).eq("status", "paid"),
-        supabase.from("orders").select("total_amount")
-          .gte("created_at", monthStart).eq("status", "paid"),
+        supabase
+          .from("orders")
+          .select("total_amount")
+          .gte("created_at", weekStart)
+          .eq("status", "paid"),
+        supabase
+          .from("orders")
+          .select("total_amount")
+          .gte("created_at", monthStart)
+          .eq("status", "paid"),
       ]);
 
       // Fetch HITL stats
       const [hitlPending, hitlInReview, hitlBreached] = await Promise.all([
-        supabase.from("hitl_reviews").select("id", { count: "exact", head: true })
+        supabase
+          .from("hitl_reviews")
+          .select("id", { count: "exact", head: true })
           .eq("status", "pending"),
-        supabase.from("hitl_reviews").select("id", { count: "exact", head: true })
+        supabase
+          .from("hitl_reviews")
+          .select("id", { count: "exact", head: true })
           .eq("status", "in_review"),
-        supabase.from("hitl_reviews").select("id", { count: "exact", head: true })
-          .eq("sla_breached", true).in("status", ["pending", "in_review"]),
+        supabase
+          .from("hitl_reviews")
+          .select("id", { count: "exact", head: true })
+          .eq("sla_breached", true)
+          .in("status", ["pending", "in_review"]),
       ]);
 
       // Fetch AI metrics
       const { data: aiMetrics } = await supabase
         .from("ai_performance_metrics")
-        .select("overall_accuracy, total_documents_processed, hitl_trigger_rate")
+        .select(
+          "overall_accuracy, total_documents_processed, hitl_trigger_rate",
+        )
         .eq("metric_type", "daily")
         .order("metric_date", { ascending: false })
         .limit(1)
         .single();
 
       // Calculate revenue sums
-      const sumRevenue = (data: any[] | null) => 
+      const sumRevenue = (data: any[] | null) =>
         data?.reduce((sum, row) => sum + (row.total_amount || 0), 0) || 0;
 
       setStats({
@@ -134,22 +166,22 @@ export default function AdminDashboard() {
         quotesThisWeek: quotesWeek.count || 0,
         quotesThisMonth: quotesMonth.count || 0,
         quotesTrend: 12, // TODO: Calculate actual trend
-        
+
         ordersToday: ordersToday.count || 0,
         ordersThisWeek: ordersWeek.count || 0,
         ordersThisMonth: ordersMonth.count || 0,
         ordersTrend: 8,
-        
+
         revenueToday: sumRevenue(revenueToday.data),
         revenueThisWeek: sumRevenue(revenueWeek.data),
         revenueThisMonth: sumRevenue(revenueMonth.data),
         revenueTrend: 15,
-        
+
         hitlPending: hitlPending.count || 0,
         hitlInReview: hitlInReview.count || 0,
         hitlBreached: hitlBreached.count || 0,
         avgReviewTime: 45,
-        
+
         aiAccuracy: aiMetrics?.overall_accuracy || 0,
         documentsProcessed: aiMetrics?.total_documents_processed || 0,
         hitlTriggerRate: aiMetrics?.hitl_trigger_rate || 0,
@@ -169,7 +201,7 @@ export default function AdminDashboard() {
         .limit(5);
 
       const activity: RecentActivity[] = [
-        ...(recentQuotes?.map(q => ({
+        ...(recentQuotes?.map((q) => ({
           id: q.id,
           type: "quote" as const,
           title: `Quote ${q.quote_number}`,
@@ -177,7 +209,7 @@ export default function AdminDashboard() {
           timestamp: q.created_at,
           status: q.status,
         })) || []),
-        ...(recentOrders?.map(o => ({
+        ...(recentOrders?.map((o) => ({
           id: o.id,
           type: "order" as const,
           title: `Order ${o.order_number}`,
@@ -185,8 +217,12 @@ export default function AdminDashboard() {
           timestamp: o.created_at,
           status: o.status,
         })) || []),
-      ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-       .slice(0, 10);
+      ]
+        .sort(
+          (a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        )
+        .slice(0, 10);
 
       setRecentActivity(activity);
     } catch (error) {
@@ -224,7 +260,9 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+              <h1 className="text-2xl font-semibold text-gray-900">
+                Dashboard
+              </h1>
               <p className="text-sm text-gray-500 mt-1">
                 Welcome back. Here's what's happening today.
               </p>
@@ -234,7 +272,9 @@ export default function AdminDashboard() {
               disabled={refreshing}
               className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
+              />
               Refresh
             </button>
           </div>
@@ -286,7 +326,11 @@ export default function AdminDashboard() {
             label="HITL Queue"
             value={stats?.hitlPending || 0}
             subtext={`${stats?.hitlInReview || 0} in review`}
-            alert={stats?.hitlBreached ? `${stats.hitlBreached} breached SLA` : undefined}
+            alert={
+              stats?.hitlBreached
+                ? `${stats.hitlBreached} breached SLA`
+                : undefined
+            }
             linkTo="/admin/hitl"
           />
         </div>
@@ -302,10 +346,12 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-red-800">
-                    {stats.hitlBreached} Review{stats.hitlBreached > 1 ? "s" : ""} Breached SLA
+                    {stats.hitlBreached} Review
+                    {stats.hitlBreached > 1 ? "s" : ""} Breached SLA
                   </h3>
                   <p className="text-red-600 mt-1">
-                    These reviews have exceeded the 4-hour response time. Immediate attention required.
+                    These reviews have exceeded the 4-hour response time.
+                    Immediate attention required.
                   </p>
                   <Link
                     to="/admin/hitl?filter=breached"
@@ -328,7 +374,8 @@ export default function AdminDashboard() {
                     All Reviews On Track
                   </h3>
                   <p className="text-green-600 mt-1">
-                    No SLA breaches. Average review time: {stats?.avgReviewTime || 0} minutes.
+                    No SLA breaches. Average review time:{" "}
+                    {stats?.avgReviewTime || 0} minutes.
                   </p>
                 </div>
               </div>
@@ -361,7 +408,9 @@ export default function AdminDashboard() {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-500">Docs Processed (30d)</span>
-                <span className="text-gray-700">{stats?.documentsProcessed || 0}</span>
+                <span className="text-gray-700">
+                  {stats?.documentsProcessed || 0}
+                </span>
               </div>
             </div>
           </div>
@@ -386,12 +435,18 @@ export default function AdminDashboard() {
               {recentActivity.map((item) => (
                 <Link
                   key={`${item.type}-${item.id}`}
-                  to={item.type === "quote" ? `/admin/quotes/${item.id}` : `/admin/orders/${item.id}`}
+                  to={
+                    item.type === "quote"
+                      ? `/admin/quotes/${item.id}`
+                      : `/admin/orders/${item.id}`
+                  }
                   className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors"
                 >
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    item.type === "quote" ? "bg-blue-50" : "bg-green-50"
-                  }`}>
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      item.type === "quote" ? "bg-blue-50" : "bg-green-50"
+                    }`}
+                  >
                     {item.type === "quote" ? (
                       <FileText className="w-5 h-5 text-blue-600" />
                     ) : (
@@ -402,7 +457,9 @@ export default function AdminDashboard() {
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {item.title}
                     </p>
-                    <p className="text-sm text-gray-500 truncate">{item.subtitle}</p>
+                    <p className="text-sm text-gray-500 truncate">
+                      {item.subtitle}
+                    </p>
                   </div>
                   <div className="text-right">
                     <StatusBadge status={item.status} />
@@ -491,17 +548,17 @@ export default function AdminDashboard() {
 }
 
 // Stat Card Component
-function StatCard({ 
-  icon, 
-  iconBg, 
-  iconColor, 
-  label, 
-  value, 
-  subtext, 
-  trend, 
+function StatCard({
+  icon,
+  iconBg,
+  iconColor,
+  label,
+  value,
+  subtext,
+  trend,
   alert,
   linkTo,
-  isCurrency 
+  isCurrency,
 }: {
   icon: React.ReactNode;
   iconBg: string;
@@ -517,18 +574,28 @@ function StatCard({
   const content = (
     <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between">
-        <div className={`w-10 h-10 ${iconBg} rounded-lg flex items-center justify-center ${iconColor}`}>
+        <div
+          className={`w-10 h-10 ${iconBg} rounded-lg flex items-center justify-center ${iconColor}`}
+        >
           {icon}
         </div>
         {trend !== undefined && (
-          <div className={`flex items-center gap-1 text-sm ${trend >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {trend >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+          <div
+            className={`flex items-center gap-1 text-sm ${trend >= 0 ? "text-green-600" : "text-red-600"}`}
+          >
+            {trend >= 0 ? (
+              <TrendingUp className="w-4 h-4" />
+            ) : (
+              <TrendingDown className="w-4 h-4" />
+            )}
             {Math.abs(trend)}%
           </div>
         )}
       </div>
       <div className="mt-4">
-        <p className="text-2xl font-semibold text-gray-900 tabular-nums">{value}</p>
+        <p className="text-2xl font-semibold text-gray-900 tabular-nums">
+          {value}
+        </p>
         <p className="text-sm text-gray-500 mt-1">{label}</p>
         <p className="text-xs text-gray-400 mt-2">{subtext}</p>
         {alert && (
@@ -548,15 +615,15 @@ function StatCard({
 }
 
 // Quick Action Link Component
-function QuickActionLink({ 
-  to, 
-  icon, 
-  label, 
-  badge 
-}: { 
-  to: string; 
-  icon: React.ReactNode; 
-  label: string; 
+function QuickActionLink({
+  to,
+  icon,
+  label,
+  badge,
+}: {
+  to: string;
+  icon: React.ReactNode;
+  label: string;
   badge?: number;
 }) {
   return (
@@ -601,7 +668,9 @@ function StatusBadge({ status }: { status?: string }) {
   };
 
   return (
-    <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${styles[status || ""] || "bg-gray-100 text-gray-700"}`}>
+    <span
+      className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${styles[status || ""] || "bg-gray-100 text-gray-700"}`}
+    >
       {labels[status || ""] || status || "Unknown"}
     </span>
   );
