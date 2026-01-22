@@ -30,7 +30,7 @@ export default function HITLQueue() {
     fetchReviews();
   }, [session, fetchReviews]);
 
-  const fetchReviews = async () => {
+  const fetchReviews = useCallback(async () => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       setError("Database not configured");
       setFetching(false);
@@ -73,7 +73,7 @@ export default function HITLQueue() {
     }
 
     setFetching(false);
-  };
+  }, [SUPABASE_URL, SUPABASE_ANON_KEY]);
 
   const handleLogout = () => {
     localStorage.removeItem("staffSession");
