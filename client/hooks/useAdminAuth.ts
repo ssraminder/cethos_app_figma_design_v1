@@ -70,8 +70,8 @@ export function useAdminAuth(): UseAdminAuthReturn {
 
         // Verify user is still active staff
         const { data: staffData, error: staffError } = await supabase
-          .from("staff")
-          .select("id, name, email, role, is_active")
+          .from("staff_users")
+          .select("id, full_name, email, role, is_active")
           .eq("email", authSession.user.email)
           .single();
 
@@ -90,7 +90,7 @@ export function useAdminAuth(): UseAdminAuthReturn {
         // Create/update staff session
         const staffSession: StaffSession = {
           staffId: staffData.id,
-          staffName: staffData.name,
+          staffName: staffData.full_name,
           staffEmail: staffData.email,
           staffRole: staffData.role,
           isActive: staffData.is_active,
