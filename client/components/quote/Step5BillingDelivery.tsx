@@ -196,12 +196,26 @@ export default function Step5BillingDelivery() {
         }
 
         // Pre-fill billing address if user went back
-        if (state.shippingAddress) {
+        if (state.billingAddress) {
           setBillingAddress({
+            fullName:
+              state.billingAddress.firstName && state.billingAddress.lastName
+                ? `${state.billingAddress.firstName} ${state.billingAddress.lastName}`.trim()
+                : billingAddress.fullName,
+            streetAddress: state.billingAddress.addressLine1 || "",
+            city: state.billingAddress.city || "",
+            province: state.billingAddress.state || "AB",
+            postalCode: state.billingAddress.postalCode || "",
+          });
+        }
+
+        // Pre-fill shipping address if user went back
+        if (state.shippingAddress) {
+          setShippingAddress({
             fullName:
               state.shippingAddress.firstName && state.shippingAddress.lastName
                 ? `${state.shippingAddress.firstName} ${state.shippingAddress.lastName}`.trim()
-                : billingAddress.fullName,
+                : "",
             streetAddress: state.shippingAddress.addressLine1 || "",
             city: state.shippingAddress.city || "",
             province: state.shippingAddress.state || "AB",
