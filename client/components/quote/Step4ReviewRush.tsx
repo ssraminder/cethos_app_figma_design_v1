@@ -280,7 +280,9 @@ export default function Step4ReviewRush() {
         // Get intended use from quote AND check HITL status
         const { data: quoteData } = await supabase
           .from("quotes")
-          .select("intended_use:intended_uses(code), hitl_required, hitl_reason")
+          .select(
+            "intended_use:intended_uses(code), hitl_required, hitl_reason",
+          )
           .eq("id", quoteId)
           .single();
 
@@ -597,8 +599,10 @@ export default function Step4ReviewRush() {
             Additional Review Required
           </h2>
           <p className="text-amber-700 mb-4">
-            Our team needs to review your documents to provide an accurate quote.
-            We'll email you at <span className="font-medium">{state.email}</span> within 4 working hours.
+            Our team needs to review your documents to provide an accurate
+            quote. We'll email you at{" "}
+            <span className="font-medium">{state.email}</span> within 4 working
+            hours.
           </p>
 
           {hitlReason && (
@@ -609,10 +613,12 @@ export default function Step4ReviewRush() {
 
           <div className="bg-white rounded-lg p-4 mb-6 text-left">
             <p className="text-sm text-gray-600 mb-2">
-              <span className="font-medium">Quote Number:</span> {state.quoteNumber}
+              <span className="font-medium">Quote Number:</span>{" "}
+              {state.quoteNumber}
             </p>
             <p className="text-sm text-gray-600">
-              <span className="font-medium">Documents:</span> {documents.length} file(s)
+              <span className="font-medium">Documents:</span> {documents.length}{" "}
+              file(s)
             </p>
           </div>
 
@@ -624,7 +630,9 @@ export default function Step4ReviewRush() {
               Return to Home
             </button>
             <button
-              onClick={() => window.location.href = `mailto:support@cethos.com?subject=Quote ${state.quoteNumber}`}
+              onClick={() =>
+                (window.location.href = `mailto:support@cethos.com?subject=Quote ${state.quoteNumber}`)
+              }
               className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
             >
               Contact Support
