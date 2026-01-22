@@ -2004,6 +2004,17 @@ const HITLReviewDetail: React.FC = () => {
           })}
         </div>
 
+        {/* Messages Panel */}
+        {reviewData && reviewData.quotes && staffSession?.staffId && (
+          <div className="mt-6">
+            <MessagePanel
+              quoteId={reviewData.quotes.id}
+              staffId={staffSession.staffId}
+              staffName={staffSession.name || "Staff"}
+            />
+          </div>
+        )}
+
         {/* Save Button */}
         {claimedByMe && hasAnyChanges() && (
           <div className="fixed bottom-6 right-6">
