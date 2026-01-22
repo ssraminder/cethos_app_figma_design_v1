@@ -326,7 +326,7 @@ export default function Step5BillingDelivery() {
         const { error } = await supabase
           .from("quotes")
           .update({
-            physical_delivery_option: selectedPhysicalOption,
+            physical_delivery_option_id: selectedPhysicalOptionObj?.id || null,
             selected_pickup_location_id: isPickupSelected
               ? selectedPickupLocation
               : null,
