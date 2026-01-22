@@ -15,57 +15,57 @@ import { toast } from "sonner";
 
 // Canadian Provinces Data
 const CANADIAN_PROVINCES = [
-  { code: 'AB', name: 'Alberta' },
-  { code: 'BC', name: 'British Columbia' },
-  { code: 'MB', name: 'Manitoba' },
-  { code: 'NB', name: 'New Brunswick' },
-  { code: 'NL', name: 'Newfoundland and Labrador' },
-  { code: 'NS', name: 'Nova Scotia' },
-  { code: 'NT', name: 'Northwest Territories' },
-  { code: 'NU', name: 'Nunavut' },
-  { code: 'ON', name: 'Ontario' },
-  { code: 'PE', name: 'Prince Edward Island' },
-  { code: 'QC', name: 'Quebec' },
-  { code: 'SK', name: 'Saskatchewan' },
-  { code: 'YT', name: 'Yukon' },
+  { code: "AB", name: "Alberta" },
+  { code: "BC", name: "British Columbia" },
+  { code: "MB", name: "Manitoba" },
+  { code: "NB", name: "New Brunswick" },
+  { code: "NL", name: "Newfoundland and Labrador" },
+  { code: "NS", name: "Nova Scotia" },
+  { code: "NT", name: "Northwest Territories" },
+  { code: "NU", name: "Nunavut" },
+  { code: "ON", name: "Ontario" },
+  { code: "PE", name: "Prince Edward Island" },
+  { code: "QC", name: "Quebec" },
+  { code: "SK", name: "Saskatchewan" },
+  { code: "YT", name: "Yukon" },
 ];
 
 // Physical Delivery Options
 const PHYSICAL_DELIVERY_OPTIONS = [
   {
-    id: 'none',
-    name: 'No physical copy needed',
-    description: 'Digital delivery only',
+    id: "none",
+    name: "No physical copy needed",
+    description: "Digital delivery only",
     price: 0,
-    icon: 'x',
+    icon: "x",
   },
   {
-    id: 'regular',
-    name: 'Regular Mail',
-    description: '5-10 business days',
+    id: "regular",
+    name: "Regular Mail",
+    description: "5-10 business days",
     price: 0,
-    icon: 'mail',
+    icon: "mail",
   },
   {
-    id: 'priority',
-    name: 'Priority Mail',
-    description: '2-3 business days',
+    id: "priority",
+    name: "Priority Mail",
+    description: "2-3 business days",
     price: 15,
-    icon: 'priority',
+    icon: "priority",
   },
   {
-    id: 'express',
-    name: 'Express Courier',
-    description: 'Next business day',
+    id: "express",
+    name: "Express Courier",
+    description: "Next business day",
     price: 35,
-    icon: 'express',
+    icon: "express",
   },
   {
-    id: 'pickup',
-    name: 'Pickup from Office',
-    description: 'Calgary location',
+    id: "pickup",
+    name: "Pickup from Office",
+    description: "Calgary location",
     price: 0,
-    icon: 'location',
+    icon: "location",
   },
 ];
 
@@ -92,16 +92,17 @@ export default function Step5BillingDelivery() {
   const { state, updateState, goToNextStep, goToPreviousStep } = useQuote();
 
   const [billingAddress, setBillingAddress] = useState<BillingAddress>({
-    fullName: state.firstName && state.lastName 
-      ? `${state.firstName} ${state.lastName}`.trim() 
-      : '',
-    streetAddress: '',
-    city: '',
-    province: 'AB',
-    postalCode: '',
+    fullName:
+      state.firstName && state.lastName
+        ? `${state.firstName} ${state.lastName}`.trim()
+        : "",
+    streetAddress: "",
+    city: "",
+    province: "AB",
+    postalCode: "",
   });
 
-  const [selectedDelivery, setSelectedDelivery] = useState('none');
+  const [selectedDelivery, setSelectedDelivery] = useState("none");
   const [pricing, setPricing] = useState<PricingSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -123,9 +124,9 @@ export default function Step5BillingDelivery() {
     try {
       if (state.quoteId) {
         const { data: quoteData, error } = await supabase
-          .from('quotes')
-          .select('calculated_totals, delivery_speed')
-          .eq('id', state.quoteId)
+          .from("quotes")
+          .select("calculated_totals, delivery_speed")
+          .eq("id", state.quoteId)
           .single();
 
         if (error) throw error;
@@ -142,19 +143,20 @@ export default function Step5BillingDelivery() {
         // Pre-fill billing address if user went back
         if (state.shippingAddress) {
           setBillingAddress({
-            fullName: state.shippingAddress.firstName && state.shippingAddress.lastName
-              ? `${state.shippingAddress.firstName} ${state.shippingAddress.lastName}`.trim()
-              : billingAddress.fullName,
-            streetAddress: state.shippingAddress.addressLine1 || '',
-            city: state.shippingAddress.city || '',
-            province: state.shippingAddress.state || 'AB',
-            postalCode: state.shippingAddress.postalCode || '',
+            fullName:
+              state.shippingAddress.firstName && state.shippingAddress.lastName
+                ? `${state.shippingAddress.firstName} ${state.shippingAddress.lastName}`.trim()
+                : billingAddress.fullName,
+            streetAddress: state.shippingAddress.addressLine1 || "",
+            city: state.shippingAddress.city || "",
+            province: state.shippingAddress.state || "AB",
+            postalCode: state.shippingAddress.postalCode || "",
           });
         }
       }
     } catch (err) {
-      console.error('Error fetching pricing data:', err);
-      toast.error('Failed to load pricing information');
+      console.error("Error fetching pricing data:", err);
+      toast.error("Failed to load pricing information");
     } finally {
       setLoading(false);
     }
@@ -164,13 +166,15 @@ export default function Step5BillingDelivery() {
     if (!pricing) return;
 
     const selectedOption = PHYSICAL_DELIVERY_OPTIONS.find(
-      (opt) => opt.id === selectedDelivery
+      (opt) => opt.id === selectedDelivery,
     );
     const deliveryFee = selectedOption?.price || 0;
 
     // Subtotal already includes rush fee from Step 4
-    const baseSubtotal = pricing.translation_total + pricing.certification_total;
-    const subtotalWithRushAndDelivery = baseSubtotal + (pricing.rush_fee || 0) + deliveryFee;
+    const baseSubtotal =
+      pricing.translation_total + pricing.certification_total;
+    const subtotalWithRushAndDelivery =
+      baseSubtotal + (pricing.rush_fee || 0) + deliveryFee;
     const taxAmount = subtotalWithRushAndDelivery * pricing.tax_rate;
     const total = subtotalWithRushAndDelivery + taxAmount;
 
@@ -184,25 +188,25 @@ export default function Step5BillingDelivery() {
 
   const validateField = (name: string, value: string): string => {
     switch (name) {
-      case 'fullName':
-        return value.trim().length < 2 ? 'Name is required' : '';
-      case 'streetAddress':
-        return value.trim().length < 5 ? 'Street address is required' : '';
-      case 'city':
-        return value.trim().length < 2 ? 'City is required' : '';
-      case 'postalCode':
+      case "fullName":
+        return value.trim().length < 2 ? "Name is required" : "";
+      case "streetAddress":
+        return value.trim().length < 5 ? "Street address is required" : "";
+      case "city":
+        return value.trim().length < 2 ? "City is required" : "";
+      case "postalCode":
         const postalRegex = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
         return !postalRegex.test(value.trim())
-          ? 'Valid postal code required (e.g., T2P 1J9)'
-          : '';
+          ? "Valid postal code required (e.g., T2P 1J9)"
+          : "";
       default:
-        return '';
+        return "";
     }
   };
 
   const handleFieldChange = (field: keyof BillingAddress, value: string) => {
     setBillingAddress((prev) => ({ ...prev, [field]: value }));
-    
+
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors((prev) => {
@@ -223,9 +227,12 @@ export default function Step5BillingDelivery() {
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
+
     Object.keys(billingAddress).forEach((key) => {
-      const error = validateField(key, billingAddress[key as keyof BillingAddress]);
+      const error = validateField(
+        key,
+        billingAddress[key as keyof BillingAddress],
+      );
       if (error) {
         newErrors[key] = error;
       }
@@ -245,38 +252,41 @@ export default function Step5BillingDelivery() {
 
   const handleContinue = async () => {
     if (!validateForm()) {
-      toast.error('Please complete all required fields');
+      toast.error("Please complete all required fields");
       return;
     }
 
     setSaving(true);
     try {
       const selectedOption = PHYSICAL_DELIVERY_OPTIONS.find(
-        (opt) => opt.id === selectedDelivery
+        (opt) => opt.id === selectedDelivery,
       );
 
       // Save billing address and delivery selection to database
       if (state.quoteId && pricing) {
         const { error } = await supabase
-          .from('quotes')
+          .from("quotes")
           .update({
             physical_delivery_option: selectedDelivery,
             shipping_address: {
-              firstName: billingAddress.fullName.split(' ')[0] || billingAddress.fullName,
-              lastName: billingAddress.fullName.split(' ').slice(1).join(' ') || '',
-              company: state.companyName || '',
+              firstName:
+                billingAddress.fullName.split(" ")[0] ||
+                billingAddress.fullName,
+              lastName:
+                billingAddress.fullName.split(" ").slice(1).join(" ") || "",
+              company: state.companyName || "",
               addressLine1: billingAddress.streetAddress,
-              addressLine2: '',
+              addressLine2: "",
               city: billingAddress.city,
               state: billingAddress.province,
               postalCode: billingAddress.postalCode,
-              country: 'Canada',
-              phone: state.phone || '',
+              country: "Canada",
+              phone: state.phone || "",
             },
             calculated_totals: pricing,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', state.quoteId);
+          .eq("id", state.quoteId);
 
         if (error) throw error;
       }
@@ -285,23 +295,24 @@ export default function Step5BillingDelivery() {
       updateState({
         physicalDeliveryOption: selectedDelivery,
         shippingAddress: {
-          firstName: billingAddress.fullName.split(' ')[0] || billingAddress.fullName,
-          lastName: billingAddress.fullName.split(' ').slice(1).join(' ') || '',
-          company: state.companyName || '',
+          firstName:
+            billingAddress.fullName.split(" ")[0] || billingAddress.fullName,
+          lastName: billingAddress.fullName.split(" ").slice(1).join(" ") || "",
+          company: state.companyName || "",
           addressLine1: billingAddress.streetAddress,
-          addressLine2: '',
+          addressLine2: "",
           city: billingAddress.city,
           state: billingAddress.province,
           postalCode: billingAddress.postalCode,
-          country: 'Canada',
-          phone: state.phone || '',
+          country: "Canada",
+          phone: state.phone || "",
         },
       });
 
       await goToNextStep();
     } catch (err) {
-      console.error('Error saving billing and delivery:', err);
-      toast.error('Failed to save billing information');
+      console.error("Error saving billing and delivery:", err);
+      toast.error("Failed to save billing information");
     } finally {
       setSaving(false);
     }
@@ -309,15 +320,15 @@ export default function Step5BillingDelivery() {
 
   const getDeliveryIcon = (iconType: string) => {
     switch (iconType) {
-      case 'x':
+      case "x":
         return <X className="w-5 h-5" />;
-      case 'mail':
+      case "mail":
         return <Mail className="w-5 h-5" />;
-      case 'priority':
+      case "priority":
         return <Send className="w-5 h-5" />;
-      case 'express':
+      case "express":
         return <Zap className="w-5 h-5" />;
-      case 'location':
+      case "location":
         return <MapPin className="w-5 h-5" />;
       default:
         return <Mail className="w-5 h-5" />;
@@ -359,12 +370,12 @@ export default function Step5BillingDelivery() {
             <input
               type="text"
               value={billingAddress.fullName}
-              onChange={(e) => handleFieldChange('fullName', e.target.value)}
-              onBlur={() => handleFieldBlur('fullName')}
+              onChange={(e) => handleFieldChange("fullName", e.target.value)}
+              onBlur={() => handleFieldBlur("fullName")}
               className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                 touched.fullName && errors.fullName
-                  ? 'border-red-500'
-                  : 'border-gray-300'
+                  ? "border-red-500"
+                  : "border-gray-300"
               }`}
               placeholder="John Doe"
             />
@@ -381,17 +392,21 @@ export default function Step5BillingDelivery() {
             <input
               type="text"
               value={billingAddress.streetAddress}
-              onChange={(e) => handleFieldChange('streetAddress', e.target.value)}
-              onBlur={() => handleFieldBlur('streetAddress')}
+              onChange={(e) =>
+                handleFieldChange("streetAddress", e.target.value)
+              }
+              onBlur={() => handleFieldBlur("streetAddress")}
               className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                 touched.streetAddress && errors.streetAddress
-                  ? 'border-red-500'
-                  : 'border-gray-300'
+                  ? "border-red-500"
+                  : "border-gray-300"
               }`}
               placeholder="123 Main Street"
             />
             {touched.streetAddress && errors.streetAddress && (
-              <p className="text-xs text-red-600 mt-1">{errors.streetAddress}</p>
+              <p className="text-xs text-red-600 mt-1">
+                {errors.streetAddress}
+              </p>
             )}
           </div>
 
@@ -403,12 +418,12 @@ export default function Step5BillingDelivery() {
             <input
               type="text"
               value={billingAddress.city}
-              onChange={(e) => handleFieldChange('city', e.target.value)}
-              onBlur={() => handleFieldBlur('city')}
+              onChange={(e) => handleFieldChange("city", e.target.value)}
+              onBlur={() => handleFieldBlur("city")}
               className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                 touched.city && errors.city
-                  ? 'border-red-500'
-                  : 'border-gray-300'
+                  ? "border-red-500"
+                  : "border-gray-300"
               }`}
               placeholder="Calgary"
             />
@@ -425,7 +440,7 @@ export default function Step5BillingDelivery() {
               </label>
               <select
                 value={billingAddress.province}
-                onChange={(e) => handleFieldChange('province', e.target.value)}
+                onChange={(e) => handleFieldChange("province", e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {CANADIAN_PROVINCES.map((province) => (
@@ -443,12 +458,14 @@ export default function Step5BillingDelivery() {
               <input
                 type="text"
                 value={billingAddress.postalCode}
-                onChange={(e) => handleFieldChange('postalCode', e.target.value.toUpperCase())}
-                onBlur={() => handleFieldBlur('postalCode')}
+                onChange={(e) =>
+                  handleFieldChange("postalCode", e.target.value.toUpperCase())
+                }
+                onBlur={() => handleFieldBlur("postalCode")}
                 className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   touched.postalCode && errors.postalCode
-                    ? 'border-red-500'
-                    : 'border-gray-300'
+                    ? "border-red-500"
+                    : "border-gray-300"
                 }`}
                 placeholder="T2P 1J9"
                 maxLength={7}
@@ -475,7 +492,8 @@ export default function Step5BillingDelivery() {
               </span>
             </div>
             <p className="text-sm text-gray-600 mt-1">
-              Your translated documents will be available via email and secure online portal
+              Your translated documents will be available via email and secure
+              online portal
             </p>
           </div>
         </div>
@@ -493,8 +511,8 @@ export default function Step5BillingDelivery() {
               key={option.id}
               className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all ${
                 selectedDelivery === option.id
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-blue-300'
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-gray-200 hover:border-blue-300"
               }`}
             >
               <input
@@ -505,22 +523,30 @@ export default function Step5BillingDelivery() {
                 onChange={(e) => setSelectedDelivery(e.target.value)}
                 className="mt-1"
               />
-              
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                selectedDelivery === option.id
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-600'
-              }`}>
+
+              <div
+                className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  selectedDelivery === option.id
+                    ? "bg-blue-500 text-white"
+                    : "bg-gray-100 text-gray-600"
+                }`}
+              >
                 {getDeliveryIcon(option.icon)}
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-gray-900">{option.name}</span>
-                  <span className={`font-semibold ${
-                    option.price === 0 ? 'text-green-600' : 'text-gray-900'
-                  }`}>
-                    {option.price === 0 ? 'FREE' : `$${option.price.toFixed(2)}`}
+                  <span className="font-medium text-gray-900">
+                    {option.name}
+                  </span>
+                  <span
+                    className={`font-semibold ${
+                      option.price === 0 ? "text-green-600" : "text-gray-900"
+                    }`}
+                  >
+                    {option.price === 0
+                      ? "FREE"
+                      : `$${option.price.toFixed(2)}`}
                   </span>
                 </div>
                 <p className="text-sm text-gray-600">{option.description}</p>
@@ -545,7 +571,10 @@ export default function Step5BillingDelivery() {
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Subtotal</span>
               <span className="text-gray-900 font-medium">
-                ${(pricing.translation_total + pricing.certification_total).toFixed(2)}
+                $
+                {(
+                  pricing.translation_total + pricing.certification_total
+                ).toFixed(2)}
               </span>
             </div>
 
