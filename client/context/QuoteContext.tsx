@@ -50,7 +50,9 @@ export interface QuoteState {
   emailQuoteMode: boolean;
   emailQuoteSent: boolean;
   // Delivery options
-  deliverySpeed: "standard" | "rush" | "same_day";
+  turnaroundType: "standard" | "rush" | "same_day";
+  turnaroundFee: number;
+  deliveryFee: number;
   digitalDeliveryOptions: string[];
   physicalDeliveryOption: string | null;
   pickupLocationId: string | null;
@@ -90,7 +92,9 @@ const initialState: QuoteState = {
   isProcessing: false,
   emailQuoteMode: false,
   emailQuoteSent: false,
-  deliverySpeed: "standard",
+  turnaroundType: "standard",
+  turnaroundFee: 0,
+  deliveryFee: 0,
   digitalDeliveryOptions: ["online_portal"],
   physicalDeliveryOption: null,
   pickupLocationId: null,
