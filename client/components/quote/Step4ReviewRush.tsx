@@ -64,6 +64,8 @@ export default function Step4ReviewRush() {
   const [hitlNote, setHitlNote] = useState("");
   const [hitlSubmitting, setHitlSubmitting] = useState(false);
   const [hitlRequested, setHitlRequested] = useState(false);
+  const [hitlRequired, setHitlRequired] = useState(false);
+  const [hitlReason, setHitlReason] = useState("");
 
   // Turnaround options
   const [turnaroundType, setTurnaroundType] = useState<
@@ -275,15 +277,21 @@ export default function Step4ReviewRush() {
         setTargetLanguage("en"); // Assuming English target
         setDocumentType(firstDoc.detected_document_type || "");
 
-        // Get intended use from quote
+        // Get intended use from quote AND check HITL status
         const { data: quoteData } = await supabase
           .from("quotes")
-          .select("intended_use:intended_uses(code)")
+          .select("intended_use:intended_uses(code), hitl_required, hitl_reason")
           .eq("id", quoteId)
           .single();
 
         if (quoteData?.intended_use) {
           setIntendedUse((quoteData.intended_use as any)?.code || "");
+        }
+
+        // Set HITL status
+        if (quoteData?.hitl_required) {
+          setHitlRequired(true);
+          setHitlReason(quoteData.hitl_reason || "");
         }
       }
 
@@ -576,6 +584,56 @@ export default function Step4ReviewRush() {
     (sum, doc) => sum + (doc.billable_pages || 0),
     0,
   );
+
+  // If system triggered HITL (not customer requested), show blocking view
+  if (hitlRequired && !hitlRequested) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Clock className="w-8 h-8 text-amber-600" />
+          </div>
+          <h2 className="text-xl font-semibold text-amber-800 mb-2">
+            Additional Review Required
+          </h2>
+          <p className="text-amber-700 mb-4">
+            Our team needs to review your documents to provide an accurate quote.
+            We'll email you at <span className="font-medium">{state.email}</span> within 4 working hours.
+          </p>
+
+          {hitlReason && (
+            <div className="bg-white/50 rounded-lg p-3 mb-4 text-sm text-amber-700">
+              <span className="font-medium">Reason:</span> {hitlReason}
+            </div>
+          )}
+
+          <div className="bg-white rounded-lg p-4 mb-6 text-left">
+            <p className="text-sm text-gray-600 mb-2">
+              <span className="font-medium">Quote Number:</span> {state.quoteNumber}
+            </p>
+            <p className="text-sm text-gray-600">
+              <span className="font-medium">Documents:</span> {documents.length} file(s)
+            </p>
+          </div>
+
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => navigate("/")}
+              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Return to Home
+            </button>
+            <button
+              onClick={() => window.location.href = `mailto:support@cethos.com?subject=Quote ${state.quoteNumber}`}
+              className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+            >
+              Contact Support
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-8">
@@ -927,7 +985,7 @@ export default function Step4ReviewRush() {
 
         <button
           onClick={handleContinue}
-          disabled={saving || hitlRequested}
+          disabled={saving || hitlRequested || hitlRequired}
           className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {saving ? (
@@ -935,7 +993,7 @@ export default function Step4ReviewRush() {
               <Loader2 className="w-5 h-5 animate-spin" />
               Saving...
             </>
-          ) : hitlRequested ? (
+          ) : hitlRequested || hitlRequired ? (
             "Awaiting Review"
           ) : (
             <>
