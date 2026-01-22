@@ -18,6 +18,7 @@ import NotFound from "./pages/NotFound";
 import Checkout from "./pages/Checkout";
 import OrderSuccess from "./pages/OrderSuccess";
 import QuoteReviewPage from "./pages/quote/QuoteReviewPage";
+import QuoteRevisionPage from "./pages/quote/QuoteRevisionPage";
 
 // Admin pages
 import AdminLogin from "./pages/admin/Login";
@@ -76,6 +77,10 @@ const App = () => (
                 <Route
                   path="/quote/:quoteId/review"
                   element={<QuoteReviewPage />}
+                />
+                <Route
+                  path="/quote/:quoteId/revision"
+                  element={<QuoteRevisionPage />}
                 />
                 <Route path="/order/success" element={<OrderSuccess />} />
 
