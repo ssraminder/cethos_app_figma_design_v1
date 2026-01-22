@@ -779,7 +779,49 @@ export default function Step5BillingDelivery() {
             Shipping Address
           </h3>
 
+          {/* Same as Billing Checkbox */}
+          <div className="mb-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sameAsBilling}
+                onChange={(e) => handleSameAsBillingChange(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">
+                Same as billing address
+              </span>
+            </label>
+          </div>
+
           <div className="space-y-4">
+            {/* Full Name */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Full Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={shippingAddress.fullName}
+                onChange={(e) => handleShippingFieldChange("fullName", e.target.value)}
+                onBlur={() => handleShippingFieldBlur("fullName")}
+                disabled={sameAsBilling}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  sameAsBilling
+                    ? "bg-gray-50 cursor-not-allowed"
+                    : ""
+                } ${
+                  touched.shipping_fullName && errors.shipping_fullName
+                    ? "border-red-500"
+                    : "border-gray-300"
+                }`}
+                placeholder="John Doe"
+              />
+              {touched.shipping_fullName && errors.shipping_fullName && (
+                <p className="text-xs text-red-600 mt-1">{errors.shipping_fullName}</p>
+              )}
+            </div>
+
             {/* Street Address */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -787,21 +829,24 @@ export default function Step5BillingDelivery() {
               </label>
               <input
                 type="text"
-                value={billingAddress.streetAddress}
-                onChange={(e) =>
-                  handleFieldChange("streetAddress", e.target.value)
-                }
-                onBlur={() => handleFieldBlur("streetAddress")}
+                value={shippingAddress.streetAddress}
+                onChange={(e) => handleShippingFieldChange("streetAddress", e.target.value)}
+                onBlur={() => handleShippingFieldBlur("streetAddress")}
+                disabled={sameAsBilling}
                 className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  touched.streetAddress && errors.streetAddress
+                  sameAsBilling
+                    ? "bg-gray-50 cursor-not-allowed"
+                    : ""
+                } ${
+                  touched.shipping_streetAddress && errors.shipping_streetAddress
                     ? "border-red-500"
                     : "border-gray-300"
                 }`}
                 placeholder="123 Main Street"
               />
-              {touched.streetAddress && errors.streetAddress && (
+              {touched.shipping_streetAddress && errors.shipping_streetAddress && (
                 <p className="text-xs text-red-600 mt-1">
-                  {errors.streetAddress}
+                  {errors.shipping_streetAddress}
                 </p>
               )}
             </div>
@@ -814,18 +859,23 @@ export default function Step5BillingDelivery() {
                 </label>
                 <input
                   type="text"
-                  value={billingAddress.city}
-                  onChange={(e) => handleFieldChange("city", e.target.value)}
-                  onBlur={() => handleFieldBlur("city")}
+                  value={shippingAddress.city}
+                  onChange={(e) => handleShippingFieldChange("city", e.target.value)}
+                  onBlur={() => handleShippingFieldBlur("city")}
+                  disabled={sameAsBilling}
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    touched.city && errors.city
+                    sameAsBilling
+                      ? "bg-gray-50 cursor-not-allowed"
+                      : ""
+                  } ${
+                    touched.shipping_city && errors.shipping_city
                       ? "border-red-500"
                       : "border-gray-300"
                   }`}
                   placeholder="Calgary"
                 />
-                {touched.city && errors.city && (
-                  <p className="text-xs text-red-600 mt-1">{errors.city}</p>
+                {touched.shipping_city && errors.shipping_city && (
+                  <p className="text-xs text-red-600 mt-1">{errors.shipping_city}</p>
                 )}
               </div>
 
@@ -834,11 +884,14 @@ export default function Step5BillingDelivery() {
                   Province <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={billingAddress.province}
-                  onChange={(e) =>
-                    handleFieldChange("province", e.target.value)
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={shippingAddress.province}
+                  onChange={(e) => handleShippingFieldChange("province", e.target.value)}
+                  disabled={sameAsBilling}
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    sameAsBilling
+                      ? "bg-gray-50 cursor-not-allowed"
+                      : ""
+                  }`}
                 >
                   {CANADIAN_PROVINCES.map((province) => (
                     <option key={province.code} value={province.code}>
@@ -856,21 +909,24 @@ export default function Step5BillingDelivery() {
               </label>
               <input
                 type="text"
-                value={billingAddress.postalCode}
-                onChange={(e) =>
-                  handleFieldChange("postalCode", e.target.value.toUpperCase())
-                }
-                onBlur={() => handleFieldBlur("postalCode")}
+                value={shippingAddress.postalCode}
+                onChange={(e) => handleShippingFieldChange("postalCode", e.target.value.toUpperCase())}
+                onBlur={() => handleShippingFieldBlur("postalCode")}
+                disabled={sameAsBilling}
                 className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  touched.postalCode && errors.postalCode
+                  sameAsBilling
+                    ? "bg-gray-50 cursor-not-allowed"
+                    : ""
+                } ${
+                  touched.shipping_postalCode && errors.shipping_postalCode
                     ? "border-red-500"
                     : "border-gray-300"
                 }`}
                 placeholder="T2P 1J9"
                 maxLength={7}
               />
-              {touched.postalCode && errors.postalCode && (
-                <p className="text-xs text-red-600 mt-1">{errors.postalCode}</p>
+              {touched.shipping_postalCode && errors.shipping_postalCode && (
+                <p className="text-xs text-red-600 mt-1">{errors.shipping_postalCode}</p>
               )}
             </div>
           </div>
