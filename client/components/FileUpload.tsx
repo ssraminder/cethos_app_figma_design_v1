@@ -231,6 +231,67 @@ export default function FileUpload() {
         </div>
       </div>
 
+      {/* Uploading Files List */}
+      {uploadingFiles.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-cethos-navy">
+            Uploading Files ({uploadingFiles.length})
+          </h3>
+          {uploadingFiles.map((item, index) => (
+            <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              {/* Status Icon */}
+              {item.status === "uploading" && (
+                <Loader2 className="w-5 h-5 animate-spin text-blue-600 flex-shrink-0" />
+              )}
+              {item.status === "success" && (
+                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+              )}
+              {item.status === "error" && (
+                <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+              )}
+
+              {/* File Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-700 truncate">{item.file.name}</p>
+
+                {/* Progress Bar */}
+                {item.status === "uploading" && (
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                    <div
+                      className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${item.progress}%` }}
+                    />
+                  </div>
+                )}
+
+                {/* Error Message */}
+                {item.status === "error" && (
+                  <p className="text-xs text-red-600 mt-1">{item.error}</p>
+                )}
+
+                {/* Success Message */}
+                {item.status === "success" && (
+                  <p className="text-xs text-green-600 mt-1">Upload complete</p>
+                )}
+              </div>
+
+              {/* File Size */}
+              <span className="text-xs text-gray-500 flex-shrink-0">
+                {(item.file.size / 1024 / 1024).toFixed(2)} MB
+              </span>
+
+              {/* Remove Button */}
+              <button
+                onClick={() => removeUploadingFile(index)}
+                className="p-1 hover:bg-gray-200 rounded flex-shrink-0"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Uploaded Files List */}
       {state.files.length > 0 && (
         <div className="space-y-2">
@@ -243,28 +304,7 @@ export default function FileUpload() {
               className="flex items-center justify-between p-4 bg-white border border-cethos-border rounded-lg"
             >
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  className="text-cethos-blue flex-shrink-0"
-                >
-                  <path
-                    d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M14 2V8H20"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-cethos-navy truncate">
                     {file.name}
