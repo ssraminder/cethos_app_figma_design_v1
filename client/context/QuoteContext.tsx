@@ -309,7 +309,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
 
   const goToStep = (step: number) => {
     // Only allow navigation to completed steps or the next step
-    if (step >= 1 && step <= 5) {
+    if (step >= 1 && step <= 6) {
       // Check if all previous steps are valid
       let canNavigate = true;
       for (let i = 1; i < step; i++) {
