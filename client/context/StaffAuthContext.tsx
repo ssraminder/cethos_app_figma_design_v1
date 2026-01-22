@@ -191,6 +191,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) return;
 
     await supabase.auth.signOut();
+    localStorage.removeItem('staffSession');
     setUser(null);
     setStaffUser(null);
     setSession(null);
