@@ -12,6 +12,7 @@ interface UploadingFile {
 
 export default function FileUpload() {
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const { state, addFile, removeFile } = useQuote();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
