@@ -55,7 +55,7 @@ interface HITLReview {
   minutes_to_sla: number;
 }
 
-export default function HITLQueue() {
+function HITLQueue() {
   console.log('HITLQueue: Component starting to render');
 
   const { companyName, logoUrl, primaryColor } = useBranding();
