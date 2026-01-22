@@ -509,21 +509,104 @@ export default function Step5BillingDelivery() {
             <input
               type="text"
               value={billingAddress.fullName}
-              onChange={(e) => handleFieldChange("fullName", e.target.value)}
-              onBlur={() => handleFieldBlur("fullName")}
+              onChange={(e) => handleBillingFieldChange("fullName", e.target.value)}
+              onBlur={() => handleBillingFieldBlur("fullName")}
               className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                touched.fullName && errors.fullName
+                touched.billing_fullName && errors.billing_fullName
                   ? "border-red-500"
                   : "border-gray-300"
               }`}
               placeholder="John Doe"
             />
-            {touched.fullName && errors.fullName && (
-              <p className="text-xs text-red-600 mt-1">{errors.fullName}</p>
+            {touched.billing_fullName && errors.billing_fullName && (
+              <p className="text-xs text-red-600 mt-1">{errors.billing_fullName}</p>
             )}
-            <p className="text-xs text-gray-500 mt-1">
-              This will appear on your invoice
-            </p>
+          </div>
+
+          {/* Street Address */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Street Address <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={billingAddress.streetAddress}
+              onChange={(e) => handleBillingFieldChange("streetAddress", e.target.value)}
+              onBlur={() => handleBillingFieldBlur("streetAddress")}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                touched.billing_streetAddress && errors.billing_streetAddress
+                  ? "border-red-500"
+                  : "border-gray-300"
+              }`}
+              placeholder="123 Main Street"
+            />
+            {touched.billing_streetAddress && errors.billing_streetAddress && (
+              <p className="text-xs text-red-600 mt-1">{errors.billing_streetAddress}</p>
+            )}
+          </div>
+
+          {/* City and Province */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                City <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={billingAddress.city}
+                onChange={(e) => handleBillingFieldChange("city", e.target.value)}
+                onBlur={() => handleBillingFieldBlur("city")}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  touched.billing_city && errors.billing_city
+                    ? "border-red-500"
+                    : "border-gray-300"
+                }`}
+                placeholder="Calgary"
+              />
+              {touched.billing_city && errors.billing_city && (
+                <p className="text-xs text-red-600 mt-1">{errors.billing_city}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Province <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={billingAddress.province}
+                onChange={(e) => handleBillingFieldChange("province", e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {CANADIAN_PROVINCES.map((province) => (
+                  <option key={province.code} value={province.code}>
+                    {province.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Postal Code */}
+          <div className="sm:w-1/2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Postal Code <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={billingAddress.postalCode}
+              onChange={(e) => handleBillingFieldChange("postalCode", e.target.value.toUpperCase())}
+              onBlur={() => handleBillingFieldBlur("postalCode")}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                touched.billing_postalCode && errors.billing_postalCode
+                  ? "border-red-500"
+                  : "border-gray-300"
+              }`}
+              placeholder="T2P 1J9"
+              maxLength={7}
+            />
+            {touched.billing_postalCode && errors.billing_postalCode && (
+              <p className="text-xs text-red-600 mt-1">{errors.billing_postalCode}</p>
+            )}
           </div>
         </div>
       </div>
