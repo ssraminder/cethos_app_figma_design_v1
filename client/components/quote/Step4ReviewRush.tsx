@@ -32,7 +32,6 @@ interface DocumentAnalysis {
   quote_files: {
     id: string;
     original_filename: string;
-    page_count: number;
   };
 }
 
