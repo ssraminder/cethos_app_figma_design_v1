@@ -119,12 +119,38 @@ export default function Step5BillingDelivery() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
+  // Tax rate state
+  const [taxRate, setTaxRate] = useState(0.05);
+  const [taxName, setTaxName] = useState("GST");
+
   // Derived state
   const needsShippingAddress = physicalOptions
     .filter((opt) => opt.requires_address)
     .some((opt) => opt.code === selectedPhysicalOption);
 
   const isPickupSelected = selectedPhysicalOption === "pickup";
+
+  // Fetch tax rate function
+  const fetchTaxRate = async (provinceCode: string): Promise<{ rate: number; name: string }> => {
+    try {
+      const { data, error } = await supabase
+        .from("tax_rates")
+        .select("rate, tax_name")
+        .eq("region_code", provinceCode)
+        .eq("is_active", true)
+        .gte("effective_to", new Date().toISOString())
+        .single();
+
+      if (error || !data) {
+        // Fallback to GST
+        return { rate: 0.05, name: "GST" };
+      }
+
+      return { rate: data.rate, name: data.tax_name };
+    } catch {
+      return { rate: 0.05, name: "GST" };
+    }
+  };
 
   useEffect(() => {
     fetchDeliveryData();
@@ -135,6 +161,18 @@ export default function Step5BillingDelivery() {
       recalculateTotal();
     }
   }, [selectedPhysicalOption, pricing]);
+
+  // Fetch tax rate when province changes
+  useEffect(() => {
+    const updateTaxRate = async () => {
+      if (billingAddress.province) {
+        const { rate, name } = await fetchTaxRate(billingAddress.province);
+        setTaxRate(rate);
+        setTaxName(name);
+      }
+    };
+    updateTaxRate();
+  }, [billingAddress.province]);
 
   const fetchDeliveryData = async () => {
     setLoading(true);
@@ -249,12 +287,13 @@ export default function Step5BillingDelivery() {
       pricing.translation_total + pricing.certification_total;
     const subtotalWithRushAndDelivery =
       baseSubtotal + (pricing.rush_fee || 0) + deliveryFee;
-    const taxAmount = subtotalWithRushAndDelivery * pricing.tax_rate;
+    const taxAmount = subtotalWithRushAndDelivery * taxRate;
     const total = subtotalWithRushAndDelivery + taxAmount;
 
     setPricing({
       ...pricing,
       delivery_fee: deliveryFee,
+      tax_rate: taxRate,
       tax_amount: taxAmount,
       total,
     });
@@ -1165,7 +1204,7 @@ export default function Step5BillingDelivery() {
 
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">
-                Tax ({(pricing.tax_rate * 100).toFixed(0)}% GST)
+                {taxName} ({(taxRate * 100).toFixed(0)}%)
               </span>
               <span className="text-gray-900 font-medium">
                 ${pricing.tax_amount.toFixed(2)}
