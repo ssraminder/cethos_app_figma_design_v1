@@ -31,14 +31,20 @@ export default function FileUpload() {
     setIsDragging(false);
 
     const droppedFiles = Array.from(e.dataTransfer.files);
-    droppedFiles.forEach((file) => {
-      addFile({
-        id: `${file.name}-${Date.now()}-${Math.random()}`,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        file,
-      });
+
+    // Add files to uploading state
+    const newUploadingFiles: UploadingFile[] = droppedFiles.map(file => ({
+      file,
+      progress: 0,
+      status: "uploading" as const,
+    }));
+
+    setUploadingFiles(prev => [...prev, ...newUploadingFiles]);
+
+    // Start uploading each file
+    droppedFiles.forEach((file, index) => {
+      const uploadIndex = uploadingFiles.length + index;
+      handleFileUpload(file, uploadIndex);
     });
   };
 
