@@ -50,40 +50,121 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
+    const checkAuth = async () => {
+      console.log('StaffAuthContext: Checking auth...');
 
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      // First, check localStorage
+      const storedSession = localStorage.getItem('staffSession');
+      if (storedSession) {
+        try {
+          const parsed = JSON.parse(storedSession);
+          if (parsed.staffId && parsed.loggedIn) {
+            console.log('StaffAuthContext: Found valid localStorage session');
+            setStaffUser({
+              id: parsed.staffId,
+              email: parsed.staffEmail,
+              full_name: parsed.staffName,
+              role: parsed.staffRole,
+              is_active: parsed.isActive
+            });
 
-      if (session?.user?.email) {
-        const staff = await fetchStaffUser(session.user.email);
-        setStaffUser(staff);
+            // Also get the Supabase session for completeness
+            const { data: { session } } = await supabase.auth.getSession();
+            setSession(session);
+            setUser(session?.user ?? null);
+
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.error('StaffAuthContext: Error parsing localStorage', e);
+          localStorage.removeItem('staffSession');
+        }
       }
 
+      // No localStorage session - check Supabase auth
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.log('StaffAuthContext: No session found');
+        setStaffUser(null);
+        setUser(null);
+        setSession(null);
+        setLoading(false);
+        return;
+      }
+
+      setSession(session);
+      setUser(session.user);
+
+      // Has Supabase session but no localStorage - rebuild from database
+      console.log('StaffAuthContext: Rebuilding session from Supabase');
+      const { data: staffData, error } = await supabase
+        .from('staff_users')
+        .select('id, email, full_name, role, is_active')
+        .eq('email', session.user.email)
+        .eq('is_active', true)
+        .single();
+
+      if (error || !staffData) {
+        console.error('StaffAuthContext: Staff lookup failed', error);
+        setStaffUser(null);
+        setLoading(false);
+        return;
+      }
+
+      // Save to localStorage and state
+      const sessionData = {
+        staffId: staffData.id,
+        staffName: staffData.full_name,
+        staffEmail: staffData.email,
+        staffRole: staffData.role,
+        isActive: staffData.is_active,
+        loggedIn: true,
+        loginTime: new Date().toISOString()
+      };
+      localStorage.setItem('staffSession', JSON.stringify(sessionData));
+
+      setStaffUser(staffData);
       setLoading(false);
-    });
+    };
+
+    checkAuth();
 
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth state changed:", event);
-      setSession(session);
-      setUser(session?.user ?? null);
+      console.log('StaffAuthContext: Auth state changed:', event);
 
-      if (session?.user?.email) {
-        const staff = await fetchStaffUser(session.user.email);
-        setStaffUser(staff);
-      } else {
+      if (event === 'SIGNED_OUT') {
+        localStorage.removeItem('staffSession');
         setStaffUser(null);
-      }
+        setUser(null);
+        setSession(null);
+      } else if (event === 'SIGNED_IN' && session) {
+        setSession(session);
+        setUser(session.user);
 
-      setLoading(false);
+        // Check localStorage first
+        const storedSession = localStorage.getItem('staffSession');
+        if (storedSession) {
+          try {
+            const parsed = JSON.parse(storedSession);
+            if (parsed.staffId && parsed.loggedIn) {
+              setStaffUser({
+                id: parsed.staffId,
+                email: parsed.staffEmail,
+                full_name: parsed.staffName,
+                role: parsed.staffRole,
+                is_active: parsed.isActive
+              });
+              return;
+            }
+          } catch (e) {
+            console.error('Error parsing localStorage', e);
+          }
+        }
+      }
     });
 
     return () => {
