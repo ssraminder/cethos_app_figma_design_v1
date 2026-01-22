@@ -256,7 +256,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       return { success: true };
     }
 
-    // Step 3 (Contact) -> 4 (Review): Save contact info and enable processing screen
+    // Step 3 (Contact) -> 4 (Review & Rush): Save contact info and enable processing screen
     if (state.currentStep === 3) {
       if (state.quoteId) {
         await supabase.createOrUpdateCustomer(state.quoteId, {
@@ -273,14 +273,28 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       return { success: true };
     }
 
-    // Step 4 (Review) -> 5 (Success): Finalize quote
+    // Step 4 (Review & Rush) -> 5 (Billing & Delivery)
+    // Rush selection and pricing already saved in Step4ReviewRush component
     if (state.currentStep === 4) {
+      updateState({ currentStep: 5 });
+      return { success: true };
+    }
+
+    // Step 5 (Billing & Delivery) -> 6 (Payment)
+    // Billing address and delivery options already saved in Step5BillingDelivery component
+    if (state.currentStep === 5) {
+      updateState({ currentStep: 6 });
+      return { success: true };
+    }
+
+    // Step 6 (Payment) -> Complete
+    // Payment processing would happen here
+    if (state.currentStep === 6) {
+      // For now, just finalize the quote
       if (state.quoteId) {
-        // Customer already saved in step 3
         await supabase.finalizeQuote(state.quoteId, state.files.length);
       }
-
-      updateState({ currentStep: 5 });
+      // Could navigate to success page or show confirmation
       return { success: true };
     }
 
