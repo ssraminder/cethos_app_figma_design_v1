@@ -7,10 +7,12 @@
 ## Issue #1: Step 4 - Supabase Join Causing 400 Error
 
 ### Problem
+
 - Supabase join syntax `quote_files!inner(...)` returned 400 error
 - `quote_files.page_count` column doesn't exist in database
 
 ### Solution Applied
+
 ✅ **Replaced single join query with two separate queries**
 
 **File:** `code/client/components/quote/Step4ReviewRush.tsx`
@@ -27,20 +29,21 @@ const { data: analysisResults } = await supabase
 const fileIds = analysisResults.map((r) => r.quote_file_id);
 const { data: files } = await supabase
   .from("quote_files")
-  .select("id, original_filename")  // ✅ NO page_count
+  .select("id, original_filename") // ✅ NO page_count
   .in("id", fileIds);
 
 // Merge data using Map
 const filesMap = new Map(files?.map((f) => [f.id, f]) || []);
 const mergedData = analysisResults.map((analysis) => ({
   ...analysis,
-  quote_files: filesMap.get(analysis.quote_file_id) || { 
-    original_filename: "Unknown" 
+  quote_files: filesMap.get(analysis.quote_file_id) || {
+    original_filename: "Unknown",
   },
 }));
 ```
 
 **Key Changes:**
+
 - ✅ Removed `quote_files!inner()` join syntax
 - ✅ Removed `page_count` from `quote_files` query
 - ✅ Used two separate queries + Map for merging
@@ -51,31 +54,35 @@ const mergedData = analysisResults.map((analysis) => ({
 ## Issue #2: Holidays Query Causing 400 Error
 
 ### Problem
+
 - `holidays` table does NOT have an `is_active` column
 - Query was filtering on non-existent column
 
 ### Solution Applied
+
 ✅ **Removed `is_active` filter from holidays query**
 
 **File:** `code/client/components/quote/Step4ReviewRush.tsx`
 
 **Before:**
+
 ```typescript
 const { data: holidays } = await supabase
   .from("holidays")
   .select("holiday_date")
   .gte("holiday_date", new Date().toISOString())
-  .eq("is_active", true);  // ❌ Column doesn't exist
+  .eq("is_active", true); // ❌ Column doesn't exist
 ```
 
 **After:**
+
 ```typescript
 const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
 const { data: holidays, error: holidaysError } = await supabase
   .from("holidays")
   .select("holiday_date")
-  .gte("holiday_date", today);  // ✅ No is_active filter
+  .gte("holiday_date", today); // ✅ No is_active filter
 
 if (holidaysError) {
   console.error("Error fetching holidays:", holidaysError);
@@ -83,6 +90,7 @@ if (holidaysError) {
 ```
 
 **Key Changes:**
+
 - ✅ Removed `.eq("is_active", true)` filter
 - ✅ Changed date format to YYYY-MM-DD for cleaner comparison
 - ✅ Added error handling
@@ -92,15 +100,18 @@ if (holidaysError) {
 ## Issue #3: Quotes Update - Wrong Column Names
 
 ### Problem
+
 - Using `physical_delivery_option` instead of `physical_delivery_option_id`
 - Missing `_id` suffix on foreign key column
 
 ### Solution Applied
+
 ✅ **Updated quotes table update to use correct column name**
 
 **File:** `code/client/components/quote/Step5BillingDelivery.tsx`
 
 **Before:**
+
 ```typescript
 .update({
   physical_delivery_option: selectedPhysicalOption,  // ❌ Wrong - storing code string
@@ -109,6 +120,7 @@ if (holidaysError) {
 ```
 
 **After:**
+
 ```typescript
 const selectedPhysicalOptionObj = physicalOptions.find(
   (opt) => opt.code === selectedPhysicalOption,
@@ -121,6 +133,7 @@ const selectedPhysicalOptionObj = physicalOptions.find(
 ```
 
 **Key Changes:**
+
 - ✅ Changed to `physical_delivery_option_id` (added `_id` suffix)
 - ✅ Storing UUID instead of code string
 - ✅ Finding the actual option object to get its ID
@@ -130,15 +143,18 @@ const selectedPhysicalOptionObj = physicalOptions.find(
 ## Issue #5: Pickup Locations - Wrong Column Name
 
 ### Problem
+
 - `pickup_locations` table uses `state` column, not `province`
 - TypeScript interface and display code referenced non-existent column
 
 ### Solution Applied
+
 ✅ **Updated interface and all references from `province` to `state`**
 
 **File:** `code/client/components/quote/Step5BillingDelivery.tsx`
 
 **Interface Update:**
+
 ```typescript
 interface PickupLocation {
   id: string;
@@ -146,7 +162,7 @@ interface PickupLocation {
   address_line1: string;
   address_line2?: string;
   city: string;
-  state: string;  // ✅ Changed from province
+  state: string; // ✅ Changed from province
   postal_code: string;
   phone?: string;
   hours?: string;
@@ -154,6 +170,7 @@ interface PickupLocation {
 ```
 
 **Display Updates (2 locations):**
+
 ```typescript
 // Location 1: Single pickup location display
 <p className="text-gray-600">
@@ -168,6 +185,7 @@ interface PickupLocation {
 ```
 
 **Key Changes:**
+
 - ✅ Updated TypeScript interface definition
 - ✅ Updated 2 display locations where province was referenced
 - ✅ Query already uses `select("*")` so no query change needed
@@ -176,13 +194,13 @@ interface PickupLocation {
 
 ## Summary Table: All Column Fixes
 
-| File | Issue | Wrong Column | Correct Column | Status |
-|------|-------|--------------|----------------|--------|
-| `Step4ReviewRush.tsx` | Join syntax | `quote_files!inner(...)` | Two separate queries | ✅ Fixed |
-| `Step4ReviewRush.tsx` | Missing column | `quote_files.page_count` | Use from `ai_analysis_results` | ✅ Fixed |
-| `Step4ReviewRush.tsx` | Wrong filter | `holidays.is_active` | Column doesn't exist - removed | ✅ Fixed |
-| `Step5BillingDelivery.tsx` | Wrong FK name | `physical_delivery_option` | `physical_delivery_option_id` | ✅ Fixed |
-| `Step5BillingDelivery.tsx` | Wrong column | `pickup_locations.province` | `pickup_locations.state` | ✅ Fixed |
+| File                       | Issue          | Wrong Column                | Correct Column                 | Status   |
+| -------------------------- | -------------- | --------------------------- | ------------------------------ | -------- |
+| `Step4ReviewRush.tsx`      | Join syntax    | `quote_files!inner(...)`    | Two separate queries           | ✅ Fixed |
+| `Step4ReviewRush.tsx`      | Missing column | `quote_files.page_count`    | Use from `ai_analysis_results` | ✅ Fixed |
+| `Step4ReviewRush.tsx`      | Wrong filter   | `holidays.is_active`        | Column doesn't exist - removed | ✅ Fixed |
+| `Step5BillingDelivery.tsx` | Wrong FK name  | `physical_delivery_option`  | `physical_delivery_option_id`  | ✅ Fixed |
+| `Step5BillingDelivery.tsx` | Wrong column   | `pickup_locations.province` | `pickup_locations.state`       | ✅ Fixed |
 
 ---
 
@@ -191,6 +209,7 @@ interface PickupLocation {
 ### Correct Column Names
 
 **quotes table:**
+
 - ✅ `physical_delivery_option_id` (UUID FK)
 - ✅ `selected_pickup_location_id` (UUID FK)
 - ✅ `turnaround_type` (VARCHAR)
@@ -198,19 +217,23 @@ interface PickupLocation {
 - ✅ `delivery_fee` (NUMERIC)
 
 **pickup_locations table:**
+
 - ✅ `state` (VARCHAR) - NOT `province`
 - ✅ `is_active` (BOOLEAN) - EXISTS here
 
 **holidays table:**
+
 - ✅ `holiday_date` (DATE)
 - ❌ `is_active` - Does NOT exist
 
 **quote_files table:**
+
 - ✅ `id` (UUID)
 - ✅ `original_filename` (VARCHAR)
 - ❌ `page_count` - Does NOT exist (use from `ai_analysis_results`)
 
 **ai_analysis_results table:**
+
 - ✅ `quote_file_id` (UUID FK)
 - ✅ `page_count` (INTEGER) - Get from HERE
 - ✅ `billable_pages` (NUMERIC)
@@ -222,6 +245,7 @@ interface PickupLocation {
 ## Testing Results
 
 ### Expected Behavior After Fixes:
+
 - ✅ No 400 errors in console
 - ✅ Step 4 loads actual pricing from database
 - ✅ Documents display with correct filenames
@@ -232,6 +256,7 @@ interface PickupLocation {
 - ✅ Quote updates save successfully
 
 ### Files Modified:
+
 1. `code/client/components/quote/Step4ReviewRush.tsx`
    - Fixed join to use two queries
    - Removed `page_count` from `quote_files` query

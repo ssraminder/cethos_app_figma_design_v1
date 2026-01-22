@@ -626,7 +626,8 @@ export default function Step4ReviewRush() {
           {turnaroundOptions.length === 0 && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-sm text-yellow-800">
-                ⚠️ Turnaround options not loaded. Please run the database setup SQL file.
+                ⚠️ Turnaround options not loaded. Please run the database setup
+                SQL file.
               </p>
               <p className="text-xs text-yellow-600 mt-1">
                 File: <code>code/database-setup-step4-step5.sql</code>
