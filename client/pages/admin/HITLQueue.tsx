@@ -28,8 +28,7 @@ export default function HITLQueue() {
   useEffect(() => {
     if (!session) return;
     fetchReviews();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [session, fetchReviews]);
 
   const fetchReviews = async () => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
