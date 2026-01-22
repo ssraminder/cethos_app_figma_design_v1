@@ -10,8 +10,9 @@ import EmailQuoteConfirmation from "@/components/EmailQuoteConfirmation";
 import Step1Upload from "@/components/steps/Step1Upload";
 import Step2Details from "@/components/steps/Step2Details";
 import Step3Contact from "@/components/steps/Step3Contact";
-import Step4Delivery from "@/components/quote/Step4Delivery";
-import Step5Review from "@/components/steps/Step5Review";
+import Step4ReviewRush from "@/components/quote/Step4ReviewRush";
+import Step5BillingDelivery from "@/components/quote/Step5BillingDelivery";
+import Step6Payment from "@/components/quote/Step6Payment";
 import { X } from "lucide-react";
 
 export default function Index() {
