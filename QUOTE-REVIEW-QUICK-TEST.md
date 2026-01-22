@@ -10,15 +10,17 @@ The Quote Review Page is ready. Follow these steps to test it.
 
 ### Step 1: Get a Quote ID
 
-You need an existing quote ID from your database. 
+You need an existing quote ID from your database.
 
 **Option A: Use an existing quote**
+
 ```sql
 -- Get a quote ID from database
 SELECT id, quote_number, status FROM quotes ORDER BY created_at DESC LIMIT 5;
 ```
 
 **Option B: Complete the quote flow**
+
 1. Go to homepage
 2. Upload a document
 3. Complete steps 1-5
@@ -29,11 +31,13 @@ SELECT id, quote_number, status FROM quotes ORDER BY created_at DESC LIMIT 5;
 ### Step 2: Access the Quote Review Page
 
 **URL Format:**
+
 ```
 http://localhost:8080/quote/{QUOTE_ID}/review
 ```
 
 **Example:**
+
 ```
 http://localhost:8080/quote/550e8400-e29b-41d4-a716-446655440000/review
 ```
@@ -45,6 +49,7 @@ http://localhost:8080/quote/550e8400-e29b-41d4-a716-446655440000/review
 ### Step 3: Verify Display
 
 **Check these elements load:**
+
 - [ ] Quote number displays (e.g., "Quote #Q-2025-001")
 - [ ] Customer name shows
 - [ ] Status badge appears with color
@@ -59,10 +64,13 @@ http://localhost:8080/quote/550e8400-e29b-41d4-a716-446655440000/review
 Update quote status in database and reload page:
 
 **Test Status: quote_ready**
+
 ```sql
 UPDATE quotes SET status = 'quote_ready' WHERE id = 'your-quote-id';
 ```
+
 **Expected:**
+
 - Green "Ready to Pay" badge
 - "Pay $XX.XX CAD" button visible
 - No warning messages
@@ -70,10 +78,13 @@ UPDATE quotes SET status = 'quote_ready' WHERE id = 'your-quote-id';
 ---
 
 **Test Status: hitl_pending**
+
 ```sql
 UPDATE quotes SET status = 'hitl_pending' WHERE id = 'your-quote-id';
 ```
+
 **Expected:**
+
 - Yellow "Under Review" badge
 - No payment button
 - Message: "Quote is being reviewed by our team"
@@ -81,10 +92,13 @@ UPDATE quotes SET status = 'hitl_pending' WHERE id = 'your-quote-id';
 ---
 
 **Test Status: paid**
+
 ```sql
 UPDATE quotes SET status = 'paid' WHERE id = 'your-quote-id';
 ```
+
 **Expected:**
+
 - Green "Paid" badge
 - No payment button
 - Confirmation message with checkmark
@@ -106,10 +120,13 @@ UPDATE quotes SET status = 'paid' WHERE id = 'your-quote-id';
 ### Step 6: Test Error Handling
 
 **Invalid Quote ID:**
+
 ```
 http://localhost:8080/quote/invalid-id-12345/review
 ```
+
 **Expected:**
+
 - Red error icon
 - "Quote Not Found" message
 - "Return to Home" button
@@ -118,17 +135,17 @@ http://localhost:8080/quote/invalid-id-12345/review
 
 ## 🎯 Status-Based Test Matrix
 
-| Status | Badge Color | Payment Button | Message |
-|--------|-------------|----------------|---------|
-| draft | Gray | ❌ No | "Quote is being prepared" |
-| processing | Blue | ❌ No | "Documents are being analyzed" |
-| hitl_pending | Yellow | ❌ No | "Under review by our team" |
-| quote_ready | Green | ✅ Yes | "Ready for payment" |
-| approved | Green | ✅ Yes | "Ready for payment" |
-| pending_payment | Orange | ✅ Yes | "Complete your payment" |
-| paid | Green | ❌ No | "Payment received" |
-| converted | Green | ❌ No | "Order being processed" |
-| expired | Red | ❌ No | "Quote has expired" |
+| Status          | Badge Color | Payment Button | Message                        |
+| --------------- | ----------- | -------------- | ------------------------------ |
+| draft           | Gray        | ❌ No          | "Quote is being prepared"      |
+| processing      | Blue        | ❌ No          | "Documents are being analyzed" |
+| hitl_pending    | Yellow      | ❌ No          | "Under review by our team"     |
+| quote_ready     | Green       | ✅ Yes         | "Ready for payment"            |
+| approved        | Green       | ✅ Yes         | "Ready for payment"            |
+| pending_payment | Orange      | ✅ Yes         | "Complete your payment"        |
+| paid            | Green       | ❌ No          | "Payment received"             |
+| converted       | Green       | ❌ No          | "Order being processed"        |
+| expired         | Red         | ❌ No          | "Quote has expired"            |
 
 ---
 
@@ -138,17 +155,17 @@ After viewing a quote, check what data was fetched:
 
 ```sql
 -- Verify quote data
-SELECT 
+SELECT
   id,
   quote_number,
   status,
   total,
   calculated_totals
-FROM quotes 
+FROM quotes
 WHERE id = 'your-quote-id';
 
 -- Verify customer link
-SELECT 
+SELECT
   q.quote_number,
   c.first_name,
   c.last_name,
@@ -158,7 +175,7 @@ JOIN customers c ON c.id = q.customer_id
 WHERE q.id = 'your-quote-id';
 
 -- Verify documents
-SELECT 
+SELECT
   ar.id,
   qf.original_filename,
   ar.detected_language,
@@ -175,26 +192,32 @@ WHERE ar.quote_id = 'your-quote-id'
 ## 🐛 Common Issues & Fixes
 
 ### Issue: Page shows "Loading..." forever
+
 **Cause:** Quote ID doesn't exist or network error
-**Fix:** 
+**Fix:**
+
 - Check browser console for errors
 - Verify quote ID exists in database
 - Check Supabase connection
 
 ### Issue: No documents shown
+
 **Cause:** No completed analysis results
-**Fix:** 
+**Fix:**
+
 ```sql
 -- Check if analysis completed
-SELECT * FROM ai_analysis_results 
+SELECT * FROM ai_analysis_results
 WHERE quote_id = 'your-quote-id';
 
 -- If status is not 'complete', processing may still be running
 ```
 
 ### Issue: Price shows $0.00
+
 **Cause:** Missing `calculated_totals` or no documents
 **Fix:**
+
 ```sql
 -- Check calculated totals
 SELECT calculated_totals FROM quotes WHERE id = 'your-quote-id';
@@ -203,10 +226,12 @@ SELECT calculated_totals FROM quotes WHERE id = 'your-quote-id';
 ```
 
 ### Issue: Payment button doesn't work
+
 **Cause:** Edge Function not deployed
 **Fix:** Deploy `create-checkout-session` Edge Function
 
 ### Issue: Status badge wrong color
+
 **Cause:** Status value doesn't match expected values
 **Fix:** Check status value in database matches one of the supported statuses
 
@@ -215,6 +240,7 @@ SELECT calculated_totals FROM quotes WHERE id = 'your-quote-id';
 ## ✅ Success Criteria
 
 **Test is successful when:**
+
 - ✅ Page loads without errors
 - ✅ Quote details display correctly
 - ✅ Documents list populates
@@ -249,11 +275,13 @@ SELECT calculated_totals FROM quotes WHERE id = 'your-quote-id';
    - Complete all 6 steps (without paying)
 
 2. **Get Quote ID:**
+
    ```sql
    SELECT id FROM quotes ORDER BY created_at DESC LIMIT 1;
    ```
 
 3. **Access Review Page:**
+
    ```
    http://localhost:8080/quote/{QUOTE_ID}/review
    ```
@@ -338,6 +366,7 @@ SELECT calculated_totals FROM quotes WHERE id = 'your-quote-id';
 5. Verify RLS policies allow access
 
 **Test Data:**
+
 ```sql
 -- Create a test quote for testing
 INSERT INTO quotes (
@@ -360,15 +389,18 @@ INSERT INTO quotes (
 ## ✨ Quick Reference
 
 **Test URLs:**
+
 - Valid quote: `/quote/{valid-id}/review`
 - Invalid quote: `/quote/invalid-123/review`
 - Home fallback: `/`
 
 **Test Cards:**
+
 - Success: `4242 4242 4242 4242`
 - Decline: `4000 0000 0000 0002`
 
 **Status Updates:**
+
 ```sql
 UPDATE quotes SET status = 'quote_ready' WHERE id = 'xxx';
 UPDATE quotes SET status = 'hitl_pending' WHERE id = 'xxx';
@@ -382,6 +414,7 @@ UPDATE quotes SET status = 'paid' WHERE id = 'xxx';
 The Quote Review Page is ready to go. Test thoroughly and it will work beautifully in production!
 
 **Next Steps:**
+
 1. Complete all tests above
 2. Fix any issues found
 3. Deploy to staging

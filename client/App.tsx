@@ -73,7 +73,10 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/success" element={<Success />} />
                 <Route path="/quote/:quoteId/checkout" element={<Checkout />} />
-                <Route path="/quote/:quoteId/review" element={<QuoteReviewPage />} />
+                <Route
+                  path="/quote/:quoteId/review"
+                  element={<QuoteReviewPage />}
+                />
                 <Route path="/order/success" element={<OrderSuccess />} />
 
                 {/* Admin login (not protected) */}

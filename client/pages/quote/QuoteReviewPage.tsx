@@ -96,7 +96,7 @@ export default function QuoteReviewPage() {
             last_name,
             email
           )
-        `
+        `,
         )
         .eq("id", quoteId)
         .single();
@@ -128,8 +128,9 @@ export default function QuoteReviewPage() {
           .select("id, original_filename")
           .in("id", fileIds);
 
-        const filesMap =
-          new Map(files?.map((f) => [f.id, f.original_filename]) || []);
+        const filesMap = new Map(
+          files?.map((f) => [f.id, f.original_filename]) || [],
+        );
 
         documents = analysisResults.map((doc) => ({
           id: doc.id,
@@ -153,11 +154,11 @@ export default function QuoteReviewPage() {
       } else {
         const translationTotal = documents.reduce(
           (sum, d) => sum + d.line_total,
-          0
+          0,
         );
         const certificationTotal = documents.reduce(
           (sum, d) => sum + d.certification_price,
-          0
+          0,
         );
         const subtotal =
           quoteData.subtotal || translationTotal + certificationTotal;
@@ -165,8 +166,7 @@ export default function QuoteReviewPage() {
         const deliveryFee = quoteData.delivery_fee || 0;
         const taxRate = quoteData.tax_rate || 0.05;
         const taxAmount =
-          quoteData.tax_amount ||
-          (subtotal + rushFee + deliveryFee) * taxRate;
+          quoteData.tax_amount || (subtotal + rushFee + deliveryFee) * taxRate;
         const total =
           quoteData.total || subtotal + rushFee + deliveryFee + taxAmount;
 
@@ -212,7 +212,7 @@ export default function QuoteReviewPage() {
         "create-checkout-session",
         {
           body: { quoteId: quote.id },
-        }
+        },
       );
 
       if (fnError) {
@@ -543,9 +543,7 @@ export default function QuoteReviewPage() {
                 <Calendar className="w-5 h-5 text-blue-600" />
               </div>
               <div>
-                <p className="font-medium text-gray-900">
-                  Estimated Delivery
-                </p>
+                <p className="font-medium text-gray-900">Estimated Delivery</p>
                 <p className="text-sm text-gray-600">
                   {new Date(quote.estimated_delivery_date).toLocaleDateString(
                     "en-US",
@@ -554,7 +552,7 @@ export default function QuoteReviewPage() {
                       month: "long",
                       day: "numeric",
                       year: "numeric",
-                    }
+                    },
                   )}
                   {quote.is_rush && (
                     <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
