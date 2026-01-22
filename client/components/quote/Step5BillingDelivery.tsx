@@ -696,6 +696,109 @@ export default function Step5BillingDelivery() {
         </div>
       </div>
 
+      {/* Shipping Address Form - Show when mail/courier selected */}
+      {needsShippingAddress && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Shipping Address
+          </h3>
+
+          <div className="space-y-4">
+            {/* Street Address */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Street Address <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={billingAddress.streetAddress}
+                onChange={(e) =>
+                  handleFieldChange("streetAddress", e.target.value)
+                }
+                onBlur={() => handleFieldBlur("streetAddress")}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  touched.streetAddress && errors.streetAddress
+                    ? "border-red-500"
+                    : "border-gray-300"
+                }`}
+                placeholder="123 Main Street"
+              />
+              {touched.streetAddress && errors.streetAddress && (
+                <p className="text-xs text-red-600 mt-1">
+                  {errors.streetAddress}
+                </p>
+              )}
+            </div>
+
+            {/* City and Province */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  City <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={billingAddress.city}
+                  onChange={(e) => handleFieldChange("city", e.target.value)}
+                  onBlur={() => handleFieldBlur("city")}
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    touched.city && errors.city
+                      ? "border-red-500"
+                      : "border-gray-300"
+                  }`}
+                  placeholder="Calgary"
+                />
+                {touched.city && errors.city && (
+                  <p className="text-xs text-red-600 mt-1">{errors.city}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Province <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={billingAddress.province}
+                  onChange={(e) => handleFieldChange("province", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {CANADIAN_PROVINCES.map((province) => (
+                    <option key={province.code} value={province.code}>
+                      {province.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Postal Code */}
+            <div className="sm:w-1/2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Postal Code <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={billingAddress.postalCode}
+                onChange={(e) =>
+                  handleFieldChange("postalCode", e.target.value.toUpperCase())
+                }
+                onBlur={() => handleFieldBlur("postalCode")}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  touched.postalCode && errors.postalCode
+                    ? "border-red-500"
+                    : "border-gray-300"
+                }`}
+                placeholder="T2P 1J9"
+                maxLength={7}
+              />
+              {touched.postalCode && errors.postalCode && (
+                <p className="text-xs text-red-600 mt-1">{errors.postalCode}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Pickup Location - Only show when pickup selected */}
       {isPickupSelected && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
