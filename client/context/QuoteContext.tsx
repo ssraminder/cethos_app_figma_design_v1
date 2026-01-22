@@ -117,24 +117,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     return initialState;
   });
 
-  // Safely get supabase hook
-  let supabase;
-  try {
-    supabase = useSupabase();
-  } catch (error) {
-    console.error("Error initializing Supabase:", error);
-    // Provide fallback object with noop functions
-    supabase = {
-      loading: false,
-      error: null,
-      createQuoteWithFiles: async () => null,
-      updateQuoteDetails: async () => true,
-      createOrUpdateCustomer: async () => true,
-      finalizeQuote: async () => true,
-      retryFileUpload: async () => false,
-    };
-  }
-
+  const supabase = useSupabase();
   const filesQueuedForUpload = useRef<UploadedFile[]>([]);
 
   // Save to localStorage whenever state changes
