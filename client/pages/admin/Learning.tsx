@@ -68,24 +68,6 @@ export default function Learning() {
     useState<LearningPattern | null>(null);
   const [actionModalOpen, setActionModalOpen] = useState(false);
 
-  // Session check
-  useEffect(() => {
-    const session = localStorage.getItem("staffSession");
-    if (!session) {
-      navigate("/admin/login", { replace: true });
-      return;
-    }
-    try {
-      const parsed = JSON.parse(session) as StaffSession;
-      if (!parsed.loggedIn) {
-        navigate("/admin/login", { replace: true });
-      }
-      setStaffSession(parsed);
-    } catch {
-      navigate("/admin/login", { replace: true });
-    }
-  }, [navigate]);
-
   // Fetch patterns when filters change
   useEffect(() => {
     if (staffSession) {
