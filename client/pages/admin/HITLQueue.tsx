@@ -15,6 +15,8 @@ interface HITLReview {
 }
 
 export default function HITLQueue() {
+  console.log('HITLQueue: Component starting to render');
+
   const { companyName, logoUrl, primaryColor } = useBranding();
   const [reviews, setReviews] = useState<HITLReview[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -25,11 +27,7 @@ export default function HITLQueue() {
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  useEffect(() => {
-    if (!session) return;
-    fetchReviews();
-  }, [session, fetchReviews]);
-
+  // Define fetchReviews BEFORE the useEffect that uses it
   const fetchReviews = useCallback(async () => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       setError("Database not configured");
