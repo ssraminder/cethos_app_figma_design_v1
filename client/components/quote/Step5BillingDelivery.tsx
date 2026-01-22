@@ -84,14 +84,13 @@ export default function Step5BillingDelivery() {
   const [pickupLocations, setPickupLocations] = useState<PickupLocation[]>([]);
 
   // Selection state
-  const [selectedDigitalOptions, setSelectedDigitalOptions] = useState<string[]>(
-    ["online_portal"],
-  );
+  const [selectedDigitalOptions, setSelectedDigitalOptions] = useState<
+    string[]
+  >(["online_portal"]);
   const [selectedPhysicalOption, setSelectedPhysicalOption] =
     useState<string>("none");
-  const [selectedPickupLocation, setSelectedPickupLocation] = useState<string>(
-    "",
-  );
+  const [selectedPickupLocation, setSelectedPickupLocation] =
+    useState<string>("");
 
   const [billingAddress, setBillingAddress] = useState<BillingAddress>({
     fullName:
@@ -588,7 +587,9 @@ export default function Step5BillingDelivery() {
                     {option.name}
                   </span>
                   <span className="text-sm text-gray-600">
-                    {option.price === 0 ? "FREE" : `$${option.price.toFixed(2)}`}
+                    {option.price === 0
+                      ? "FREE"
+                      : `$${option.price.toFixed(2)}`}
                   </span>
                 </div>
                 <p className="text-sm text-gray-500">{option.description}</p>
@@ -708,7 +709,9 @@ export default function Step5BillingDelivery() {
               <p className="font-medium text-gray-900">
                 {pickupLocations[0].name}
               </p>
-              <p className="text-gray-600">{pickupLocations[0].address_line1}</p>
+              <p className="text-gray-600">
+                {pickupLocations[0].address_line1}
+              </p>
               {pickupLocations[0].address_line2 && (
                 <p className="text-gray-600">
                   {pickupLocations[0].address_line2}

@@ -87,7 +87,9 @@ export default function Step4ReviewRush() {
       // Fetch turnaround options from database
       const { data: turnaroundData, error: turnaroundError } = await supabase
         .from("delivery_options")
-        .select("id, code, name, description, multiplier, days_reduction, is_rush")
+        .select(
+          "id, code, name, description, multiplier, days_reduction, is_rush",
+        )
         .eq("category", "turnaround")
         .eq("is_active", true)
         .order("sort_order");
@@ -142,7 +144,10 @@ export default function Step4ReviewRush() {
         if (quoteData.calculated_totals) {
           setPricing(quoteData.calculated_totals as PricingSummary);
         } else {
-          await calculatePricing(pages, quoteData.intended_use?.requires_certification);
+          await calculatePricing(
+            pages,
+            quoteData.intended_use?.requires_certification,
+          );
         }
 
         // Calculate delivery dates
@@ -221,7 +226,10 @@ export default function Step4ReviewRush() {
   };
 
   // Check cutoff time (MST timezone)
-  const checkCutoffTime = (cutoffHour: number, cutoffMinute: number): boolean => {
+  const checkCutoffTime = (
+    cutoffHour: number,
+    cutoffMinute: number,
+  ): boolean => {
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
 
@@ -346,9 +354,13 @@ export default function Step4ReviewRush() {
     );
   }
 
-  const standardOption = turnaroundOptions.find((opt) => opt.code === "standard");
+  const standardOption = turnaroundOptions.find(
+    (opt) => opt.code === "standard",
+  );
   const rushOption = turnaroundOptions.find((opt) => opt.code === "rush");
-  const sameDayOption = turnaroundOptions.find((opt) => opt.code === "same_day");
+  const sameDayOption = turnaroundOptions.find(
+    (opt) => opt.code === "same_day",
+  );
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-8">

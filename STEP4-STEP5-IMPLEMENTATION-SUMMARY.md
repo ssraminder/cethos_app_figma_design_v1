@@ -8,16 +8,16 @@
 
 ### **Step 4 (Review & Rush)** - COMPLETE ✅
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| Three radio options | ✅ | Standard, Rush, Same-Day (not a toggle) |
-| Cutoff time logic | ✅ | Rush: 4:30 PM MST, Same-Day: 2:00 PM MST |
-| Weekend detection | ✅ | Rush and Same-Day disabled on weekends |
-| Same-day eligibility | ✅ | Checks `same_day_eligibility` table |
-| Turnaround formula | ✅ | 2 + floor((pages-1)/2) days |
-| Business day calculation | ✅ | Skips weekends and holidays |
-| Dynamic pricing | ✅ | Rush +30%, Same-Day +100% |
-| Database-driven options | ✅ | Fetches from `delivery_options` table |
+| Feature                  | Status | Details                                  |
+| ------------------------ | ------ | ---------------------------------------- |
+| Three radio options      | ✅     | Standard, Rush, Same-Day (not a toggle)  |
+| Cutoff time logic        | ✅     | Rush: 4:30 PM MST, Same-Day: 2:00 PM MST |
+| Weekend detection        | ✅     | Rush and Same-Day disabled on weekends   |
+| Same-day eligibility     | ✅     | Checks `same_day_eligibility` table      |
+| Turnaround formula       | ✅     | 2 + floor((pages-1)/2) days              |
+| Business day calculation | ✅     | Skips weekends and holidays              |
+| Dynamic pricing          | ✅     | Rush +30%, Same-Day +100%                |
+| Database-driven options  | ✅     | Fetches from `delivery_options` table    |
 
 **File:** `code/client/components/quote/Step4ReviewRush.tsx` (686 lines)
 
@@ -25,16 +25,16 @@
 
 ### **Step 5 (Billing & Delivery)** - COMPLETE ✅
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| Database-driven options | ✅ | Fetches from `delivery_options` table |
-| Digital delivery checkboxes | ✅ | Online Portal (locked) + Email |
-| Physical delivery radio | ✅ | None, Regular, Priority, Express, Pickup |
-| Conditional shipping form | ✅ | ONLY shows for shipping options |
-| Pickup location display | ✅ | Shows when pickup is selected |
-| Single/multi pickup logic | ✅ | Auto-selects single, dropdown for multiple |
-| Canadian validation | ✅ | Postal code regex + province dropdown |
-| Dynamic pricing | ✅ | Adds delivery fee to total |
+| Feature                     | Status | Details                                    |
+| --------------------------- | ------ | ------------------------------------------ |
+| Database-driven options     | ✅     | Fetches from `delivery_options` table      |
+| Digital delivery checkboxes | ✅     | Online Portal (locked) + Email             |
+| Physical delivery radio     | ✅     | None, Regular, Priority, Express, Pickup   |
+| Conditional shipping form   | ✅     | ONLY shows for shipping options            |
+| Pickup location display     | ✅     | Shows when pickup is selected              |
+| Single/multi pickup logic   | ✅     | Auto-selects single, dropdown for multiple |
+| Canadian validation         | ✅     | Postal code regex + province dropdown      |
+| Dynamic pricing             | ✅     | Adds delivery fee to total                 |
 
 **File:** `code/client/components/quote/Step5BillingDelivery.tsx` (873 lines)
 
@@ -43,6 +43,7 @@
 ### **QuoteContext** - UPDATED ✅
 
 Added new fields:
+
 - `turnaroundType: "standard" | "rush" | "same_day"`
 - `turnaroundFee: number`
 - `deliveryFee: number`
@@ -61,6 +62,7 @@ Added new fields:
 3. Verify the output shows all tables were created
 
 **What the SQL creates:**
+
 - ✅ `same_day_eligibility` table + seed data
 - ✅ `pickup_locations` table + Calgary office
 - ✅ `holidays` table + 2025 Canadian holidays
@@ -113,18 +115,20 @@ Added new fields:
 
 ### **Turnaround Time (Step 4):**
 
-| Option | Days | Fee | Cutoff | Weekends | Eligibility |
-|--------|------|-----|--------|----------|-------------|
-| Standard | 2 + floor((pages-1)/2) | None | None | ✅ | Always available |
-| Rush | Standard - 1 | +30% | 4:30 PM MST | ❌ | Always available |
-| Same-Day | 0 (today) | +100% | 2:00 PM MST | ❌ | Database check required |
+| Option   | Days                   | Fee   | Cutoff      | Weekends | Eligibility             |
+| -------- | ---------------------- | ----- | ----------- | -------- | ----------------------- |
+| Standard | 2 + floor((pages-1)/2) | None  | None        | ✅       | Always available        |
+| Rush     | Standard - 1           | +30%  | 4:30 PM MST | ❌       | Always available        |
+| Same-Day | 0 (today)              | +100% | 2:00 PM MST | ❌       | Database check required |
 
 **Same-Day Eligibility Check:**
+
 - Queries `same_day_eligibility` table
 - Must match: source_language, target_language, document_type, intended_use
 - Only shows if ALL 4 criteria match
 
 **Business Day Calculation:**
+
 - Skips weekends (Saturday, Sunday)
 - Skips holidays from `holidays` table
 - Uses MST timezone (America/Edmonton)
@@ -133,20 +137,26 @@ Added new fields:
 
 ### **Delivery Options (Step 5):**
 
-| Group | Type | Selection | Form Shown |
-|-------|------|-----------|------------|
-| Digital | Checkbox | Multiple | None |
-| Physical: None | Radio | Single | None |
-| Physical: Shipping | Radio | Single | Shipping Address |
-| Physical: Pickup | Radio | Single | Pickup Location |
+| Group              | Type     | Selection | Form Shown       |
+| ------------------ | -------- | --------- | ---------------- |
+| Digital            | Checkbox | Multiple  | None             |
+| Physical: None     | Radio    | Single    | None             |
+| Physical: Shipping | Radio    | Single    | Shipping Address |
+| Physical: Pickup   | Radio    | Single    | Pickup Location  |
 
 **Conditional Form Logic:**
+
 ```typescript
-needsShippingAddress = ['regular_mail', 'priority_mail', 'express_courier'].includes(selected)
-isPickupSelected = selected === 'pickup'
+needsShippingAddress = [
+  "regular_mail",
+  "priority_mail",
+  "express_courier",
+].includes(selected);
+isPickupSelected = selected === "pickup";
 ```
 
 **Pickup Location Display:**
+
 - Single location: Auto-display address
 - Multiple locations: Dropdown + details on selection
 
@@ -157,6 +167,7 @@ isPickupSelected = selected === 'pickup'
 ### New Tables:
 
 #### `same_day_eligibility`
+
 ```sql
 - id (UUID)
 - source_language (VARCHAR)
@@ -167,6 +178,7 @@ isPickupSelected = selected === 'pickup'
 ```
 
 #### `pickup_locations`
+
 ```sql
 - id (UUID)
 - name (VARCHAR)
@@ -177,6 +189,7 @@ isPickupSelected = selected === 'pickup'
 ```
 
 #### `holidays`
+
 ```sql
 - id (UUID)
 - holiday_date (DATE)
@@ -187,7 +200,9 @@ isPickupSelected = selected === 'pickup'
 ### Updated Tables:
 
 #### `delivery_options`
+
 New columns:
+
 - `delivery_type` (VARCHAR) - 'online', 'ship', 'pickup'
 - `delivery_group` (VARCHAR) - 'digital', 'physical'
 - `is_always_selected` (BOOLEAN)
@@ -197,7 +212,9 @@ New columns:
 - `is_rush` (BOOLEAN)
 
 #### `quotes`
+
 New columns:
+
 - `shipping_address` (JSONB)
 - `selected_pickup_location_id` (UUID FK)
 - `turnaround_type` (VARCHAR)
@@ -209,6 +226,7 @@ New columns:
 ## 📊 Pricing Calculation Flow
 
 ### Step 4 (Turnaround Fee):
+
 ```
 Base Subtotal = Translation Cost + Certification Cost
 Turnaround Fee = Base Subtotal × (multiplier - 1)
@@ -222,6 +240,7 @@ Total = Subtotal with Turnaround + Tax
 ```
 
 ### Step 5 (Delivery Fee):
+
 ```
 Previous Subtotal = Base Subtotal + Turnaround Fee
 Delivery Fee = Selected Physical Option Price
@@ -235,8 +254,9 @@ Total = Subtotal with Delivery + Tax
 ## 🎨 UI/UX Improvements
 
 ### Step 4:
+
 - **Radio buttons** instead of toggle (clearer single-choice selection)
-- **Visual indicators**: 
+- **Visual indicators**:
   - Standard: Calendar icon, gray
   - Rush: Zap icon, amber badge "+30%"
   - Same-Day: Sparkles icon, green badge "+100%"
@@ -245,6 +265,7 @@ Total = Subtotal with Delivery + Tax
 - **Business day math** shows actual delivery dates
 
 ### Step 5:
+
 - **Checkbox for digital** (can select multiple)
 - **Radio for physical** (only one at a time)
 - **Conditional forms** reduce clutter
