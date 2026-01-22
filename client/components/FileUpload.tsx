@@ -1,6 +1,14 @@
 import { useState, useRef } from "react";
-import { X } from "lucide-react";
+import { X, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { useQuote } from "@/context/QuoteContext";
+import { supabase } from "@/lib/supabase";
+
+interface UploadingFile {
+  file: File;
+  progress: number;
+  status: "uploading" | "success" | "error";
+  error?: string;
+}
 
 export default function FileUpload() {
   const [isDragging, setIsDragging] = useState(false);
