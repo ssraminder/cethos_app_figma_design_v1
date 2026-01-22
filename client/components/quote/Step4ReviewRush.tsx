@@ -132,7 +132,7 @@ export default function Step4ReviewRush() {
   const fetchAnalysisData = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const quoteId = state.quoteId;
 
@@ -224,14 +224,14 @@ export default function Step4ReviewRush() {
         setSourceLanguage(firstDoc.detected_language || "");
         setTargetLanguage("en"); // Assuming English target
         setDocumentType(firstDoc.detected_document_type || "");
-        
+
         // Get intended use from quote
         const { data: quoteData } = await supabase
           .from("quotes")
           .select("intended_use:intended_uses(code)")
           .eq("id", quoteId)
           .single();
-        
+
         if (quoteData?.intended_use) {
           setIntendedUse((quoteData.intended_use as any)?.code || "");
         }
@@ -257,7 +257,9 @@ export default function Step4ReviewRush() {
         .eq("id", quoteId);
     } catch (err) {
       console.error("Error fetching analysis data:", err);
-      setError(err instanceof Error ? err.message : "Failed to load pricing data");
+      setError(
+        err instanceof Error ? err.message : "Failed to load pricing data",
+      );
       setProcessingState("no_data");
     } finally {
       setLoading(false);
@@ -293,7 +295,10 @@ export default function Step4ReviewRush() {
   };
 
   // Check cutoff time (MST timezone)
-  const checkCutoffTime = (cutoffHour: number, cutoffMinute: number): boolean => {
+  const checkCutoffTime = (
+    cutoffHour: number,
+    cutoffMinute: number,
+  ): boolean => {
     const now = new Date();
     const dayOfWeek = now.getDay();
 
@@ -466,9 +471,13 @@ export default function Step4ReviewRush() {
     );
   }
 
-  const standardOption = turnaroundOptions.find((opt) => opt.code === "standard");
+  const standardOption = turnaroundOptions.find(
+    (opt) => opt.code === "standard",
+  );
   const rushOption = turnaroundOptions.find((opt) => opt.code === "rush");
-  const sameDayOption = turnaroundOptions.find((opt) => opt.code === "same_day");
+  const sameDayOption = turnaroundOptions.find(
+    (opt) => opt.code === "same_day",
+  );
 
   const totalBillablePages = documents.reduce(
     (sum, doc) => sum + (doc.billable_pages || 0),
@@ -543,9 +552,7 @@ export default function Step4ReviewRush() {
         </div>
         <div className="px-6 py-4 space-y-3">
           <div className="flex justify-between text-gray-700">
-            <span>
-              Translation ({totalBillablePages.toFixed(1)} pages)
-            </span>
+            <span>Translation ({totalBillablePages.toFixed(1)} pages)</span>
             <span>${totals.translationSubtotal.toFixed(2)}</span>
           </div>
           {totals.certificationTotal > 0 && (
@@ -646,7 +653,8 @@ export default function Step4ReviewRush() {
                     </span>
                   </div>
                   <span className="font-semibold text-amber-600">
-                    +${(totals.subtotal * (rushOption.multiplier - 1)).toFixed(2)}
+                    +$
+                    {(totals.subtotal * (rushOption.multiplier - 1)).toFixed(2)}
                   </span>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">
@@ -702,7 +710,9 @@ export default function Step4ReviewRush() {
                   </div>
                   <span className="font-semibold text-green-600">
                     +$
-                    {(totals.subtotal * (sameDayOption.multiplier - 1)).toFixed(2)}
+                    {(totals.subtotal * (sameDayOption.multiplier - 1)).toFixed(
+                      2,
+                    )}
                   </span>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">
