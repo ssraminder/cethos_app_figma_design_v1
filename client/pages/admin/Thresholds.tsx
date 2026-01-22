@@ -55,10 +55,9 @@ export default function Thresholds() {
 
   // Fetch all data when session is ready
   useEffect(() => {
-    if (staffSession) {
-      fetchAllData();
-    }
-  }, [staffSession]);
+    if (authLoading || !staffSession) return;
+    fetchAllData();
+  }, [authLoading, staffSession]);
 
   async function fetchAllData() {
     setLoading(true);
