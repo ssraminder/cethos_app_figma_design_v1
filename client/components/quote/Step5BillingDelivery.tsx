@@ -718,7 +718,7 @@ export default function Step5BillingDelivery() {
                 </p>
               )}
               <p className="text-gray-600">
-                {pickupLocations[0].city}, {pickupLocations[0].province}{" "}
+                {pickupLocations[0].city}, {pickupLocations[0].state}{" "}
                 {pickupLocations[0].postal_code}
               </p>
               {pickupLocations[0].phone && (
