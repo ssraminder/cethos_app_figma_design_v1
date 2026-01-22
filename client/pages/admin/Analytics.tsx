@@ -61,6 +61,7 @@ export default function Analytics() {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(
     null,
   );
+  const { session, loading: authLoading } = useAdminAuthContext();
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
