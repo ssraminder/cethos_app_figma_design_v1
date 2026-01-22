@@ -120,12 +120,52 @@ export default function Step4ReviewRush() {
 
       if (turnaroundError) {
         console.error("Error fetching turnaround options:", turnaroundError);
+        // Use fallback options if database query fails
+        useFallbackOptions();
+      } else if (turnaroundData && turnaroundData.length > 0) {
+        setTurnaroundOptions(turnaroundData);
       } else {
-        setTurnaroundOptions(turnaroundData || []);
+        // No options in database - use fallback
+        console.warn("No turnaround options found in database, using defaults");
+        useFallbackOptions();
       }
     } catch (err) {
       console.error("Error fetching turnaround options:", err);
+      useFallbackOptions();
     }
+  };
+
+  const useFallbackOptions = () => {
+    // Fallback options if database isn't set up yet
+    setTurnaroundOptions([
+      {
+        id: "fallback-standard",
+        code: "standard",
+        name: "Standard Delivery",
+        description: "Standard turnaround based on document length",
+        multiplier: 1.0,
+        days_reduction: 0,
+        is_rush: false,
+      },
+      {
+        id: "fallback-rush",
+        code: "rush",
+        name: "Rush Delivery",
+        description: "1 business day faster",
+        multiplier: 1.3,
+        days_reduction: 1,
+        is_rush: true,
+      },
+      {
+        id: "fallback-same-day",
+        code: "same_day",
+        name: "Same-Day Delivery",
+        description: "Ready today",
+        multiplier: 2.0,
+        days_reduction: 0,
+        is_rush: true,
+      },
+    ]);
   };
 
   const fetchAnalysisData = async () => {
