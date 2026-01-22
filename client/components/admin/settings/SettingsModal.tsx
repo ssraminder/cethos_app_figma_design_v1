@@ -62,14 +62,15 @@ export default function SettingsModal(props: SettingsModalProps) {
   // Determine which interface is being used
   const isFieldsBased = "fields" in props && props.fields !== undefined;
 
-  // For old interface, check if modal should be shown
-  if ("isOpen" in props && !props.isOpen) return null;
-
+  // ALL HOOKS MUST BE BEFORE ANY EARLY RETURN
   useEffect(() => {
     if (isFieldsBased && props.initialData) {
       setFormData(props.initialData);
     }
   }, [isFieldsBased, props.initialData]);
+
+  // For old interface, check if modal should be shown (AFTER all hooks)
+  if ("isOpen" in props && !props.isOpen) return null;
 
   const handleChange = (name: string, value: any) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
