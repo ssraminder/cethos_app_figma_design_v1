@@ -184,23 +184,14 @@ const HITLReviewDetail: React.FC = () => {
   // ============================================
 
   useEffect(() => {
-    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
-    setStaffSession(session);
-
-    console.log("🔐 Session check:", session);
-    console.log("🔐 Has staffId:", !!session.staffId);
-
-    if (!session.staffId) {
-      console.warn("⚠️ No staff session found - redirecting to login");
-      console.warn(
-        "⚠️ If you need to test, temporarily add a session to sessionStorage",
-      );
+    if (authLoading) return;
+    if (!staffSession?.staffId) {
       navigate("/admin/login");
       return;
     }
-
     fetchAllData();
-  }, [reviewId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staffSession, authLoading, reviewId]);
 
   const fetchAllData = async () => {
     setLoading(true);
