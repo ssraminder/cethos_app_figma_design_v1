@@ -49,20 +49,15 @@ export default function HITLThresholdsSettings() {
     hitl_sla_hours: 4,
     hitl_rush_sla_hours: 2,
   });
+  const { session, loading: authLoading } = useAdminAuthContext();
 
   const isDirty = JSON.stringify(values) !== JSON.stringify(originalValues);
 
   useEffect(() => {
-    checkAuth();
+    if (authLoading || !session) return;
     fetchSettings();
-  }, []);
+  }, [authLoading, session]);
 
-  const checkAuth = () => {
-    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
-    if (!session.loggedIn) {
-      navigate("/admin/login");
-    }
-  };
 
   const fetchSettings = async () => {
     setLoading(true);
