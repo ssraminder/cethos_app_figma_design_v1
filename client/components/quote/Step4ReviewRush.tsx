@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { supabase } from "@/lib/supabase";
 import { format, addBusinessDays } from "date-fns";
-import { 
-  FileText, 
-  Calendar, 
-  Zap, 
+import {
+  FileText,
+  Calendar,
+  Zap,
   ChevronRight,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,7 +36,7 @@ interface PricingSummary {
 
 export default function Step4ReviewRush() {
   const { state, updateState, goToNextStep, goToPreviousStep } = useQuote();
-  
+
   const [rushEnabled, setRushEnabled] = useState(false);
   const [rushOption, setRushOption] = useState<RushOption | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,15 +57,15 @@ export default function Step4ReviewRush() {
     try {
       // Fetch rush option from database
       const { data: rushData, error: rushError } = await supabase
-        .from('delivery_options')
-        .select('id, name, multiplier, days_reduction')
-        .eq('category', 'turnaround')
-        .eq('is_rush', true)
-        .eq('is_active', true)
+        .from("delivery_options")
+        .select("id, name, multiplier, days_reduction")
+        .eq("category", "turnaround")
+        .eq("is_rush", true)
+        .eq("is_active", true)
         .single();
 
       if (rushError) {
-        console.error('Error fetching rush option:', rushError);
+        console.error("Error fetching rush option:", rushError);
       } else {
         setRushOption(rushData);
       }
@@ -73,44 +73,52 @@ export default function Step4ReviewRush() {
       // Fetch quote details including pricing
       if (state.quoteId) {
         const { data: quoteData, error: quoteError } = await supabase
-          .from('quotes')
-          .select(`
+          .from("quotes")
+          .select(
+            `
             *,
             quote_documents(file_name, calculated_pages),
             source_language:languages!quotes_source_language_id_fkey(name),
             target_language:languages!quotes_target_language_id_fkey(name),
             intended_use:intended_uses(name, requires_certification)
-          `)
-          .eq('id', state.quoteId)
+          `,
+          )
+          .eq("id", state.quoteId)
           .single();
 
         if (quoteError) throw quoteError;
 
         // Process documents
-        const docs = quoteData.quote_documents?.map((doc: any, index: number) => ({
-          name: `Document ${index + 1}`,
-          fileName: doc.file_name,
-          pages: doc.calculated_pages || 1,
-        })) || [];
+        const docs =
+          quoteData.quote_documents?.map((doc: any, index: number) => ({
+            name: `Document ${index + 1}`,
+            fileName: doc.file_name,
+            pages: doc.calculated_pages || 1,
+          })) || [];
 
         setDocuments(docs);
-        setTotalPages(docs.reduce((sum: number, doc: DocumentInfo) => sum + doc.pages, 0));
-        setSourceLanguage((quoteData.source_language as any)?.name || '');
-        setTargetLanguage((quoteData.target_language as any)?.name || '');
-        setCertificationRequired((quoteData.intended_use as any)?.requires_certification || false);
+        setTotalPages(
+          docs.reduce((sum: number, doc: DocumentInfo) => sum + doc.pages, 0),
+        );
+        setSourceLanguage((quoteData.source_language as any)?.name || "");
+        setTargetLanguage((quoteData.target_language as any)?.name || "");
+        setCertificationRequired(
+          (quoteData.intended_use as any)?.requires_certification || false,
+        );
 
         // Get or calculate pricing
         if (quoteData.calculated_totals) {
           setPricing(quoteData.calculated_totals as PricingSummary);
         } else {
           // Calculate pricing if not yet available
-          await calculatePricing(docs.reduce((sum: number, doc: DocumentInfo) => sum + doc.pages, 0));
+          await calculatePricing(
+            docs.reduce((sum: number, doc: DocumentInfo) => sum + doc.pages, 0),
+          );
         }
       }
-
     } catch (err) {
-      console.error('Error fetching quote data:', err);
-      toast.error('Failed to load quote details');
+      console.error("Error fetching quote data:", err);
+      toast.error("Failed to load quote details");
     } finally {
       setLoading(false);
     }
@@ -136,7 +144,7 @@ export default function Step4ReviewRush() {
         total,
       });
     } catch (err) {
-      console.error('Error calculating pricing:', err);
+      console.error("Error calculating pricing:", err);
     }
   };
 
@@ -148,17 +156,20 @@ export default function Step4ReviewRush() {
   };
 
   const standardDays = calculateStandardDays(totalPages);
-  const rushDays = rushOption ? Math.max(1, standardDays - rushOption.days_reduction) : standardDays;
+  const rushDays = rushOption
+    ? Math.max(1, standardDays - rushOption.days_reduction)
+    : standardDays;
 
   const standardDeliveryDate = addBusinessDays(new Date(), standardDays);
   const rushDeliveryDate = addBusinessDays(new Date(), rushDays);
 
-  const formattedStandardDate = format(standardDeliveryDate, 'EEEE, MMM d');
-  const formattedRushDate = format(rushDeliveryDate, 'EEEE, MMM d');
+  const formattedStandardDate = format(standardDeliveryDate, "EEEE, MMM d");
+  const formattedRushDate = format(rushDeliveryDate, "EEEE, MMM d");
 
   // Calculate rush fee
   const subtotal = pricing?.subtotal || 0;
-  const rushFee = rushEnabled && rushOption ? subtotal * (rushOption.multiplier - 1) : 0;
+  const rushFee =
+    rushEnabled && rushOption ? subtotal * (rushOption.multiplier - 1) : 0;
   const subtotalWithRush = subtotal + rushFee;
   const taxAmount = subtotalWithRush * (pricing?.tax_rate || 0.05);
   const grandTotal = subtotalWithRush + taxAmount;
@@ -177,27 +188,30 @@ export default function Step4ReviewRush() {
         };
 
         const { error } = await supabase
-          .from('quotes')
+          .from("quotes")
           .update({
-            delivery_speed: rushEnabled ? 'rush' : 'standard',
+            delivery_speed: rushEnabled ? "rush" : "standard",
             calculated_totals: updatedTotals,
-            estimated_delivery_date: (rushEnabled ? rushDeliveryDate : standardDeliveryDate).toISOString(),
+            estimated_delivery_date: (rushEnabled
+              ? rushDeliveryDate
+              : standardDeliveryDate
+            ).toISOString(),
             updated_at: new Date().toISOString(),
           })
-          .eq('id', state.quoteId);
+          .eq("id", state.quoteId);
 
         if (error) throw error;
       }
 
       // Update context state
       updateState({
-        deliverySpeed: rushEnabled ? 'rush' : 'standard',
+        deliverySpeed: rushEnabled ? "rush" : "standard",
       });
 
       await goToNextStep();
     } catch (err) {
-      console.error('Error saving rush selection:', err);
-      toast.error('Failed to save delivery preferences');
+      console.error("Error saving rush selection:", err);
+      toast.error("Failed to save delivery preferences");
     } finally {
       setSaving(false);
     }
@@ -236,10 +250,11 @@ export default function Step4ReviewRush() {
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Documents</span>
             <span className="font-medium text-gray-900">
-              {documents.length} {documents.length === 1 ? 'document' : 'documents'}
+              {documents.length}{" "}
+              {documents.length === 1 ? "document" : "documents"}
             </span>
           </div>
-          
+
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Translation</span>
             <span className="font-medium text-gray-900">
@@ -249,16 +264,26 @@ export default function Step4ReviewRush() {
 
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Total Pages</span>
-            <span className="font-medium text-gray-900">{totalPages} pages</span>
+            <span className="font-medium text-gray-900">
+              {totalPages} pages
+            </span>
           </div>
 
           {/* Document List */}
           <div className="mt-4 pt-4 border-t border-gray-200">
-            <p className="text-xs font-medium text-gray-500 uppercase mb-2">Documents</p>
+            <p className="text-xs font-medium text-gray-500 uppercase mb-2">
+              Documents
+            </p>
             <div className="space-y-2">
               {documents.map((doc, index) => (
-                <div key={index} className="flex justify-between items-center text-sm">
-                  <span className="text-gray-700 truncate max-w-[200px]" title={doc.fileName}>
+                <div
+                  key={index}
+                  className="flex justify-between items-center text-sm"
+                >
+                  <span
+                    className="text-gray-700 truncate max-w-[200px]"
+                    title={doc.fileName}
+                  >
                     {doc.fileName}
                   </span>
                   <span className="text-gray-500">{doc.pages} pages</span>
@@ -273,12 +298,16 @@ export default function Step4ReviewRush() {
       {pricing && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
           <div className="bg-gray-50 -mx-6 -mt-6 px-6 py-3 rounded-t-xl mb-4">
-            <h3 className="text-sm font-semibold text-gray-700 uppercase">Price Breakdown</h3>
+            <h3 className="text-sm font-semibold text-gray-700 uppercase">
+              Price Breakdown
+            </h3>
           </div>
 
           <div className="space-y-3">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Translation ({totalPages} pages)</span>
+              <span className="text-gray-600">
+                Translation ({totalPages} pages)
+              </span>
               <span className="font-medium text-gray-900">
                 ${pricing.translation_total.toFixed(2)}
               </span>
@@ -309,17 +338,22 @@ export default function Step4ReviewRush() {
           <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
             <Calendar className="w-5 h-5 text-gray-600" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900">Estimated Delivery</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Estimated Delivery
+          </h3>
         </div>
 
         {/* Standard Delivery */}
         <div className="mb-4">
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600">Standard Delivery</span>
-            <span className="text-sm font-medium text-gray-900">{formattedStandardDate}</span>
+            <span className="text-sm font-medium text-gray-900">
+              {formattedStandardDate}
+            </span>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            {standardDays} business {standardDays === 1 ? 'day' : 'days'} from order placement
+            {standardDays} business {standardDays === 1 ? "day" : "days"} from
+            order placement
           </p>
         </div>
 
@@ -329,39 +363,49 @@ export default function Step4ReviewRush() {
             <button
               onClick={() => setRushEnabled(!rushEnabled)}
               className={`w-full p-4 rounded-lg border-2 transition-all cursor-pointer ${
-                rushEnabled 
-                  ? 'border-blue-500 bg-blue-50' 
-                  : 'border-gray-200 hover:border-blue-300'
+                rushEnabled
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-gray-200 hover:border-blue-300"
               }`}
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    rushEnabled ? 'bg-blue-500' : 'bg-gray-200'
-                  }`}>
-                    <Zap className={`w-4 h-4 ${rushEnabled ? 'text-white' : 'text-gray-500'}`} />
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      rushEnabled ? "bg-blue-500" : "bg-gray-200"
+                    }`}
+                  >
+                    <Zap
+                      className={`w-4 h-4 ${rushEnabled ? "text-white" : "text-gray-500"}`}
+                    />
                   </div>
-                  <span className="font-medium text-gray-900">Rush Delivery</span>
+                  <span className="font-medium text-gray-900">
+                    Rush Delivery
+                  </span>
                 </div>
-                <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  rushEnabled 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-gray-200 text-gray-600'
-                }`}>
-                  {rushEnabled ? 'ON' : 'OFF'}
+                <div
+                  className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    rushEnabled
+                      ? "bg-blue-500 text-white"
+                      : "bg-gray-200 text-gray-600"
+                  }`}
+                >
+                  {rushEnabled ? "ON" : "OFF"}
                 </div>
               </div>
-              
+
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-600">{formattedRushDate}</span>
-                <span className={`font-semibold ${rushEnabled ? 'text-blue-600' : 'text-gray-900'}`}>
+                <span
+                  className={`font-semibold ${rushEnabled ? "text-blue-600" : "text-gray-900"}`}
+                >
                   +${rushFee.toFixed(2)}
                 </span>
               </div>
-              
+
               <p className="text-xs text-gray-500 text-left mt-1">
-                {rushDays} business {rushDays === 1 ? 'day' : 'days'} • 
-                +{((rushOption.multiplier - 1) * 100).toFixed(0)}% fee
+                {rushDays} business {rushDays === 1 ? "day" : "days"} • +
+                {((rushOption.multiplier - 1) * 100).toFixed(0)}% fee
               </p>
             </button>
           </div>
@@ -409,7 +453,7 @@ export default function Step4ReviewRush() {
         >
           ← Back
         </button>
-        
+
         <button
           onClick={handleContinue}
           disabled={saving}
