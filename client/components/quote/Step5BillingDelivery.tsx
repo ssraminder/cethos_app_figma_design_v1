@@ -412,7 +412,7 @@ export default function Step5BillingDelivery() {
             selected_pickup_location_id: isPickupSelected
               ? selectedPickupLocation
               : null,
-            shipping_address: {
+            billing_address: {
               firstName:
                 billingAddress.fullName.split(" ")[0] ||
                 billingAddress.fullName,
@@ -427,6 +427,21 @@ export default function Step5BillingDelivery() {
               country: "Canada",
               phone: state.phone || "",
             },
+            shipping_address: needsShippingAddress ? {
+              firstName:
+                shippingAddress.fullName.split(" ")[0] ||
+                shippingAddress.fullName,
+              lastName:
+                shippingAddress.fullName.split(" ").slice(1).join(" ") || "",
+              company: state.companyName || "",
+              addressLine1: shippingAddress.streetAddress,
+              addressLine2: "",
+              city: shippingAddress.city,
+              state: shippingAddress.province,
+              postalCode: shippingAddress.postalCode,
+              country: "Canada",
+              phone: state.phone || "",
+            } : null,
             calculated_totals: pricing,
             updated_at: new Date().toISOString(),
           })
@@ -440,7 +455,7 @@ export default function Step5BillingDelivery() {
         physicalDeliveryOption: selectedPhysicalOption,
         pickupLocationId: isPickupSelected ? selectedPickupLocation : null,
         deliveryFee: pricing?.delivery_fee || 0,
-        shippingAddress: {
+        billingAddress: {
           firstName:
             billingAddress.fullName.split(" ")[0] || billingAddress.fullName,
           lastName: billingAddress.fullName.split(" ").slice(1).join(" ") || "",
@@ -453,6 +468,19 @@ export default function Step5BillingDelivery() {
           country: "Canada",
           phone: state.phone || "",
         },
+        shippingAddress: needsShippingAddress ? {
+          firstName:
+            shippingAddress.fullName.split(" ")[0] || shippingAddress.fullName,
+          lastName: shippingAddress.fullName.split(" ").slice(1).join(" ") || "",
+          company: state.companyName || "",
+          addressLine1: shippingAddress.streetAddress,
+          addressLine2: "",
+          city: shippingAddress.city,
+          state: shippingAddress.province,
+          postalCode: shippingAddress.postalCode,
+          country: "Canada",
+          phone: state.phone || "",
+        } : null,
       });
 
       await goToNextStep();
