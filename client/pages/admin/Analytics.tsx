@@ -68,6 +68,8 @@ export default function Analytics() {
 
   // Fetch analytics data
   useEffect(() => {
+    if (authLoading || !session) return;
+
     async function fetchAnalytics() {
       setLoading(true);
       setError(null);
@@ -107,7 +109,7 @@ export default function Analytics() {
     }
 
     fetchAnalytics();
-  }, [period, SUPABASE_URL, SUPABASE_ANON_KEY]);
+  }, [authLoading, session, period, SUPABASE_URL, SUPABASE_ANON_KEY]);
 
   // Helper: Color based on accuracy percentage
   function getAccuracyColor(accuracyStr: string | undefined): string {
