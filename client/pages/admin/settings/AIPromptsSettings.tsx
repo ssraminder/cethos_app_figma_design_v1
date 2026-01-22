@@ -51,18 +51,13 @@ export default function AIPromptsSettings() {
   const [showModal, setShowModal] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<AIPrompt | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { session, loading: authLoading } = useAdminAuthContext();
 
   useEffect(() => {
-    checkAuth();
+    if (authLoading || !session) return;
     fetchPrompts();
-  }, []);
+  }, [authLoading, session]);
 
-  const checkAuth = () => {
-    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
-    if (!session.loggedIn) {
-      navigate("/admin/login");
-    }
-  };
 
   const fetchPrompts = async () => {
     setLoading(true);
