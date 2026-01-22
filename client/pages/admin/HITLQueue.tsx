@@ -391,12 +391,3 @@ export default function HITLQueue() {
     </div>
   );
 }
-
-// Wrap with ErrorBoundary
-export default function HITLQueueWrapper() {
-  return (
-    <ErrorBoundary>
-      <HITLQueue />
-    </ErrorBoundary>
-  );
-}
