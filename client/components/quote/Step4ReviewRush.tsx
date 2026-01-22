@@ -177,7 +177,7 @@ export default function Step4ReviewRush() {
       const fileIds = analysisResults.map((r) => r.quote_file_id);
       const { data: files, error: filesError } = await supabase
         .from("quote_files")
-        .select("id, original_filename, page_count")
+        .select("id, original_filename")
         .in("id", fileIds);
 
       if (filesError) throw filesError;
@@ -189,7 +189,6 @@ export default function Step4ReviewRush() {
         quote_files: filesMap.get(analysis.quote_file_id) || {
           id: analysis.quote_file_id,
           original_filename: "Unknown",
-          page_count: 0,
         },
       }));
 
