@@ -277,16 +277,26 @@ export default function Step5BillingDelivery() {
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    // Validate billing address
-    Object.keys(billingAddress).forEach((key) => {
-      const error = validateField(
-        key,
-        billingAddress[key as keyof BillingAddress],
+    // Always validate full name (for billing)
+    const fullNameError = validateField("fullName", billingAddress.fullName);
+    if (fullNameError) {
+      newErrors.fullName = fullNameError;
+    }
+
+    // Only validate shipping address if physical delivery requires it
+    if (needsShippingAddress) {
+      const streetError = validateField(
+        "streetAddress",
+        billingAddress.streetAddress,
       );
-      if (error) {
-        newErrors[key] = error;
-      }
-    });
+      if (streetError) newErrors.streetAddress = streetError;
+
+      const cityError = validateField("city", billingAddress.city);
+      if (cityError) newErrors.city = cityError;
+
+      const postalError = validateField("postalCode", billingAddress.postalCode);
+      if (postalError) newErrors.postalCode = postalError;
+    }
 
     // If pickup selected and multiple locations exist, must select one
     if (
@@ -298,13 +308,20 @@ export default function Step5BillingDelivery() {
     }
 
     setErrors(newErrors);
-    setTouched({
+
+    // Only mark fields as touched if they're required
+    const touchedFields: Record<string, boolean> = {
       fullName: true,
-      streetAddress: true,
-      city: true,
-      province: true,
-      postalCode: true,
-    });
+    };
+
+    if (needsShippingAddress) {
+      touchedFields.streetAddress = true;
+      touchedFields.city = true;
+      touchedFields.province = true;
+      touchedFields.postalCode = true;
+    }
+
+    setTouched(touchedFields);
 
     return Object.keys(newErrors).length === 0;
   };
