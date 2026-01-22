@@ -56,7 +56,7 @@ interface PickupLocation {
   hours?: string;
 }
 
-interface BillingAddress {
+interface Address {
   fullName: string;
   streetAddress: string;
   city: string;
@@ -92,7 +92,7 @@ export default function Step5BillingDelivery() {
   const [selectedPickupLocation, setSelectedPickupLocation] =
     useState<string>("");
 
-  const [billingAddress, setBillingAddress] = useState<BillingAddress>({
+  const [billingAddress, setBillingAddress] = useState<Address>({
     fullName:
       state.firstName && state.lastName
         ? `${state.firstName} ${state.lastName}`.trim()
@@ -102,6 +102,16 @@ export default function Step5BillingDelivery() {
     province: "AB",
     postalCode: "",
   });
+
+  const [shippingAddress, setShippingAddress] = useState<Address>({
+    fullName: "",
+    streetAddress: "",
+    city: "",
+    province: "AB",
+    postalCode: "",
+  });
+
+  const [sameAsBilling, setSameAsBilling] = useState(false);
 
   const [pricing, setPricing] = useState<PricingSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -254,51 +264,98 @@ export default function Step5BillingDelivery() {
     }
   };
 
-  const handleFieldChange = (field: keyof BillingAddress, value: string) => {
+  const handleBillingFieldChange = (field: keyof Address, value: string) => {
     setBillingAddress((prev) => ({ ...prev, [field]: value }));
 
-    if (errors[field]) {
+    // If same as billing is checked, update shipping too
+    if (sameAsBilling) {
+      setShippingAddress((prev) => ({ ...prev, [field]: value }));
+    }
+
+    if (errors[`billing_${field}`]) {
       setErrors((prev) => {
         const newErrors = { ...prev };
-        delete newErrors[field];
+        delete newErrors[`billing_${field}`];
         return newErrors;
       });
     }
   };
 
-  const handleFieldBlur = (field: keyof BillingAddress) => {
-    setTouched((prev) => ({ ...prev, [field]: true }));
+  const handleShippingFieldChange = (field: keyof Address, value: string) => {
+    setShippingAddress((prev) => ({ ...prev, [field]: value }));
+
+    if (errors[`shipping_${field}`]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[`shipping_${field}`];
+        return newErrors;
+      });
+    }
+  };
+
+  const handleBillingFieldBlur = (field: keyof Address) => {
+    setTouched((prev) => ({ ...prev, [`billing_${field}`]: true }));
     const error = validateField(field, billingAddress[field]);
     if (error) {
-      setErrors((prev) => ({ ...prev, [field]: error }));
+      setErrors((prev) => ({ ...prev, [`billing_${field}`]: error }));
+    }
+  };
+
+  const handleShippingFieldBlur = (field: keyof Address) => {
+    setTouched((prev) => ({ ...prev, [`shipping_${field}`]: true }));
+    const error = validateField(field, shippingAddress[field]);
+    if (error) {
+      setErrors((prev) => ({ ...prev, [`shipping_${field}`]: error }));
+    }
+  };
+
+  const handleSameAsBillingChange = (checked: boolean) => {
+    setSameAsBilling(checked);
+    if (checked) {
+      // Copy all billing fields to shipping
+      setShippingAddress({ ...billingAddress });
+      // Clear shipping errors since we're copying valid billing data
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        Object.keys(newErrors).forEach((key) => {
+          if (key.startsWith('shipping_')) {
+            delete newErrors[key];
+          }
+        });
+        return newErrors;
+      });
     }
   };
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    // Always validate full name (for billing)
-    const fullNameError = validateField("fullName", billingAddress.fullName);
-    if (fullNameError) {
-      newErrors.fullName = fullNameError;
-    }
+    // Always validate billing address (all fields)
+    const billingFullNameError = validateField("fullName", billingAddress.fullName);
+    if (billingFullNameError) newErrors.billing_fullName = billingFullNameError;
+
+    const billingStreetError = validateField("streetAddress", billingAddress.streetAddress);
+    if (billingStreetError) newErrors.billing_streetAddress = billingStreetError;
+
+    const billingCityError = validateField("city", billingAddress.city);
+    if (billingCityError) newErrors.billing_city = billingCityError;
+
+    const billingPostalError = validateField("postalCode", billingAddress.postalCode);
+    if (billingPostalError) newErrors.billing_postalCode = billingPostalError;
 
     // Only validate shipping address if physical delivery requires it
     if (needsShippingAddress) {
-      const streetError = validateField(
-        "streetAddress",
-        billingAddress.streetAddress,
-      );
-      if (streetError) newErrors.streetAddress = streetError;
+      const shippingFullNameError = validateField("fullName", shippingAddress.fullName);
+      if (shippingFullNameError) newErrors.shipping_fullName = shippingFullNameError;
 
-      const cityError = validateField("city", billingAddress.city);
-      if (cityError) newErrors.city = cityError;
+      const shippingStreetError = validateField("streetAddress", shippingAddress.streetAddress);
+      if (shippingStreetError) newErrors.shipping_streetAddress = shippingStreetError;
 
-      const postalError = validateField(
-        "postalCode",
-        billingAddress.postalCode,
-      );
-      if (postalError) newErrors.postalCode = postalError;
+      const shippingCityError = validateField("city", shippingAddress.city);
+      if (shippingCityError) newErrors.shipping_city = shippingCityError;
+
+      const shippingPostalError = validateField("postalCode", shippingAddress.postalCode);
+      if (shippingPostalError) newErrors.shipping_postalCode = shippingPostalError;
     }
 
     // If pickup selected and multiple locations exist, must select one
@@ -312,16 +369,21 @@ export default function Step5BillingDelivery() {
 
     setErrors(newErrors);
 
-    // Only mark fields as touched if they're required
+    // Mark all required fields as touched
     const touchedFields: Record<string, boolean> = {
-      fullName: true,
+      billing_fullName: true,
+      billing_streetAddress: true,
+      billing_city: true,
+      billing_province: true,
+      billing_postalCode: true,
     };
 
     if (needsShippingAddress) {
-      touchedFields.streetAddress = true;
-      touchedFields.city = true;
-      touchedFields.province = true;
-      touchedFields.postalCode = true;
+      touchedFields.shipping_fullName = true;
+      touchedFields.shipping_streetAddress = true;
+      touchedFields.shipping_city = true;
+      touchedFields.shipping_province = true;
+      touchedFields.shipping_postalCode = true;
     }
 
     setTouched(touchedFields);
