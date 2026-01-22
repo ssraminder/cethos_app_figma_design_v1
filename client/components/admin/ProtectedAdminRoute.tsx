@@ -11,8 +11,9 @@ export default function ProtectedAdminRoute({
   children,
   requiredRole,
 }: ProtectedAdminRouteProps) {
-  const { session, loading, isAdmin, isSuperAdmin } = useAdminAuthContext();
+  // ALL HOOKS MUST BE AT THE TOP - BEFORE ANY LOGIC
   const location = useLocation();
+  const { session, loading, isAdmin, isSuperAdmin } = useAdminAuthContext();
 
   // Show loading state
   if (loading) {
