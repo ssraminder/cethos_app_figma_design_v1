@@ -173,9 +173,7 @@ export default function Index() {
             showBack={state.currentStep > 1}
             showSaveForLater={false}
             continueText={
-              state.currentStep === 5
-                ? "Proceed to Payment"
-                : "Continue"
+              state.currentStep === 5 ? "Proceed to Payment" : "Continue"
             }
           />
         )}
