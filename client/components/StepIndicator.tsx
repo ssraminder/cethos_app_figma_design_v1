@@ -23,7 +23,7 @@ const STEPS: Step[] = [
 
 export default function StepIndicator({
   currentStep,
-  className = ""
+  className = "",
 }: StepIndicatorProps) {
   const { goToStep, validateStep } = useQuote();
 
@@ -48,7 +48,7 @@ export default function StepIndicator({
     }
   };
 
-  const currentStepData = STEPS.find(s => s.number === currentStep);
+  const currentStepData = STEPS.find((s) => s.number === currentStep);
 
   return (
     <div className={`w-full ${className}`}>
