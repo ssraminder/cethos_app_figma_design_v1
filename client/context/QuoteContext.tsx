@@ -212,7 +212,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       return { success: false };
     }
 
-    if (state.currentStep >= 5) {
+    if (state.currentStep >= 6) {
       return { success: false };
     }
 
