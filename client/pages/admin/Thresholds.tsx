@@ -39,7 +39,7 @@ interface Recommendation {
 export default function Thresholds() {
   const { companyName, logoUrl, primaryColor } = useBranding();
   const navigate = useNavigate();
-  const [staffSession, setStaffSession] = useState<StaffSession | null>(null);
+  const { session: staffSession, loading: authLoading } = useAdminAuthContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [thresholds, setThresholds] = useState<ThresholdSetting[]>([]);
