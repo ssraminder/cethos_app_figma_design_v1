@@ -136,6 +136,7 @@ WHERE setting_key = 'rush_cutoff_hour';
 -- ----------------------------------------------------------------------------
 -- 5. Add columns to quotes table if not exists
 -- ----------------------------------------------------------------------------
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS billing_address JSONB;
 ALTER TABLE quotes ADD COLUMN IF NOT EXISTS shipping_address JSONB;
 ALTER TABLE quotes ADD COLUMN IF NOT EXISTS selected_pickup_location_id UUID REFERENCES pickup_locations(id);
 ALTER TABLE quotes ADD COLUMN IF NOT EXISTS turnaround_type VARCHAR(20) DEFAULT 'standard';
