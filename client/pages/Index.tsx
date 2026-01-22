@@ -37,17 +37,7 @@ export default function Index() {
 
   const handleContinue = async () => {
     const currentStep = state.currentStep;
-    const isLastStep = currentStep === 5;
-
-    // Special handling for email quote mode on Step 5 (Review)
-    if (isLastStep && state.emailQuoteMode) {
-      const result = await goToNextStep();
-      if (result.success) {
-        // Show confirmation instead of navigating to success page
-        updateState({ emailQuoteSent: true });
-      }
-      return;
-    }
+    const isLastStep = currentStep === 6; // Updated to 6 steps
 
     // Normal flow
     const result = await goToNextStep();
@@ -77,10 +67,8 @@ export default function Index() {
         });
     }
 
-    // Navigate to checkout page if we were on step 5 (Review) and successfully moved forward
-    if (result.success && isLastStep) {
-      navigate(`/quote/${state.quoteId}/checkout`);
-    }
+    // Payment processing would happen on step 6
+    // For now, step 6 is just a placeholder
   };
 
   const handleBack = () => {
