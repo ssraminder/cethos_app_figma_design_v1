@@ -7,6 +7,7 @@ export interface StaffSession {
   staffName: string;
   staffEmail: string;
   staffRole: string;
+  isActive: boolean;
   loggedIn: boolean;
   loginTime: string;
 }
@@ -61,6 +62,12 @@ export function useAdminAuth(): UseAdminAuthReturn {
           return null;
         }
 
+        if (!authSession.user.email) {
+          console.log("Authenticated user missing email");
+          await supabase.auth.signOut();
+          return null;
+        }
+
         // Verify user is still active staff
         const { data: staffData, error: staffError } = await supabase
           .from("staff")
@@ -68,12 +75,13 @@ export function useAdminAuth(): UseAdminAuthReturn {
           .eq("email", authSession.user.email)
           .single();
 
-        if (staffError) {
-          console.error("Staff lookup error:", staffError);
+        if (staffError || !staffData) {
+          console.error("Staff lookup error or missing staff record:", staffError);
+          await supabase.auth.signOut();
           return null;
         }
 
-        if (!staffData || !staffData.is_active) {
+        if (!staffData.is_active) {
           console.log("User is not active staff");
           await supabase.auth.signOut();
           return null;
@@ -85,6 +93,7 @@ export function useAdminAuth(): UseAdminAuthReturn {
           staffName: staffData.name,
           staffEmail: staffData.email,
           staffRole: staffData.role,
+          isActive: staffData.is_active,
           loggedIn: true,
           loginTime: new Date().toISOString(),
         };
@@ -175,6 +184,8 @@ export function useAdminAuth(): UseAdminAuthReturn {
         if (validSession) {
           localStorage.setItem("staffSession", JSON.stringify(validSession));
           setSession(validSession);
+        } else {
+          clearSessionAndRedirect();
         }
       } else if (event === "USER_UPDATED" && authSession) {
         // Re-validate if user was updated
@@ -182,6 +193,8 @@ export function useAdminAuth(): UseAdminAuthReturn {
         if (validSession) {
           localStorage.setItem("staffSession", JSON.stringify(validSession));
           setSession(validSession);
+        } else {
+          clearSessionAndRedirect();
         }
       }
     });
