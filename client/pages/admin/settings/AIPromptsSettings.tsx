@@ -44,7 +44,6 @@ const PROMPT_ICONS: Record<string, string> = {
 };
 
 export default function AIPromptsSettings() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [prompts, setPrompts] = useState<AIPrompt[]>([]);
   const [showModal, setShowModal] = useState(false);
