@@ -66,23 +66,6 @@ export default function Analytics() {
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  // Session check - redirect to login if not authenticated
-  useEffect(() => {
-    const sessionData = localStorage.getItem("staffSession");
-    if (!sessionData) {
-      navigate("/admin/login", { replace: true });
-      return;
-    }
-    try {
-      const parsed = JSON.parse(sessionData);
-      if (!parsed.loggedIn) {
-        navigate("/admin/login", { replace: true });
-      }
-    } catch {
-      navigate("/admin/login", { replace: true });
-    }
-  }, [navigate]);
-
   // Fetch analytics data
   useEffect(() => {
     async function fetchAnalytics() {
