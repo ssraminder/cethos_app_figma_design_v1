@@ -53,7 +53,7 @@ function formatDate(dateStr: string | null | undefined): string {
 export default function Learning() {
   const { companyName, logoUrl, primaryColor } = useBranding();
   const navigate = useNavigate();
-  const [staffSession, setStaffSession] = useState<StaffSession | null>(null);
+  const { session: staffSession, loading: authLoading } = useAdminAuthContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [learningPatterns, setLearningPatterns] = useState<LearningPattern[]>(
