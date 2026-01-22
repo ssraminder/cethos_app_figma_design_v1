@@ -272,11 +272,16 @@ export default function Step4ReviewRush() {
 
   // Calculate delivery date (skip weekends and holidays)
   const getDeliveryDate = async (daysToAdd: number): Promise<Date> => {
-    const { data: holidays } = await supabase
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
+
+    const { data: holidays, error: holidaysError } = await supabase
       .from("holidays")
       .select("holiday_date")
-      .gte("holiday_date", new Date().toISOString())
-      .eq("is_active", true);
+      .gte("holiday_date", today);
+
+    if (holidaysError) {
+      console.error("Error fetching holidays:", holidaysError);
+    }
 
     const holidayDates = holidays?.map((h) => new Date(h.holiday_date)) || [];
 
