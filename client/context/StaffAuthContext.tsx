@@ -51,25 +51,27 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const checkAuth = async () => {
-      console.log('StaffAuthContext: Checking auth...');
+      console.log("StaffAuthContext: Checking auth...");
 
       // First, check localStorage
-      const storedSession = localStorage.getItem('staffSession');
+      const storedSession = localStorage.getItem("staffSession");
       if (storedSession) {
         try {
           const parsed = JSON.parse(storedSession);
           if (parsed.staffId && parsed.loggedIn) {
-            console.log('StaffAuthContext: Found valid localStorage session');
+            console.log("StaffAuthContext: Found valid localStorage session");
             setStaffUser({
               id: parsed.staffId,
               email: parsed.staffEmail,
               full_name: parsed.staffName,
               role: parsed.staffRole,
-              is_active: parsed.isActive
+              is_active: parsed.isActive,
             });
 
             // Also get the Supabase session for completeness
-            const { data: { session } } = await supabase.auth.getSession();
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
             setSession(session);
             setUser(session?.user ?? null);
 
@@ -77,15 +79,17 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
         } catch (e) {
-          console.error('StaffAuthContext: Error parsing localStorage', e);
-          localStorage.removeItem('staffSession');
+          console.error("StaffAuthContext: Error parsing localStorage", e);
+          localStorage.removeItem("staffSession");
         }
       }
 
       // No localStorage session - check Supabase auth
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) {
-        console.log('StaffAuthContext: No session found');
+        console.log("StaffAuthContext: No session found");
         setStaffUser(null);
         setUser(null);
         setSession(null);
@@ -97,16 +101,16 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session.user);
 
       // Has Supabase session but no localStorage - rebuild from database
-      console.log('StaffAuthContext: Rebuilding session from Supabase');
+      console.log("StaffAuthContext: Rebuilding session from Supabase");
       const { data: staffData, error } = await supabase
-        .from('staff_users')
-        .select('id, email, full_name, role, is_active')
-        .eq('email', session.user.email)
-        .eq('is_active', true)
+        .from("staff_users")
+        .select("id, email, full_name, role, is_active")
+        .eq("email", session.user.email)
+        .eq("is_active", true)
         .single();
 
       if (error || !staffData) {
-        console.error('StaffAuthContext: Staff lookup failed', error);
+        console.error("StaffAuthContext: Staff lookup failed", error);
         setStaffUser(null);
         setLoading(false);
         return;
@@ -120,9 +124,9 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
         staffRole: staffData.role,
         isActive: staffData.is_active,
         loggedIn: true,
-        loginTime: new Date().toISOString()
+        loginTime: new Date().toISOString(),
       };
-      localStorage.setItem('staffSession', JSON.stringify(sessionData));
+      localStorage.setItem("staffSession", JSON.stringify(sessionData));
 
       setStaffUser(staffData);
       setLoading(false);
@@ -134,19 +138,19 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('StaffAuthContext: Auth state changed:', event);
+      console.log("StaffAuthContext: Auth state changed:", event);
 
-      if (event === 'SIGNED_OUT') {
-        localStorage.removeItem('staffSession');
+      if (event === "SIGNED_OUT") {
+        localStorage.removeItem("staffSession");
         setStaffUser(null);
         setUser(null);
         setSession(null);
-      } else if (event === 'SIGNED_IN' && session) {
+      } else if (event === "SIGNED_IN" && session) {
         setSession(session);
         setUser(session.user);
 
         // Check localStorage first
-        const storedSession = localStorage.getItem('staffSession');
+        const storedSession = localStorage.getItem("staffSession");
         if (storedSession) {
           try {
             const parsed = JSON.parse(storedSession);
@@ -156,12 +160,12 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
                 email: parsed.staffEmail,
                 full_name: parsed.staffName,
                 role: parsed.staffRole,
-                is_active: parsed.isActive
+                is_active: parsed.isActive,
               });
               return;
             }
           } catch (e) {
-            console.error('Error parsing localStorage', e);
+            console.error("Error parsing localStorage", e);
           }
         }
       }
@@ -191,7 +195,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) return;
 
     await supabase.auth.signOut();
-    localStorage.removeItem('staffSession');
+    localStorage.removeItem("staffSession");
     setUser(null);
     setStaffUser(null);
     setSession(null);
