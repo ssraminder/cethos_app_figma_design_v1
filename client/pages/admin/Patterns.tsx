@@ -220,10 +220,9 @@ export default function Patterns() {
 
   // Fetch analyses on load
   useEffect(() => {
-    if (staffSession) {
-      fetchAnalyses();
-    }
-  }, [categoryFilter, staffSession]);
+    if (authLoading || !staffSession) return;
+    fetchAnalyses();
+  }, [authLoading, staffSession, categoryFilter]);
 
   async function fetchAnalyses() {
     setLoading(true);
