@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { format, isWeekend, isSameDay } from "date-fns";
 import {
@@ -12,6 +13,8 @@ import {
   Clock,
   Sparkles,
   RefreshCw,
+  Info,
+  CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -53,6 +56,14 @@ interface Totals {
 
 export default function Step4ReviewRush() {
   const { state, updateState, goToNextStep, goToPreviousStep } = useQuote();
+  const navigate = useNavigate();
+
+  // HITL Request State
+  const [showHitlModal, setShowHitlModal] = useState(false);
+  const [showHitlSuccessModal, setShowHitlSuccessModal] = useState(false);
+  const [hitlNote, setHitlNote] = useState("");
+  const [hitlSubmitting, setHitlSubmitting] = useState(false);
+  const [hitlRequested, setHitlRequested] = useState(false);
 
   // Turnaround options
   const [turnaroundType, setTurnaroundType] = useState<
