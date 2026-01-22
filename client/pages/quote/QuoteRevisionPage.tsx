@@ -2,11 +2,18 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { createClient } from "@supabase/supabase-js";
 import { useDropzone } from "react-dropzone";
-import { AlertTriangle, Upload, File, X, CheckCircle, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Upload,
+  File,
+  X,
+  CheckCircle,
+  Loader2,
+} from "lucide-react";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
 );
 
 interface QuoteFile {
@@ -31,7 +38,7 @@ interface HitlReview {
 export default function QuoteRevisionPage() {
   const { quoteId } = useParams<{ quoteId: string }>();
   const navigate = useNavigate();
-  
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -46,7 +53,7 @@ export default function QuoteRevisionPage() {
   useEffect(() => {
     const fetchData = async () => {
       if (!quoteId) return;
-      
+
       try {
         // Fetch quote
         const { data: quoteData, error: quoteError } = await supabase
@@ -54,27 +61,29 @@ export default function QuoteRevisionPage() {
           .select("id, quote_number, status, customer_id")
           .eq("id", quoteId)
           .single();
-        
+
         if (quoteError) throw quoteError;
-        
+
         // Verify status is revision_needed
         if (quoteData.status !== "revision_needed") {
           setError("This quote does not require revision.");
           setLoading(false);
           return;
         }
-        
+
         setQuote(quoteData);
-        
+
         // Fetch files that need replacement
         const { data: filesData, error: filesError } = await supabase
           .from("quote_files")
-          .select("id, original_filename, needs_replacement, replacement_reason")
+          .select(
+            "id, original_filename, needs_replacement, replacement_reason",
+          )
           .eq("quote_id", quoteId);
-        
+
         if (filesError) throw filesError;
         setFiles(filesData || []);
-        
+
         // Fetch rejection reason from HITL review
         const { data: reviewData } = await supabase
           .from("hitl_reviews")
@@ -84,11 +93,10 @@ export default function QuoteRevisionPage() {
           .order("completed_at", { ascending: false })
           .limit(1)
           .single();
-        
+
         if (reviewData) {
           setReview(reviewData);
         }
-        
       } catch (err) {
         console.error("Error fetching data:", err);
         setError("Failed to load quote details. Please try again.");
@@ -96,26 +104,26 @@ export default function QuoteRevisionPage() {
         setLoading(false);
       }
     };
-    
+
     fetchData();
   }, [quoteId]);
 
   // Dropzone configuration
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    setNewFiles(prev => [...prev, ...acceptedFiles]);
+    setNewFiles((prev) => [...prev, ...acceptedFiles]);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/pdf': ['.pdf'],
-      'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp']
+      "application/pdf": [".pdf"],
+      "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp"],
     },
     maxSize: 10 * 1024 * 1024, // 10MB
   });
 
   const removeNewFile = (index: number) => {
-    setNewFiles(prev => prev.filter((_, i) => i !== index));
+    setNewFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Handle file upload and resubmission
@@ -124,26 +132,26 @@ export default function QuoteRevisionPage() {
       alert("Please upload at least one file.");
       return;
     }
-    
+
     setUploading(true);
     setUploadProgress(0);
-    
+
     try {
       const totalFiles = newFiles.length;
       let uploadedCount = 0;
-      
+
       for (const file of newFiles) {
         // Generate unique filename
         const fileExt = file.name.split(".").pop();
         const fileName = `${quoteId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        
+
         // Upload to storage
         const { error: uploadError } = await supabase.storage
           .from("quote-files")
           .upload(fileName, file);
-        
+
         if (uploadError) throw uploadError;
-        
+
         // Create file record
         const { error: insertError } = await supabase
           .from("quote_files")
@@ -156,19 +164,19 @@ export default function QuoteRevisionPage() {
             upload_status: "uploaded",
             is_replacement: true,
           });
-        
+
         if (insertError) throw insertError;
-        
+
         uploadedCount++;
         setUploadProgress(Math.round((uploadedCount / totalFiles) * 100));
       }
-      
+
       // Update quote status back to processing
       await supabase
         .from("quotes")
         .update({ status: "processing" })
         .eq("id", quoteId);
-      
+
       // Trigger reprocessing
       await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-document`,
@@ -176,14 +184,13 @@ export default function QuoteRevisionPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({ quoteId }),
-        }
+        },
       );
-      
+
       setSubmitted(true);
-      
     } catch (err) {
       console.error("Upload failed:", err);
       alert("Failed to upload files. Please try again.");
@@ -232,7 +239,8 @@ export default function QuoteRevisionPage() {
             Files Uploaded Successfully!
           </h2>
           <p className="text-green-600 mb-4">
-            Your documents are being re-analyzed. We'll email you when your updated quote is ready.
+            Your documents are being re-analyzed. We'll email you when your
+            updated quote is ready.
           </p>
           <p className="text-sm text-green-700 mb-6">
             Quote: <span className="font-medium">{quote?.quote_number}</span>
@@ -263,10 +271,12 @@ export default function QuoteRevisionPage() {
                 Action Required
               </h1>
               <p className="text-amber-700">
-                We need clearer copies of your documents to provide an accurate quote.
+                We need clearer copies of your documents to provide an accurate
+                quote.
               </p>
               <p className="text-sm text-amber-600 mt-2">
-                Quote: <span className="font-medium">{quote?.quote_number}</span>
+                Quote:{" "}
+                <span className="font-medium">{quote?.quote_number}</span>
               </p>
             </div>
           </div>
@@ -296,7 +306,9 @@ export default function QuoteRevisionPage() {
                     file.needs_replacement ? "bg-red-50" : "bg-gray-50"
                   }`}
                 >
-                  <File className={`w-5 h-5 ${file.needs_replacement ? "text-red-500" : "text-gray-400"}`} />
+                  <File
+                    className={`w-5 h-5 ${file.needs_replacement ? "text-red-500" : "text-gray-400"}`}
+                  />
                   <span className="text-sm text-gray-700 flex-1 truncate">
                     {file.original_filename}
                   </span>
@@ -316,7 +328,7 @@ export default function QuoteRevisionPage() {
           <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">
             Upload New Files
           </h2>
-          
+
           {/* Dropzone */}
           <div
             {...getRootProps()}
