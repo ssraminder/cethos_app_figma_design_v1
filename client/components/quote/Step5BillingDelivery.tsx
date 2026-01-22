@@ -294,7 +294,10 @@ export default function Step5BillingDelivery() {
       const cityError = validateField("city", billingAddress.city);
       if (cityError) newErrors.city = cityError;
 
-      const postalError = validateField("postalCode", billingAddress.postalCode);
+      const postalError = validateField(
+        "postalCode",
+        billingAddress.postalCode,
+      );
       if (postalError) newErrors.postalCode = postalError;
     }
 
@@ -687,7 +690,9 @@ export default function Step5BillingDelivery() {
                 </label>
                 <select
                   value={billingAddress.province}
-                  onChange={(e) => handleFieldChange("province", e.target.value)}
+                  onChange={(e) =>
+                    handleFieldChange("province", e.target.value)
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {CANADIAN_PROVINCES.map((province) => (
