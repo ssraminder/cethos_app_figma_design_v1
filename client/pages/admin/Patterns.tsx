@@ -205,7 +205,7 @@ function ConfusionMatrixTable({
 export default function Patterns() {
   const { companyName, logoUrl, primaryColor } = useBranding();
   const navigate = useNavigate();
-  const [staffSession, setStaffSession] = useState<any>(null);
+  const { session: staffSession, loading: authLoading } = useAdminAuthContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
