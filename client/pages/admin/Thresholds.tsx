@@ -4,14 +4,6 @@ import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { useBranding } from "../../context/BrandingContext";
 import { supabase } from "../../lib/supabase";
 
-interface StaffSession {
-  email: string;
-  staffId: string;
-  staffName?: string;
-  staffRole?: string;
-  loggedIn: boolean;
-}
-
 interface ThresholdSetting {
   id: string;
   setting_key: string;
