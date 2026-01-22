@@ -56,6 +56,7 @@ export interface QuoteState {
   digitalDeliveryOptions: string[];
   physicalDeliveryOption: string | null;
   pickupLocationId: string | null;
+  billingAddress: ShippingAddress | null;
   shippingAddress: ShippingAddress | null;
 }
 
@@ -98,6 +99,7 @@ const initialState: QuoteState = {
   digitalDeliveryOptions: ["online_portal"],
   physicalDeliveryOption: null,
   pickupLocationId: null,
+  billingAddress: null,
   shippingAddress: null,
 };
 
