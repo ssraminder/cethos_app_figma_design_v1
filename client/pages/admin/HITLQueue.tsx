@@ -75,9 +75,8 @@ export default function HITLQueue() {
     setFetching(false);
   }, [SUPABASE_URL, SUPABASE_ANON_KEY]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("staffSession");
-    navigate("/admin/login", { replace: true });
+  const handleLogout = async () => {
+    await signOut();
   };
 
   const getPriorityColor = (priority: number) => {
