@@ -589,6 +589,48 @@ export default function Step4ReviewRush() {
         </p>
       </div>
 
+      {/* HITL Request Banner - Show only if not already requested */}
+      {!hitlRequested && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-blue-800 font-medium">
+                  Not sure about the analysis?
+                </p>
+                <p className="text-sm text-blue-600 mt-1">
+                  Our team can review your documents and provide an accurate quote within 4 working hours.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowHitlModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+            >
+              Request Human Review
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Show pending status if already requested */}
+      {hitlRequested && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <Clock className="w-5 h-5 text-amber-600 mt-0.5" />
+            <div>
+              <p className="text-sm text-amber-800 font-medium">
+                Review Requested
+              </p>
+              <p className="text-sm text-amber-600 mt-1">
+                Our team is reviewing your documents. We'll email you within 4 working hours.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Document Breakdown */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
