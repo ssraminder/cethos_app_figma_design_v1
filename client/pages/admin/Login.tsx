@@ -39,7 +39,7 @@ export default function AdminLogin() {
     setError("");
     setLoading(true);
 
-    console.log('=== LOGIN START ===');
+    console.log("=== LOGIN START ===");
 
     try {
       const normalizedEmail = email.trim().toLowerCase();
@@ -51,7 +51,7 @@ export default function AdminLogin() {
           password,
         });
 
-      console.log('Auth response:', { authData, authError });
+      console.log("Auth response:", { authData, authError });
 
       if (authError) {
         throw new Error(
@@ -61,16 +61,16 @@ export default function AdminLogin() {
         );
       }
 
-      console.log('Auth error check passed');
+      console.log("Auth error check passed");
 
       if (!authData.session) {
         throw new Error("Failed to establish session. Please try again.");
       }
 
-      console.log('Session exists:', authData.session ? 'YES' : 'NO');
+      console.log("Session exists:", authData.session ? "YES" : "NO");
 
       // Step 2: Verify user is in staff_users table and active
-      console.log('Querying staff_users for email:', normalizedEmail);
+      console.log("Querying staff_users for email:", normalizedEmail);
 
       const { data: staffData, error: staffError } = await supabase
         .from("staff_users")
@@ -78,7 +78,7 @@ export default function AdminLogin() {
         .eq("email", normalizedEmail)
         .single();
 
-      console.log('Staff query result:', { staffData, staffError });
+      console.log("Staff query result:", { staffData, staffError });
 
       if (staffError || !staffData) {
         await supabase.auth.signOut();
@@ -93,7 +93,7 @@ export default function AdminLogin() {
       }
 
       // Step 3: Store staff info in localStorage to keep UI helpers in sync
-      console.log('Setting staffSession in localStorage');
+      console.log("Setting staffSession in localStorage");
 
       const staffSession = {
         staffId: staffData.id,
@@ -107,13 +107,13 @@ export default function AdminLogin() {
       localStorage.setItem("staffSession", JSON.stringify(staffSession));
 
       // Step 4: Redirect to admin dashboard
-      console.log('Navigating to /admin/hitl');
+      console.log("Navigating to /admin/hitl");
       navigate("/admin/hitl");
     } catch (err: any) {
-      console.error('LOGIN ERROR:', err);
+      console.error("LOGIN ERROR:", err);
       setError(err.message || "Failed to sign in. Please try again.");
     } finally {
-      console.log('=== LOGIN END ===');
+      console.log("=== LOGIN END ===");
       setLoading(false);
     }
   };
