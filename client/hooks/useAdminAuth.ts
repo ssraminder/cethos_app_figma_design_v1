@@ -202,7 +202,7 @@ export function useAdminAuth(): UseAdminAuthReturn {
     return () => {
       subscription.unsubscribe();
     };
-  }, [navigate, validateSession]);
+  }, [navigate, validateSession, clearSessionAndRedirect]);
 
   // Periodic session validation (every 5 minutes)
   useEffect(() => {
