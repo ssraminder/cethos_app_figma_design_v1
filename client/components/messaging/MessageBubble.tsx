@@ -30,9 +30,7 @@ export default function MessageBubble({
     <div className={`max-w-[80%] rounded-xl px-4 py-3 ${getStyles()}`}>
       {senderType !== "system" && (
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-medium opacity-75">
-            {senderName}
-          </span>
+          <span className="text-xs font-medium opacity-75">{senderName}</span>
           <span className="text-xs opacity-50">
             {format(new Date(createdAt), "MMM d, h:mm a")}
           </span>

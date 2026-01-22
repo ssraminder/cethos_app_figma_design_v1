@@ -5,7 +5,7 @@ import MessageBubble from "./MessageBubble";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
 );
 
 interface Message {
@@ -22,7 +22,11 @@ interface MessagePanelProps {
   staffName: string;
 }
 
-export default function MessagePanel({ quoteId, staffId, staffName }: MessagePanelProps) {
+export default function MessagePanel({
+  quoteId,
+  staffId,
+  staffName,
+}: MessagePanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -34,31 +38,34 @@ export default function MessagePanel({ quoteId, staffId, staffName }: MessagePan
     try {
       const { data, error } = await supabase
         .from("quote_messages")
-        .select(`
+        .select(
+          `
           id,
           sender_type,
           message_text,
           created_at,
           staff_users!sender_staff_id(full_name),
           customers!sender_customer_id(full_name)
-        `)
+        `,
+        )
         .eq("quote_id", quoteId)
         .order("created_at", { ascending: true });
 
       if (error) throw error;
 
-      const formattedMessages = data?.map((msg: any) => ({
-        id: msg.id,
-        sender_type: msg.sender_type,
-        sender_name:
-          msg.sender_type === "staff"
-            ? msg.staff_users?.full_name || "Staff"
-            : msg.sender_type === "customer"
-            ? msg.customers?.full_name || "Customer"
-            : "System",
-        message_text: msg.message_text,
-        created_at: msg.created_at,
-      })) || [];
+      const formattedMessages =
+        data?.map((msg: any) => ({
+          id: msg.id,
+          sender_type: msg.sender_type,
+          sender_name:
+            msg.sender_type === "staff"
+              ? msg.staff_users?.full_name || "Staff"
+              : msg.sender_type === "customer"
+                ? msg.customers?.full_name || "Customer"
+                : "System",
+          message_text: msg.message_text,
+          created_at: msg.created_at,
+        })) || [];
 
       setMessages(formattedMessages);
     } catch (err) {
@@ -70,7 +77,7 @@ export default function MessagePanel({ quoteId, staffId, staffName }: MessagePan
 
   useEffect(() => {
     fetchMessages();
-    
+
     // Set up realtime subscription
     const channel = supabase
       .channel(`messages-${quoteId}`)
@@ -84,7 +91,7 @@ export default function MessagePanel({ quoteId, staffId, staffName }: MessagePan
         },
         () => {
           fetchMessages();
-        }
+        },
       )
       .subscribe();
 
@@ -111,14 +118,14 @@ export default function MessagePanel({ quoteId, staffId, staffName }: MessagePan
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             quoteId,
             staffId,
             messageText: newMessage.trim(),
           }),
-        }
+        },
       );
 
       if (!response.ok) {
