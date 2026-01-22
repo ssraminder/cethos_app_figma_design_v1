@@ -29,13 +29,13 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // Fetch staff user data from staff_users table
-  const fetchStaffUser = async (authUserId: string) => {
+  const fetchStaffUser = async (userEmail: string) => {
     if (!supabase) return null;
-    
+
     const { data, error } = await supabase
       .from('staff_users')
       .select('id, email, full_name, role, is_active')
-      .eq('auth_user_id', authUserId)
+      .eq('email', userEmail)
       .eq('is_active', true)
       .single();
 
@@ -57,12 +57,12 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        const staff = await fetchStaffUser(session.user.id);
+
+      if (session?.user?.email) {
+        const staff = await fetchStaffUser(session.user.email);
         setStaffUser(staff);
       }
-      
+
       setLoading(false);
     });
 
@@ -73,8 +73,8 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
 
-        if (session?.user) {
-          const staff = await fetchStaffUser(session.user.id);
+        if (session?.user?.email) {
+          const staff = await fetchStaffUser(session.user.email);
           setStaffUser(staff);
         } else {
           setStaffUser(null);
