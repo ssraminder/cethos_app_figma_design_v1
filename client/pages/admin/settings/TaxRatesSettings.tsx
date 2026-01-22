@@ -66,13 +66,6 @@ export default function TaxRatesSettings() {
     filterRates();
   }, [taxRates, searchQuery, regionFilter]);
 
-  const checkAuth = () => {
-    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
-    if (!session.loggedIn) {
-      navigate("/admin/login");
-    }
-  };
-
   const fetchTaxRates = async () => {
     setLoading(true);
     try {
