@@ -24,6 +24,7 @@ import QuoteRevisionPage from "./pages/quote/QuoteRevisionPage";
 import AdminLogin from "./pages/admin/Login";
 import ResetPassword from "./pages/admin/ResetPassword";
 import ProtectedAdminRoute from "./components/admin/ProtectedAdminRoute";
+import AdminDashboard from "./pages/admin/AdminDashboard";
 import HITLQueue from "./pages/admin/HITLQueue";
 import HITLReviewDetail from "./pages/admin/HITLReviewDetail";
 import AdminSettings from "./pages/admin/AdminSettings";
@@ -92,6 +93,22 @@ const App = () => (
                 />
 
                 {/* Protected admin routes */}
+                <Route
+                  path="/admin"
+                  element={
+                    <AdminRoute>
+                      <AdminDashboard />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/dashboard"
+                  element={
+                    <AdminRoute>
+                      <AdminDashboard />
+                    </AdminRoute>
+                  }
+                />
                 <Route
                   path="/admin/hitl"
                   element={
