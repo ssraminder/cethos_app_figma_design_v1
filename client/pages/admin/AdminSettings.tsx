@@ -3,14 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { useBranding } from "../../context/BrandingContext";
 
-interface StaffSession {
-  email: string;
-  staffId: string;
-  staffName?: string;
-  staffRole?: string;
-  loggedIn: boolean;
-}
-
 interface BrandingFormData {
   companyName: string;
   logoUrl: string;
