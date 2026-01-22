@@ -70,10 +70,9 @@ export default function Learning() {
 
   // Fetch patterns when filters change
   useEffect(() => {
-    if (staffSession) {
-      fetchPatterns();
-    }
-  }, [filters, staffSession]);
+    if (authLoading || !staffSession) return;
+    fetchPatterns();
+  }, [authLoading, staffSession, filters]);
 
   async function fetchPatterns() {
     setLoading(true);
