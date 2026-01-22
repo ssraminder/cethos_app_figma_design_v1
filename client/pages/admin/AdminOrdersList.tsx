@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { createClient } from "@supabase/supabase-js";
-import { 
-  Search, 
-  Filter, 
-  ChevronDown, 
-  ChevronLeft, 
+import {
+  Search,
+  Filter,
+  ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ShoppingCart,
   Download,
@@ -13,13 +13,13 @@ import {
   X,
   Package,
   Truck,
-  CheckCircle
+  CheckCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
 );
 
 interface Order {
@@ -59,11 +59,11 @@ const PAGE_SIZE = 25;
 
 export default function AdminOrdersList() {
   const [searchParams, setSearchParams] = useSearchParams();
-  
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  
+
   // Filters from URL
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
@@ -72,16 +72,15 @@ export default function AdminOrdersList() {
   const dateTo = searchParams.get("to") || "";
   const rushOnly = searchParams.get("rush") === "true";
   const page = parseInt(searchParams.get("page") || "1", 10);
-  
+
   const [searchInput, setSearchInput] = useState(search);
   const [showFilters, setShowFilters] = useState(false);
 
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from("orders")
-        .select(`
+      let query = supabase.from("orders").select(
+        `
           id,
           order_number,
           status,
@@ -91,11 +90,15 @@ export default function AdminOrdersList() {
           created_at,
           estimated_delivery_date,
           customers!inner(email, full_name)
-        `, { count: "exact" });
+        `,
+        { count: "exact" },
+      );
 
       // Apply filters
       if (search) {
-        query = query.or(`order_number.ilike.%${search}%,customers.email.ilike.%${search}%,customers.full_name.ilike.%${search}%`);
+        query = query.or(
+          `order_number.ilike.%${search}%,customers.email.ilike.%${search}%,customers.full_name.ilike.%${search}%`,
+        );
       }
       if (status) {
         query = query.eq("status", status);
@@ -116,29 +119,28 @@ export default function AdminOrdersList() {
       // Pagination
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
-      
-      query = query
-        .order("created_at", { ascending: false })
-        .range(from, to);
+
+      query = query.order("created_at", { ascending: false }).range(from, to);
 
       const { data, count, error } = await query;
 
       if (error) throw error;
-      
+
       // Transform data
-      const transformedOrders = data?.map(order => ({
-        id: order.id,
-        order_number: order.order_number,
-        status: order.status,
-        work_status: order.work_status,
-        total_amount: order.total_amount,
-        is_rush: order.is_rush,
-        created_at: order.created_at,
-        estimated_delivery_date: order.estimated_delivery_date,
-        customer_email: (order.customers as any)?.email || "",
-        customer_name: (order.customers as any)?.full_name || "",
-        document_count: 0, // TODO: Add document count
-      })) || [];
+      const transformedOrders =
+        data?.map((order) => ({
+          id: order.id,
+          order_number: order.order_number,
+          status: order.status,
+          work_status: order.work_status,
+          total_amount: order.total_amount,
+          is_rush: order.is_rush,
+          created_at: order.created_at,
+          estimated_delivery_date: order.estimated_delivery_date,
+          customer_email: (order.customers as any)?.email || "",
+          customer_name: (order.customers as any)?.full_name || "",
+          document_count: 0, // TODO: Add document count
+        })) || [];
 
       setOrders(transformedOrders);
       setTotalCount(count || 0);
@@ -175,10 +177,14 @@ export default function AdminOrdersList() {
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const hasActiveFilters = search || status || workStatus || dateFrom || dateTo || rushOnly;
+  const hasActiveFilters =
+    search || status || workStatus || dateFrom || dateTo || rushOnly;
 
   // Calculate summary stats
-  const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  const totalRevenue = orders.reduce(
+    (sum, o) => sum + (o.total_amount || 0),
+    0,
+  );
 
   return (
     <div className="min-h-screen bg-[#f6f9fc]">
@@ -200,9 +206,7 @@ export default function AdminOrdersList() {
                 <RefreshCw className="w-4 h-4" />
                 Refresh
               </button>
-              <button
-                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              >
+              <button className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
                 <Download className="w-4 h-4" />
                 Export
               </button>
@@ -216,24 +220,32 @@ export default function AdminOrdersList() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <p className="text-sm text-gray-500">Total Orders</p>
-            <p className="text-2xl font-semibold text-gray-900 mt-1">{totalCount}</p>
+            <p className="text-2xl font-semibold text-gray-900 mt-1">
+              {totalCount}
+            </p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <p className="text-sm text-gray-500">Page Revenue</p>
             <p className="text-2xl font-semibold text-gray-900 mt-1">
-              ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              $
+              {totalRevenue.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+              })}
             </p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <p className="text-sm text-gray-500">Rush Orders</p>
             <p className="text-2xl font-semibold text-amber-600 mt-1">
-              {orders.filter(o => o.is_rush).length}
+              {orders.filter((o) => o.is_rush).length}
             </p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <p className="text-sm text-gray-500">Avg Order Value</p>
             <p className="text-2xl font-semibold text-gray-900 mt-1">
-              ${orders.length > 0 ? (totalRevenue / orders.length).toFixed(2) : "0.00"}
+              $
+              {orders.length > 0
+                ? (totalRevenue / orders.length).toFixed(2)
+                : "0.00"}
             </p>
           </div>
         </div>
@@ -259,8 +271,8 @@ export default function AdminOrdersList() {
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`flex items-center gap-2 px-4 py-2 border rounded-lg transition-colors ${
-                hasActiveFilters 
-                  ? "border-blue-300 bg-blue-50 text-blue-700" 
+                hasActiveFilters
+                  ? "border-blue-300 bg-blue-50 text-blue-700"
                   : "border-gray-300 text-gray-700 hover:bg-gray-50"
               }`}
             >
@@ -268,10 +280,21 @@ export default function AdminOrdersList() {
               Filters
               {hasActiveFilters && (
                 <span className="w-5 h-5 bg-blue-600 text-white text-xs rounded-full flex items-center justify-center">
-                  {[search, status, workStatus, dateFrom, dateTo, rushOnly].filter(Boolean).length}
+                  {
+                    [
+                      search,
+                      status,
+                      workStatus,
+                      dateFrom,
+                      dateTo,
+                      rushOnly,
+                    ].filter(Boolean).length
+                  }
                 </span>
               )}
-              <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? "rotate-180" : ""}`} />
+              <ChevronDown
+                className={`w-4 h-4 transition-transform ${showFilters ? "rotate-180" : ""}`}
+              />
             </button>
 
             {hasActiveFilters && (
@@ -356,10 +379,14 @@ export default function AdminOrdersList() {
                   <input
                     type="checkbox"
                     checked={rushOnly}
-                    onChange={(e) => updateFilter("rush", e.target.checked ? "true" : "")}
+                    onChange={(e) =>
+                      updateFilter("rush", e.target.checked ? "true" : "")
+                    }
                     className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">Rush orders only</span>
+                  <span className="text-sm text-gray-700">
+                    Rush orders only
+                  </span>
                 </label>
               </div>
             </div>
@@ -401,13 +428,19 @@ export default function AdminOrdersList() {
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                    <td
+                      colSpan={6}
+                      className="px-6 py-12 text-center text-gray-500"
+                    >
                       No orders found
                     </td>
                   </tr>
                 ) : (
                   orders.map((order) => (
-                    <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={order.id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
                       <td className="px-6 py-4">
                         <Link
                           to={`/admin/orders/${order.id}`}
@@ -421,17 +454,26 @@ export default function AdminOrdersList() {
                               {order.order_number}
                             </p>
                             <p className="text-xs text-gray-500">
-                              {format(new Date(order.created_at), "MMM d, yyyy")}
+                              {format(
+                                new Date(order.created_at),
+                                "MMM d, yyyy",
+                              )}
                               {order.is_rush && (
-                                <span className="ml-2 text-amber-600">⚡ Rush</span>
+                                <span className="ml-2 text-amber-600">
+                                  ⚡ Rush
+                                </span>
                               )}
                             </p>
                           </div>
                         </Link>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm text-gray-900">{order.customer_name || "—"}</p>
-                        <p className="text-xs text-gray-500">{order.customer_email || "—"}</p>
+                        <p className="text-sm text-gray-900">
+                          {order.customer_name || "—"}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {order.customer_email || "—"}
+                        </p>
                       </td>
                       <td className="px-6 py-4">
                         <OrderStatusBadge status={order.status} />
@@ -447,7 +489,10 @@ export default function AdminOrdersList() {
                       <td className="px-6 py-4">
                         {order.estimated_delivery_date ? (
                           <p className="text-sm text-gray-700">
-                            {format(new Date(order.estimated_delivery_date), "MMM d, yyyy")}
+                            {format(
+                              new Date(order.estimated_delivery_date),
+                              "MMM d, yyyy",
+                            )}
                           </p>
                         ) : (
                           <span className="text-sm text-gray-400">—</span>
@@ -464,7 +509,9 @@ export default function AdminOrdersList() {
           {totalPages > 1 && (
             <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Showing {((page - 1) * PAGE_SIZE) + 1} to {Math.min(page * PAGE_SIZE, totalCount)} of {totalCount.toLocaleString()}
+                Showing {(page - 1) * PAGE_SIZE + 1} to{" "}
+                {Math.min(page * PAGE_SIZE, totalCount)} of{" "}
+                {totalCount.toLocaleString()}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -516,7 +563,9 @@ function OrderStatusBadge({ status }: { status?: string }) {
   };
 
   return (
-    <span className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${styles[status || ""] || "bg-gray-100 text-gray-700"}`}>
+    <span
+      className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${styles[status || ""] || "bg-gray-100 text-gray-700"}`}
+    >
       {labels[status || ""] || status || "Unknown"}
     </span>
   );
@@ -524,7 +573,10 @@ function OrderStatusBadge({ status }: { status?: string }) {
 
 // Work Status Badge
 function WorkStatusBadge({ status }: { status?: string }) {
-  const config: Record<string, { style: string; icon: React.ReactNode; label: string }> = {
+  const config: Record<
+    string,
+    { style: string; icon: React.ReactNode; label: string }
+  > = {
     queued: {
       style: "bg-gray-100 text-gray-700",
       icon: <Package className="w-3 h-3" />,
@@ -554,7 +606,9 @@ function WorkStatusBadge({ status }: { status?: string }) {
   };
 
   return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${style}`}>
+    <span
+      className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${style}`}
+    >
       {icon}
       {label}
     </span>
