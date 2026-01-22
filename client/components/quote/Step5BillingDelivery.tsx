@@ -764,7 +764,7 @@ export default function Step5BillingDelivery() {
                         <p className="font-medium text-gray-900">{loc.name}</p>
                         <p className="text-gray-600">{loc.address_line1}</p>
                         <p className="text-gray-600">
-                          {loc.city}, {loc.province} {loc.postal_code}
+                          {loc.city}, {loc.state} {loc.postal_code}
                         </p>
                         {loc.hours && (
                           <p className="text-gray-500 text-sm mt-2">
