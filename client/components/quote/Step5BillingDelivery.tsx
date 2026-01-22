@@ -160,7 +160,7 @@ export default function Step5BillingDelivery() {
     if (pricing) {
       recalculateTotal();
     }
-  }, [selectedPhysicalOption, pricing]);
+  }, [selectedPhysicalOption, pricing, taxRate]);
 
   // Fetch tax rate when province changes
   useEffect(() => {
