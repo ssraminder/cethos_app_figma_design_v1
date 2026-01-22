@@ -51,14 +51,20 @@ export default function FileUpload() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const selectedFiles = Array.from(e.target.files);
-      selectedFiles.forEach((file) => {
-        addFile({
-          id: `${file.name}-${Date.now()}-${Math.random()}`,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          file,
-        });
+
+      // Add files to uploading state
+      const newUploadingFiles: UploadingFile[] = selectedFiles.map(file => ({
+        file,
+        progress: 0,
+        status: "uploading" as const,
+      }));
+
+      setUploadingFiles(prev => [...prev, ...newUploadingFiles]);
+
+      // Start uploading each file
+      selectedFiles.forEach((file, index) => {
+        const uploadIndex = uploadingFiles.length + index;
+        handleFileUpload(file, uploadIndex);
       });
     }
   };
