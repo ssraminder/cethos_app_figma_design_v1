@@ -54,12 +54,13 @@ export default function TaxRatesSettings() {
     tax_name_default: "GST",
   });
   const [savingDefaults, setSavingDefaults] = useState(false);
+  const { session, loading: authLoading } = useAdminAuthContext();
 
   useEffect(() => {
-    checkAuth();
+    if (authLoading || !session) return;
     fetchTaxRates();
     fetchDefaultSettings();
-  }, []);
+  }, [authLoading, session]);
 
   useEffect(() => {
     filterRates();
