@@ -193,25 +193,25 @@ export default function Step4ReviewRush() {
         },
       }));
 
-      // Calculate totals from analysis results
-      const translationSubtotal = analysisResults.reduce(
+      // Calculate totals from merged data
+      const translationSubtotal = mergedData.reduce(
         (sum, doc) => sum + (parseFloat(doc.line_total) || 0),
         0,
       );
-      const certificationTotal = analysisResults.reduce(
+      const certificationTotal = mergedData.reduce(
         (sum, doc) => sum + (parseFloat(doc.certification_price) || 0),
         0,
       );
       const subtotal = translationSubtotal + certificationTotal;
 
       // Calculate total pages
-      const totalBillablePages = analysisResults.reduce(
+      const totalBillablePages = mergedData.reduce(
         (sum, doc) => sum + (doc.billable_pages || 0),
         0,
       );
 
       // Set documents and totals
-      setDocuments(analysisResults);
+      setDocuments(mergedData);
       setTotals({
         translationSubtotal,
         certificationTotal,
@@ -220,8 +220,8 @@ export default function Step4ReviewRush() {
       setProcessingState("complete");
 
       // Extract language/document info from first document for same-day check
-      if (analysisResults.length > 0) {
-        const firstDoc = analysisResults[0];
+      if (mergedData.length > 0) {
+        const firstDoc = mergedData[0];
         setSourceLanguage(firstDoc.detected_language || "");
         setTargetLanguage("en"); // Assuming English target
         setDocumentType(firstDoc.detected_document_type || "");
