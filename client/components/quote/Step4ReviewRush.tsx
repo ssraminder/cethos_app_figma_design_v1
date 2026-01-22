@@ -600,7 +600,8 @@ export default function Step4ReviewRush() {
                   Not sure about the analysis?
                 </p>
                 <p className="text-sm text-blue-600 mt-1">
-                  Our team can review your documents and provide an accurate quote within 4 working hours.
+                  Our team can review your documents and provide an accurate
+                  quote within 4 working hours.
                 </p>
               </div>
             </div>
@@ -624,7 +625,8 @@ export default function Step4ReviewRush() {
                 Review Requested
               </p>
               <p className="text-sm text-amber-600 mt-1">
-                Our team is reviewing your documents. We'll email you within 4 working hours.
+                Our team is reviewing your documents. We'll email you within 4
+                working hours.
               </p>
             </div>
           </div>
@@ -952,7 +954,8 @@ export default function Step4ReviewRush() {
               Request Human Review
             </h3>
             <p className="text-sm text-gray-600 mb-4">
-              Our translation experts will review your documents and provide an accurate quote within 4 working hours.
+              Our translation experts will review your documents and provide an
+              accurate quote within 4 working hours.
             </p>
 
             <div className="mb-4">
@@ -1005,7 +1008,9 @@ export default function Step4ReviewRush() {
               <span className="font-medium">Quote:</span> {state.quoteNumber}
             </p>
             <p className="text-sm text-gray-600 mb-4">
-              We'll email you at <span className="font-medium">{state.email}</span> within 4 working hours.
+              We'll email you at{" "}
+              <span className="font-medium">{state.email}</span> within 4
+              working hours.
             </p>
             <button
               onClick={() => {
