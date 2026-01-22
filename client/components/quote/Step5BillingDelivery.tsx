@@ -50,7 +50,7 @@ interface PickupLocation {
   address_line1: string;
   address_line2?: string;
   city: string;
-  province: string;
+  state: string;
   postal_code: string;
   phone?: string;
   hours?: string;
