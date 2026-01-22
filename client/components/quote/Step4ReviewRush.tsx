@@ -420,6 +420,44 @@ export default function Step4ReviewRush() {
 
   const { turnaroundFee, taxAmount, total } = calculateFees();
 
+  // Handle HITL Review Request
+  const handleRequestReview = async () => {
+    setHitlSubmitting(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-hitl-review`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: state.quoteId,
+            triggerReasons: ["customer_requested"],
+            isCustomerRequested: true,
+            customerNote: hitlNote || null,
+          }),
+        },
+      );
+
+      if (response.ok) {
+        setShowHitlModal(false);
+        setShowHitlSuccessModal(true);
+        setHitlRequested(true);
+      } else {
+        const error = await response.json();
+        console.error("HITL request failed:", error);
+        alert("Failed to submit review request. Please try again.");
+      }
+    } catch (error) {
+      console.error("Failed to request review:", error);
+      alert("Failed to submit review request. Please try again.");
+    } finally {
+      setHitlSubmitting(false);
+    }
+  };
+
   const handleContinue = async () => {
     setSaving(true);
     try {
