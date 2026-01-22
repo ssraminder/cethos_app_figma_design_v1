@@ -161,6 +161,7 @@ export default function Index() {
       </main>
 
       {/* Footer - Only show on steps 1-5 and not during processing or email confirmation */}
+      {/* Step 6 has its own internal navigation buttons */}
       {!state.isProcessing &&
         !state.emailQuoteSent &&
         state.currentStep <= 5 && (
@@ -170,13 +171,11 @@ export default function Index() {
             onSaveForLater={handleSaveForLater}
             canContinue={validateStep(state.currentStep)}
             showBack={state.currentStep > 1}
-            showSaveForLater={state.currentStep === 5}
+            showSaveForLater={false}
             continueText={
-              state.currentStep === 5 && state.emailQuoteMode
-                ? "Send My Quote"
-                : state.currentStep === 5
-                  ? "Proceed to Checkout"
-                  : "Continue"
+              state.currentStep === 5
+                ? "Proceed to Payment"
+                : "Continue"
             }
           />
         )}
