@@ -81,15 +81,16 @@ ALTER TABLE delivery_options ADD COLUMN IF NOT EXISTS days_reduction INTEGER DEF
 ALTER TABLE delivery_options ADD COLUMN IF NOT EXISTS is_rush BOOLEAN DEFAULT FALSE;
 
 -- Update existing delivery options with proper categorization
-UPDATE delivery_options SET 
+UPDATE delivery_options SET
   delivery_group = 'digital',
   delivery_type = 'online',
   is_always_selected = TRUE
 WHERE code = 'email' OR code = 'online_portal';
 
-UPDATE delivery_options SET 
+UPDATE delivery_options SET
   delivery_group = 'physical',
-  delivery_type = 'ship'
+  delivery_type = 'ship',
+  requires_address = TRUE
 WHERE code IN ('regular_mail', 'priority_mail', 'express_courier', 'international_courier');
 
 -- Insert pickup option if not exists
