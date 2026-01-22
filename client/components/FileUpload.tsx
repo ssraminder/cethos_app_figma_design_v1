@@ -69,8 +69,67 @@ export default function FileUpload() {
     }
   };
 
+  const handleFileUpload = async (file: File, index: number) => {
+    try {
+      // Update progress to 0
+      setUploadingFiles(prev =>
+        prev.map((f, i) => i === index ? { ...f, progress: 0, status: "uploading" as const } : f)
+      );
+
+      // Simulate progress (Supabase doesn't provide upload progress)
+      const progressInterval = setInterval(() => {
+        setUploadingFiles(prev =>
+          prev.map((f, i) => {
+            if (i === index && f.status === "uploading" && f.progress < 90) {
+              return { ...f, progress: f.progress + 10 };
+            }
+            return f;
+          })
+        );
+      }, 200);
+
+      // Generate unique filename
+      const fileExt = file.name.split(".").pop();
+      const fileName = `uploads/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+      // Actual upload to Supabase storage
+      const { error } = await supabase.storage
+        .from("quote-files")
+        .upload(fileName, file);
+
+      clearInterval(progressInterval);
+
+      if (error) {
+        setUploadingFiles(prev =>
+          prev.map((f, i) => i === index ? { ...f, status: "error" as const, error: error.message } : f)
+        );
+      } else {
+        setUploadingFiles(prev =>
+          prev.map((f, i) => i === index ? { ...f, progress: 100, status: "success" as const } : f)
+        );
+
+        // Add to context state after successful upload
+        addFile({
+          id: `${file.name}-${Date.now()}-${Math.random()}`,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          file,
+        });
+      }
+    } catch (err) {
+      setUploadingFiles(prev =>
+        prev.map((f, i) => i === index ? { ...f, status: "error" as const, error: "Upload failed" } : f)
+      );
+    }
+  };
+
   const handleBrowseClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const removeUploadingFile = (index: number) => {
+    setUploadingFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const formatFileSize = (bytes: number): string => {
