@@ -1,12 +1,12 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { User, Session } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabase";
 
 interface StaffUser {
   id: string;
   email: string;
   full_name: string;
-  role: 'reviewer' | 'senior_reviewer' | 'admin' | 'super_admin';
+  role: "reviewer" | "senior_reviewer" | "admin" | "super_admin";
   is_active: boolean;
 }
 
@@ -20,7 +20,9 @@ interface StaffAuthContextType {
   isStaff: boolean;
 }
 
-const StaffAuthContext = createContext<StaffAuthContextType | undefined>(undefined);
+const StaffAuthContext = createContext<StaffAuthContextType | undefined>(
+  undefined,
+);
 
 export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -33,14 +35,14 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) return null;
 
     const { data, error } = await supabase
-      .from('staff_users')
-      .select('id, email, full_name, role, is_active')
-      .eq('email', userEmail)
-      .eq('is_active', true)
+      .from("staff_users")
+      .select("id, email, full_name, role, is_active")
+      .eq("email", userEmail)
+      .eq("is_active", true)
       .single();
 
     if (error || !data) {
-      console.error('Staff user fetch error:', error);
+      console.error("Staff user fetch error:", error);
       return null;
     }
 
@@ -67,22 +69,22 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event);
-        setSession(session);
-        setUser(session?.user ?? null);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth state changed:", event);
+      setSession(session);
+      setUser(session?.user ?? null);
 
-        if (session?.user?.email) {
-          const staff = await fetchStaffUser(session.user.email);
-          setStaffUser(staff);
-        } else {
-          setStaffUser(null);
-        }
-
-        setLoading(false);
+      if (session?.user?.email) {
+        const staff = await fetchStaffUser(session.user.email);
+        setStaffUser(staff);
+      } else {
+        setStaffUser(null);
       }
-    );
+
+      setLoading(false);
+    });
 
     return () => {
       subscription.unsubscribe();
@@ -91,7 +93,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string) => {
     if (!supabase) {
-      return { error: new Error('Supabase not configured') };
+      return { error: new Error("Supabase not configured") };
     }
 
     const { error } = await supabase.auth.signInWithOtp({
@@ -106,7 +108,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     if (!supabase) return;
-    
+
     await supabase.auth.signOut();
     setUser(null);
     setStaffUser(null);
@@ -133,7 +135,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
 export function useStaffAuth() {
   const context = useContext(StaffAuthContext);
   if (context === undefined) {
-    throw new Error('useStaffAuth must be used within a StaffAuthProvider');
+    throw new Error("useStaffAuth must be used within a StaffAuthProvider");
   }
   return context;
 }

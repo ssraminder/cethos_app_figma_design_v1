@@ -76,7 +76,10 @@ export function useAdminAuth(): UseAdminAuthReturn {
           .single();
 
         if (staffError || !staffData) {
-          console.error("Staff lookup error or missing staff record:", staffError);
+          console.error(
+            "Staff lookup error or missing staff record:",
+            staffError,
+          );
           await supabase.auth.signOut();
           return null;
         }
