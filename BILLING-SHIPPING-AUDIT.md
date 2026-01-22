@@ -3,13 +3,16 @@
 ## 🔴 CRITICAL ISSUES FOUND
 
 ### Issue #1: Billing Address Missing Required Fields
+
 **Location:** `code/client/components/quote/Step5BillingDelivery.tsx:435-467`
 
 **Current State:**
+
 - Billing section only shows **"Full Name"** field
 - Missing: Street Address, City, Province, Postal Code
 
 **Expected:**
+
 - Billing address should **ALWAYS** show all fields:
   - Full Name ✅ (exists)
   - Street Address ❌ (missing)
@@ -22,26 +25,30 @@
 ---
 
 ### Issue #2: Shared State Between Billing and Shipping
+
 **Location:** `code/client/components/quote/Step5BillingDelivery.tsx:95-104, 645-729`
 
 **Current State:**
+
 - Both billing and shipping use the **SAME** state variable: `billingAddress`
 - Lines 95-104: Single `billingAddress` state
 - Lines 645-729: Shipping address fields read/write to `billingAddress`
 
 **Problem:**
+
 ```typescript
 // Line 95-104: Single state for BOTH
 const [billingAddress, setBillingAddress] = useState<BillingAddress>({
   fullName: "...",
-  streetAddress: "",  // Used by BOTH billing and shipping
-  city: "",           // Used by BOTH billing and shipping
-  province: "AB",     // Used by BOTH billing and shipping
-  postalCode: "",     // Used by BOTH billing and shipping
+  streetAddress: "", // Used by BOTH billing and shipping
+  city: "", // Used by BOTH billing and shipping
+  province: "AB", // Used by BOTH billing and shipping
+  postalCode: "", // Used by BOTH billing and shipping
 });
 ```
 
 **Expected:**
+
 - Separate `billingAddress` state (always visible)
 - Separate `shippingAddress` state (conditional)
 - Allow copying billing → shipping
@@ -49,13 +56,16 @@ const [billingAddress, setBillingAddress] = useState<BillingAddress>({
 ---
 
 ### Issue #3: Missing "Copy from Billing" Feature
+
 **Location:** Should be above shipping address fields (line ~635)
 
 **Current State:**
+
 - No checkbox or button to copy billing address to shipping address
 - Users must manually re-enter the same information
 
 **Expected:**
+
 - Checkbox: "☑ Same as billing address" above shipping fields
 - When checked: Auto-populate shipping fields from billing
 - When unchecked: Allow manual entry
@@ -65,9 +75,11 @@ const [billingAddress, setBillingAddress] = useState<BillingAddress>({
 ## ✅ WORKING CORRECTLY
 
 ### Shipping Options Source
+
 **Location:** `code/client/components/quote/Step5BillingDelivery.tsx:143-151`
 
 **Supabase Query:**
+
 ```typescript
 const { data: physical, error: physicalError } = await supabase
   .from("delivery_options")
@@ -79,6 +91,7 @@ const { data: physical, error: physicalError } = await supabase
 
 **Data Source:** `delivery_options` table in Supabase
 **Columns Used:**
+
 - `code` - Option identifier (e.g., 'regular_mail', 'pickup')
 - `name` - Display name
 - `description` - Help text
@@ -89,6 +102,7 @@ const { data: physical, error: physicalError } = await supabase
 - `sort_order` - Display order
 
 **Conditional Logic (Lines 113-115):**
+
 ```typescript
 const needsShippingAddress = physicalOptions
   .filter((opt) => opt.requires_address)
@@ -102,26 +116,31 @@ const needsShippingAddress = physicalOptions
 ## 🎯 REQUIRED FIXES
 
 ### Fix #1: Add Full Billing Address Fields
+
 **What:** Add street, city, province, postal code to billing section
 **Where:** Lines 435-467 (Billing Information section)
 **Status:** ❌ Not implemented
 
 ### Fix #2: Create Separate Shipping Address State
+
 **What:** Create new `shippingAddress` state separate from `billingAddress`
 **Where:** Lines 95-104 (State declarations)
 **Status:** ❌ Not implemented
 
 ### Fix #3: Add "Copy from Billing" Checkbox
+
 **What:** Add checkbox above shipping address fields to auto-populate
 **Where:** Line ~635 (above shipping address form)
 **Status:** ❌ Not implemented
 
 ### Fix #4: Update Validation Logic
+
 **What:** Validate billing address always, shipping address conditionally
 **Where:** Lines 240-330 (validateForm function)
 **Status:** ❌ Needs update
 
 ### Fix #5: Update Database Save Logic
+
 **What:** Save both billing and shipping addresses separately
 **Where:** Lines 334-385 (handleContinue function)
 **Status:** ❌ Needs update
@@ -131,6 +150,7 @@ const needsShippingAddress = physicalOptions
 ## 📋 PROPOSED ARCHITECTURE
 
 ### State Structure:
+
 ```typescript
 // Always visible
 const [billingAddress, setBillingAddress] = useState({
@@ -155,6 +175,7 @@ const [sameAsBilling, setSameAsBilling] = useState(false);
 ```
 
 ### UI Flow:
+
 1. **Billing Information** (Always visible)
    - Full Name
    - Street Address
@@ -185,7 +206,9 @@ const [sameAsBilling, setSameAsBilling] = useState(false);
 ## 🔍 DATA FLOW
 
 ### Database Table: `delivery_options`
+
 Columns referenced in code:
+
 - `id` (UUID)
 - `code` (varchar) - e.g., 'regular_mail', 'pickup'
 - `name` (varchar) - Display name
@@ -199,13 +222,14 @@ Columns referenced in code:
 - `sort_order` (integer)
 
 ### Expected Values in Database:
+
 | code            | requires_address | Shows Shipping Form? |
-|-----------------|------------------|---------------------|
-| regular_mail    | `true`           | ✅ Yes              |
-| priority_mail   | `true`           | ✅ Yes              |
-| express_courier | `true`           | ✅ Yes              |
-| pickup          | `false`          | ❌ No               |
-| none            | N/A              | ❌ No               |
+| --------------- | ---------------- | -------------------- |
+| regular_mail    | `true`           | ✅ Yes               |
+| priority_mail   | `true`           | ✅ Yes               |
+| express_courier | `true`           | ✅ Yes               |
+| pickup          | `false`          | ❌ No                |
+| none            | N/A              | ❌ No                |
 
 ---
 
@@ -226,11 +250,13 @@ Columns referenced in code:
 ## 🎯 SUMMARY
 
 **What's Broken:**
+
 - ❌ Billing address missing required fields
 - ❌ Billing and shipping share same state
 - ❌ No "copy from billing" feature
 
 **What's Working:**
+
 - ✅ Shipping options loaded from Supabase correctly
 - ✅ Conditional shipping form logic working
 - ✅ `requires_address` flag respected
