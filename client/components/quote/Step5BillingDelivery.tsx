@@ -131,7 +131,9 @@ export default function Step5BillingDelivery() {
   const isPickupSelected = selectedPhysicalOption === "pickup";
 
   // Fetch tax rate function
-  const fetchTaxRate = async (provinceCode: string): Promise<{ rate: number; name: string }> => {
+  const fetchTaxRate = async (
+    provinceCode: string,
+  ): Promise<{ rate: number; name: string }> => {
     try {
       const { data, error } = await supabase
         .from("tax_rates")
