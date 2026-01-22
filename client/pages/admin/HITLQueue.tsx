@@ -3,6 +3,47 @@ import { useNavigate } from "react-router-dom";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { useBranding } from "../../context/BrandingContext";
 
+// Error Boundary to catch render errors
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  state = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('HITLQueue Error Boundary caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+          <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-xl font-bold text-red-600 mb-4">Error Loading Page</h2>
+            <p className="text-gray-700 mb-2">
+              <strong>Error:</strong> {this.state.error?.message}
+            </p>
+            <p className="text-sm text-gray-600 mb-4">
+              {this.state.error?.stack}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 interface HITLReview {
   review_id: string;
   quote_number: string;
