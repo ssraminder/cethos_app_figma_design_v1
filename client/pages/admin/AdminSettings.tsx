@@ -33,10 +33,6 @@ export default function AdminSettings() {
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   useEffect(() => {
-    checkSession();
-  }, []);
-
-  useEffect(() => {
     // Load current branding into form once it's available
     if (!currentBranding.loading) {
       setFormData({
@@ -48,30 +44,6 @@ export default function AdminSettings() {
       });
     }
   }, [currentBranding.loading]);
-
-  const checkSession = () => {
-    const stored = localStorage.getItem("staffSession");
-
-    if (!stored) {
-      navigate("/admin/login", { replace: true });
-      return;
-    }
-
-    try {
-      const parsedSession = JSON.parse(stored) as StaffSession;
-
-      if (!parsedSession.loggedIn) {
-        navigate("/admin/login", { replace: true });
-        return;
-      }
-
-      setSession(parsedSession);
-      setLoading(false);
-    } catch (err) {
-      console.error("Invalid session:", err);
-      navigate("/admin/login", { replace: true });
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
