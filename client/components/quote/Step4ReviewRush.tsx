@@ -11,13 +11,29 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
-interface DocumentInfo {
-  name: string;
-  fileName: string;
-  pages: number;
+interface DocumentAnalysis {
+  id: string;
+  quote_file_id: string;
+  detected_language: string;
+  language_name: string;
+  detected_document_type: string;
+  assessed_complexity: string;
+  word_count: number;
+  page_count: number;
+  billable_pages: number;
+  base_rate: number;
+  line_total: string;
+  certification_price: string;
+  processing_status: string;
+  quote_files: {
+    id: string;
+    original_filename: string;
+    page_count: number;
+  };
 }
 
 interface TurnaroundOption {
@@ -30,13 +46,10 @@ interface TurnaroundOption {
   is_rush: boolean;
 }
 
-interface PricingSummary {
-  translation_total: number;
-  certification_total: number;
+interface Totals {
+  translationSubtotal: number;
+  certificationTotal: number;
   subtotal: number;
-  tax_amount: number;
-  tax_rate: number;
-  total: number;
 }
 
 export default function Step4ReviewRush() {
@@ -55,12 +68,23 @@ export default function Step4ReviewRush() {
   const [isRushAvailable, setIsRushAvailable] = useState(true);
   const [isSameDayAvailable, setIsSameDayAvailable] = useState(false);
 
-  // Data
+  // Data from AI analysis
+  const [documents, setDocuments] = useState<DocumentAnalysis[]>([]);
+  const [totals, setTotals] = useState<Totals>({
+    translationSubtotal: 0,
+    certificationTotal: 0,
+    subtotal: 0,
+  });
+
+  // State management
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [documents, setDocuments] = useState<DocumentInfo[]>([]);
-  const [pricing, setPricing] = useState<PricingSummary | null>(null);
-  const [totalPages, setTotalPages] = useState(0);
+  const [processingState, setProcessingState] = useState<
+    "loading" | "processing" | "complete" | "no_data"
+  >("loading");
+  const [error, setError] = useState<string | null>(null);
+
+  // Language/document info for same-day eligibility
   const [sourceLanguage, setSourceLanguage] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("");
   const [documentType, setDocumentType] = useState("");
@@ -74,17 +98,18 @@ export default function Step4ReviewRush() {
   const [rushDeliveryDate, setRushDeliveryDate] = useState<Date>(new Date());
 
   useEffect(() => {
-    fetchQuoteData();
-  }, []);
+    fetchTurnaroundOptions();
+    fetchAnalysisData();
+  }, [state.quoteId]);
 
   useEffect(() => {
-    checkAvailability();
+    if (sourceLanguage && targetLanguage && documentType && intendedUse) {
+      checkAvailability();
+    }
   }, [sourceLanguage, targetLanguage, documentType, intendedUse]);
 
-  const fetchQuoteData = async () => {
-    setLoading(true);
+  const fetchTurnaroundOptions = async () => {
     try {
-      // Fetch turnaround options from database
       const { data: turnaroundData, error: turnaroundError } = await supabase
         .from("delivery_options")
         .select(
@@ -99,95 +124,143 @@ export default function Step4ReviewRush() {
       } else {
         setTurnaroundOptions(turnaroundData || []);
       }
-
-      // Fetch quote details including pricing
-      if (state.quoteId) {
-        const { data: quoteData, error: quoteError } = await supabase
-          .from("quotes")
-          .select(
-            `
-            *,
-            quote_documents(file_name, calculated_pages),
-            source_language:languages!quotes_source_language_id_fkey(name, code),
-            target_language:languages!quotes_target_language_id_fkey(name, code),
-            intended_use:intended_uses(name, code, requires_certification),
-            document_type:document_types(name, code)
-          `,
-          )
-          .eq("id", state.quoteId)
-          .single();
-
-        if (quoteError) throw quoteError;
-
-        // Process documents
-        const docs =
-          quoteData.quote_documents?.map((doc: any, index: number) => ({
-            name: `Document ${index + 1}`,
-            fileName: doc.file_name,
-            pages: doc.calculated_pages || 1,
-          })) || [];
-
-        setDocuments(docs);
-        const pages = docs.reduce(
-          (sum: number, doc: DocumentInfo) => sum + doc.pages,
-          0,
-        );
-        setTotalPages(pages);
-
-        // Extract language/document info for same-day check
-        setSourceLanguage((quoteData.source_language as any)?.code || "");
-        setTargetLanguage((quoteData.target_language as any)?.code || "");
-        setDocumentType((quoteData.document_type as any)?.code || "");
-        setIntendedUse((quoteData.intended_use as any)?.code || "");
-
-        // Get or calculate pricing
-        if (quoteData.calculated_totals) {
-          setPricing(quoteData.calculated_totals as PricingSummary);
-        } else {
-          await calculatePricing(
-            pages,
-            quoteData.intended_use?.requires_certification,
-          );
-        }
-
-        // Calculate delivery dates
-        const days = calculateStandardDays(pages);
-        setStandardDays(days);
-        const standardDate = await getDeliveryDate(days);
-        const rushDate = await getDeliveryDate(Math.max(1, days - 1));
-        setStandardDeliveryDate(standardDate);
-        setRushDeliveryDate(rushDate);
-      }
     } catch (err) {
-      console.error("Error fetching quote data:", err);
-      toast.error("Failed to load quote details");
-    } finally {
-      setLoading(false);
+      console.error("Error fetching turnaround options:", err);
     }
   };
 
-  const calculatePricing = async (
-    pages: number,
-    requiresCertification: boolean,
-  ) => {
+  const fetchAnalysisData = async () => {
+    setLoading(true);
+    setError(null);
+    
     try {
-      const translationCost = pages * 25; // $25 per page
-      const certificationCost = requiresCertification ? 35 : 0;
-      const subtotal = translationCost + certificationCost;
-      const taxRate = 0.05; // 5% GST
-      const taxAmount = subtotal * taxRate;
-      const total = subtotal + taxAmount;
+      const quoteId = state.quoteId;
 
-      setPricing({
-        translation_total: translationCost,
-        certification_total: certificationCost,
+      if (!quoteId) {
+        console.error("No quote ID available");
+        setError("No quote ID found");
+        setProcessingState("no_data");
+        setLoading(false);
+        return;
+      }
+
+      // Fetch AI analysis results with file info
+      const { data: analysisResults, error: analysisError } = await supabase
+        .from("ai_analysis_results")
+        .select(
+          `
+          id,
+          quote_file_id,
+          detected_language,
+          language_name,
+          detected_document_type,
+          assessed_complexity,
+          word_count,
+          page_count,
+          billable_pages,
+          base_rate,
+          line_total,
+          certification_price,
+          processing_status,
+          quote_files!inner (
+            id,
+            original_filename,
+            page_count
+          )
+        `,
+        )
+        .eq("quote_id", quoteId)
+        .eq("processing_status", "complete");
+
+      if (analysisError) throw analysisError;
+
+      // Check if no results yet
+      if (!analysisResults || analysisResults.length === 0) {
+        // Check if still processing
+        const { data: pendingFiles } = await supabase
+          .from("quote_files")
+          .select("processing_status, id")
+          .eq("quote_id", quoteId)
+          .neq("processing_status", "complete");
+
+        if (pendingFiles && pendingFiles.length > 0) {
+          setProcessingState("processing");
+        } else {
+          setProcessingState("no_data");
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Calculate totals from analysis results
+      const translationSubtotal = analysisResults.reduce(
+        (sum, doc) => sum + (parseFloat(doc.line_total) || 0),
+        0,
+      );
+      const certificationTotal = analysisResults.reduce(
+        (sum, doc) => sum + (parseFloat(doc.certification_price) || 0),
+        0,
+      );
+      const subtotal = translationSubtotal + certificationTotal;
+
+      // Calculate total pages
+      const totalBillablePages = analysisResults.reduce(
+        (sum, doc) => sum + (doc.billable_pages || 0),
+        0,
+      );
+
+      // Set documents and totals
+      setDocuments(analysisResults);
+      setTotals({
+        translationSubtotal,
+        certificationTotal,
         subtotal,
-        tax_amount: taxAmount,
-        tax_rate: taxRate,
-        total,
       });
+      setProcessingState("complete");
+
+      // Extract language/document info from first document for same-day check
+      if (analysisResults.length > 0) {
+        const firstDoc = analysisResults[0];
+        setSourceLanguage(firstDoc.detected_language || "");
+        setTargetLanguage("en"); // Assuming English target
+        setDocumentType(firstDoc.detected_document_type || "");
+        
+        // Get intended use from quote
+        const { data: quoteData } = await supabase
+          .from("quotes")
+          .select("intended_use:intended_uses(code)")
+          .eq("id", quoteId)
+          .single();
+        
+        if (quoteData?.intended_use) {
+          setIntendedUse((quoteData.intended_use as any)?.code || "");
+        }
+      }
+
+      // Calculate delivery dates
+      const days = calculateStandardDays(totalBillablePages);
+      setStandardDays(days);
+      const standardDate = await getDeliveryDate(days);
+      const rushDate = await getDeliveryDate(Math.max(1, days - 1));
+      setStandardDeliveryDate(standardDate);
+      setRushDeliveryDate(rushDate);
+
+      // Update quotes table with totals
+      await supabase
+        .from("quotes")
+        .update({
+          subtotal: translationSubtotal,
+          certification_total: certificationTotal,
+          tax_rate: 0.05,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", quoteId);
     } catch (err) {
-      console.error("Error calculating pricing:", err);
+      console.error("Error fetching analysis data:", err);
+      setError(err instanceof Error ? err.message : "Failed to load pricing data");
+      setProcessingState("no_data");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -198,7 +271,6 @@ export default function Step4ReviewRush() {
 
   // Calculate delivery date (skip weekends and holidays)
   const getDeliveryDate = async (daysToAdd: number): Promise<Date> => {
-    // Fetch holidays from database
     const { data: holidays } = await supabase
       .from("holidays")
       .select("holiday_date")
@@ -212,13 +284,8 @@ export default function Step4ReviewRush() {
 
     while (addedDays < daysToAdd) {
       date.setDate(date.getDate() + 1);
-
-      // Skip weekends
       if (isWeekend(date)) continue;
-
-      // Skip holidays
       if (holidayDates.some((h) => isSameDay(h, date))) continue;
-
       addedDays++;
     }
 
@@ -226,24 +293,18 @@ export default function Step4ReviewRush() {
   };
 
   // Check cutoff time (MST timezone)
-  const checkCutoffTime = (
-    cutoffHour: number,
-    cutoffMinute: number,
-  ): boolean => {
+  const checkCutoffTime = (cutoffHour: number, cutoffMinute: number): boolean => {
     const now = new Date();
-    const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+    const dayOfWeek = now.getDay();
 
-    // Not available on weekends
     if (dayOfWeek === 0 || dayOfWeek === 6) return false;
 
-    // Get current time in MST (America/Edmonton)
     const mstTime = new Date(
       now.toLocaleString("en-US", { timeZone: "America/Edmonton" }),
     );
     const currentHour = mstTime.getHours();
     const currentMinute = mstTime.getMinutes();
 
-    // Check if before cutoff
     if (currentHour < cutoffHour) return true;
     if (currentHour === cutoffHour && currentMinute < cutoffMinute) return true;
 
@@ -256,7 +317,6 @@ export default function Step4ReviewRush() {
       return;
     }
 
-    // Check if same-day eligible
     const { data, error } = await supabase
       .from("same_day_eligibility")
       .select("*")
@@ -270,7 +330,6 @@ export default function Step4ReviewRush() {
     const isEligible = !!data && !error;
     setIsSameDayEligible(isEligible);
 
-    // Check cutoff times
     const rushAvail = checkCutoffTime(16, 30); // 4:30 PM
     const sameDayAvail = isEligible && checkCutoffTime(14, 0); // 2:00 PM
 
@@ -280,7 +339,7 @@ export default function Step4ReviewRush() {
 
   // Calculate fees based on selection
   const calculateFees = () => {
-    const subtotal = pricing?.subtotal || 0;
+    const subtotal = totals.subtotal;
     let turnaroundFee = 0;
 
     const selectedOption = turnaroundOptions.find(
@@ -292,7 +351,8 @@ export default function Step4ReviewRush() {
     }
 
     const subtotalWithTurnaround = subtotal + turnaroundFee;
-    const taxAmount = subtotalWithTurnaround * (pricing?.tax_rate || 0.05);
+    const taxRate = 0.05;
+    const taxAmount = subtotalWithTurnaround * taxRate;
     const total = subtotalWithTurnaround + taxAmount;
 
     return { turnaroundFee, taxAmount, total };
@@ -303,21 +363,14 @@ export default function Step4ReviewRush() {
   const handleContinue = async () => {
     setSaving(true);
     try {
-      // Save turnaround selection and updated totals to database
       if (state.quoteId) {
-        const updatedTotals = {
-          ...pricing,
-          rush_fee: turnaroundFee,
-          subtotal: (pricing?.subtotal || 0) + turnaroundFee,
-          tax_amount: taxAmount,
-          total: total,
-        };
-
         const { error } = await supabase
           .from("quotes")
           .update({
             turnaround_type: turnaroundType,
-            calculated_totals: updatedTotals,
+            rush_fee: turnaroundFee,
+            tax_amount: taxAmount,
+            total: total,
             estimated_delivery_date:
               turnaroundType === "same_day"
                 ? new Date().toISOString()
@@ -331,7 +384,6 @@ export default function Step4ReviewRush() {
         if (error) throw error;
       }
 
-      // Update context state
       updateState({
         turnaroundType,
         turnaroundFee,
@@ -346,20 +398,81 @@ export default function Step4ReviewRush() {
     }
   };
 
-  if (loading) {
+  // Loading state
+  if (loading || processingState === "loading") {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <span className="ml-3 text-gray-600">Loading pricing data...</span>
       </div>
     );
   }
 
-  const standardOption = turnaroundOptions.find(
-    (opt) => opt.code === "standard",
-  );
+  // Processing state
+  if (processingState === "processing") {
+    return (
+      <div className="max-w-2xl mx-auto px-4 pb-8">
+        <div className="text-center py-12">
+          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto" />
+          <p className="mt-4 text-lg text-gray-900 font-medium">
+            Analyzing your documents...
+          </p>
+          <p className="text-sm text-gray-500 mt-1">
+            This usually takes 10-30 seconds
+          </p>
+          <button
+            onClick={fetchAnalysisData}
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh Status
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // No data / error state
+  if (processingState === "no_data" || documents.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 pb-8">
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto">
+            <FileText className="w-8 h-8 text-yellow-600" />
+          </div>
+          <p className="mt-4 text-lg text-gray-900 font-medium">
+            No pricing data available
+          </p>
+          <p className="text-sm text-gray-500 mt-1">
+            {error || "Your documents may still be processing"}
+          </p>
+          <div className="mt-6 flex gap-3 justify-center">
+            <button
+              onClick={fetchAnalysisData}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Retry
+            </button>
+            <button
+              onClick={goToPreviousStep}
+              className="px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const standardOption = turnaroundOptions.find((opt) => opt.code === "standard");
   const rushOption = turnaroundOptions.find((opt) => opt.code === "rush");
-  const sameDayOption = turnaroundOptions.find(
-    (opt) => opt.code === "same_day",
+  const sameDayOption = turnaroundOptions.find((opt) => opt.code === "same_day");
+
+  const totalBillablePages = documents.reduce(
+    (sum, doc) => sum + (doc.billable_pages || 0),
+    0,
   );
 
   return (
@@ -374,93 +487,82 @@ export default function Step4ReviewRush() {
         </p>
       </div>
 
-      {/* Quote Summary Card */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-            <FileText className="w-5 h-5 text-blue-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900">Quote Summary</h3>
+      {/* Document Breakdown */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
+        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+          <h2 className="font-semibold text-gray-900">Documents</h2>
         </div>
-
-        <div className="space-y-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Documents</span>
-            <span className="font-medium text-gray-900">
-              {documents.length}{" "}
-              {documents.length === 1 ? "document" : "documents"}
-            </span>
-          </div>
-
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Total Pages</span>
-            <span className="font-medium text-gray-900">
-              {totalPages} pages
-            </span>
-          </div>
-
-          {/* Document List */}
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <p className="text-xs font-medium text-gray-500 uppercase mb-2">
-              Documents
-            </p>
-            <div className="space-y-2">
-              {documents.map((doc, index) => (
-                <div
-                  key={index}
-                  className="flex justify-between items-center text-sm"
-                >
-                  <span
-                    className="text-gray-700 truncate max-w-[200px]"
-                    title={doc.fileName}
-                  >
-                    {doc.fileName}
-                  </span>
-                  <span className="text-gray-500">{doc.pages} pages</span>
+        <div className="divide-y divide-gray-100">
+          {documents.map((doc) => (
+            <div key={doc.id} className="px-6 py-4">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <p className="font-medium text-gray-900 truncate">
+                    {doc.quote_files?.original_filename || "Document"}
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                      {doc.language_name || doc.detected_language}
+                    </span>
+                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                      {doc.billable_pages.toFixed(1)} billable pages
+                    </span>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded ${
+                        doc.assessed_complexity === "easy"
+                          ? "bg-green-100 text-green-700"
+                          : doc.assessed_complexity === "medium"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {doc.assessed_complexity}
+                    </span>
+                  </div>
                 </div>
-              ))}
+                <div className="text-right ml-4">
+                  <p className="font-semibold text-gray-900">
+                    ${parseFloat(doc.line_total).toFixed(2)}
+                  </p>
+                  {parseFloat(doc.certification_price) > 0 && (
+                    <p className="text-xs text-gray-500">
+                      +${parseFloat(doc.certification_price).toFixed(2)} cert
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          ))}
         </div>
       </div>
 
-      {/* Price Breakdown Card */}
-      {pricing && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-          <div className="bg-gray-50 -mx-6 -mt-6 px-6 py-3 rounded-t-xl mb-4">
-            <h3 className="text-sm font-semibold text-gray-700 uppercase">
-              Base Price
-            </h3>
+      {/* Price Breakdown */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
+        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+          <h2 className="font-semibold text-gray-900">Price Breakdown</h2>
+        </div>
+        <div className="px-6 py-4 space-y-3">
+          <div className="flex justify-between text-gray-700">
+            <span>
+              Translation ({totalBillablePages.toFixed(1)} pages)
+            </span>
+            <span>${totals.translationSubtotal.toFixed(2)}</span>
           </div>
-
-          <div className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">
-                Translation ({totalPages} pages)
+          {totals.certificationTotal > 0 && (
+            <div className="flex justify-between text-gray-700">
+              <span>
+                Certification ({documents.length} document
+                {documents.length !== 1 ? "s" : ""})
               </span>
-              <span className="font-medium text-gray-900">
-                ${pricing.translation_total.toFixed(2)}
-              </span>
+              <span>${totals.certificationTotal.toFixed(2)}</span>
             </div>
-
-            {pricing.certification_total > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Certification</span>
-                <span className="font-medium text-gray-900">
-                  ${pricing.certification_total.toFixed(2)}
-                </span>
-              </div>
-            )}
-
-            <div className="pt-3 border-t border-gray-200 flex justify-between">
-              <span className="font-medium text-gray-900">Subtotal</span>
-              <span className="font-semibold text-gray-900">
-                ${pricing.subtotal.toFixed(2)}
-              </span>
-            </div>
+          )}
+          <div className="border-t border-gray-200 pt-3 flex justify-between font-medium text-gray-900">
+            <span>Subtotal</span>
+            <span>${totals.subtotal.toFixed(2)}</span>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Turnaround Time Section */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
@@ -544,11 +646,7 @@ export default function Step4ReviewRush() {
                     </span>
                   </div>
                   <span className="font-semibold text-amber-600">
-                    +$
-                    {(
-                      (pricing?.subtotal || 0) *
-                      (rushOption.multiplier - 1)
-                    ).toFixed(2)}
+                    +${(totals.subtotal * (rushOption.multiplier - 1)).toFixed(2)}
                   </span>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">
@@ -569,7 +667,7 @@ export default function Step4ReviewRush() {
             </label>
           )}
 
-          {/* Same-Day Option - Only show if eligible */}
+          {/* Same-Day Option */}
           {sameDayOption && isSameDayEligible && (
             <label
               className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
@@ -604,10 +702,7 @@ export default function Step4ReviewRush() {
                   </div>
                   <span className="font-semibold text-green-600">
                     +$
-                    {(
-                      (pricing?.subtotal || 0) *
-                      (sameDayOption.multiplier - 1)
-                    ).toFixed(2)}
+                    {(totals.subtotal * (sameDayOption.multiplier - 1)).toFixed(2)}
                   </span>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">
@@ -635,9 +730,7 @@ export default function Step4ReviewRush() {
         <div className="space-y-3">
           <div className="flex justify-between items-center text-sm">
             <span className="text-blue-100">Subtotal</span>
-            <span className="font-medium">
-              ${(pricing?.subtotal || 0).toFixed(2)}
-            </span>
+            <span className="font-medium">${totals.subtotal.toFixed(2)}</span>
           </div>
 
           {turnaroundFee > 0 && (
@@ -651,9 +744,7 @@ export default function Step4ReviewRush() {
           )}
 
           <div className="flex justify-between items-center text-sm">
-            <span className="text-blue-100">
-              Tax ({((pricing?.tax_rate || 0.05) * 100).toFixed(0)}% GST)
-            </span>
+            <span className="text-blue-100">Tax (5% GST)</span>
             <span className="font-medium">${taxAmount.toFixed(2)}</span>
           </div>
 
