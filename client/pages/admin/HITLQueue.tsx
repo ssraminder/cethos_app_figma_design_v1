@@ -15,7 +15,7 @@ class ErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('HITLQueue Error Boundary caught:', error, errorInfo);
+    console.error("HITLQueue Error Boundary caught:", error, errorInfo);
   }
 
   render() {
@@ -23,7 +23,9 @@ class ErrorBoundary extends React.Component<
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
           <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-bold text-red-600 mb-4">Error Loading Page</h2>
+            <h2 className="text-xl font-bold text-red-600 mb-4">
+              Error Loading Page
+            </h2>
             <p className="text-gray-700 mb-2">
               <strong>Error:</strong> {this.state.error?.message}
             </p>
@@ -56,7 +58,7 @@ interface HITLReview {
 }
 
 function HITLQueue() {
-  console.log('HITLQueue: Component starting to render');
+  console.log("HITLQueue: Component starting to render");
 
   const { companyName, logoUrl, primaryColor } = useBranding();
   const [reviews, setReviews] = useState<HITLReview[]>([]);
