@@ -149,10 +149,13 @@ export default function Index() {
               state.currentStep === 3 && <Step3Contact />}
             {!state.emailQuoteSent &&
               !state.isProcessing &&
-              state.currentStep === 4 && <Step4Delivery />}
+              state.currentStep === 4 && <Step4ReviewRush />}
             {!state.emailQuoteSent &&
               !state.isProcessing &&
-              state.currentStep === 5 && <Step5Review />}
+              state.currentStep === 5 && <Step5BillingDelivery />}
+            {!state.emailQuoteSent &&
+              !state.isProcessing &&
+              state.currentStep === 6 && <Step6Payment />}
           </div>
         </div>
       </main>
