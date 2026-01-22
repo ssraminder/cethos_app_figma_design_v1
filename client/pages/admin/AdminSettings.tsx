@@ -14,8 +14,7 @@ interface BrandingFormData {
 export default function AdminSettings() {
   const navigate = useNavigate();
   const currentBranding = useBranding();
-  const [session, setSession] = useState<StaffSession | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { session, loading: authLoading } = useAdminAuthContext();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
