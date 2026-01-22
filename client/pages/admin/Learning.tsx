@@ -21,14 +21,6 @@ interface LearningPattern {
   updated_at: string;
 }
 
-interface StaffSession {
-  email: string;
-  staffId: string;
-  staffName?: string;
-  staffRole?: string;
-  loggedIn: boolean;
-}
-
 // Helper Functions
 function getTypeBadgeColor(type: string) {
   switch (type) {
