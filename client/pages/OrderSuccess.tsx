@@ -49,7 +49,7 @@ export default function OrderSuccess() {
 
         if (retryError || !retryPayment) {
           throw new Error(
-            "Order is being processed. Please check your email for confirmation."
+            "Order is being processed. Please check your email for confirmation.",
           );
         }
 
@@ -76,7 +76,7 @@ export default function OrderSuccess() {
         status,
         estimated_delivery_date,
         customer:customers(email)
-      `
+      `,
       )
       .eq("id", orderId)
       .single();
@@ -180,7 +180,7 @@ export default function OrderSuccess() {
                       </p>
                       <p className="font-semibold text-gray-900">
                         {new Date(
-                          order.estimated_delivery_date
+                          order.estimated_delivery_date,
                         ).toLocaleDateString("en-US", {
                           weekday: "long",
                           month: "long",

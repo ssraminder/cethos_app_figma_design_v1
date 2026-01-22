@@ -45,7 +45,9 @@ export default function Step6Payment() {
       if (quoteData?.calculated_totals) {
         setPricing(quoteData.calculated_totals as PricingSummary);
       } else {
-        setError("Pricing information not available. Please go back and complete the previous steps.");
+        setError(
+          "Pricing information not available. Please go back and complete the previous steps.",
+        );
       }
     } catch (err: any) {
       console.error("Error fetching pricing:", err);
@@ -67,7 +69,9 @@ export default function Step6Payment() {
       }
 
       if (!pricing || pricing.total <= 0) {
-        throw new Error("Invalid order total. Please go back and review your quote.");
+        throw new Error(
+          "Invalid order total. Please go back and review your quote.",
+        );
       }
 
       // Call the create-checkout-session Edge Function
@@ -75,7 +79,7 @@ export default function Step6Payment() {
         "create-checkout-session",
         {
           body: { quoteId },
-        }
+        },
       );
 
       if (fnError) {
@@ -89,7 +93,6 @@ export default function Step6Payment() {
 
       // Redirect to Stripe Checkout
       window.location.href = data.checkoutUrl;
-
     } catch (err: any) {
       console.error("Payment error:", err);
       setError(err.message || "An error occurred. Please try again.");
