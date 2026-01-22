@@ -40,33 +40,35 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+
       // Step 1: Sign in with Supabase Auth
       const { data: authData, error: authError } =
         await supabase.auth.signInWithPassword({
-          email: email.trim().toLowerCase(),
+          email: normalizedEmail,
           password,
         });
 
       if (authError) {
-        if (authError.message.includes("Invalid login credentials")) {
-          throw new Error("Invalid email or password");
-        }
-        throw new Error(authError.message);
+        throw new Error(
+          authError.message === "Invalid login credentials"
+            ? "Invalid email or password"
+            : authError.message,
+        );
       }
 
       if (!authData.session) {
-        throw new Error("Failed to create session");
+        throw new Error("Failed to establish session. Please try again.");
       }
 
       // Step 2: Verify user is in staff table and active
       const { data: staffData, error: staffError } = await supabase
         .from("staff")
         .select("id, name, email, role, is_active")
-        .eq("email", email.trim().toLowerCase())
+        .eq("email", normalizedEmail)
         .single();
 
       if (staffError || !staffData) {
-        // Sign out if not a valid staff member
         await supabase.auth.signOut();
         throw new Error(
           "Access denied. Your account is not authorized for admin access.",
@@ -75,23 +77,20 @@ export default function AdminLogin() {
 
       if (!staffData.is_active) {
         await supabase.auth.signOut();
-        throw new Error(
-          "Your account has been deactivated. Please contact an administrator.",
-        );
+        throw new Error("Your account has been deactivated.");
       }
 
-      // Step 3: Store staff info for UI display (Supabase manages the actual session)
-      localStorage.setItem(
-        "staffSession",
-        JSON.stringify({
-          staffId: staffData.id,
-          staffName: staffData.name,
-          staffEmail: staffData.email,
-          staffRole: staffData.role,
-          loggedIn: true,
-          loginTime: new Date().toISOString(),
-        }),
-      );
+      // Step 3: Store staff info in localStorage to keep UI helpers in sync
+      const staffSession = {
+        staffId: staffData.id,
+        staffName: staffData.name,
+        staffEmail: staffData.email,
+        staffRole: staffData.role,
+        isActive: staffData.is_active,
+        loggedIn: true,
+        loginTime: new Date().toISOString(),
+      };
+      localStorage.setItem("staffSession", JSON.stringify(staffSession));
 
       // Step 4: Redirect to admin dashboard
       navigate("/admin/hitl");
