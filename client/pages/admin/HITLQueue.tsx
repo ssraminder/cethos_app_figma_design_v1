@@ -73,6 +73,12 @@ export default function HITLQueue() {
     setFetching(false);
   }, [SUPABASE_URL, SUPABASE_ANON_KEY]);
 
+  // Now call fetchReviews when session is available
+  useEffect(() => {
+    if (!session) return;
+    fetchReviews();
+  }, [session, fetchReviews]);
+
   const handleLogout = async () => {
     await signOut();
   };
