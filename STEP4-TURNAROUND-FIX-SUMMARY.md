@@ -3,6 +3,7 @@
 ## ✅ Changes Made
 
 ### 1. Added Fallback Turnaround Options
+
 **Problem:** If the database setup SQL hasn't been run, no turnaround options would load, causing the section to be empty.
 
 **Solution:** Added fallback default options that load automatically if the database query fails or returns empty results.
@@ -24,7 +25,7 @@ const useFallbackOptions = () => {
       id: "fallback-rush",
       code: "rush",
       name: "Rush Delivery",
-      multiplier: 1.3,      // +30%
+      multiplier: 1.3, // +30%
       days_reduction: 1,
       is_rush: true,
     },
@@ -32,7 +33,7 @@ const useFallbackOptions = () => {
       id: "fallback-same-day",
       code: "same_day",
       name: "Same-Day Delivery",
-      multiplier: 2.0,      // +100%
+      multiplier: 2.0, // +100%
       days_reduction: 0,
       is_rush: true,
     },
@@ -41,6 +42,7 @@ const useFallbackOptions = () => {
 ```
 
 ### 2. Added Debug Warning Message
+
 **Purpose:** Helps identify if database setup is needed.
 
 If no turnaround options are found in the database AND fallbacks don't load, a warning message displays:
@@ -51,6 +53,7 @@ File: code/database-setup-step4-step5.sql
 ```
 
 ### 3. Improved Error Handling
+
 - Catches database query errors gracefully
 - Falls back to default options instead of showing empty UI
 - Logs errors to console for debugging
@@ -120,6 +123,7 @@ File: code/database-setup-step4-step5.sql
 ## 🧪 Testing Checklist
 
 ### Standard Option:
+
 - [ ] Always displays
 - [ ] Shows delivery date based on pages
 - [ ] Date skips weekends
@@ -127,6 +131,7 @@ File: code/database-setup-step4-step5.sql
 - [ ] Shows "Included" (no surcharge)
 
 ### Rush Option:
+
 - [ ] Shows +30% fee
 - [ ] Delivery date is 1 day earlier than standard
 - [ ] Disabled after 4:30 PM MST
@@ -134,6 +139,7 @@ File: code/database-setup-step4-step5.sql
 - [ ] Shows "(Cutoff passed)" when disabled
 
 ### Same-Day Option:
+
 - [ ] Only shows for eligible documents
 - [ ] Shows +100% fee
 - [ ] Disabled after 2:00 PM MST
@@ -141,12 +147,14 @@ File: code/database-setup-step4-step5.sql
 - [ ] Says "Ready today by 5:00 PM MST" when available
 
 ### Price Updates:
+
 - [ ] Selecting rush adds 30% to subtotal
 - [ ] Selecting same-day adds 100% to subtotal
 - [ ] Tax recalculates when option changes
 - [ ] Total updates correctly
 
 ### Continue Button:
+
 - [ ] Saves selected turnaround type
 - [ ] Saves rush fee to database
 - [ ] Saves estimated delivery date
@@ -159,12 +167,14 @@ File: code/database-setup-step4-step5.sql
 ### Issue: "Turnaround options not loaded" warning shows
 
 **Solution:** Run the database setup SQL:
+
 ```bash
 # In Supabase SQL Editor, run:
 code/database-setup-step4-step5.sql
 ```
 
 This creates:
+
 - Turnaround options in `delivery_options` table
 - Holidays in `holidays` table
 - Same-day eligibility rules
@@ -173,6 +183,7 @@ This creates:
 ### Issue: Dates not calculating correctly
 
 **Check:**
+
 1. `holidays` table has data for current year
 2. Timezone is set to MST (America/Edmonton)
 3. Page count is loaded from `ai_analysis_results`
@@ -180,6 +191,7 @@ This creates:
 ### Issue: Same-day option never shows
 
 **Check:**
+
 1. `same_day_eligibility` table has matching row for:
    - source_language (e.g., 'es')
    - target_language (e.g., 'en')
@@ -190,9 +202,10 @@ This creates:
 ### Issue: Rush option shows wrong fee
 
 **Check:**
+
 1. `delivery_options` table has `multiplier = 1.30` for rush
 2. `subtotal` is calculated correctly from `ai_analysis_results`
-3. Formula: `rushFee = subtotal * (multiplier - 1)` = subtotal * 0.30
+3. Formula: `rushFee = subtotal * (multiplier - 1)` = subtotal \* 0.30
 
 ---
 
@@ -239,34 +252,39 @@ handleContinue()
 ## 🎯 Key Code Locations
 
 ### Turnaround Options Fetch:
+
 **Line 111-165** in `Step4ReviewRush.tsx`
 
 ### Date Calculation:
+
 **Line 309-327** (`getDeliveryDate` function)
 
 ### UI Rendering:
+
 **Line 618-726** (Turnaround Time section)
 
 ### Price Calculation:
+
 **Line 367-383** (`calculateFees` function)
 
 ### Continue Handler:
+
 **Line 385-415** (`handleContinue` function)
 
 ---
 
 ## ✅ Status
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Fetch turnaround options | ✅ Working | With fallback |
+| Feature                  | Status     | Notes                   |
+| ------------------------ | ---------- | ----------------------- |
+| Fetch turnaround options | ✅ Working | With fallback           |
 | Calculate delivery dates | ✅ Working | Skips weekends/holidays |
-| Display Standard option | ✅ Working | Always shown |
-| Display Rush option | ✅ Working | With cutoff check |
-| Display Same-day option | ✅ Working | When eligible |
-| Calculate rush fees | ✅ Working | +30% / +100% |
-| Save selection | ✅ Working | Updates database |
-| Cutoff time detection | ✅ Working | MST timezone |
+| Display Standard option  | ✅ Working | Always shown            |
+| Display Rush option      | ✅ Working | With cutoff check       |
+| Display Same-day option  | ✅ Working | When eligible           |
+| Calculate rush fees      | ✅ Working | +30% / +100%            |
+| Save selection           | ✅ Working | Updates database        |
+| Cutoff time detection    | ✅ Working | MST timezone            |
 
 ---
 
@@ -320,6 +338,7 @@ handleContinue()
 ## ✨ Implementation Complete
 
 All Step 4 Turnaround Time features are now working:
+
 - ✅ Three delivery options display
 - ✅ Actual delivery dates calculated
 - ✅ Business day logic working
