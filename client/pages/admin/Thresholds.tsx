@@ -53,24 +53,6 @@ export default function Thresholds() {
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  // Session check and role verification
-  useEffect(() => {
-    const session = localStorage.getItem("staffSession");
-    if (!session) {
-      navigate("/admin/login", { replace: true });
-      return;
-    }
-    try {
-      const parsed = JSON.parse(session) as StaffSession;
-      if (!parsed.loggedIn) {
-        navigate("/admin/login", { replace: true });
-      }
-      setStaffSession(parsed);
-    } catch {
-      navigate("/admin/login", { replace: true });
-    }
-  }, [navigate]);
-
   // Fetch all data when session is ready
   useEffect(() => {
     if (staffSession) {
