@@ -183,11 +183,21 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
         }
         return baseValid;
 
-      case 4: // Review
-        return true; // Always valid, processing check happens in component
+      case 4: // Review & Rush
+        return true; // Always valid, calculations happen in component
 
-      case 5: // Success
-        return true; // Always valid
+      case 5: // Billing & Delivery
+        // Require billing address to be filled
+        if (!state.shippingAddress) return false;
+        return !!(
+          state.shippingAddress.addressLine1 &&
+          state.shippingAddress.city &&
+          state.shippingAddress.state &&
+          state.shippingAddress.postalCode
+        );
+
+      case 6: // Payment
+        return true; // Always valid (placeholder step)
 
       default:
         return false;
