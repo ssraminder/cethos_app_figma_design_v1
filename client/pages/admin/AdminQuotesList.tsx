@@ -1,22 +1,22 @@
 import { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { createClient } from "@supabase/supabase-js";
-import { 
-  Search, 
-  Filter, 
-  ChevronDown, 
-  ChevronLeft, 
+import {
+  Search,
+  Filter,
+  ChevronDown,
+  ChevronLeft,
   ChevronRight,
   FileText,
   Download,
   RefreshCw,
-  X
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
 );
 
 interface Quote {
@@ -50,11 +50,11 @@ const PAGE_SIZE = 25;
 
 export default function AdminQuotesList() {
   const [searchParams, setSearchParams] = useSearchParams();
-  
+
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  
+
   // Filters from URL
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
@@ -62,7 +62,7 @@ export default function AdminQuotesList() {
   const dateTo = searchParams.get("to") || "";
   const rushOnly = searchParams.get("rush") === "true";
   const page = parseInt(searchParams.get("page") || "1", 10);
-  
+
   // Local filter state (for inputs before applying)
   const [searchInput, setSearchInput] = useState(search);
   const [showFilters, setShowFilters] = useState(false);
@@ -76,7 +76,9 @@ export default function AdminQuotesList() {
 
       // Apply filters
       if (search) {
-        query = query.or(`quote_number.ilike.%${search}%,customer_email.ilike.%${search}%,customer_name.ilike.%${search}%`);
+        query = query.or(
+          `quote_number.ilike.%${search}%,customer_email.ilike.%${search}%,customer_name.ilike.%${search}%`,
+        );
       }
       if (status) {
         query = query.eq("status", status);
@@ -94,15 +96,13 @@ export default function AdminQuotesList() {
       // Pagination
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
-      
-      query = query
-        .order("created_at", { ascending: false })
-        .range(from, to);
+
+      query = query.order("created_at", { ascending: false }).range(from, to);
 
       const { data, count, error } = await query;
 
       if (error) throw error;
-      
+
       setQuotes(data || []);
       setTotalCount(count || 0);
     } catch (error) {
@@ -160,9 +160,7 @@ export default function AdminQuotesList() {
                 <RefreshCw className="w-4 h-4" />
                 Refresh
               </button>
-              <button
-                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              >
+              <button className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
                 <Download className="w-4 h-4" />
                 Export
               </button>
@@ -193,8 +191,8 @@ export default function AdminQuotesList() {
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`flex items-center gap-2 px-4 py-2 border rounded-lg transition-colors ${
-                hasActiveFilters 
-                  ? "border-blue-300 bg-blue-50 text-blue-700" 
+                hasActiveFilters
+                  ? "border-blue-300 bg-blue-50 text-blue-700"
                   : "border-gray-300 text-gray-700 hover:bg-gray-50"
               }`}
             >
@@ -202,10 +200,15 @@ export default function AdminQuotesList() {
               Filters
               {hasActiveFilters && (
                 <span className="w-5 h-5 bg-blue-600 text-white text-xs rounded-full flex items-center justify-center">
-                  {[search, status, dateFrom, dateTo, rushOnly].filter(Boolean).length}
+                  {
+                    [search, status, dateFrom, dateTo, rushOnly].filter(Boolean)
+                      .length
+                  }
                 </span>
               )}
-              <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? "rotate-180" : ""}`} />
+              <ChevronDown
+                className={`w-4 h-4 transition-transform ${showFilters ? "rotate-180" : ""}`}
+              />
             </button>
 
             {/* Clear Filters */}
@@ -273,10 +276,14 @@ export default function AdminQuotesList() {
                   <input
                     type="checkbox"
                     checked={rushOnly}
-                    onChange={(e) => updateFilter("rush", e.target.checked ? "true" : "")}
+                    onChange={(e) =>
+                      updateFilter("rush", e.target.checked ? "true" : "")
+                    }
                     className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">Rush orders only</span>
+                  <span className="text-sm text-gray-700">
+                    Rush orders only
+                  </span>
                 </label>
               </div>
             </div>
@@ -318,13 +325,19 @@ export default function AdminQuotesList() {
                   </tr>
                 ) : quotes.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                    <td
+                      colSpan={6}
+                      className="px-6 py-12 text-center text-gray-500"
+                    >
                       No quotes found
                     </td>
                   </tr>
                 ) : (
                   quotes.map((quote) => (
-                    <tr key={quote.id} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={quote.id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
                       <td className="px-6 py-4">
                         <Link
                           to={`/admin/quotes/${quote.id}`}
@@ -338,21 +351,29 @@ export default function AdminQuotesList() {
                               {quote.quote_number}
                             </p>
                             <p className="text-xs text-gray-500">
-                              {quote.file_count} file{quote.file_count !== 1 ? "s" : ""}
+                              {quote.file_count} file
+                              {quote.file_count !== 1 ? "s" : ""}
                               {quote.is_rush && (
-                                <span className="ml-2 text-amber-600">⚡ Rush</span>
+                                <span className="ml-2 text-amber-600">
+                                  ⚡ Rush
+                                </span>
                               )}
                             </p>
                           </div>
                         </Link>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm text-gray-900">{quote.customer_name || "—"}</p>
-                        <p className="text-xs text-gray-500">{quote.customer_email || "—"}</p>
+                        <p className="text-sm text-gray-900">
+                          {quote.customer_name || "—"}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {quote.customer_email || "—"}
+                        </p>
                       </td>
                       <td className="px-6 py-4">
                         <p className="text-sm text-gray-700">
-                          {quote.source_language_name || "—"} → {quote.target_language_name || "English"}
+                          {quote.source_language_name || "—"} →{" "}
+                          {quote.target_language_name || "English"}
                         </p>
                       </td>
                       <td className="px-6 py-4">
@@ -382,7 +403,9 @@ export default function AdminQuotesList() {
           {totalPages > 1 && (
             <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Showing {((page - 1) * PAGE_SIZE) + 1} to {Math.min(page * PAGE_SIZE, totalCount)} of {totalCount.toLocaleString()}
+                Showing {(page - 1) * PAGE_SIZE + 1} to{" "}
+                {Math.min(page * PAGE_SIZE, totalCount)} of{" "}
+                {totalCount.toLocaleString()}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -436,7 +459,9 @@ function StatusBadge({ status }: { status?: string }) {
   };
 
   return (
-    <span className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${styles[status || ""] || "bg-gray-100 text-gray-700"}`}>
+    <span
+      className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${styles[status || ""] || "bg-gray-100 text-gray-700"}`}
+    >
       {labels[status || ""] || status || "Unknown"}
     </span>
   );
