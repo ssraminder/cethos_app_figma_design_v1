@@ -218,24 +218,6 @@ export default function Patterns() {
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  // Session check
-  useEffect(() => {
-    const session = localStorage.getItem("staffSession");
-    if (!session) {
-      navigate("/admin/login", { replace: true });
-      return;
-    }
-    try {
-      const parsed = JSON.parse(session);
-      if (!parsed.loggedIn) {
-        navigate("/admin/login", { replace: true });
-      }
-      setStaffSession(parsed);
-    } catch {
-      navigate("/admin/login", { replace: true });
-    }
-  }, [navigate]);
-
   // Fetch analyses on load
   useEffect(() => {
     if (staffSession) {
