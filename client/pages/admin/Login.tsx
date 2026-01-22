@@ -20,7 +20,7 @@ export default function AdminLogin() {
       if (session) {
         // Verify user is still active staff
         const { data: staffData } = await supabase
-          .from("staff")
+          .from("staff_users")
           .select("id, is_active")
           .eq("email", session.user.email)
           .eq("is_active", true)
@@ -63,8 +63,8 @@ export default function AdminLogin() {
 
       // Step 2: Verify user is in staff table and active
       const { data: staffData, error: staffError } = await supabase
-        .from("staff")
-        .select("id, name, email, role, is_active")
+        .from("staff_users")
+        .select("id, full_name, email, role, is_active")
         .eq("email", normalizedEmail)
         .single();
 
@@ -83,7 +83,7 @@ export default function AdminLogin() {
       // Step 3: Store staff info in localStorage to keep UI helpers in sync
       const staffSession = {
         staffId: staffData.id,
-        staffName: staffData.name,
+        staffName: staffData.full_name,
         staffEmail: staffData.email,
         staffRole: staffData.role,
         isActive: staffData.is_active,
