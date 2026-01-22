@@ -156,7 +156,7 @@ export default function HITLQueue() {
                 <span>⚙️</span> Settings
               </button>
             )}
-            <span className="text-gray-600">{session?.email}</span>
+            <span className="text-gray-600">{session?.staffEmail}</span>
             <button
               onClick={handleLogout}
               className="text-red-600 hover:text-red-800 font-medium"
