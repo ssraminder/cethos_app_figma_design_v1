@@ -14,14 +14,6 @@ interface HITLReview {
   minutes_to_sla: number;
 }
 
-interface StaffSession {
-  email: string;
-  staffId?: string;
-  staffName?: string;
-  staffRole?: string;
-  loggedIn: boolean;
-}
-
 export default function HITLQueue() {
   const { companyName, logoUrl, primaryColor } = useBranding();
   const [session, setSession] = useState<StaffSession | null>(null);
