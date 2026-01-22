@@ -1,96 +1,214 @@
+import { useState, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
-import { ChevronLeft } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { CreditCard, Calendar, Lock, AlertCircle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+interface PricingSummary {
+  translation_total: number;
+  certification_total: number;
+  subtotal: number;
+  rush_fee: number;
+  delivery_fee: number;
+  tax_amount: number;
+  tax_rate: number;
+  total: number;
+}
 
 export default function Step6Payment() {
   const { state, goToPreviousStep } = useQuote();
+  const [loading, setLoading] = useState(false);
+  const [pricing, setPricing] = useState<PricingSummary | null>(null);
+  const [loadingPricing, setLoadingPricing] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Calculate breakdown from pricing data
-  const baseSubtotal = state.shippingAddress ? 0 : 0; // Would come from calculated_totals
-  const rushFee = 0; // Would come from calculated_totals
-  const deliveryFee = 0; // Would come from physical delivery option
-  const tax = 0; // Would come from calculated_totals
-  const total = 0; // Would come from calculated_totals
+  useEffect(() => {
+    fetchPricingData();
+  }, [state.quoteId]);
+
+  const fetchPricingData = async () => {
+    if (!state.quoteId) {
+      setError("Quote ID not found. Please go back and try again.");
+      setLoadingPricing(false);
+      return;
+    }
+
+    try {
+      const { data: quoteData, error: fetchError } = await supabase
+        .from("quotes")
+        .select("calculated_totals")
+        .eq("id", state.quoteId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      if (quoteData?.calculated_totals) {
+        setPricing(quoteData.calculated_totals as PricingSummary);
+      } else {
+        setError("Pricing information not available. Please go back and complete the previous steps.");
+      }
+    } catch (err: any) {
+      console.error("Error fetching pricing:", err);
+      setError("Failed to load pricing information");
+    } finally {
+      setLoadingPricing(false);
+    }
+  };
+
+  const handlePayment = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const quoteId = state.quoteId;
+
+      if (!quoteId) {
+        throw new Error("Quote ID not found. Please go back and try again.");
+      }
+
+      if (!pricing || pricing.total <= 0) {
+        throw new Error("Invalid order total. Please go back and review your quote.");
+      }
+
+      // Call the create-checkout-session Edge Function
+      const { data, error: fnError } = await supabase.functions.invoke(
+        "create-checkout-session",
+        {
+          body: { quoteId },
+        }
+      );
+
+      if (fnError) {
+        console.error("Edge function error:", fnError);
+        throw new Error(fnError.message || "Failed to create checkout session");
+      }
+
+      if (!data?.success || !data?.checkoutUrl) {
+        throw new Error(data?.error || "Failed to create checkout session");
+      }
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.checkoutUrl;
+
+    } catch (err: any) {
+      console.error("Payment error:", err);
+      setError(err.message || "An error occurred. Please try again.");
+      toast.error(err.message || "Failed to process payment");
+      setLoading(false);
+    }
+  };
+
+  if (loadingPricing) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 pb-8">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-8">
       {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment</h1>
-        <p className="text-gray-600">Complete your order</p>
-      </div>
-
-      {/* Order Summary */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
-        <h2 className="font-semibold text-gray-900 mb-4 text-lg">
-          Order Summary
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">
+          Complete Your Order
         </h2>
-        <div className="space-y-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Translation & Certification</span>
-            <span className="text-gray-900 font-medium">
-              ${baseSubtotal.toFixed(2)}
-            </span>
+        <p className="text-gray-600">
+          Review your order and proceed to secure payment
+        </p>
+      </div>
+
+      {/* Order Summary Card */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
+        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900">Order Summary</h3>
+        </div>
+        <div className="px-6 py-4">
+          {/* Documents */}
+          <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-100">
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <svg
+                className="w-5 h-5 text-blue-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </div>
+            <div>
+              <p className="font-medium text-gray-900">
+                {state.files?.length || 0} Document
+                {(state.files?.length || 0) !== 1 ? "s" : ""}
+              </p>
+              <p className="text-sm text-gray-500">
+                Translation & Certification
+              </p>
+            </div>
           </div>
 
-          {rushFee > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Rush Fee</span>
-              <span className="text-gray-900 font-medium">
-                ${rushFee.toFixed(2)}
-              </span>
+          {/* Price Breakdown */}
+          {pricing && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-gray-600">
+                <span>Translation</span>
+                <span>${pricing.translation_total.toFixed(2)}</span>
+              </div>
+
+              {pricing.certification_total > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>Certification</span>
+                  <span>${pricing.certification_total.toFixed(2)}</span>
+                </div>
+              )}
+
+              {pricing.rush_fee > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>
+                    {state.turnaroundType === "rush"
+                      ? "Rush Fee"
+                      : "Same-Day Fee"}
+                  </span>
+                  <span>${pricing.rush_fee.toFixed(2)}</span>
+                </div>
+              )}
+
+              {pricing.delivery_fee > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>Delivery</span>
+                  <span>${pricing.delivery_fee.toFixed(2)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-gray-600">
+                <span>GST ({(pricing.tax_rate * 100).toFixed(0)}%)</span>
+                <span>${pricing.tax_amount.toFixed(2)}</span>
+              </div>
+
+              <div className="border-t-2 border-gray-300 pt-3 mt-3">
+                <div className="flex justify-between text-lg font-semibold text-gray-900">
+                  <span>Total</span>
+                  <span>${pricing.total.toFixed(2)} CAD</span>
+                </div>
+              </div>
             </div>
           )}
-
-          {deliveryFee > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Delivery</span>
-              <span className="text-gray-900 font-medium">
-                ${deliveryFee.toFixed(2)}
-              </span>
-            </div>
-          )}
-
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Tax (5% GST)</span>
-            <span className="text-gray-900 font-medium">${tax.toFixed(2)}</span>
-          </div>
-
-          <div className="border-t-2 border-gray-300 pt-3 flex justify-between items-center">
-            <span className="text-xl font-bold text-gray-900">TOTAL CAD</span>
-            <span className="text-2xl font-bold text-gray-900">
-              ${total.toFixed(2)}
-            </span>
-          </div>
         </div>
       </div>
 
-      {/* Billing Information Summary */}
-      {state.shippingAddress && (
+      {/* Billing Address Summary */}
+      {state.billingAddress && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
-          <h3 className="font-semibold text-gray-900 mb-3">Billing Address</h3>
-          <div className="text-sm text-gray-600">
-            <p>
-              {state.shippingAddress.firstName} {state.shippingAddress.lastName}
-            </p>
-            <p>{state.shippingAddress.addressLine1}</p>
-            {state.shippingAddress.addressLine2 && (
-              <p>{state.shippingAddress.addressLine2}</p>
-            )}
-            <p>
-              {state.shippingAddress.city}, {state.shippingAddress.state}{" "}
-              {state.shippingAddress.postalCode}
-            </p>
-            <p>{state.shippingAddress.country}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Payment Form Placeholder */}
-      <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6 mb-8">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">
+          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <svg
-              className="w-6 h-6 text-yellow-600"
+              className="w-5 h-5 text-gray-600"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -99,78 +217,87 @@ export default function Step6Payment() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
               />
             </svg>
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold text-yellow-800 mb-1">
-              Payment Integration Coming Soon
+            Billing Address
+          </h3>
+          <div className="text-sm text-gray-600">
+            <p className="font-medium text-gray-900">
+              {state.billingAddress.firstName} {state.billingAddress.lastName}
             </p>
-            <p className="text-sm text-yellow-700">
-              Stripe payment processing will be added in Phase 5. For now, you
-              can complete the quote flow and receive a payment invoice via
-              email.
+            <p>{state.billingAddress.addressLine1}</p>
+            {state.billingAddress.addressLine2 && (
+              <p>{state.billingAddress.addressLine2}</p>
+            )}
+            <p>
+              {state.billingAddress.city}, {state.billingAddress.state}{" "}
+              {state.billingAddress.postalCode}
             </p>
+            <p>{state.billingAddress.country}</p>
           </div>
         </div>
+      )}
+
+      {/* Security Badge */}
+      <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-6">
+        <Lock className="w-4 h-4" />
+        <span>Secure payment powered by Stripe</span>
       </div>
 
-      {/* Payment Method Preview (Placeholder) */}
-      <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-6 opacity-50">
-        <h3 className="font-semibold text-gray-900 mb-4">Payment Method</h3>
-        <div className="space-y-3">
-          <label className="flex items-center gap-3 p-4 border-2 border-gray-300 rounded-lg cursor-not-allowed">
-            <input type="radio" disabled className="w-4 h-4" />
-            <div className="flex items-center gap-3">
-              <svg className="w-10 h-6" viewBox="0 0 40 24" fill="none">
-                <rect width="40" height="24" rx="4" fill="#1434CB" />
-                <path
-                  d="M15 12L17 14L21 10"
-                  stroke="white"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span className="font-medium text-gray-700">Credit Card</span>
-            </div>
-          </label>
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            <span>{error}</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Navigation */}
+      {/* Action Buttons */}
       <div className="flex gap-4">
         <button
           type="button"
           onClick={goToPreviousStep}
-          className="flex-1 py-3 px-4 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium flex items-center justify-center gap-2"
+          disabled={loading}
+          className="flex-1 py-3 px-4 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <ChevronLeft className="w-5 h-5" />
-          Back
+          ← Back
         </button>
         <button
           type="button"
-          disabled
-          className="flex-1 py-3 px-4 bg-gray-300 text-gray-500 rounded-xl cursor-not-allowed font-medium"
-          title="Payment integration coming soon"
+          onClick={handlePayment}
+          disabled={loading || !pricing || pricing.total <= 0}
+          className="flex-1 py-3 px-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          Pay Now (Coming Soon)
+          {loading ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>Processing...</span>
+            </>
+          ) : (
+            <>
+              <CreditCard className="w-5 h-5" />
+              <span>
+                Pay ${pricing ? pricing.total.toFixed(2) : "0.00"} CAD
+              </span>
+            </>
+          )}
         </button>
       </div>
 
-      {/* Help Text */}
-      <div className="mt-6 text-center">
-        <p className="text-sm text-gray-500">
-          Need help?{" "}
-          <a
-            href="mailto:support@cethos.com"
-            className="text-blue-600 hover:underline"
-          >
-            Contact Support
-          </a>
-        </p>
-      </div>
+      {/* Terms */}
+      <p className="text-xs text-gray-500 text-center mt-4">
+        By clicking "Pay", you agree to our{" "}
+        <a href="/terms" className="text-blue-600 hover:underline">
+          Terms of Service
+        </a>{" "}
+        and{" "}
+        <a href="/privacy" className="text-blue-600 hover:underline">
+          Privacy Policy
+        </a>
+      </p>
     </div>
   );
 }
