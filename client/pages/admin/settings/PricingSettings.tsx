@@ -31,20 +31,15 @@ export default function PricingSettings() {
     min_billable_pages: 1.0,
     rounding_precision: 0.1,
   });
+  const { session, loading: authLoading } = useAdminAuthContext();
 
   const isDirty = JSON.stringify(values) !== JSON.stringify(originalValues);
 
   useEffect(() => {
-    checkAuth();
+    if (authLoading || !session) return;
     fetchSettings();
-  }, []);
+  }, [authLoading, session]);
 
-  const checkAuth = () => {
-    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
-    if (!session.loggedIn) {
-      navigate("/admin/login");
-    }
-  };
 
   const fetchSettings = async () => {
     setLoading(true);
