@@ -16,47 +16,20 @@ interface HITLReview {
 
 export default function HITLQueue() {
   const { companyName, logoUrl, primaryColor } = useBranding();
-  const [session, setSession] = useState<StaffSession | null>(null);
   const [reviews, setReviews] = useState<HITLReview[]>([]);
-  const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { session, loading: authLoading, signOut } = useAdminAuthContext();
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   useEffect(() => {
-    // Check localStorage for login state
-    const stored = localStorage.getItem("staffSession");
-
-    if (!stored) {
-      console.log("No session found, redirecting to login");
-      navigate("/admin/login", { replace: true });
-      return;
-    }
-
-    try {
-      const parsedSession = JSON.parse(stored) as StaffSession;
-
-      if (!parsedSession.loggedIn) {
-        console.log("Session not logged in, redirecting");
-        navigate("/admin/login", { replace: true });
-        return;
-      }
-
-      // Session valid, continue loading page
-      console.log("Valid session found:", parsedSession.email);
-      setSession(parsedSession);
-      setLoading(false);
-
-      // Fetch reviews on mount
-      fetchReviews();
-    } catch (err) {
-      console.error("Invalid session data:", err);
-      navigate("/admin/login", { replace: true });
-    }
-  }, [navigate]);
+    if (!session) return;
+    fetchReviews();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   const fetchReviews = async () => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
