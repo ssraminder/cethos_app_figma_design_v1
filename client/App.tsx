@@ -26,6 +26,7 @@ import ResetPassword from "./pages/admin/ResetPassword";
 import ProtectedAdminRoute from "./components/admin/ProtectedAdminRoute";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminQuotesList from "./pages/admin/AdminQuotesList";
+import AdminOrdersList from "./pages/admin/AdminOrdersList";
 import HITLQueue from "./pages/admin/HITLQueue";
 import HITLReviewDetail from "./pages/admin/HITLReviewDetail";
 import AdminSettings from "./pages/admin/AdminSettings";
@@ -131,6 +132,14 @@ const App = () => (
                   element={
                     <AdminRoute>
                       <AdminQuotesList />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/orders"
+                  element={
+                    <AdminRoute>
+                      <AdminOrdersList />
                     </AdminRoute>
                   }
                 />
