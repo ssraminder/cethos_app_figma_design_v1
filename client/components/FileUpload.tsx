@@ -33,13 +33,13 @@ export default function FileUpload() {
     const droppedFiles = Array.from(e.dataTransfer.files);
 
     // Add files to uploading state
-    const newUploadingFiles: UploadingFile[] = droppedFiles.map(file => ({
+    const newUploadingFiles: UploadingFile[] = droppedFiles.map((file) => ({
       file,
       progress: 0,
       status: "uploading" as const,
     }));
 
-    setUploadingFiles(prev => [...prev, ...newUploadingFiles]);
+    setUploadingFiles((prev) => [...prev, ...newUploadingFiles]);
 
     // Start uploading each file
     droppedFiles.forEach((file, index) => {
@@ -53,13 +53,13 @@ export default function FileUpload() {
       const selectedFiles = Array.from(e.target.files);
 
       // Add files to uploading state
-      const newUploadingFiles: UploadingFile[] = selectedFiles.map(file => ({
+      const newUploadingFiles: UploadingFile[] = selectedFiles.map((file) => ({
         file,
         progress: 0,
         status: "uploading" as const,
       }));
 
-      setUploadingFiles(prev => [...prev, ...newUploadingFiles]);
+      setUploadingFiles((prev) => [...prev, ...newUploadingFiles]);
 
       // Start uploading each file
       selectedFiles.forEach((file, index) => {
@@ -72,19 +72,21 @@ export default function FileUpload() {
   const handleFileUpload = async (file: File, index: number) => {
     try {
       // Update progress to 0
-      setUploadingFiles(prev =>
-        prev.map((f, i) => i === index ? { ...f, progress: 0, status: "uploading" as const } : f)
+      setUploadingFiles((prev) =>
+        prev.map((f, i) =>
+          i === index ? { ...f, progress: 0, status: "uploading" as const } : f,
+        ),
       );
 
       // Simulate progress (Supabase doesn't provide upload progress)
       const progressInterval = setInterval(() => {
-        setUploadingFiles(prev =>
+        setUploadingFiles((prev) =>
           prev.map((f, i) => {
             if (i === index && f.status === "uploading" && f.progress < 90) {
               return { ...f, progress: f.progress + 10 };
             }
             return f;
-          })
+          }),
         );
       }, 200);
 
@@ -100,12 +102,20 @@ export default function FileUpload() {
       clearInterval(progressInterval);
 
       if (error) {
-        setUploadingFiles(prev =>
-          prev.map((f, i) => i === index ? { ...f, status: "error" as const, error: error.message } : f)
+        setUploadingFiles((prev) =>
+          prev.map((f, i) =>
+            i === index
+              ? { ...f, status: "error" as const, error: error.message }
+              : f,
+          ),
         );
       } else {
-        setUploadingFiles(prev =>
-          prev.map((f, i) => i === index ? { ...f, progress: 100, status: "success" as const } : f)
+        setUploadingFiles((prev) =>
+          prev.map((f, i) =>
+            i === index
+              ? { ...f, progress: 100, status: "success" as const }
+              : f,
+          ),
         );
 
         // Add to context state after successful upload
@@ -118,8 +128,12 @@ export default function FileUpload() {
         });
       }
     } catch (err) {
-      setUploadingFiles(prev =>
-        prev.map((f, i) => i === index ? { ...f, status: "error" as const, error: "Upload failed" } : f)
+      setUploadingFiles((prev) =>
+        prev.map((f, i) =>
+          i === index
+            ? { ...f, status: "error" as const, error: "Upload failed" }
+            : f,
+        ),
       );
     }
   };
@@ -129,7 +143,7 @@ export default function FileUpload() {
   };
 
   const removeUploadingFile = (index: number) => {
-    setUploadingFiles(prev => prev.filter((_, i) => i !== index));
+    setUploadingFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -238,7 +252,10 @@ export default function FileUpload() {
             Uploading Files ({uploadingFiles.length})
           </h3>
           {uploadingFiles.map((item, index) => (
-            <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+            <div
+              key={index}
+              className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
+            >
               {/* Status Icon */}
               {item.status === "uploading" && (
                 <Loader2 className="w-5 h-5 animate-spin text-blue-600 flex-shrink-0" />
@@ -252,7 +269,9 @@ export default function FileUpload() {
 
               {/* File Info */}
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-700 truncate">{item.file.name}</p>
+                <p className="text-sm text-gray-700 truncate">
+                  {item.file.name}
+                </p>
 
                 {/* Progress Bar */}
                 {item.status === "uploading" && (
