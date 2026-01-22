@@ -144,30 +144,11 @@ export default function Step4ReviewRush() {
         return;
       }
 
-      // Fetch AI analysis results with file info
+      // Query 1: Get analysis results (without join to avoid 400 error)
       const { data: analysisResults, error: analysisError } = await supabase
         .from("ai_analysis_results")
         .select(
-          `
-          id,
-          quote_file_id,
-          detected_language,
-          language_name,
-          detected_document_type,
-          assessed_complexity,
-          word_count,
-          page_count,
-          billable_pages,
-          base_rate,
-          line_total,
-          certification_price,
-          processing_status,
-          quote_files!inner (
-            id,
-            original_filename,
-            page_count
-          )
-        `,
+          "id, quote_file_id, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status",
         )
         .eq("quote_id", quoteId)
         .eq("processing_status", "complete");
@@ -191,6 +172,26 @@ export default function Step4ReviewRush() {
         setLoading(false);
         return;
       }
+
+      // Query 2: Get file names separately
+      const fileIds = analysisResults.map((r) => r.quote_file_id);
+      const { data: files, error: filesError } = await supabase
+        .from("quote_files")
+        .select("id, original_filename, page_count")
+        .in("id", fileIds);
+
+      if (filesError) throw filesError;
+
+      // Merge the data
+      const filesMap = new Map(files?.map((f) => [f.id, f]) || []);
+      const mergedData = analysisResults.map((analysis) => ({
+        ...analysis,
+        quote_files: filesMap.get(analysis.quote_file_id) || {
+          id: analysis.quote_file_id,
+          original_filename: "Unknown",
+          page_count: 0,
+        },
+      }));
 
       // Calculate totals from analysis results
       const translationSubtotal = analysisResults.reduce(
