@@ -39,6 +39,8 @@ export default function AdminLogin() {
     setError("");
     setLoading(true);
 
+    console.log('=== LOGIN START ===');
+
     try {
       const normalizedEmail = email.trim().toLowerCase();
 
@@ -49,6 +51,8 @@ export default function AdminLogin() {
           password,
         });
 
+      console.log('Auth response:', { authData, authError });
+
       if (authError) {
         throw new Error(
           authError.message === "Invalid login credentials"
@@ -57,16 +61,24 @@ export default function AdminLogin() {
         );
       }
 
+      console.log('Auth error check passed');
+
       if (!authData.session) {
         throw new Error("Failed to establish session. Please try again.");
       }
 
-      // Step 2: Verify user is in staff table and active
+      console.log('Session exists:', authData.session ? 'YES' : 'NO');
+
+      // Step 2: Verify user is in staff_users table and active
+      console.log('Querying staff_users for email:', normalizedEmail);
+
       const { data: staffData, error: staffError } = await supabase
         .from("staff_users")
         .select("id, full_name, email, role, is_active")
         .eq("email", normalizedEmail)
         .single();
+
+      console.log('Staff query result:', { staffData, staffError });
 
       if (staffError || !staffData) {
         await supabase.auth.signOut();
@@ -81,6 +93,8 @@ export default function AdminLogin() {
       }
 
       // Step 3: Store staff info in localStorage to keep UI helpers in sync
+      console.log('Setting staffSession in localStorage');
+
       const staffSession = {
         staffId: staffData.id,
         staffName: staffData.full_name,
@@ -93,11 +107,13 @@ export default function AdminLogin() {
       localStorage.setItem("staffSession", JSON.stringify(staffSession));
 
       // Step 4: Redirect to admin dashboard
+      console.log('Navigating to /admin/hitl');
       navigate("/admin/hitl");
     } catch (err: any) {
-      console.error("Login error:", err);
+      console.error('LOGIN ERROR:', err);
       setError(err.message || "Failed to sign in. Please try again.");
     } finally {
+      console.log('=== LOGIN END ===');
       setLoading(false);
     }
   };
