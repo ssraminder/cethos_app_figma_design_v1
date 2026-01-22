@@ -158,7 +158,7 @@ const HITLReviewDetail: React.FC = () => {
   >({});
 
   // Staff session
-  const [staffSession, setStaffSession] = useState<any>(null);
+  const { session: staffSession, loading: authLoading } = useAdminAuthContext();
   const [claimedByMe, setClaimedByMe] = useState(false);
   const [claimedByOther, setClaimedByOther] = useState(false);
   const [assignedStaffName, setAssignedStaffName] = useState<string | null>(
