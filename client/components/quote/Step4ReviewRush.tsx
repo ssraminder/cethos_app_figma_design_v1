@@ -432,7 +432,9 @@ export default function Step4ReviewRush() {
     );
 
     if (selectedOption && selectedOption.is_rush) {
-      turnaroundFee = subtotal * (selectedOption.multiplier - 1);
+      const multiplier =
+        selectedOption.code === "rush" ? rushMultiplier : selectedOption.multiplier;
+      turnaroundFee = subtotal * (multiplier - 1);
     }
 
     const subtotalWithTurnaround = subtotal + turnaroundFee;
