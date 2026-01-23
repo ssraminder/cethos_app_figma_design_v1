@@ -105,7 +105,7 @@ export default function Step6Payment() {
     return (
       <div className="max-w-2xl mx-auto px-4 pb-8">
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-cethos-teal" />
         </div>
       </div>
     );
@@ -115,10 +115,10 @@ export default function Step6Payment() {
     <div className="max-w-2xl mx-auto px-4 pb-8">
       {/* Header */}
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">
+        <h2 className="text-3xl font-bold text-cethos-navy mb-2">
           Complete Your Order
         </h2>
-        <p className="text-gray-600">
+        <p className="text-cethos-gray">
           Review your order and proceed to secure payment
         </p>
       </div>
@@ -131,9 +131,9 @@ export default function Step6Payment() {
         <div className="px-6 py-4">
           {/* Documents */}
           <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-100">
-            <div className="p-2 bg-blue-50 rounded-lg">
+            <div className="p-2 bg-cethos-teal-50 rounded-lg">
               <svg
-                className="w-5 h-5 text-blue-600"
+                className="w-5 h-5 text-cethos-teal"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -293,11 +293,11 @@ export default function Step6Payment() {
       {/* Terms */}
       <p className="text-xs text-gray-500 text-center mt-4">
         By clicking "Pay", you agree to our{" "}
-        <a href="/terms" className="text-blue-600 hover:underline">
+        <a href="/terms" className="text-cethos-teal hover:underline">
           Terms of Service
         </a>{" "}
         and{" "}
-        <a href="/privacy" className="text-blue-600 hover:underline">
+        <a href="/privacy" className="text-cethos-teal hover:underline">
           Privacy Policy
         </a>
       </p>
