@@ -510,7 +510,7 @@ export default function Step4ReviewRush() {
   if (loading || processingState === "loading") {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-cethos-teal" />
         <span className="ml-3 text-gray-600">Loading pricing data...</span>
       </div>
     );
@@ -521,7 +521,7 @@ export default function Step4ReviewRush() {
     return (
       <div className="max-w-2xl mx-auto px-4 pb-8">
         <div className="text-center py-12">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto" />
+          <Loader2 className="w-12 h-12 animate-spin text-cethos-teal mx-auto" />
           <p className="mt-4 text-lg text-gray-900 font-medium">
             Analyzing your documents...
           </p>
@@ -530,7 +530,7 @@ export default function Step4ReviewRush() {
           </p>
           <button
             onClick={fetchAnalysisData}
-            className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
             Refresh Status
@@ -557,7 +557,7 @@ export default function Step4ReviewRush() {
           <div className="mt-6 flex gap-3 justify-center">
             <button
               onClick={fetchAnalysisData}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
               Retry
@@ -669,7 +669,7 @@ export default function Step4ReviewRush() {
                     {doc.quote_files?.original_filename || "Document"}
                   </p>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                    <span className="text-xs bg-cethos-teal-50 text-cethos-teal px-2 py-0.5 rounded">
                       {doc.language_name || doc.detected_language}
                     </span>
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
@@ -755,7 +755,7 @@ export default function Step4ReviewRush() {
             <label
               className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
                 turnaroundType === "standard"
-                  ? "border-blue-500 bg-blue-50"
+                  ? "border-cethos-teal bg-cethos-teal-50"
                   : "border-gray-200 hover:border-gray-300"
               }`}
             >
@@ -786,7 +786,7 @@ export default function Step4ReviewRush() {
                 </p>
               </div>
               {turnaroundType === "standard" && (
-                <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
+                <div className="w-5 h-5 bg-cethos-teal rounded-full flex items-center justify-center">
                   <CheckCircle2 className="w-4 h-4 text-white" />
                 </div>
               )}
@@ -798,7 +798,7 @@ export default function Step4ReviewRush() {
             <label
               className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
                 turnaroundType === "rush"
-                  ? "border-blue-500 bg-blue-50"
+                  ? "border-cethos-teal bg-cethos-teal-50"
                   : !isRushAvailable
                     ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
                     : "border-gray-200 hover:border-gray-300"
@@ -840,7 +840,7 @@ export default function Step4ReviewRush() {
                 </p>
               </div>
               {turnaroundType === "rush" && (
-                <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
+                <div className="w-5 h-5 bg-cethos-teal rounded-full flex items-center justify-center">
                   <CheckCircle2 className="w-4 h-4 text-white" />
                 </div>
               )}
