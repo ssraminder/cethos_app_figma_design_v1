@@ -838,12 +838,11 @@ export default function Step4ReviewRush() {
                       {rushOption.name}
                     </p>
                     <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
-                      +{((rushOption.multiplier - 1) * 100).toFixed(0)}%
+                      +{((rushMultiplier - 1) * 100).toFixed(0)}%
                     </span>
                   </div>
                   <span className="font-semibold text-amber-600">
-                    +$
-                    {(totals.subtotal * (rushOption.multiplier - 1)).toFixed(2)}
+                    +${(totals.subtotal * (rushMultiplier - 1)).toFixed(2)}
                   </span>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">
