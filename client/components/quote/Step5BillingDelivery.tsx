@@ -136,20 +136,32 @@ export default function Step5BillingDelivery() {
     provinceCode: string,
   ): Promise<{ rate: number; name: string }> => {
     try {
+      const normalizedCode = provinceCode.includes("-")
+        ? provinceCode.toUpperCase()
+        : `CA-${provinceCode.toUpperCase()}`;
+      const today = new Date().toISOString();
+
       const { data, error } = await supabase
         .from("tax_rates")
         .select("rate, tax_name")
-        .eq("region_code", provinceCode)
+        .eq("region_code", normalizedCode)
         .eq("is_active", true)
-        .gte("effective_to", new Date().toISOString())
-        .single();
+        .or(`effective_to.is.null,effective_to.gte.${today}`);
 
-      if (error || !data) {
+      if (error || !data || data.length === 0) {
         // Fallback to GST
         return { rate: 0.05, name: "GST" };
       }
 
-      return { rate: data.rate, name: data.tax_name };
+      const totalRate = data.reduce(
+        (sum, row) => sum + Number(row.rate || 0),
+        0,
+      );
+      const taxName = Array.from(new Set(data.map((row) => row.tax_name)))
+        .filter(Boolean)
+        .join(" + ");
+
+      return { rate: totalRate, name: taxName || "GST" };
     } catch {
       return { rate: 0.05, name: "GST" };
     }
