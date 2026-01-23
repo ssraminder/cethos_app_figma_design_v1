@@ -357,7 +357,7 @@ export default function QuoteReviewPage() {
                 Quote {quote.quote_number}
               </h1>
               <p className="text-gray-500 mt-1">
-                {quote.customer?.first_name} {quote.customer?.last_name}
+                {quote.customer?.full_name}
               </p>
             </div>
             <div
