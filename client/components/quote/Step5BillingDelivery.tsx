@@ -919,7 +919,7 @@ export default function Step5BillingDelivery() {
                 type="checkbox"
                 checked={sameAsBilling}
                 onChange={(e) => handleSameAsBillingChange(e.target.checked)}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-cethos-teal"
+                className="w-4 h-4 text-cethos-teal border-gray-300 rounded focus:ring-2 focus:ring-cethos-teal"
               />
               <span className="text-sm font-medium text-gray-700">
                 Same as billing address
