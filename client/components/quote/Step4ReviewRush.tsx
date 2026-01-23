@@ -655,7 +655,6 @@ export default function Step4ReviewRush() {
         </p>
       </div>
 
-
       {/* Document Breakdown */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
@@ -974,7 +973,8 @@ export default function Step4ReviewRush() {
                 Review Requested
               </p>
               <p className="text-sm text-green-700 mt-1">
-                Our team will review your quote and email you within 4 working hours.
+                Our team will review your quote and email you within 4 working
+                hours.
               </p>
             </div>
           </div>
