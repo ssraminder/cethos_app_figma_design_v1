@@ -13,6 +13,7 @@ import {
   Globe,
   Truck,
 } from "lucide-react";
+import StartOverLink from "@/components/StartOverLink";
 import { toast } from "sonner";
 
 // Canadian Provinces Data
@@ -1224,8 +1225,10 @@ export default function Step5BillingDelivery() {
       )}
 
       {/* Navigation Buttons */}
-      <div className="flex justify-between gap-4">
-        <button
+      <div className="flex items-center justify-between">
+        <StartOverLink />
+        <div className="flex items-center gap-4">
+          <button
           onClick={goToPreviousStep}
           disabled={saving}
           className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1233,23 +1236,24 @@ export default function Step5BillingDelivery() {
           ← Back
         </button>
 
-        <button
-          onClick={handleContinue}
-          disabled={saving}
-          className="flex-1 px-6 py-3 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              Proceed to Payment
-              <ChevronRight className="w-5 h-5" />
-            </>
-          )}
-        </button>
+          <button
+            onClick={handleContinue}
+            disabled={saving}
+            className="flex-1 px-6 py-3 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                Proceed to Payment
+                <ChevronRight className="w-5 h-5" />
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
