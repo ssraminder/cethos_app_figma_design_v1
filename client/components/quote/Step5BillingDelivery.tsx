@@ -1208,7 +1208,8 @@ export default function Step5BillingDelivery() {
               <p>
                 {billingAddress.city || ""}
                 {billingAddress.city ? ", " : ""}
-                {billingAddress.province || ""} {billingAddress.postalCode || ""}
+                {billingAddress.province || ""}{" "}
+                {billingAddress.postalCode || ""}
               </p>
               <p>Canada</p>
             </div>
@@ -1227,7 +1228,8 @@ export default function Step5BillingDelivery() {
                 <p>
                   {shippingAddress.city || ""}
                   {shippingAddress.city ? ", " : ""}
-                  {shippingAddress.province || ""} {shippingAddress.postalCode || ""}
+                  {shippingAddress.province || ""}{" "}
+                  {shippingAddress.postalCode || ""}
                 </p>
                 <p>Canada</p>
               </div>
