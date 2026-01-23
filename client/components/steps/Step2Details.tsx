@@ -131,14 +131,14 @@ export default function Step2Details() {
       {processingStatus &&
         (processingStatus === "pending" ||
           processingStatus === "processing") && (
-          <div className="mb-6 bg-blue-50 border-l-4 border-cethos-blue rounded-lg p-4 flex items-center gap-3">
-            <Loader2 className="w-5 h-5 animate-spin text-cethos-blue flex-shrink-0" />
+          <div className="mb-6 bg-cethos-teal-50 border-l-4 border-cethos-teal rounded-lg p-4 flex items-center gap-3">
+            <Loader2 className="w-5 h-5 animate-spin text-cethos-teal flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-blue-900">
+              <p className="text-sm font-medium text-gray-900">
                 Analyzing your documents in the background...
               </p>
               {fileProgress.total > 0 && (
-                <p className="text-xs text-blue-700 mt-1">
+                <p className="text-xs text-gray-700 mt-1">
                   {fileProgress.completed} of {fileProgress.total} documents
                   processed
                 </p>
@@ -179,7 +179,7 @@ export default function Step2Details() {
           <select
             value={state.sourceLanguageId || ""}
             onChange={(e) => updateField("sourceLanguageId", e.target.value)}
-            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm bg-white"
+            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
           >
             <option value="">Select source language...</option>
             {languages
@@ -200,7 +200,7 @@ export default function Step2Details() {
           <select
             value={state.targetLanguageId || ""}
             onChange={(e) => updateField("targetLanguageId", e.target.value)}
-            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm bg-white"
+            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
           >
             <option value="">Select target language...</option>
             {languages
@@ -221,7 +221,7 @@ export default function Step2Details() {
           <select
             value={state.intendedUseId || ""}
             onChange={(e) => updateField("intendedUseId", e.target.value)}
-            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm bg-white"
+            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
           >
             <option value="">Select intended use...</option>
             {intendedUses.map((use) => (
@@ -241,7 +241,7 @@ export default function Step2Details() {
           <select
             value={state.countryOfIssue || ""}
             onChange={(e) => updateField("countryOfIssue", e.target.value)}
-            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm bg-white"
+            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
           >
             <option value="">Select country...</option>
             <option value="Canada">Canada</option>
@@ -270,7 +270,7 @@ export default function Step2Details() {
               updateField("specialInstructions", value);
             }}
             placeholder="Add any special instructions or notes for your translation..."
-            className="w-full h-32 px-4 py-3 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm resize-none"
+            className="w-full h-32 px-4 py-3 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm resize-none"
             maxLength={500}
           />
           <div className="mt-2 text-xs text-cethos-slate text-right">

@@ -163,7 +163,7 @@ export default function FileUpload() {
       <div
         className={`w-full border-2 border-dashed rounded-xl transition-all ${
           isDragging
-            ? "border-cethos-blue bg-blue-50"
+            ? "border-cethos-teal bg-cethos-teal-50"
             : "border-cethos-border bg-[#FAFBFC]"
         }`}
         onDragOver={handleDragOver}
@@ -228,7 +228,7 @@ export default function FileUpload() {
           {/* Browse Button */}
           <button
             onClick={handleBrowseClick}
-            className="px-6 py-3.5 border-2 border-cethos-blue text-cethos-blue font-semibold text-base rounded-lg hover:bg-cethos-blue hover:text-white transition-all"
+            className="px-6 py-3.5 border-2 border-cethos-teal text-cethos-teal font-semibold text-base rounded-lg hover:bg-cethos-teal hover:text-white transition-all"
           >
             Browse Files
           </button>
@@ -263,7 +263,7 @@ export default function FileUpload() {
             >
               {/* Status Icon */}
               {item.status === "uploading" && (
-                <Loader2 className="w-5 h-5 animate-spin text-blue-600 flex-shrink-0" />
+                <Loader2 className="w-5 h-5 animate-spin text-cethos-teal flex-shrink-0" />
               )}
               {item.status === "success" && (
                 <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
@@ -282,7 +282,7 @@ export default function FileUpload() {
                 {item.status === "uploading" && (
                   <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                     <div
-                      className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                      className="bg-cethos-teal h-1.5 rounded-full transition-all duration-300"
                       style={{ width: `${item.progress}%` }}
                     />
                   </div>
