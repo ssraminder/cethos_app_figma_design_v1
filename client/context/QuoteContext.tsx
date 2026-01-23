@@ -103,7 +103,21 @@ const initialState: QuoteState = {
   shippingAddress: null,
 };
 
-const QuoteContext = createContext<QuoteContextType | undefined>(undefined);
+const defaultContext: QuoteContextType = {
+  state: initialState,
+  updateState: () => {},
+  goToNextStep: async () => ({ success: false }),
+  goToPreviousStep: () => {},
+  goToStep: () => {},
+  validateStep: () => false,
+  resetQuote: () => {},
+  addFile: () => {},
+  removeFile: () => {},
+  completeProcessing: () => {},
+  skipToEmail: () => {},
+};
+
+const QuoteContext = createContext<QuoteContextType>(defaultContext);
 
 const STORAGE_KEY = "cethos_quote_draft";
 
@@ -374,9 +388,5 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
 }
 
 export function useQuote() {
-  const context = useContext(QuoteContext);
-  if (!context) {
-    throw new Error("useQuote must be used within a QuoteProvider");
-  }
-  return context;
+  return useContext(QuoteContext);
 }
