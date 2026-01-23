@@ -64,6 +64,7 @@ export default function Step6Payment() {
 
       if (fetchError) throw fetchError;
       if (filesError) throw filesError;
+      if (fileNamesError) throw fileNamesError;
 
       if (quoteData?.calculated_totals) {
         setPricing(quoteData.calculated_totals as PricingSummary);
