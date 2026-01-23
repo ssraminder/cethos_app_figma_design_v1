@@ -21,6 +21,7 @@ export default function Step6Payment() {
   const [pricing, setPricing] = useState<PricingSummary | null>(null);
   const [loadingPricing, setLoadingPricing] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [documentCount, setDocumentCount] = useState<number | null>(null);
 
   const shippingAddress = state.shippingAddress;
   const billingAddress = state.billingAddress;
