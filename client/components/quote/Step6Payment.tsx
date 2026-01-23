@@ -215,10 +215,10 @@ export default function Step6Payment() {
         </div>
       </div>
 
-      {/* Billing Address Summary */}
-      {state.billingAddress && (
+      {/* Address Summary */}
+      {billingAddress && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+          <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <svg
               className="w-5 h-5 text-gray-600"
               fill="none"
@@ -232,21 +232,48 @@ export default function Step6Payment() {
                 d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
               />
             </svg>
-            Billing Address
+            Address Summary
           </h3>
-          <div className="text-sm text-gray-600">
-            <p className="font-medium text-gray-900">
-              {state.billingAddress.firstName} {state.billingAddress.lastName}
-            </p>
-            <p>{state.billingAddress.addressLine1}</p>
-            {state.billingAddress.addressLine2 && (
-              <p>{state.billingAddress.addressLine2}</p>
+          <div
+            className={`grid gap-6 ${hasShippingSummary ? "md:grid-cols-2" : "grid-cols-1"}`}
+          >
+            <div className="text-sm text-gray-600">
+              <p className="text-sm font-semibold text-gray-700 mb-2">
+                Billing Address
+              </p>
+              <p className="font-medium text-gray-900">
+                {billingAddress.firstName} {billingAddress.lastName}
+              </p>
+              {billingAddress.company && <p>{billingAddress.company}</p>}
+              <p>{billingAddress.addressLine1}</p>
+              {billingAddress.addressLine2 && <p>{billingAddress.addressLine2}</p>}
+              <p>
+                {billingAddress.city}, {billingAddress.state}{" "}
+                {billingAddress.postalCode}
+              </p>
+              <p>{billingAddress.country}</p>
+            </div>
+
+            {hasShippingSummary && shippingAddress && (
+              <div className="text-sm text-gray-600">
+                <p className="text-sm font-semibold text-gray-700 mb-2">
+                  Shipping Address
+                </p>
+                <p className="font-medium text-gray-900">
+                  {shippingAddress.firstName} {shippingAddress.lastName}
+                </p>
+                {shippingAddress.company && <p>{shippingAddress.company}</p>}
+                <p>{shippingAddress.addressLine1}</p>
+                {shippingAddress.addressLine2 && (
+                  <p>{shippingAddress.addressLine2}</p>
+                )}
+                <p>
+                  {shippingAddress.city}, {shippingAddress.state}{" "}
+                  {shippingAddress.postalCode}
+                </p>
+                <p>{shippingAddress.country}</p>
+              </div>
             )}
-            <p>
-              {state.billingAddress.city}, {state.billingAddress.state}{" "}
-              {state.billingAddress.postalCode}
-            </p>
-            <p>{state.billingAddress.country}</p>
           </div>
         </div>
       )}
