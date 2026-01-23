@@ -12,6 +12,7 @@ interface PricingSummary {
   delivery_fee: number;
   tax_amount: number;
   tax_rate: number;
+  tax_name?: string;
   total: number;
 }
 
