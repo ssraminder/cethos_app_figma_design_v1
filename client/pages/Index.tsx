@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuote } from "@/context/QuoteContext";
 import { useDocumentProcessing } from "@/hooks/useDocumentProcessing";
 import Header from "@/components/Header";
@@ -17,6 +17,9 @@ import { X } from "lucide-react";
 
 export default function Index() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const embedMode = searchParams.get("embed") === "true";
+
   const {
     state,
     updateState,
