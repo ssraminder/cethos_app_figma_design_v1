@@ -160,23 +160,7 @@ export default function Index() {
         </div>
       </main>
 
-      {/* Footer - Only show on steps 1-5 and not during processing or email confirmation */}
-      {/* Step 6 has its own internal navigation buttons */}
-      {!state.isProcessing &&
-        !state.emailQuoteSent &&
-        state.currentStep <= 5 && (
-          <Footer
-            onBack={handleBack}
-            onContinue={handleContinue}
-            onSaveForLater={handleSaveForLater}
-            canContinue={validateStep(state.currentStep)}
-            showBack={state.currentStep > 1}
-            showSaveForLater={false}
-            continueText={
-              state.currentStep === 5 ? "Proceed to Payment" : "Continue"
-            }
-          />
-        )}
+      {/* Footer removed from quote flow - navigation buttons are in each step component */}
 
       {/* Save for Later Modal */}
       {showSaveModal && (
