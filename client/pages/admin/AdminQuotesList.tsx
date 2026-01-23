@@ -70,10 +70,8 @@ export default function AdminQuotesList() {
   const fetchQuotes = async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from("quotes")
-        .select(
-          `
+      let query = supabase.from("quotes").select(
+        `
           id,
           quote_number,
           status,
@@ -86,8 +84,8 @@ export default function AdminQuotesList() {
           target_language:languages!target_language_id(name, code),
           quote_files(count)
         `,
-          { count: "exact" },
-        );
+        { count: "exact" },
+      );
 
       // Apply filters
       if (search) {
