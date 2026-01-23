@@ -283,7 +283,7 @@ export default function Step2Details() {
       <div className="flex justify-between gap-4 mt-8">
         <button
           onClick={goToPreviousStep}
-          className="flex items-center gap-2 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+          className="flex items-center gap-2 px-6 py-3 border-2 border-cethos-border text-cethos-gray rounded-lg hover:bg-cethos-bg-light font-medium transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />
           <span>Back</span>
@@ -302,7 +302,7 @@ export default function Step2Details() {
             state.targetLanguageId &&
             state.intendedUseId &&
             state.countryOfIssue
-              ? "bg-cethos-blue hover:bg-blue-600"
+              ? "bg-cethos-teal hover:bg-cethos-teal-light"
               : "bg-gray-300 cursor-not-allowed"
           }`}
         >
