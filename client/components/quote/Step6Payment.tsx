@@ -77,6 +77,16 @@ export default function Step6Payment() {
       if (typeof fileCount === "number") {
         setDocumentCount(fileCount);
       }
+
+      if (fileNames && fileNames.length > 0) {
+        setDocumentNames(
+          fileNames
+            .map((file) => file.original_filename)
+            .filter((name): name is string => Boolean(name)),
+        );
+      } else {
+        setDocumentNames([]);
+      }
     } catch (err: any) {
       console.error("Error fetching pricing:", err);
       setError("Failed to load pricing information");
