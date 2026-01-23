@@ -18,6 +18,7 @@ import NotFound from "./pages/NotFound";
 import Checkout from "./pages/Checkout";
 import OrderSuccess from "./pages/OrderSuccess";
 import PaymentCancel from "./pages/PaymentCancel";
+import QuoteRecoverPage from "./pages/quote/QuoteRecoverPage";
 import QuoteReviewPage from "./pages/quote/QuoteReviewPage";
 import QuoteRevisionPage from "./pages/quote/QuoteRevisionPage";
 
@@ -79,6 +80,7 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/success" element={<Success />} />
                 <Route path="/quote/:quoteId/checkout" element={<Checkout />} />
+                <Route path="/quote/recover" element={<QuoteRecoverPage />} />
                 <Route
                   path="/quote/:quoteId/review"
                   element={<QuoteReviewPage />}
