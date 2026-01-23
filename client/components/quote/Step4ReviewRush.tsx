@@ -647,17 +647,17 @@ export default function Step4ReviewRush() {
     <div className="max-w-2xl mx-auto px-4 pb-8">
       {/* Header */}
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">
+        <h2 className="text-3xl font-bold text-cethos-navy mb-2">
           Review Your Quote
         </h2>
-        <p className="text-gray-600">
+        <p className="text-cethos-gray">
           Confirm your details and choose turnaround time
         </p>
       </div>
 
       {/* Document Breakdown */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+      <div className="bg-white rounded-xl border border-cethos-border shadow-cethos-card overflow-hidden mb-6">
+        <div className="px-6 py-4 bg-cethos-bg-light border-b border-cethos-border">
           <h2 className="font-semibold text-gray-900">Documents</h2>
         </div>
         <div className="divide-y divide-gray-100">
