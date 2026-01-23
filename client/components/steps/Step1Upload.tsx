@@ -31,7 +31,10 @@ export default function Step1Upload() {
     triggerProcessing(quoteId)
       .then((processingResult) => {
         if (processingResult) {
-          console.log("✅ Document processing triggered successfully:", processingResult);
+          console.log(
+            "✅ Document processing triggered successfully:",
+            processingResult,
+          );
         } else {
           console.error("❌ Document processing returned empty result");
         }
