@@ -5,7 +5,7 @@ import { Loader2, ChevronRight, ChevronLeft } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 export default function Step2Details() {
-  const { state, updateState } = useQuote();
+  const { state, updateState, goToNextStep, goToPreviousStep } = useQuote();
   const { languages, intendedUses, loading, error } = useDropdownOptions();
   const [processingStatus, setProcessingStatus] = useState<
     "pending" | "processing" | "quote_ready" | null
