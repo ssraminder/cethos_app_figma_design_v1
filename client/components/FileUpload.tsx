@@ -129,7 +129,7 @@ export default function FileUpload() {
 
         // Remove from uploading list after a brief delay to show success state
         setTimeout(() => {
-          setUploadingFiles((prev) => prev.filter((_, i) => i !== index));
+          setUploadingFiles((prev) => prev.filter((f) => f.file !== file));
         }, 1500);
       }
     } catch (err) {
