@@ -355,9 +355,7 @@ export default function QuoteReviewPage() {
               <h1 className="text-2xl font-bold text-gray-900">
                 Quote {quote.quote_number}
               </h1>
-              <p className="text-gray-500 mt-1">
-                {quote.customer?.full_name}
-              </p>
+              <p className="text-gray-500 mt-1">{quote.customer?.full_name}</p>
             </div>
             <div
               className={`px-4 py-2 rounded-full text-sm font-medium ${
