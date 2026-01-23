@@ -246,7 +246,9 @@ export default function Step6Payment() {
               </p>
               {billingAddress.company && <p>{billingAddress.company}</p>}
               <p>{billingAddress.addressLine1}</p>
-              {billingAddress.addressLine2 && <p>{billingAddress.addressLine2}</p>}
+              {billingAddress.addressLine2 && (
+                <p>{billingAddress.addressLine2}</p>
+              )}
               <p>
                 {billingAddress.city}, {billingAddress.state}{" "}
                 {billingAddress.postalCode}
