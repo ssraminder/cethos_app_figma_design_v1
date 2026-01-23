@@ -50,7 +50,13 @@ export default function Step6Payment() {
         .eq("id", state.quoteId)
         .single();
 
+      const { count: fileCount, error: filesError } = await supabase
+        .from("quote_files")
+        .select("id", { count: "exact", head: true })
+        .eq("quote_id", state.quoteId);
+
       if (fetchError) throw fetchError;
+      if (filesError) throw filesError;
 
       if (quoteData?.calculated_totals) {
         setPricing(quoteData.calculated_totals as PricingSummary);
@@ -58,6 +64,10 @@ export default function Step6Payment() {
         setError(
           "Pricing information not available. Please go back and complete the previous steps.",
         );
+      }
+
+      if (typeof fileCount === "number") {
+        setDocumentCount(fileCount);
       }
     } catch (err: any) {
       console.error("Error fetching pricing:", err);
