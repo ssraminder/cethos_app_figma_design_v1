@@ -4,6 +4,17 @@
 
 ---
 
+## 🧾 Update Summary (Jan 23, 2026)
+
+- Step 4 now pulls `rush_multiplier`, `same_day_multiplier`, and cutoff times from `app_settings`.
+- Step 4 calculates rush/same-day fees using the settings values and displays the correct percentages.
+- Step 4 persists updated totals to `quotes.calculated_totals` when continuing.
+- Step 5 now reads the refreshed totals from `quotes.calculated_totals` after Step 4.
+- Tax rate lookup in Step 5 now normalizes province codes (e.g., `AB` → `CA-AB`) and sums multi-tax rows.
+- Added default turnaround rows in `delivery_options` for `standard`, `rush`, and `same_day`.
+
+---
+
 ## 🎯 What Was Fixed
 
 ### **Step 4 (Review & Rush)** - COMPLETE ✅
