@@ -134,7 +134,10 @@ export default function QuoteRecoverPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email.trim(), otp_code: otpCode.trim() }),
+          body: JSON.stringify({
+            email: email.trim(),
+            otp_code: otpCode.trim(),
+          }),
         },
       );
 
