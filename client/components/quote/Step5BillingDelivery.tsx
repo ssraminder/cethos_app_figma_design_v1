@@ -73,6 +73,7 @@ interface PricingSummary {
   delivery_fee: number;
   tax_amount: number;
   tax_rate: number;
+  tax_name?: string;
   total: number;
 }
 
@@ -306,6 +307,7 @@ export default function Step5BillingDelivery() {
       ...pricing,
       delivery_fee: deliveryFee,
       tax_rate: taxRate,
+      tax_name: taxName,
       tax_amount: taxAmount,
       total,
     });
@@ -532,7 +534,10 @@ export default function Step5BillingDelivery() {
                   phone: state.phone || "",
                 }
               : null,
-            calculated_totals: pricing,
+            calculated_totals: {
+              ...pricing,
+              tax_name: taxName,
+            },
             updated_at: new Date().toISOString(),
           })
           .eq("id", state.quoteId);
