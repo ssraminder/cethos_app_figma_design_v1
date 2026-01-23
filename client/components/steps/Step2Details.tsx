@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronRight, ChevronLeft } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 export default function Step2Details() {
