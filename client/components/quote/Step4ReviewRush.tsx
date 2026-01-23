@@ -908,16 +908,16 @@ export default function Step4ReviewRush() {
       </div>
 
       {/* Total Card */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 mb-8 text-white">
+      <div className="bg-gradient-to-r from-cethos-teal to-cethos-teal-light rounded-xl p-6 mb-8 text-white">
         <div className="space-y-3">
           <div className="flex justify-between items-center text-sm">
-            <span className="text-blue-100">Subtotal</span>
+            <span className="text-cethos-teal-50">Subtotal</span>
             <span className="font-medium">${totals.subtotal.toFixed(2)}</span>
           </div>
 
           {turnaroundFee > 0 && (
             <div className="flex justify-between items-center text-sm">
-              <span className="text-blue-100 flex items-center gap-1">
+              <span className="text-cethos-teal-50 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 Turnaround Fee
               </span>
@@ -926,11 +926,11 @@ export default function Step4ReviewRush() {
           )}
 
           <div className="flex justify-between items-center text-sm">
-            <span className="text-blue-100">Tax (5% GST)</span>
+            <span className="text-cethos-teal-50">Tax (5% GST)</span>
             <span className="font-medium">${taxAmount.toFixed(2)}</span>
           </div>
 
-          <div className="pt-3 border-t border-blue-500 flex justify-between items-center">
+          <div className="pt-3 border-t border-cethos-teal-light flex justify-between items-center">
             <span className="text-xl font-bold">TOTAL CAD</span>
             <span className="text-3xl font-bold">${total.toFixed(2)}</span>
           </div>
@@ -986,7 +986,7 @@ export default function Step4ReviewRush() {
         <button
           onClick={goToPreviousStep}
           disabled={saving}
-          className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-6 py-3 border-2 border-cethos-border text-cethos-gray rounded-lg hover:bg-cethos-bg-light font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           ← Back
         </button>
@@ -994,7 +994,7 @@ export default function Step4ReviewRush() {
         <button
           onClick={handleContinue}
           disabled={saving || hitlRequested || hitlRequired}
-          className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex-1 px-6 py-3 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {saving ? (
             <>
