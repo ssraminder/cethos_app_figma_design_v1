@@ -200,9 +200,7 @@ export default function AdminOrderDetail() {
           <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
           <div>
             <p className="font-medium text-red-800">Error loading order</p>
-            <p className="text-red-600 text-sm">
-              {error || "Order not found"}
-            </p>
+            <p className="text-red-600 text-sm">{error || "Order not found"}</p>
           </div>
         </div>
         <Link
@@ -222,7 +220,8 @@ export default function AdminOrderDetail() {
 
   const totalAdjustments = adjustments.reduce(
     (sum, adjustment) =>
-      sum + (adjustment.type === "refund" ? -adjustment.amount : adjustment.amount),
+      sum +
+      (adjustment.type === "refund" ? -adjustment.amount : adjustment.amount),
     0,
   );
 
@@ -258,7 +257,8 @@ export default function AdminOrderDetail() {
                   "bg-gray-100 text-gray-700"
                 }`}
               >
-                Work: {WORK_STATUS_LABELS[order.work_status] || order.work_status}
+                Work:{" "}
+                {WORK_STATUS_LABELS[order.work_status] || order.work_status}
               </span>
               {order.delivery_hold && (
                 <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
@@ -345,7 +345,8 @@ export default function AdminOrderDetail() {
                   <p>{order.shipping_address_line2}</p>
                 )}
                 <p>
-                  {order.shipping_city}, {order.shipping_state} {order.shipping_postal_code}
+                  {order.shipping_city}, {order.shipping_state}{" "}
+                  {order.shipping_postal_code}
                 </p>
                 <p>{order.shipping_country}</p>
               </div>
@@ -393,7 +394,10 @@ export default function AdminOrderDetail() {
                       </div>
                       <p className="text-sm text-gray-500 mt-1">
                         {payment.payment_method || "Card"} •{" "}
-                        {format(new Date(payment.created_at), "MMM d, yyyy h:mm a")}
+                        {format(
+                          new Date(payment.created_at),
+                          "MMM d, yyyy h:mm a",
+                        )}
                       </p>
                     </div>
                     {payment.stripe_payment_intent_id && (
