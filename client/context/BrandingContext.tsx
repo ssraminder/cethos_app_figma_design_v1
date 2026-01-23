@@ -47,9 +47,9 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
             method: "GET",
             headers: {
               "Content-Type": "application/json",
-              "Authorization": `Bearer ${supabaseKey}`,
+              Authorization: `Bearer ${supabaseKey}`,
             },
-          }
+          },
         );
 
         if (response.ok) {

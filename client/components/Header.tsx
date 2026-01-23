@@ -10,11 +10,7 @@ export default function Header() {
         {/* Logo */}
         <div className="flex items-center gap-3">
           {logoUrl ? (
-            <img 
-              src={logoUrl} 
-              alt={companyName} 
-              className="h-8 w-auto"
-            />
+            <img src={logoUrl} alt={companyName} className="h-8 w-auto" />
           ) : (
             // Fallback while loading or if no logo URL
             <div className="flex items-center gap-3">
