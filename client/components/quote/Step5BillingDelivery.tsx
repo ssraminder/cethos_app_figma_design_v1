@@ -139,14 +139,11 @@ export default function Step5BillingDelivery() {
       const normalizedCode = provinceCode.includes("-")
         ? provinceCode.toUpperCase()
         : `CA-${provinceCode.toUpperCase()}`;
-      const today = new Date().toISOString();
-
       const { data, error } = await supabase
         .from("tax_rates")
         .select("rate, tax_name")
         .eq("region_code", normalizedCode)
-        .eq("is_active", true)
-        .or(`effective_to.is.null,effective_to.gte.${today}`);
+        .eq("is_active", true);
 
       if (error || !data || data.length === 0) {
         // Fallback to GST
