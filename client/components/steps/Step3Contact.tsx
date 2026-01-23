@@ -41,8 +41,8 @@ export default function Step3Contact() {
               onClick={() => handleCustomerTypeChange("individual")}
               className={`h-12 rounded-lg font-semibold text-base transition-all ${
                 state.customerType === "individual"
-                  ? "bg-cethos-blue text-white"
-                  : "bg-white border border-cethos-border text-cethos-slate hover:border-cethos-blue"
+                  ? "bg-cethos-teal text-white"
+                  : "bg-white border border-cethos-border text-cethos-gray hover:border-cethos-teal"
               }`}
             >
               Individual
@@ -52,8 +52,8 @@ export default function Step3Contact() {
               onClick={() => handleCustomerTypeChange("business")}
               className={`h-12 rounded-lg font-semibold text-base transition-all ${
                 state.customerType === "business"
-                  ? "bg-cethos-blue text-white"
-                  : "bg-white border border-cethos-border text-cethos-slate hover:border-cethos-blue"
+                  ? "bg-cethos-teal text-white"
+                  : "bg-white border border-cethos-border text-cethos-gray hover:border-cethos-teal"
               }`}
             >
               Business
@@ -154,7 +154,7 @@ export default function Step3Contact() {
       <div className="flex justify-between gap-4 mt-8">
         <button
           onClick={goToPreviousStep}
-          className="flex items-center gap-2 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+          className="flex items-center gap-2 px-6 py-3 border-2 border-cethos-border text-cethos-gray rounded-lg hover:bg-cethos-bg-light font-medium transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />
           <span>Back</span>
@@ -175,7 +175,7 @@ export default function Step3Contact() {
             state.email &&
             state.phone &&
             (state.customerType === "individual" || state.companyName)
-              ? "bg-cethos-blue hover:bg-blue-600"
+              ? "bg-cethos-teal hover:bg-cethos-teal-light"
               : "bg-gray-300 cursor-not-allowed"
           }`}
         >
