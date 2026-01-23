@@ -335,9 +335,13 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     setState(initialState);
     try {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem("cethos_quote_id");
+      localStorage.removeItem("cethos_quote_state");
     } catch (error) {
       console.error("Error clearing quote draft:", error);
     }
+
+    window.location.href = "/";
   };
 
   const completeProcessing = () => {
