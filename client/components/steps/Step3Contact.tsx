@@ -1,8 +1,8 @@
-import { Lock } from "lucide-react";
+import { Lock, ChevronRight, ChevronLeft } from "lucide-react";
 import { useQuote } from "@/context/QuoteContext";
 
 export default function Step3Contact() {
-  const { state, updateState } = useQuote();
+  const { state, updateState, goToNextStep, goToPreviousStep } = useQuote();
 
   const updateField = (field: string, value: string) => {
     updateState({ [field]: value });
