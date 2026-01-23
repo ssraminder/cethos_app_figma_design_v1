@@ -207,14 +207,8 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
         return true; // Always valid, calculations happen in component
 
       case 5: // Billing & Delivery
-        // Require billing address to be filled
-        if (!state.shippingAddress) return false;
-        return !!(
-          state.shippingAddress.addressLine1 &&
-          state.shippingAddress.city &&
-          state.shippingAddress.state &&
-          state.shippingAddress.postalCode
-        );
+        // Component-level validation handles required fields
+        return true;
 
       case 6: // Payment
         return true; // Always valid (placeholder step)
