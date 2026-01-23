@@ -13,7 +13,7 @@ export default function Step1Upload() {
         <h1 className="text-2xl sm:text-3xl font-bold font-jakarta text-cethos-navy mb-2">
           Upload Your Documents
         </h1>
-        <p className="text-base text-cethos-slate">
+        <p className="text-base text-cethos-gray">
           Select the documents you need translated and certified
         </p>
       </div>
@@ -28,7 +28,7 @@ export default function Step1Upload() {
           disabled={!canContinue}
           className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
             canContinue
-              ? "bg-cethos-blue hover:bg-blue-600"
+              ? "bg-cethos-teal hover:bg-cethos-teal-light"
               : "bg-gray-300 cursor-not-allowed"
           }`}
         >
