@@ -26,8 +26,8 @@ export default function PaymentCancel() {
           </h1>
 
           <p className="text-gray-600 mb-8">
-            Your payment was not completed. Don&apos;t worry — your quote has been
-            saved and you can complete payment anytime.
+            Your payment was not completed. Don&apos;t worry — your quote has
+            been saved and you can complete payment anytime.
           </p>
 
           <div className="space-y-3">
