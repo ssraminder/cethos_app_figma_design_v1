@@ -262,9 +262,7 @@ export default function AdminQuoteDetail() {
           <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
           <div>
             <p className="font-medium text-red-800">Error loading quote</p>
-            <p className="text-red-600 text-sm">
-              {error || "Quote not found"}
-            </p>
+            <p className="text-red-600 text-sm">{error || "Quote not found"}</p>
           </div>
         </div>
         <Link
@@ -304,10 +302,7 @@ export default function AdminQuoteDetail() {
               </span>
               <span className="text-gray-500 text-sm">
                 Created{" "}
-                {format(
-                  new Date(quote.created_at),
-                  "MMM d, yyyy 'at' h:mm a",
-                )}
+                {format(new Date(quote.created_at), "MMM d, yyyy 'at' h:mm a")}
               </span>
             </div>
           </div>
@@ -396,9 +391,7 @@ export default function AdminQuoteDetail() {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Country of Issue</p>
-                <p className="font-medium">
-                  {quote.country_of_issue || "—"}
-                </p>
+                <p className="font-medium">{quote.country_of_issue || "—"}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Turnaround</p>
@@ -467,7 +460,8 @@ export default function AdminQuoteDetail() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium">Document {index + 1}</span>
                       <span className="text-sm text-gray-500">
-                        Confidence: {(item.overall_confidence * 100).toFixed(0)}%
+                        Confidence: {(item.overall_confidence * 100).toFixed(0)}
+                        %
                       </span>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
