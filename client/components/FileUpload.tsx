@@ -126,6 +126,11 @@ export default function FileUpload() {
           type: file.type,
           file,
         });
+
+        // Remove from uploading list after a brief delay to show success state
+        setTimeout(() => {
+          setUploadingFiles((prev) => prev.filter((_, i) => i !== index));
+        }, 1500);
       }
     } catch (err) {
       setUploadingFiles((prev) =>
