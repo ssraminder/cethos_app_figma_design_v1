@@ -42,8 +42,8 @@ interface QuoteDetail {
     customer_type: string;
     company_name: string;
   };
-  source_language?: { id: string; name: string };
-  target_language?: { id: string; name: string };
+  source_language?: { id: string; name: string; code: string };
+  target_language?: { id: string; name: string; code: string };
   country_of_issue: string;
   special_instructions: string;
   subtotal: number;
@@ -54,7 +54,7 @@ interface QuoteDetail {
   tax_rate: number;
   total: number;
   is_rush: boolean;
-  delivery_option?: { id: string; name: string };
+  delivery_option?: { id: string; name: string; price?: number };
   estimated_delivery_date: string;
   turnaround_days: number;
   hitl_required: boolean;
@@ -159,9 +159,9 @@ export default function AdminQuoteDetail() {
           `
           *,
           customer:customers(*),
-          source_language:languages!quotes_source_language_id_fkey(id, name),
-          target_language:languages!quotes_target_language_id_fkey(id, name),
-          delivery_option:delivery_options(id, name)
+          source_language:languages!source_language_id(id, name, code),
+          target_language:languages!target_language_id(id, name, code),
+          delivery_option:delivery_options!delivery_option_id(id, name, price)
         `,
         )
         .eq("id", id)
