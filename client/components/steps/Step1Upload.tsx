@@ -1,6 +1,7 @@
 import FileUpload from "@/components/FileUpload";
 import { useQuote } from "@/context/QuoteContext";
 import { useDocumentProcessing } from "@/hooks/useDocumentProcessing";
+import StartOverLink from "@/components/StartOverLink";
 import { ChevronRight } from "lucide-react";
 
 export default function Step1Upload() {
@@ -61,7 +62,8 @@ export default function Step1Upload() {
       <FileUpload />
 
       {/* Navigation Button */}
-      <div className="flex justify-end mt-8">
+      <div className="flex items-center justify-between mt-8">
+        <StartOverLink />
         <button
           onClick={handleContinue}
           disabled={!canContinue}
