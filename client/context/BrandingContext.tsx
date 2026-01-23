@@ -35,8 +35,10 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-        if (!supabaseUrl || !supabaseKey) {
-          console.warn("Supabase credentials not found, using defaults");
+        const hasValidUrl = Boolean(supabaseUrl?.startsWith("https://"));
+
+        if (!supabaseUrl || !supabaseKey || !hasValidUrl) {
+          console.warn("Supabase credentials not found or invalid, using defaults");
           setBranding((prev) => ({ ...prev, loading: false }));
           return;
         }
