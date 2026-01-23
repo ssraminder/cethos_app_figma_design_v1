@@ -496,6 +496,16 @@ export default function Step4ReviewRush() {
             rush_fee: turnaroundFee,
             tax_amount: taxAmount,
             total: total,
+            calculated_totals: {
+              translation_total: totals.translationSubtotal,
+              certification_total: totals.certificationTotal,
+              subtotal: totals.subtotal,
+              rush_fee: turnaroundFee,
+              delivery_fee: 0,
+              tax_amount: taxAmount,
+              tax_rate: 0.05,
+              total: total,
+            },
             estimated_delivery_date:
               turnaroundType === "same_day"
                 ? new Date().toISOString()
