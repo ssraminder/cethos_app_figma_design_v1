@@ -18,11 +18,11 @@ export default function Header() {
 
         {/* Actions */}
         <div className="flex items-center gap-2 sm:gap-4">
-          <button className="flex items-center gap-2 px-3 py-2 text-cethos-slate hover:text-cethos-slate-dark transition-colors">
+          <button className="flex items-center gap-2 px-3 py-2 text-cethos-gray hover:text-cethos-navy transition-colors">
             <HelpCircle className="w-5 h-5" />
             <span className="text-base font-medium hidden sm:inline">Help</span>
           </button>
-          <button className="flex items-center gap-2 px-3 py-2 text-cethos-slate hover:text-cethos-slate-dark transition-colors">
+          <button className="flex items-center gap-2 px-3 py-2 text-cethos-gray hover:text-cethos-navy transition-colors">
             <User className="w-5 h-5" />
             <span className="text-base font-medium hidden sm:inline">
               Login
