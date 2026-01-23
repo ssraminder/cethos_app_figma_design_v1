@@ -44,8 +44,7 @@ interface QuoteData {
   estimated_delivery_date: string;
   expires_at: string;
   customer: {
-    first_name: string;
-    last_name: string;
+    full_name: string;
     email: string;
   };
   documents: QuoteDocument[];
