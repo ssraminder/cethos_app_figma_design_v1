@@ -56,6 +56,12 @@ export default function Step6Payment() {
         .select("id", { count: "exact", head: true })
         .eq("quote_id", state.quoteId);
 
+      const { data: fileNames, error: fileNamesError } = await supabase
+        .from("quote_files")
+        .select("original_filename")
+        .eq("quote_id", state.quoteId)
+        .order("created_at", { ascending: true });
+
       if (fetchError) throw fetchError;
       if (filesError) throw filesError;
 
