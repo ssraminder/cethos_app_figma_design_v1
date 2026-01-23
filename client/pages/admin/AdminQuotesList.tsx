@@ -71,13 +71,28 @@ export default function AdminQuotesList() {
     setLoading(true);
     try {
       let query = supabase
-        .from("v_quote_summary")
-        .select("*", { count: "exact" });
+        .from("quotes")
+        .select(
+          `
+          id,
+          quote_number,
+          status,
+          total,
+          is_rush,
+          created_at,
+          expires_at,
+          customer:customers(email, full_name),
+          source_language:languages!source_language_id(name, code),
+          target_language:languages!target_language_id(name, code),
+          quote_files(count)
+        `,
+          { count: "exact" },
+        );
 
       // Apply filters
       if (search) {
         query = query.or(
-          `quote_number.ilike.%${search}%,customer_email.ilike.%${search}%,customer_name.ilike.%${search}%`,
+          `quote_number.ilike.%${search}%,customers.email.ilike.%${search}%,customers.full_name.ilike.%${search}%`,
         );
       }
       if (status) {
@@ -103,7 +118,23 @@ export default function AdminQuotesList() {
 
       if (error) throw error;
 
-      setQuotes(data || []);
+      const transformedQuotes =
+        (data || []).map((quote: any) => ({
+          id: quote.id,
+          quote_number: quote.quote_number,
+          status: quote.status,
+          total: quote.total,
+          is_rush: quote.is_rush,
+          created_at: quote.created_at,
+          expires_at: quote.expires_at,
+          customer_email: quote.customer?.email || "",
+          customer_name: quote.customer?.full_name || "",
+          source_language_name: quote.source_language?.name || "",
+          target_language_name: quote.target_language?.name || "",
+          file_count: quote.quote_files?.[0]?.count ?? 0,
+        })) || [];
+
+      setQuotes(transformedQuotes);
       setTotalCount(count || 0);
     } catch (error) {
       console.error("Failed to fetch quotes:", error);
