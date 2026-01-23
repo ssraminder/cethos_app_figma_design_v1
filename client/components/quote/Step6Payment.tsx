@@ -22,6 +22,15 @@ export default function Step6Payment() {
   const [loadingPricing, setLoadingPricing] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const shippingAddress = state.shippingAddress;
+  const billingAddress = state.billingAddress;
+  const hasShippingSummary =
+    !!shippingAddress?.firstName &&
+    !!shippingAddress?.addressLine1 &&
+    !!shippingAddress?.city &&
+    !!shippingAddress?.state &&
+    !!shippingAddress?.postalCode;
+
   useEffect(() => {
     fetchPricingData();
   }, [state.quoteId]);
