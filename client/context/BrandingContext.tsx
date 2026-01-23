@@ -38,7 +38,9 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
         const hasValidUrl = Boolean(supabaseUrl?.startsWith("https://"));
 
         if (!supabaseUrl || !supabaseKey || !hasValidUrl) {
-          console.warn("Supabase credentials not found or invalid, using defaults");
+          console.warn(
+            "Supabase credentials not found or invalid, using defaults",
+          );
           setBranding((prev) => ({ ...prev, loading: false }));
           return;
         }
