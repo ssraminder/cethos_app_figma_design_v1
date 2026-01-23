@@ -195,7 +195,10 @@ export default function Step6Payment() {
               {documentNames.length > 0 && (
                 <ul className="mt-2 space-y-1 text-xs text-gray-500">
                   {documentNames.map((name, index) => (
-                    <li key={`${name}-${index}`} className="flex items-center gap-2">
+                    <li
+                      key={`${name}-${index}`}
+                      className="flex items-center gap-2"
+                    >
                       <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
                       <span className="truncate">{name}</span>
                     </li>
