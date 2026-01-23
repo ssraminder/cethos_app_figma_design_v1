@@ -625,7 +625,7 @@ export default function Step5BillingDelivery() {
                 handleBillingFieldChange("fullName", e.target.value)
               }
               onBlur={() => handleBillingFieldBlur("fullName")}
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
                 touched.billing_fullName && errors.billing_fullName
                   ? "border-red-500"
                   : "border-gray-300"
@@ -651,7 +651,7 @@ export default function Step5BillingDelivery() {
                 handleBillingFieldChange("streetAddress", e.target.value)
               }
               onBlur={() => handleBillingFieldBlur("streetAddress")}
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
                 touched.billing_streetAddress && errors.billing_streetAddress
                   ? "border-red-500"
                   : "border-gray-300"
@@ -678,7 +678,7 @@ export default function Step5BillingDelivery() {
                   handleBillingFieldChange("city", e.target.value)
                 }
                 onBlur={() => handleBillingFieldBlur("city")}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
                   touched.billing_city && errors.billing_city
                     ? "border-red-500"
                     : "border-gray-300"
@@ -701,7 +701,7 @@ export default function Step5BillingDelivery() {
                 onChange={(e) =>
                   handleBillingFieldChange("province", e.target.value)
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
               >
                 {CANADIAN_PROVINCES.map((province) => (
                   <option key={province.code} value={province.code}>
@@ -727,7 +727,7 @@ export default function Step5BillingDelivery() {
                 )
               }
               onBlur={() => handleBillingFieldBlur("postalCode")}
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
                 touched.billing_postalCode && errors.billing_postalCode
                   ? "border-red-500"
                   : "border-gray-300"
@@ -759,7 +759,7 @@ export default function Step5BillingDelivery() {
                 option.is_always_selected
                   ? "border-green-200 bg-green-50 cursor-not-allowed"
                   : selectedDigitalOptions.includes(option.code)
-                    ? "border-blue-500 bg-blue-50 cursor-pointer"
+                    ? "border-cethos-teal bg-cethos-teal-50 cursor-pointer"
                     : "border-gray-200 hover:border-gray-300 cursor-pointer"
               }`}
             >
@@ -778,7 +778,7 @@ export default function Step5BillingDelivery() {
                   );
                 }}
                 disabled={option.is_always_selected}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                className="h-4 w-4 rounded border-gray-300 text-cethos-teal"
               />
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center ${
@@ -898,7 +898,7 @@ export default function Step5BillingDelivery() {
                 <p className="text-sm text-gray-600">{option.description}</p>
               </div>
               {selectedPhysicalOption === option.code && (
-                <CheckCircle2 className="w-5 h-5 text-blue-500 flex-shrink-0 mt-1" />
+                <CheckCircle2 className="w-5 h-5 text-cethos-teal flex-shrink-0 mt-1" />
               )}
             </label>
           ))}
@@ -919,7 +919,7 @@ export default function Step5BillingDelivery() {
                 type="checkbox"
                 checked={sameAsBilling}
                 onChange={(e) => handleSameAsBillingChange(e.target.checked)}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-cethos-teal"
               />
               <span className="text-sm font-medium text-gray-700">
                 Same as billing address
@@ -941,7 +941,7 @@ export default function Step5BillingDelivery() {
                 }
                 onBlur={() => handleShippingFieldBlur("fullName")}
                 disabled={sameAsBilling}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
                   sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
                 } ${
                   touched.shipping_fullName && errors.shipping_fullName
@@ -970,7 +970,7 @@ export default function Step5BillingDelivery() {
                 }
                 onBlur={() => handleShippingFieldBlur("streetAddress")}
                 disabled={sameAsBilling}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
                   sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
                 } ${
                   touched.shipping_streetAddress &&
@@ -1002,7 +1002,7 @@ export default function Step5BillingDelivery() {
                   }
                   onBlur={() => handleShippingFieldBlur("city")}
                   disabled={sameAsBilling}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
                     sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
                   } ${
                     touched.shipping_city && errors.shipping_city
@@ -1028,7 +1028,7 @@ export default function Step5BillingDelivery() {
                     handleShippingFieldChange("province", e.target.value)
                   }
                   disabled={sameAsBilling}
-                  className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
                     sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
                   }`}
                 >
@@ -1057,7 +1057,7 @@ export default function Step5BillingDelivery() {
                 }
                 onBlur={() => handleShippingFieldBlur("postalCode")}
                 disabled={sameAsBilling}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
                   sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
                 } ${
                   touched.shipping_postalCode && errors.shipping_postalCode
@@ -1086,7 +1086,7 @@ export default function Step5BillingDelivery() {
 
           {pickupLocations.length === 1 ? (
             // Single location - just display it
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="p-4 bg-cethos-teal-50 border border-cethos-teal/20 rounded-lg">
               <p className="font-medium text-gray-900">
                 {pickupLocations[0].name}
               </p>
@@ -1236,7 +1236,7 @@ export default function Step5BillingDelivery() {
         <button
           onClick={handleContinue}
           disabled={saving}
-          className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex-1 px-6 py-3 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {saving ? (
             <>
