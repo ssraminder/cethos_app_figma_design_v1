@@ -130,13 +130,6 @@ export default function Step5BillingDelivery() {
     .some((opt) => opt.code === selectedPhysicalOption);
 
   const isPickupSelected = selectedPhysicalOption === "pickup";
-  const hasShippingSummary =
-    needsShippingAddress &&
-    shippingAddress.fullName &&
-    shippingAddress.streetAddress &&
-    shippingAddress.city &&
-    shippingAddress.province &&
-    shippingAddress.postalCode;
 
   // Fetch tax rate function
   const fetchTaxRate = async (
@@ -1187,56 +1180,6 @@ export default function Step5BillingDelivery() {
           )}
         </div>
       )}
-
-      {/* Address Summary */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Address Summary
-        </h3>
-        <div
-          className={`grid gap-6 ${hasShippingSummary ? "md:grid-cols-2" : "grid-cols-1"}`}
-        >
-          <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">
-              Billing Address
-            </h4>
-            <div className="text-sm text-gray-600 space-y-1">
-              <p className="font-medium text-gray-900">
-                {billingAddress.fullName || ""}
-              </p>
-              <p>{billingAddress.streetAddress || ""}</p>
-              <p>
-                {billingAddress.city || ""}
-                {billingAddress.city ? ", " : ""}
-                {billingAddress.province || ""}{" "}
-                {billingAddress.postalCode || ""}
-              </p>
-              <p>Canada</p>
-            </div>
-          </div>
-
-          {hasShippingSummary && (
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                Shipping Address
-              </h4>
-              <div className="text-sm text-gray-600 space-y-1">
-                <p className="font-medium text-gray-900">
-                  {shippingAddress.fullName || ""}
-                </p>
-                <p>{shippingAddress.streetAddress || ""}</p>
-                <p>
-                  {shippingAddress.city || ""}
-                  {shippingAddress.city ? ", " : ""}
-                  {shippingAddress.province || ""}{" "}
-                  {shippingAddress.postalCode || ""}
-                </p>
-                <p>Canada</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Order Total Card */}
       {pricing && (
