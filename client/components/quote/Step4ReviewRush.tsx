@@ -75,6 +75,7 @@ export default function Step4ReviewRush() {
   const [turnaroundOptions, setTurnaroundOptions] = useState<
     TurnaroundOption[]
   >([]);
+  const [rushMultiplier, setRushMultiplier] = useState(1.3);
 
   // Availability checks
   const [isSameDayEligible, setIsSameDayEligible] = useState(false);
