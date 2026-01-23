@@ -65,7 +65,7 @@ export default function StepIndicator({
                   isCompleted(step.number)
                     ? "bg-green-500 text-white cursor-pointer hover:bg-green-600"
                     : isActive(step.number)
-                      ? "bg-blue-600 text-white ring-4 ring-blue-100"
+                      ? "bg-cethos-teal text-white ring-4 ring-cethos-teal-50"
                       : "bg-gray-200 text-gray-500"
                 }`}
               >
