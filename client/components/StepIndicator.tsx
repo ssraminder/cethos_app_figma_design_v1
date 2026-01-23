@@ -92,7 +92,7 @@ export default function StepIndicator({
                   isCompleted(step.number)
                     ? "text-green-600"
                     : isActive(step.number)
-                      ? "text-blue-600"
+                      ? "text-cethos-teal"
                       : "text-gray-500"
                 }`}
               >
@@ -123,7 +123,7 @@ export default function StepIndicator({
                 isCompleted(step.number)
                   ? "w-2.5 h-2.5 bg-green-500"
                   : isActive(step.number)
-                    ? "w-3 h-3 bg-blue-600 ring-2 ring-blue-100"
+                    ? "w-3 h-3 bg-cethos-teal ring-2 ring-cethos-teal-50"
                     : "w-2.5 h-2.5 bg-gray-300"
               }`}
             />
