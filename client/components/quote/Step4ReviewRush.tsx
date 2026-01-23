@@ -222,17 +222,18 @@ export default function Step4ReviewRush() {
         return;
       }
 
-      const options = turnaroundData && turnaroundData.length > 0
-        ? turnaroundData.map((option) => {
-            if (option.code === "rush") {
-              return { ...option, multiplier: nextRushMultiplier };
-            }
-            if (option.code === "same_day") {
-              return { ...option, multiplier: nextSameDayMultiplier };
-            }
-            return option;
-          })
-        : fallbackOptions;
+      const options =
+        turnaroundData && turnaroundData.length > 0
+          ? turnaroundData.map((option) => {
+              if (option.code === "rush") {
+                return { ...option, multiplier: nextRushMultiplier };
+              }
+              if (option.code === "same_day") {
+                return { ...option, multiplier: nextSameDayMultiplier };
+              }
+              return option;
+            })
+          : fallbackOptions;
 
       const hasStandard = options.some((opt) => opt.code === "standard");
       const hasRush = options.some((opt) => opt.code === "rush");
@@ -255,7 +256,6 @@ export default function Step4ReviewRush() {
       useFallbackOptions();
     }
   };
-
 
   const fetchAnalysisData = async () => {
     setLoading(true);
