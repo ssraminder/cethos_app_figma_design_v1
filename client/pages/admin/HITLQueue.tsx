@@ -271,7 +271,7 @@ export default function HITLQueue() {
                             navigate(`/admin/hitl/${review.review_id}`)
                           }
                           style={{
-                            color: "#3B82F6",
+                            color: "#0891B2",
                             background: "none",
                             border: "none",
                             cursor: "pointer",

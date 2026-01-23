@@ -62,7 +62,7 @@ function getStatusColor(status: string) {
 function getAccuracyColor(accuracy: number | null | undefined): string {
   if (!accuracy) return "#6B7280";
   if (accuracy >= 0.95) return "#10B981";
-  if (accuracy >= 0.85) return "#3B82F6";
+  if (accuracy >= 0.85) return "#0891B2";
   if (accuracy >= 0.75) return "#F59E0B";
   return "#EF4444";
 }

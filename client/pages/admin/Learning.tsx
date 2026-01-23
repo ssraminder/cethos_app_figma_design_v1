@@ -711,7 +711,7 @@ export default function Learning() {
                   }
                   style={{
                     padding: "12px",
-                    backgroundColor: "#3B82F6",
+                    backgroundColor: "#0891B2",
                     color: "white",
                     border: "none",
                     borderRadius: "6px",

@@ -717,7 +717,7 @@ export default function Thresholds() {
                                 style={{
                                   padding: "6px 16px",
                                   backgroundColor: isSuperAdmin
-                                    ? "#3B82F6"
+                                    ? "#0891B2"
                                     : "#D1D5DB",
                                   color: "white",
                                   border: "none",

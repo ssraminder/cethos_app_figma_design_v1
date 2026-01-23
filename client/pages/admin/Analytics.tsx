@@ -116,7 +116,7 @@ export default function Analytics() {
     if (!accuracyStr) return "#6B7280";
     const value = parseFloat(accuracyStr);
     if (value >= 95) return "#10B981"; // Green
-    if (value >= 85) return "#3B82F6"; // Blue
+    if (value >= 85) return "#0891B2"; // Blue
     if (value >= 75) return "#F59E0B"; // Yellow
     return "#EF4444"; // Red
   }
@@ -547,7 +547,7 @@ export default function Analytics() {
                         <Line
                           type="monotone"
                           dataKey="overall"
-                          stroke="#3B82F6"
+                          stroke="#0891B2"
                           name="Overall"
                           strokeWidth={2}
                         />
@@ -596,7 +596,7 @@ export default function Analytics() {
                   <button
                     onClick={() => navigate("/admin/learning")}
                     style={{
-                      color: "#3B82F6",
+                      color: "#0891B2",
                       fontSize: "14px",
                       textDecoration: "none",
                       background: "none",

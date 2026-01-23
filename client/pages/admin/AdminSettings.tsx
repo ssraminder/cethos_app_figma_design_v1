@@ -26,7 +26,7 @@ export default function AdminSettings() {
     logoUrl: "",
     logoDarkUrl: "",
     supportEmail: "",
-    primaryColor: "#3B82F6",
+    primaryColor: "#0891B2",
   });
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -70,7 +70,7 @@ export default function AdminSettings() {
     if (!formData.primaryColor.match(/^#[0-9A-Fa-f]{6}$/)) {
       setMessage({
         type: "error",
-        text: "Primary color must be a valid hex color (e.g., #3B82F6)",
+        text: "Primary color must be a valid hex color (e.g., #0891B2)",
       });
       return;
     }
@@ -475,12 +475,12 @@ export default function AdminSettings() {
                       setFormData({ ...formData, primaryColor: e.target.value })
                     }
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                    placeholder="#3B82F6"
+                    placeholder="#0891B2"
                     pattern="^#[0-9A-Fa-f]{6}$"
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Hex color code (e.g., #3B82F6)
+                  Hex color code (e.g., #0891B2)
                 </p>
               </div>
 
