@@ -133,6 +133,19 @@ export default function Step4ReviewRush() {
         .eq("is_active", true)
         .order("sort_order");
 
+      const { data: rushSetting } = await supabase
+        .from("app_settings")
+        .select("setting_value")
+        .eq("setting_key", "rush_multiplier")
+        .maybeSingle();
+
+      if (rushSetting?.setting_value) {
+        const parsed = Number(rushSetting.setting_value);
+        if (!Number.isNaN(parsed) && parsed > 0) {
+          setRushMultiplier(parsed);
+        }
+      }
+
       if (turnaroundError) {
         console.error("Error fetching turnaround options:", turnaroundError);
         // Use fallback options if database query fails
