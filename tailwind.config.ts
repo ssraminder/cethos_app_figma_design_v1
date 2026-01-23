@@ -97,6 +97,13 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      boxShadow: {
+        "cethos-card": "0 4px 6px rgba(0, 0, 0, 0.05)",
+        "cethos-card-hover": "0 10px 25px rgba(0, 0, 0, 0.1)",
+        "cethos-soft": "0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)",
+        "cethos-focus": "0 0 0 3px rgba(8, 145, 178, 0.2)",
+        "cethos-focus-error": "0 0 0 3px rgba(239, 68, 68, 0.2)",
+      },
       keyframes: {
         "accordion-down": {
           from: {
