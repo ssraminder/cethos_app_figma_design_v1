@@ -589,7 +589,7 @@ export default function Step5BillingDelivery() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-cethos-teal" />
       </div>
     );
   }
@@ -598,16 +598,16 @@ export default function Step5BillingDelivery() {
     <div className="max-w-2xl mx-auto px-4 pb-8">
       {/* Header */}
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">
+        <h2 className="text-3xl font-bold text-cethos-navy mb-2">
           Billing & Delivery
         </h2>
-        <p className="text-gray-600">
+        <p className="text-cethos-gray">
           Enter your billing address and choose delivery method
         </p>
       </div>
 
       {/* Billing Information */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+      <div className="bg-white rounded-xl border border-cethos-border p-6 mb-6 shadow-cethos-card">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Billing Information
         </h3>
