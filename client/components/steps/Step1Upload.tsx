@@ -21,7 +21,7 @@ export default function Step1Upload() {
 
     // Trigger document processing in background (fire and forget)
     console.log("🚀 Triggering document processing for quote:", state.quoteId);
-    
+
     triggerProcessing(state.quoteId)
       .then((result) => {
         if (result) {
