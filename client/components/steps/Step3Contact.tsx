@@ -1,5 +1,6 @@
 import { Lock, ChevronRight, ChevronLeft } from "lucide-react";
 import { useQuote } from "@/context/QuoteContext";
+import StartOverLink from "@/components/StartOverLink";
 
 export default function Step3Contact() {
   const { state, updateState, goToNextStep, goToPreviousStep } = useQuote();
@@ -151,8 +152,10 @@ export default function Step3Contact() {
       </div>
 
       {/* Navigation Buttons */}
-      <div className="flex justify-between gap-4 mt-8">
-        <button
+      <div className="flex items-center justify-between mt-8">
+        <StartOverLink />
+        <div className="flex items-center gap-4">
+          <button
           onClick={goToPreviousStep}
           className="flex items-center gap-2 px-6 py-3 border-2 border-cethos-border text-cethos-gray rounded-lg hover:bg-cethos-bg-light font-medium transition-colors"
         >
@@ -160,28 +163,29 @@ export default function Step3Contact() {
           <span>Back</span>
         </button>
 
-        <button
-          onClick={goToNextStep}
-          disabled={
-            !state.firstName ||
-            !state.lastName ||
-            !state.email ||
-            !state.phone ||
-            (state.customerType === "business" && !state.companyName)
-          }
-          className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
-            state.firstName &&
-            state.lastName &&
-            state.email &&
-            state.phone &&
-            (state.customerType === "individual" || state.companyName)
-              ? "bg-cethos-teal hover:bg-cethos-teal-light"
-              : "bg-gray-300 cursor-not-allowed"
-          }`}
-        >
-          <span>Continue</span>
-          <ChevronRight className="w-5 h-5" />
-        </button>
+          <button
+            onClick={goToNextStep}
+            disabled={
+              !state.firstName ||
+              !state.lastName ||
+              !state.email ||
+              !state.phone ||
+              (state.customerType === "business" && !state.companyName)
+            }
+            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
+              state.firstName &&
+              state.lastName &&
+              state.email &&
+              state.phone &&
+              (state.customerType === "individual" || state.companyName)
+                ? "bg-cethos-teal hover:bg-cethos-teal-light"
+                : "bg-gray-300 cursor-not-allowed"
+            }`}
+          >
+            <span>Continue</span>
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </>
   );
