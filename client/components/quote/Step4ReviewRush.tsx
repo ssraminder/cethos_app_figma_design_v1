@@ -81,6 +81,7 @@ export default function Step4ReviewRush() {
   const [rushCutoffMinute, setRushCutoffMinute] = useState(30);
   const [sameDayCutoffHour, setSameDayCutoffHour] = useState(14);
   const [sameDayCutoffMinute, setSameDayCutoffMinute] = useState(0);
+  const [rushTurnaroundDays, setRushTurnaroundDays] = useState(1);
 
   // Availability checks
   const [isSameDayEligible, setIsSameDayEligible] = useState(false);
@@ -148,6 +149,7 @@ export default function Step4ReviewRush() {
           "rush_cutoff_minute",
           "same_day_cutoff_hour",
           "same_day_cutoff_minute",
+          "rush_turnaround_days",
         ]);
 
       const settings = (settingsData || []).reduce(
@@ -161,12 +163,13 @@ export default function Step4ReviewRush() {
         {},
       );
 
-      if (settings.rush_multiplier) {
-        setRushMultiplier(settings.rush_multiplier);
-      }
-      if (settings.same_day_multiplier) {
-        setSameDayMultiplier(settings.same_day_multiplier);
-      }
+      const nextRushMultiplier = settings.rush_multiplier || rushMultiplier;
+      const nextSameDayMultiplier =
+        settings.same_day_multiplier || sameDayMultiplier;
+      const nextRushDays = settings.rush_turnaround_days || rushTurnaroundDays;
+
+      setRushMultiplier(nextRushMultiplier);
+      setSameDayMultiplier(nextSameDayMultiplier);
       if (settings.rush_cutoff_hour !== undefined) {
         setRushCutoffHour(settings.rush_cutoff_hour);
       }
@@ -179,56 +182,80 @@ export default function Step4ReviewRush() {
       if (settings.same_day_cutoff_minute !== undefined) {
         setSameDayCutoffMinute(settings.same_day_cutoff_minute);
       }
+      if (settings.rush_turnaround_days !== undefined) {
+        setRushTurnaroundDays(settings.rush_turnaround_days);
+      }
+
+      const fallbackOptions: TurnaroundOption[] = [
+        {
+          id: "fallback-standard",
+          code: "standard",
+          name: "Standard Delivery",
+          description: "Standard turnaround based on document length",
+          multiplier: 1.0,
+          days_reduction: 0,
+          is_rush: false,
+        },
+        {
+          id: "fallback-rush",
+          code: "rush",
+          name: "Rush Delivery",
+          description: "1 business day faster",
+          multiplier: nextRushMultiplier,
+          days_reduction: nextRushDays,
+          is_rush: true,
+        },
+        {
+          id: "fallback-same-day",
+          code: "same_day",
+          name: "Same-Day Delivery",
+          description: "Ready today",
+          multiplier: nextSameDayMultiplier,
+          days_reduction: 0,
+          is_rush: true,
+        },
+      ];
 
       if (turnaroundError) {
         console.error("Error fetching turnaround options:", turnaroundError);
-        // Use fallback options if database query fails
-        useFallbackOptions();
-      } else if (turnaroundData && turnaroundData.length > 0) {
-        setTurnaroundOptions(turnaroundData);
-      } else {
-        // No options in database - use fallback
-        console.warn("No turnaround options found in database, using defaults");
-        useFallbackOptions();
+        setTurnaroundOptions(fallbackOptions);
+        return;
       }
+
+      const options = turnaroundData && turnaroundData.length > 0
+        ? turnaroundData.map((option) => {
+            if (option.code === "rush") {
+              return { ...option, multiplier: nextRushMultiplier };
+            }
+            if (option.code === "same_day") {
+              return { ...option, multiplier: nextSameDayMultiplier };
+            }
+            return option;
+          })
+        : fallbackOptions;
+
+      const hasStandard = options.some((opt) => opt.code === "standard");
+      const hasRush = options.some((opt) => opt.code === "rush");
+      const hasSameDay = options.some((opt) => opt.code === "same_day");
+      const mergedOptions = [...options];
+
+      if (!hasStandard) {
+        mergedOptions.unshift(fallbackOptions[0]);
+      }
+      if (!hasRush) {
+        mergedOptions.push(fallbackOptions[1]);
+      }
+      if (!hasSameDay) {
+        mergedOptions.push(fallbackOptions[2]);
+      }
+
+      setTurnaroundOptions(mergedOptions);
     } catch (err) {
       console.error("Error fetching turnaround options:", err);
       useFallbackOptions();
     }
   };
 
-  const useFallbackOptions = () => {
-    // Fallback options if database isn't set up yet
-    setTurnaroundOptions([
-      {
-        id: "fallback-standard",
-        code: "standard",
-        name: "Standard Delivery",
-        description: "Standard turnaround based on document length",
-        multiplier: 1.0,
-        days_reduction: 0,
-        is_rush: false,
-      },
-      {
-        id: "fallback-rush",
-        code: "rush",
-        name: "Rush Delivery",
-        description: "1 business day faster",
-        multiplier: 1.3,
-        days_reduction: 1,
-        is_rush: true,
-      },
-      {
-        id: "fallback-same-day",
-        code: "same_day",
-        name: "Same-Day Delivery",
-        description: "Ready today",
-        multiplier: 2.0,
-        days_reduction: 0,
-        is_rush: true,
-      },
-    ]);
-  };
 
   const fetchAnalysisData = async () => {
     setLoading(true);
