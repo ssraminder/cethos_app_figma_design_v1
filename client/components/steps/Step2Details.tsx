@@ -278,6 +278,38 @@ export default function Step2Details() {
           </div>
         </div>
       </div>
+
+      {/* Navigation Buttons */}
+      <div className="flex justify-between gap-4 mt-8">
+        <button
+          onClick={goToPreviousStep}
+          className="flex items-center gap-2 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+          <span>Back</span>
+        </button>
+
+        <button
+          onClick={goToNextStep}
+          disabled={
+            !state.sourceLanguageId ||
+            !state.targetLanguageId ||
+            !state.intendedUseId ||
+            !state.countryOfIssue
+          }
+          className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
+            state.sourceLanguageId &&
+            state.targetLanguageId &&
+            state.intendedUseId &&
+            state.countryOfIssue
+              ? "bg-cethos-blue hover:bg-blue-600"
+              : "bg-gray-300 cursor-not-allowed"
+          }`}
+        >
+          <span>Continue</span>
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
     </>
   );
 }
