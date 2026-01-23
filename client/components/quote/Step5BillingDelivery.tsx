@@ -130,6 +130,13 @@ export default function Step5BillingDelivery() {
     .some((opt) => opt.code === selectedPhysicalOption);
 
   const isPickupSelected = selectedPhysicalOption === "pickup";
+  const hasShippingSummary =
+    needsShippingAddress &&
+    shippingAddress.fullName &&
+    shippingAddress.streetAddress &&
+    shippingAddress.city &&
+    shippingAddress.province &&
+    shippingAddress.postalCode;
 
   // Fetch tax rate function
   const fetchTaxRate = async (
