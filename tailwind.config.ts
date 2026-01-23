@@ -18,15 +18,35 @@ export default {
         jakarta: ["Plus Jakarta Sans", "sans-serif"],
       },
       colors: {
+        // === CETHOS BRAND COLORS ===
         cethos: {
-          navy: "hsl(var(--cethos-navy))",
-          blue: "hsl(var(--cethos-blue))",
+          navy: "#0C2340", // Primary heading color
+          blue: "hsl(var(--cethos-blue))", // Keep existing for compatibility
+          teal: {
+            DEFAULT: "#0891B2", // Primary brand color (replaces blue)
+            light: "#06B6D4",   // Hover state
+            50: "#ECFEFF",      // Very light background
+            100: "#CFFAFE",     // Light background
+            500: "#06B6D4",     // Standard teal
+            600: "#0891B2",     // Default teal
+            700: "#0E7490",     // Dark teal
+          },
+          gray: {
+            DEFAULT: "#4B5563", // Body text
+            light: "#717182",   // Secondary text
+          },
           "slate-dark": "hsl(var(--cethos-slate-dark))",
           slate: "hsl(var(--cethos-slate))",
           "slate-light": "hsl(var(--cethos-slate-light))",
-          border: "hsl(var(--cethos-border))",
-          bg: "hsl(var(--cethos-bg))",
+          border: "#E5E7EB",  // Border color
+          bg: {
+            DEFAULT: "hsl(var(--cethos-bg))",
+            light: "#F8FAFC",   // Light background
+            blue: "#E0F2FE",    // Blue tint background
+          },
           "bg-alt": "hsl(var(--cethos-bg-alt))",
+          "text-muted": "#64748B",       // Muted text
+          "text-placeholder": "#94A3B8", // Placeholder text
         },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
