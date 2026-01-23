@@ -243,7 +243,9 @@ export default function Step6Payment() {
               )}
 
               <div className="flex justify-between text-gray-600">
-                <span>GST ({(pricing.tax_rate * 100).toFixed(0)}%)</span>
+                <span>
+                  {(pricing.tax_name || "GST")} ({(pricing.tax_rate * 100).toFixed(0)}%)
+                </span>
                 <span>${pricing.tax_amount.toFixed(2)}</span>
               </div>
 
