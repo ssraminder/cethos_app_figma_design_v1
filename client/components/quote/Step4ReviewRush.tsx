@@ -16,6 +16,7 @@ import {
   Info,
   CheckCircle,
 } from "lucide-react";
+import StartOverLink from "@/components/StartOverLink";
 import { toast } from "sonner";
 
 interface DocumentAnalysis {
@@ -982,8 +983,10 @@ export default function Step4ReviewRush() {
       )}
 
       {/* Navigation Buttons */}
-      <div className="flex justify-between gap-4 mt-6">
-        <button
+      <div className="flex items-center justify-between mt-6">
+        <StartOverLink />
+        <div className="flex items-center gap-4">
+          <button
           onClick={goToPreviousStep}
           disabled={saving}
           className="px-6 py-3 border-2 border-cethos-border text-cethos-gray rounded-lg hover:bg-cethos-bg-light font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -991,25 +994,26 @@ export default function Step4ReviewRush() {
           ← Back
         </button>
 
-        <button
-          onClick={handleContinue}
-          disabled={saving || hitlRequested || hitlRequired}
-          className="flex-1 px-6 py-3 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Saving...
-            </>
-          ) : hitlRequested || hitlRequired ? (
-            "Awaiting Review"
-          ) : (
-            <>
-              Continue to Delivery
-              <ChevronRight className="w-5 h-5" />
-            </>
-          )}
-        </button>
+          <button
+            onClick={handleContinue}
+            disabled={saving || hitlRequested || hitlRequired}
+            className="flex-1 px-6 py-3 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Saving...
+              </>
+            ) : hitlRequested || hitlRequired ? (
+              "Awaiting Review"
+            ) : (
+              <>
+                Continue to Delivery
+                <ChevronRight className="w-5 h-5" />
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* HITL Request Modal */}
