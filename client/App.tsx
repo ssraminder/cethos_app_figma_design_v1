@@ -17,6 +17,7 @@ import Success from "./pages/Success";
 import NotFound from "./pages/NotFound";
 import Checkout from "./pages/Checkout";
 import OrderSuccess from "./pages/OrderSuccess";
+import PaymentCancel from "./pages/PaymentCancel";
 import QuoteReviewPage from "./pages/quote/QuoteReviewPage";
 import QuoteRevisionPage from "./pages/quote/QuoteRevisionPage";
 
@@ -86,6 +87,7 @@ const App = () => (
                   element={<QuoteRevisionPage />}
                 />
                 <Route path="/order/success" element={<OrderSuccess />} />
+                <Route path="/payment/cancel" element={<PaymentCancel />} />
 
                 {/* Admin login (not protected) */}
                 <Route path="/admin/login" element={<AdminLogin />} />
