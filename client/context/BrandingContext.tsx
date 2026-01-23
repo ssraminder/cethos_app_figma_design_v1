@@ -77,8 +77,8 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
           console.warn("Failed to fetch branding, using defaults");
           setBranding((prev) => ({ ...prev, loading: false }));
         }
-      } catch (error) {
-        console.error("Error fetching branding:", error);
+      } catch {
+        console.warn("Branding fetch failed, using defaults");
         setBranding((prev) => ({ ...prev, loading: false }));
       }
     }
