@@ -1,19 +1,39 @@
 import { HelpCircle, User } from "lucide-react";
+import { useBranding } from "../context/BrandingContext";
 
 export default function Header() {
+  const { companyName, logoUrl, loading } = useBranding();
+
   return (
     <header className="w-full h-16 bg-white border-b border-cethos-border shadow-sm sticky top-0 z-50">
       <div className="max-w-[1536px] mx-auto px-4 sm:px-8 lg:px-12 h-full flex items-center justify-between">
         {/* Logo */}
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-cethos-navy rounded-lg flex items-center justify-center">
-            <span className="text-white font-jakarta font-bold text-base">
-              C
+          {logoUrl ? (
+            <img 
+              src={logoUrl} 
+              alt={companyName} 
+              className="h-8 w-auto"
+            />
+          ) : (
+            // Fallback while loading or if no logo URL
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-cethos-navy rounded-lg flex items-center justify-center">
+                <span className="text-white font-jakarta font-bold text-base">
+                  {loading ? "..." : companyName?.[0] || "C"}
+                </span>
+              </div>
+              <span className="text-cethos-navy font-jakarta font-bold text-xl hidden sm:block">
+                {companyName || "CETHOS"}
+              </span>
+            </div>
+          )}
+          {/* Show company name next to logo if logo exists */}
+          {logoUrl && (
+            <span className="text-cethos-navy font-jakarta font-bold text-xl hidden sm:block sr-only">
+              {companyName}
             </span>
-          </div>
-          <span className="text-cethos-navy font-jakarta font-bold text-xl hidden sm:block">
-            CETHOS
-          </span>
+          )}
         </div>
 
         {/* Actions */}
