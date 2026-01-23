@@ -92,8 +92,7 @@ export default function QuoteReviewPage() {
           expires_at,
           calculated_totals,
           customer:customers (
-            first_name,
-            last_name,
+            full_name,
             email
           )
         `,
