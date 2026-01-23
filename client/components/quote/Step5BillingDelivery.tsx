@@ -824,8 +824,8 @@ export default function Step5BillingDelivery() {
           <label
             className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all ${
               selectedPhysicalOption === "none"
-                ? "border-blue-500 bg-blue-50"
-                : "border-gray-200 hover:border-blue-300"
+                ? "border-cethos-teal bg-cethos-teal-50"
+                : "border-gray-200 hover:border-cethos-teal"
             }`}
           >
             <input
@@ -849,7 +849,7 @@ export default function Step5BillingDelivery() {
               <p className="text-sm text-gray-600">Digital delivery only</p>
             </div>
             {selectedPhysicalOption === "none" && (
-              <CheckCircle2 className="w-5 h-5 text-blue-500 flex-shrink-0 mt-1" />
+              <CheckCircle2 className="w-5 h-5 text-cethos-teal flex-shrink-0 mt-1" />
             )}
           </label>
 
@@ -859,8 +859,8 @@ export default function Step5BillingDelivery() {
               key={option.id}
               className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all ${
                 selectedPhysicalOption === option.code
-                  ? "border-blue-500 bg-blue-50"
-                  : "border-gray-200 hover:border-blue-300"
+                  ? "border-cethos-teal bg-cethos-teal-50"
+                  : "border-gray-200 hover:border-cethos-teal"
               }`}
             >
               <input
@@ -874,7 +874,7 @@ export default function Step5BillingDelivery() {
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                   selectedPhysicalOption === option.code
-                    ? "bg-blue-500 text-white"
+                    ? "bg-cethos-teal text-white"
                     : "bg-gray-100 text-gray-600"
                 }`}
               >
