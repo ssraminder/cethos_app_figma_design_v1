@@ -76,6 +76,11 @@ export default function Step4ReviewRush() {
     TurnaroundOption[]
   >([]);
   const [rushMultiplier, setRushMultiplier] = useState(1.3);
+  const [sameDayMultiplier, setSameDayMultiplier] = useState(2.0);
+  const [rushCutoffHour, setRushCutoffHour] = useState(16);
+  const [rushCutoffMinute, setRushCutoffMinute] = useState(30);
+  const [sameDayCutoffHour, setSameDayCutoffHour] = useState(14);
+  const [sameDayCutoffMinute, setSameDayCutoffMinute] = useState(0);
 
   // Availability checks
   const [isSameDayEligible, setIsSameDayEligible] = useState(false);
@@ -133,17 +138,46 @@ export default function Step4ReviewRush() {
         .eq("is_active", true)
         .order("sort_order");
 
-      const { data: rushSetting } = await supabase
+      const { data: settingsData } = await supabase
         .from("app_settings")
-        .select("setting_value")
-        .eq("setting_key", "rush_multiplier")
-        .maybeSingle();
+        .select("setting_key, setting_value")
+        .in("setting_key", [
+          "rush_multiplier",
+          "same_day_multiplier",
+          "rush_cutoff_hour",
+          "rush_cutoff_minute",
+          "same_day_cutoff_hour",
+          "same_day_cutoff_minute",
+        ]);
 
-      if (rushSetting?.setting_value) {
-        const parsed = Number(rushSetting.setting_value);
-        if (!Number.isNaN(parsed) && parsed > 0) {
-          setRushMultiplier(parsed);
-        }
+      const settings = (settingsData || []).reduce(
+        (acc: Record<string, number>, setting) => {
+          const parsed = Number(setting.setting_value);
+          if (!Number.isNaN(parsed)) {
+            acc[setting.setting_key] = parsed;
+          }
+          return acc;
+        },
+        {},
+      );
+
+      if (settings.rush_multiplier) {
+        setRushMultiplier(settings.rush_multiplier);
+      }
+      if (settings.same_day_multiplier) {
+        setSameDayMultiplier(settings.same_day_multiplier);
+      }
+      if (settings.rush_cutoff_hour !== undefined) {
+        setRushCutoffHour(settings.rush_cutoff_hour);
+      }
+      if (settings.rush_cutoff_minute !== undefined) {
+        setRushCutoffMinute(settings.rush_cutoff_minute);
+      }
+      if (settings.same_day_cutoff_hour !== undefined) {
+        setSameDayCutoffHour(settings.same_day_cutoff_hour);
+      }
+      if (settings.same_day_cutoff_minute !== undefined) {
+        setSameDayCutoffMinute(settings.same_day_cutoff_minute);
       }
 
       if (turnaroundError) {
@@ -415,8 +449,9 @@ export default function Step4ReviewRush() {
     const isEligible = !!data && !error;
     setIsSameDayEligible(isEligible);
 
-    const rushAvail = checkCutoffTime(16, 30); // 4:30 PM
-    const sameDayAvail = isEligible && checkCutoffTime(14, 0); // 2:00 PM
+    const rushAvail = checkCutoffTime(rushCutoffHour, rushCutoffMinute);
+    const sameDayAvail =
+      isEligible && checkCutoffTime(sameDayCutoffHour, sameDayCutoffMinute);
 
     setIsRushAvailable(rushAvail);
     setIsSameDayAvailable(sameDayAvail);
@@ -435,7 +470,9 @@ export default function Step4ReviewRush() {
       const multiplier =
         selectedOption.code === "rush"
           ? rushMultiplier
-          : selectedOption.multiplier;
+          : selectedOption.code === "same_day"
+            ? sameDayMultiplier
+            : selectedOption.multiplier;
       turnaroundFee = subtotal * (multiplier - 1);
     }
 
@@ -905,14 +942,11 @@ export default function Step4ReviewRush() {
                       {sameDayOption.name}
                     </p>
                     <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
-                      +{((sameDayOption.multiplier - 1) * 100).toFixed(0)}%
+                      +{((sameDayMultiplier - 1) * 100).toFixed(0)}%
                     </span>
                   </div>
                   <span className="font-semibold text-green-600">
-                    +$
-                    {(totals.subtotal * (sameDayOption.multiplier - 1)).toFixed(
-                      2,
-                    )}
+                    +${(totals.subtotal * (sameDayMultiplier - 1)).toFixed(2)}
                   </span>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">
