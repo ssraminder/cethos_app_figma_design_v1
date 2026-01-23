@@ -1229,12 +1229,12 @@ export default function Step5BillingDelivery() {
         <StartOverLink />
         <div className="flex items-center gap-4">
           <button
-          onClick={goToPreviousStep}
-          disabled={saving}
-          className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          ← Back
-        </button>
+            onClick={goToPreviousStep}
+            disabled={saving}
+            className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ← Back
+          </button>
 
           <button
             onClick={handleContinue}

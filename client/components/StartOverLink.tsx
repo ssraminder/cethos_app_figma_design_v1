@@ -5,9 +5,7 @@ interface StartOverLinkProps {
   className?: string;
 }
 
-export default function StartOverLink({
-  className = "",
-}: StartOverLinkProps) {
+export default function StartOverLink({ className = "" }: StartOverLinkProps) {
   const { resetQuote } = useQuote();
 
   const handleStartOver = () => {

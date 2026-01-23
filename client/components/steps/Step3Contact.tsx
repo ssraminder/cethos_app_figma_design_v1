@@ -156,12 +156,12 @@ export default function Step3Contact() {
         <StartOverLink />
         <div className="flex items-center gap-4">
           <button
-          onClick={goToPreviousStep}
-          className="flex items-center gap-2 px-6 py-3 border-2 border-cethos-border text-cethos-gray rounded-lg hover:bg-cethos-bg-light font-medium transition-colors"
-        >
-          <ChevronLeft className="w-5 h-5" />
-          <span>Back</span>
-        </button>
+            onClick={goToPreviousStep}
+            className="flex items-center gap-2 px-6 py-3 border-2 border-cethos-border text-cethos-gray rounded-lg hover:bg-cethos-bg-light font-medium transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+            <span>Back</span>
+          </button>
 
           <button
             onClick={goToNextStep}
