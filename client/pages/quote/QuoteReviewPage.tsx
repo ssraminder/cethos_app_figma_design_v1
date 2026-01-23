@@ -102,7 +102,8 @@ export default function QuoteReviewPage() {
         .single();
 
       if (quoteError || !quoteData) {
-        throw new Error("Quote not found");
+        const details = quoteError?.message || quoteError?.details;
+        throw new Error(details || "Quote not found");
       }
 
       // Fetch documents from ai_analysis_results
