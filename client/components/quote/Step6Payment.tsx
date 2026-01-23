@@ -168,7 +168,7 @@ export default function Step6Payment() {
             </div>
             <div>
               <p className="font-medium text-gray-900">
-                {(documentCount ?? (state.files?.length || 0))} Document
+                {documentCount ?? (state.files?.length || 0)} Document
                 {(documentCount ?? (state.files?.length || 0)) !== 1 ? "s" : ""}
               </p>
               <p className="text-sm text-gray-500">
