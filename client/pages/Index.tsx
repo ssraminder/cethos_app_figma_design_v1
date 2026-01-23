@@ -115,8 +115,8 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <Header />
+      {/* Header - Hidden in embed mode */}
+      {!embedMode && <Header />}
 
       {/* Main Content */}
       <main className="flex-1 w-full">
