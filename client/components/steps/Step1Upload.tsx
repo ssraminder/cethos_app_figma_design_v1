@@ -9,30 +9,36 @@ export default function Step1Upload() {
   const canContinue = state.files.length > 0;
 
   const handleContinue = async () => {
-    if (!state.quoteId) {
-      console.error("❌ No quoteId available - cannot trigger processing");
-      // Still allow navigation even without quoteId (shouldn't happen in normal flow)
-      await goToNextStep();
+    // Navigate to next step - this creates the quote and returns the quoteId
+    const result = await goToNextStep();
+
+    if (!result.success) {
+      console.error("❌ Failed to navigate to next step");
       return;
     }
 
-    // Navigate to next step first (better UX - don't block user)
-    await goToNextStep();
+    // Use the quoteId returned by goToNextStep (not state.quoteId which is stale)
+    const quoteId = result.quoteId;
+
+    if (!quoteId) {
+      console.error("❌ No quoteId returned from navigation");
+      return;
+    }
 
     // Trigger document processing in background (fire and forget)
-    console.log("🚀 Triggering document processing for quote:", state.quoteId);
+    console.log("🚀 Triggering document processing for quote:", quoteId);
 
-    triggerProcessing(state.quoteId)
-      .then((result) => {
-        if (result) {
-          console.log("✅ Document processing triggered successfully:", result);
+    triggerProcessing(quoteId)
+      .then((processingResult) => {
+        if (processingResult) {
+          console.log("✅ Document processing triggered successfully:", processingResult);
         } else {
-          console.error("❌ Document processing failed to trigger");
+          console.error("❌ Document processing returned empty result");
         }
       })
       .catch((error) => {
         console.error("❌ Error triggering document processing:", error);
-        // Don't block user - processing can be retried later or manually
+        // Don't block user - processing can be retried later
       });
   };
 
