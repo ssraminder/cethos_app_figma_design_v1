@@ -26,6 +26,7 @@ import QuoteRevisionPage from "./pages/quote/QuoteRevisionPage";
 import AdminLogin from "./pages/admin/Login";
 import ResetPassword from "./pages/admin/ResetPassword";
 import ProtectedAdminRoute from "./components/admin/ProtectedAdminRoute";
+import AdminLayout from "./components/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminQuotesList from "./pages/admin/AdminQuotesList";
 import AdminQuoteDetail from "./pages/admin/AdminQuoteDetail";
