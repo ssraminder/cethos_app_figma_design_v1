@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
-import { useBranding } from "../../context/BrandingContext";
 
 interface HITLReview {
   review_id: string;
