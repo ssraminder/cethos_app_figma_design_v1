@@ -176,6 +176,7 @@ export default function AdminQuoteDetail() {
   useEffect(() => {
     if (id) {
       fetchQuoteDetails();
+      fetchReferenceData();
     }
   }, [id]);
 
