@@ -435,6 +435,11 @@ export default function AdminQuoteDetail() {
 
   const requestBetterScan = async () => {
     if (!currentStaff?.staffId || !id) return;
+    const reason = window.prompt(
+      "Enter reason for requesting a better scan:",
+    );
+    if (!reason) return;
+
     setActionLoading(true);
     try {
       const { error } = await supabase
@@ -458,8 +463,7 @@ export default function AdminQuoteDetail() {
           body: JSON.stringify({
             quoteId: id,
             staffId: currentStaff.staffId,
-            messageText:
-              "We need a clearer scan to proceed. Please upload a higher quality document.",
+            messageText: `We need a clearer scan to proceed. ${reason}`,
           }),
         },
       );
