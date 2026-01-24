@@ -180,6 +180,29 @@ export default function AdminQuoteDetail() {
     }
   }, [id]);
 
+  const fetchReferenceData = async () => {
+    try {
+      const [typesResult, languagesResult] = await Promise.all([
+        supabase
+          .from("document_types")
+          .select("id, name, code")
+          .order("sort_order"),
+        supabase
+          .from("languages")
+          .select("id, name, code")
+          .order("name"),
+      ]);
+
+      if (typesResult.error) throw typesResult.error;
+      if (languagesResult.error) throw languagesResult.error;
+
+      setDocumentTypes(typesResult.data || []);
+      setLanguages(languagesResult.data || []);
+    } catch (err) {
+      console.error("Error loading reference data:", err);
+    }
+  };
+
   const fetchQuoteDetails = async () => {
     setLoading(true);
     setError("");
