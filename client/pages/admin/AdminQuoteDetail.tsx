@@ -1019,6 +1019,87 @@ export default function AdminQuoteDetail() {
           </div>
         </div>
       </div>
+
+      <div className="mt-8 bg-white border rounded-lg p-6 flex flex-wrap items-center gap-3">
+        {!hitlReview && (
+          <button
+            onClick={startReview}
+            disabled={actionLoading}
+            className="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+          >
+            Start Review
+          </button>
+        )}
+        {["processing", "hitl_pending"].includes(quote.status) && (
+          <>
+            <button
+              onClick={approveQuote}
+              disabled={actionLoading}
+              className="px-4 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              Approve Quote
+            </button>
+            <button
+              onClick={requestBetterScan}
+              disabled={actionLoading}
+              className="px-4 py-2 rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50"
+            >
+              Request Better Scan
+            </button>
+          </>
+        )}
+        <button
+          onClick={() => setShowMessageModal(true)}
+          className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+        >
+          Message Customer
+        </button>
+      </div>
+
+      {editModal && (
+        <EditFieldModal
+          field={editModal.field}
+          currentValue={editModal.currentValue}
+          analysisId={editModal.analysisId}
+          onClose={() => setEditModal(null)}
+          onSave={(value) =>
+            saveCorrection(
+              editModal.analysisId,
+              editModal.field,
+              editModal.aiValue,
+              value,
+            )
+          }
+          documentTypes={documentTypes}
+          languages={languages}
+          isSaving={isSaving}
+        />
+      )}
+
+      {showMessageModal && currentStaff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Message Customer
+              </h3>
+              <button
+                onClick={() => setShowMessageModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-4">
+              <MessagePanel
+                quoteId={quote.id}
+                staffId={currentStaff.staffId}
+                staffName={currentStaff.staffName}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
