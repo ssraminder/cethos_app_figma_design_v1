@@ -187,10 +187,7 @@ export default function AdminQuoteDetail() {
           .from("document_types")
           .select("id, name, code")
           .order("sort_order"),
-        supabase
-          .from("languages")
-          .select("id, name, code")
-          .order("name"),
+        supabase.from("languages").select("id, name, code").order("name"),
       ]);
 
       if (typesResult.error) throw typesResult.error;
@@ -359,7 +356,10 @@ export default function AdminQuoteDetail() {
 
       await supabase
         .from("quotes")
-        .update({ status: "hitl_in_review", processing_status: "hitl_in_review" })
+        .update({
+          status: "hitl_in_review",
+          processing_status: "hitl_in_review",
+        })
         .eq("id", id);
 
       await fetchQuoteDetails();
@@ -387,7 +387,10 @@ export default function AdminQuoteDetail() {
 
       await supabase
         .from("quotes")
-        .update({ status: "hitl_in_review", processing_status: "hitl_in_review" })
+        .update({
+          status: "hitl_in_review",
+          processing_status: "hitl_in_review",
+        })
         .eq("id", id);
 
       await fetchQuoteDetails();
