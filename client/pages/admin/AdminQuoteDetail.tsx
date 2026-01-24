@@ -21,6 +21,8 @@ import {
   Zap,
 } from "lucide-react";
 import { format } from "date-fns";
+import { useAdminAuthContext } from "../../context/AdminAuthContext";
+import MessagePanel from "../../components/messaging/MessagePanel";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
