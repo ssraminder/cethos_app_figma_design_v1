@@ -741,25 +741,57 @@ export default function AdminQuoteDetail() {
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                       <div>
-                        <p className="text-gray-500">Type</p>
+                        <div className="flex items-center justify-between text-gray-500">
+                          <span>Type</span>
+                          <button
+                            onClick={() => openEditModal("document_type", item)}
+                            className="text-teal-600 hover:underline"
+                          >
+                            Edit
+                          </button>
+                        </div>
                         <p className="font-medium">
                           {item.document_type || "—"}
                         </p>
                       </div>
                       <div>
-                        <p className="text-gray-500">Language</p>
+                        <div className="flex items-center justify-between text-gray-500">
+                          <span>Language</span>
+                          <button
+                            onClick={() => openEditModal("language", item)}
+                            className="text-teal-600 hover:underline"
+                          >
+                            Edit
+                          </button>
+                        </div>
                         <p className="font-medium">
                           {item.detected_language || "—"}
                         </p>
                       </div>
                       <div>
-                        <p className="text-gray-500">Words</p>
+                        <div className="flex items-center justify-between text-gray-500">
+                          <span>Words</span>
+                          <button
+                            onClick={() => openEditModal("word_count", item)}
+                            className="text-teal-600 hover:underline"
+                          >
+                            Edit
+                          </button>
+                        </div>
                         <p className="font-medium">
                           {item.word_count?.toLocaleString() || "—"}
                         </p>
                       </div>
                       <div>
-                        <p className="text-gray-500">Complexity</p>
+                        <div className="flex items-center justify-between text-gray-500">
+                          <span>Complexity</span>
+                          <button
+                            onClick={() => openEditModal("complexity", item)}
+                            className="text-teal-600 hover:underline"
+                          >
+                            Edit
+                          </button>
+                        </div>
                         <p className="font-medium capitalize">
                           {item.complexity || "—"}
                         </p>
