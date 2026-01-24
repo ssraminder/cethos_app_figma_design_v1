@@ -109,268 +109,77 @@ const App = () => (
                   path="/admin"
                   element={
                     <AdminRoute>
-                      <AdminDashboard />
+                      <AdminLayout />
                     </AdminRoute>
                   }
-                />
-                <Route
-                  path="/admin/dashboard"
-                  element={
-                    <AdminRoute>
-                      <AdminDashboard />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/hitl"
-                  element={
-                    <AdminRoute>
-                      <HITLQueue />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/hitl/:reviewId"
-                  element={
-                    <AdminRoute>
-                      <HITLReviewDetail />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/quotes"
-                  element={
-                    <AdminRoute>
-                      <AdminQuotesList />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/quotes/:id"
-                  element={
-                    <AdminRoute>
-                      <AdminQuoteDetail />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/orders"
-                  element={
-                    <AdminRoute>
-                      <AdminOrdersList />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/orders/:id"
-                  element={
-                    <AdminRoute>
-                      <AdminOrderDetail />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings"
-                  element={
-                    <AdminRoute>
-                      <AdminSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/analytics"
-                  element={
-                    <AdminRoute>
-                      <Analytics />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/patterns"
-                  element={
-                    <AdminRoute>
-                      <Patterns />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/learning"
-                  element={
-                    <AdminRoute>
-                      <Learning />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/thresholds"
-                  element={
-                    <AdminRoute>
-                      <Thresholds />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/staff"
-                  element={
-                    <AdminRoute>
-                      <AdminStaffManagement />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/ai/analytics"
-                  element={
-                    <AdminRoute>
-                      <AdminAIAnalytics />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/reports"
-                  element={
-                    <AdminRoute>
-                      <AdminReports />
-                    </AdminRoute>
-                  }
-                />
+                >
+                  <Route index element={<AdminDashboard />} />
+                  <Route path="dashboard" element={<AdminDashboard />} />
+                  <Route path="hitl" element={<HITLQueue />} />
+                  <Route path="hitl/:reviewId" element={<HITLReviewDetail />} />
+                  <Route path="quotes" element={<AdminQuotesList />} />
+                  <Route path="quotes/:id" element={<AdminQuoteDetail />} />
+                  <Route path="orders" element={<AdminOrdersList />} />
+                  <Route path="orders/:id" element={<AdminOrderDetail />} />
+                  <Route path="settings" element={<AdminSettings />} />
+                  <Route path="settings/*" element={<AdminSettings />} />
+                  <Route path="analytics" element={<AdminAIAnalytics />} />
+                  <Route path="ai/analytics" element={<AdminAIAnalytics />} />
+                  <Route path="patterns" element={<Patterns />} />
+                  <Route path="learning" element={<Learning />} />
+                  <Route path="thresholds" element={<Thresholds />} />
+                  <Route path="staff" element={<AdminStaffManagement />} />
+                  <Route path="reports" element={<AdminReports />} />
 
-                {/* Admin Settings screens */}
-                <Route
-                  path="/admin/settings/pricing"
-                  element={
-                    <AdminRoute>
-                      <PricingSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/complexity"
-                  element={
-                    <AdminRoute>
-                      <ComplexitySettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/turnaround"
-                  element={
-                    <AdminRoute>
-                      <TurnaroundSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/document-types"
-                  element={
-                    <AdminRoute>
-                      <DocumentTypesSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/certifications"
-                  element={
-                    <AdminRoute>
-                      <CertificationTypesSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/delivery"
-                  element={
-                    <AdminRoute>
-                      <DeliveryOptionsSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/tax"
-                  element={
-                    <AdminRoute>
-                      <TaxRatesSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/hours"
-                  element={
-                    <AdminRoute>
-                      <BusinessHoursSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/holidays"
-                  element={
-                    <AdminRoute>
-                      <HolidaysSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/ai-prompts"
-                  element={
-                    <AdminRoute>
-                      <AIPromptsSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/ocr"
-                  element={
-                    <AdminRoute>
-                      <OCRSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/hitl"
-                  element={
-                    <AdminRoute>
-                      <HITLThresholdsSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/intended-uses"
-                  element={
-                    <AdminRoute>
-                      <IntendedUsesSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/pickup-locations"
-                  element={
-                    <AdminRoute>
-                      <PickupLocationsSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/same-day"
-                  element={
-                    <AdminRoute>
-                      <SameDaySettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/language-tiers"
-                  element={
-                    <AdminRoute>
-                      <LanguageTiersSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/admin/settings/languages"
-                  element={
-                    <AdminRoute>
-                      <LanguagesSettings />
-                    </AdminRoute>
-                  }
-                />
+                  {/* Admin Settings screens */}
+                  <Route path="settings/pricing" element={<PricingSettings />} />
+                  <Route
+                    path="settings/complexity"
+                    element={<ComplexitySettings />}
+                  />
+                  <Route
+                    path="settings/turnaround"
+                    element={<TurnaroundSettings />}
+                  />
+                  <Route
+                    path="settings/document-types"
+                    element={<DocumentTypesSettings />}
+                  />
+                  <Route
+                    path="settings/certifications"
+                    element={<CertificationTypesSettings />}
+                  />
+                  <Route
+                    path="settings/delivery"
+                    element={<DeliveryOptionsSettings />}
+                  />
+                  <Route path="settings/tax" element={<TaxRatesSettings />} />
+                  <Route
+                    path="settings/hours"
+                    element={<BusinessHoursSettings />}
+                  />
+                  <Route path="settings/holidays" element={<HolidaysSettings />} />
+                  <Route
+                    path="settings/ai-prompts"
+                    element={<AIPromptsSettings />}
+                  />
+                  <Route path="settings/ocr" element={<OCRSettings />} />
+                  <Route path="settings/hitl" element={<HITLThresholdsSettings />} />
+                  <Route
+                    path="settings/intended-uses"
+                    element={<IntendedUsesSettings />}
+                  />
+                  <Route
+                    path="settings/pickup-locations"
+                    element={<PickupLocationsSettings />}
+                  />
+                  <Route path="settings/same-day" element={<SameDaySettings />} />
+                  <Route
+                    path="settings/language-tiers"
+                    element={<LanguageTiersSettings />}
+                  />
+                  <Route path="settings/languages" element={<LanguagesSettings />} />
+                </Route>
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
