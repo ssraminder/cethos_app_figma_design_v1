@@ -86,6 +86,20 @@ interface AIAnalysis {
   certification_cost: number;
 }
 
+interface DocumentTypeOption {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface LanguageOption {
+  id: string;
+  name: string;
+  code: string;
+}
+
+type EditField = "document_type" | "language" | "complexity" | "word_count";
+
 interface HITLReview {
   id: string;
   status: string;
