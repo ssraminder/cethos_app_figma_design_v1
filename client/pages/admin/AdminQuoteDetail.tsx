@@ -214,10 +214,11 @@ export default function AdminQuoteDetail() {
         .select(
           `
           *,
-          customer:customers(*),
+          customer:customers(id, full_name, email, phone, customer_type),
           source_language:languages!source_language_id(id, name, code),
           target_language:languages!target_language_id(id, name, code),
-          delivery_option:delivery_options!delivery_option_id(id, name, price)
+          delivery_option:delivery_options!delivery_option_id(id, name, price, description),
+          physical_delivery_option:delivery_options!physical_delivery_option_id(id, name, price)
         `,
         )
         .eq("id", id)
