@@ -252,6 +252,7 @@ export default function AdminQuoteDetail() {
       setHitlReviews(
         (hitlData || []).map((review: any) => ({
           ...review,
+          assigned_to_id: review.assigned_to?.id || null,
           assigned_to_name: review.assigned_to?.full_name || "Unassigned",
         })),
       );
