@@ -502,6 +502,21 @@ export default function AdminDashboard() {
                 label="All Orders"
               />
               <QuickActionLink
+                to="/admin/analytics"
+                icon={<TrendingUp className="w-5 h-5" />}
+                label="AI Analytics"
+              />
+              <QuickActionLink
+                to="/admin/reports"
+                icon={<FileText className="w-5 h-5" />}
+                label="Reports"
+              />
+              <QuickActionLink
+                to="/admin/staff"
+                icon={<Users className="w-5 h-5" />}
+                label="Staff"
+              />
+              <QuickActionLink
                 to="/admin/settings"
                 icon={<Users className="w-5 h-5" />}
                 label="Settings"
