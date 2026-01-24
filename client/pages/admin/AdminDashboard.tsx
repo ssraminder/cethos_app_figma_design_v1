@@ -247,41 +247,34 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f6f9fc] flex items-center justify-center">
+      <div className="flex items-center justify-center py-16">
         <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f9fc]">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900">
-                Dashboard
-              </h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Welcome back. Here's what's happening today.
-              </p>
-            </div>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <RefreshCw
-                className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
-              />
-              Refresh
-            </button>
-          </div>
+    <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Welcome back. Here's what's happening today.
+          </p>
         </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <RefreshCw
+            className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
+          />
+          Refresh
+        </button>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="py-2">
         {/* Primary Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Quotes Today */}
