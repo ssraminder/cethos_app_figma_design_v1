@@ -745,7 +745,8 @@ export default function AdminQuoteDetail() {
                           <span>Type</span>
                           <button
                             onClick={() => openEditModal("document_type", item)}
-                            className="text-teal-600 hover:underline"
+                            disabled={!currentStaff}
+                            className="text-teal-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Edit
                           </button>
@@ -759,7 +760,8 @@ export default function AdminQuoteDetail() {
                           <span>Language</span>
                           <button
                             onClick={() => openEditModal("language", item)}
-                            className="text-teal-600 hover:underline"
+                            disabled={!currentStaff}
+                            className="text-teal-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Edit
                           </button>
@@ -773,7 +775,8 @@ export default function AdminQuoteDetail() {
                           <span>Words</span>
                           <button
                             onClick={() => openEditModal("word_count", item)}
-                            className="text-teal-600 hover:underline"
+                            disabled={!currentStaff}
+                            className="text-teal-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Edit
                           </button>
@@ -787,7 +790,8 @@ export default function AdminQuoteDetail() {
                           <span>Complexity</span>
                           <button
                             onClick={() => openEditModal("complexity", item)}
-                            className="text-teal-600 hover:underline"
+                            disabled={!currentStaff}
+                            className="text-teal-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Edit
                           </button>
