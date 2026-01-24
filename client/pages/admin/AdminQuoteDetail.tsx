@@ -1050,7 +1050,8 @@ export default function AdminQuoteDetail() {
         )}
         <button
           onClick={() => setShowMessageModal(true)}
-          className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+          disabled={!currentStaff}
+          className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
           Message Customer
         </button>
