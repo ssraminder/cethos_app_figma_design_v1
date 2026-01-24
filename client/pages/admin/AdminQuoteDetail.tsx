@@ -1118,6 +1118,7 @@ interface EditFieldModalProps {
 function EditFieldModal({
   field,
   currentValue,
+  analysisId: _analysisId,
   onSave,
   onClose,
   documentTypes,
