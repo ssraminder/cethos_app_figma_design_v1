@@ -303,6 +303,173 @@ export default function AdminQuoteDetail() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const hitlReview = hitlReviews[0] || null;
+
+  const saveCorrection = async (
+    analysisId: string,
+    field: EditField,
+    aiValue: string | number,
+    correctedValue: string | number,
+  ) => {
+    if (!currentStaff?.staffId || !id) return;
+    setIsSaving(true);
+    try {
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reviewId: hitlReview?.id || null,
+            analysisId,
+            staffId: currentStaff.staffId,
+            field,
+            aiValue,
+            correctedValue,
+            reason: "Admin correction",
+          }),
+        },
+      );
+
+      await supabase.rpc("recalculate_quote_totals", { p_quote_id: id });
+      await fetchQuoteDetails();
+    } catch (err) {
+      console.error("Failed to save correction:", err);
+    } finally {
+      setIsSaving(false);
+      setEditModal(null);
+    }
+  };
+
+  const startReview = async () => {
+    if (!currentStaff?.staffId || !id) return;
+    setActionLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("hitl_reviews")
+        .insert({
+          quote_id: id,
+          status: "in_review",
+          assigned_to: currentStaff.staffId,
+        })
+        .select("id")
+        .single();
+
+      if (error) throw error;
+
+      await supabase
+        .from("quotes")
+        .update({ status: "hitl_in_review", processing_status: "hitl_in_review" })
+        .eq("id", id);
+
+      await fetchQuoteDetails();
+
+      if (data?.id) {
+        navigate(`/admin/hitl/${data.id}`);
+      }
+    } catch (err) {
+      console.error("Failed to start HITL review:", err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const claimReview = async () => {
+    if (!currentStaff?.staffId || !hitlReview || !id) return;
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from("hitl_reviews")
+        .update({ status: "in_review", assigned_to: currentStaff.staffId })
+        .eq("id", hitlReview.id);
+
+      if (error) throw error;
+
+      await supabase
+        .from("quotes")
+        .update({ status: "hitl_in_review", processing_status: "hitl_in_review" })
+        .eq("id", id);
+
+      await fetchQuoteDetails();
+    } catch (err) {
+      console.error("Failed to claim HITL review:", err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const approveQuote = async () => {
+    if (!currentStaff?.staffId || !id) return;
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from("quotes")
+        .update({ status: "awaiting_payment", processing_status: "complete" })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      if (hitlReview) {
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/approve-hitl-review`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reviewId: hitlReview.id,
+              staffId: currentStaff.staffId,
+            }),
+          },
+        );
+      }
+
+      await fetchQuoteDetails();
+    } catch (err) {
+      console.error("Failed to approve quote:", err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const requestBetterScan = async () => {
+    if (!currentStaff?.staffId || !id) return;
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          status: "revision_needed",
+          processing_status: "revision_needed",
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-staff-message`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: id,
+            staffId: currentStaff.staffId,
+            messageText:
+              "We need a clearer scan to proceed. Please upload a higher quality document.",
+          }),
+        },
+      );
+
+      await fetchQuoteDetails();
+    } catch (err) {
+      console.error("Failed to request better scan:", err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
