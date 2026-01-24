@@ -562,6 +562,38 @@ export default function AdminQuoteDetail() {
         </div>
       </div>
 
+      {hitlReview && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-amber-800">
+              {hitlReview.assigned_to_id
+                ? `In HITL Review - Assigned to ${hitlReview.assigned_to_name}`
+                : "HITL Pending - Unassigned"}
+            </p>
+            <div className="text-xs text-amber-700 mt-1">
+              Review status: {hitlReview.status.replace(/_/g, " ")}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link
+              to={`/admin/hitl/${hitlReview.id}`}
+              className="text-sm text-amber-700 hover:underline"
+            >
+              View review
+            </Link>
+            {!hitlReview.assigned_to_id && (
+              <button
+                onClick={claimReview}
+                disabled={actionLoading}
+                className="bg-amber-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-amber-700 disabled:opacity-50"
+              >
+                Claim
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white rounded-lg border p-6">
