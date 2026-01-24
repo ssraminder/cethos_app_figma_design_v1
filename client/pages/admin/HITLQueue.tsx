@@ -16,12 +16,11 @@ interface HITLReview {
 export default function HITLQueue() {
   console.log("HITLQueue: Component starting to render");
 
-  const { companyName, logoUrl, primaryColor } = useBranding();
   const [reviews, setReviews] = useState<HITLReview[]>([]);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { session, loading: authLoading, signOut } = useAdminAuthContext();
+  const { session, loading: authLoading } = useAdminAuthContext();
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
