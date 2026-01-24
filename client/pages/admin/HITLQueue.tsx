@@ -122,65 +122,17 @@ export default function HITLQueue() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            {logoUrl ? (
-              <img src={logoUrl} alt={companyName} className="h-10" />
-            ) : (
-              <h1
-                className="text-2xl font-bold"
-                style={{ color: primaryColor }}
-              >
-                {companyName.toUpperCase()}
-              </h1>
-            )}
-            <span className="text-gray-500">Staff Portal - HITL Queue</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate("/admin/analytics")}
-              className="text-gray-600 hover:text-gray-800 flex items-center gap-1"
-            >
-              <span>📊</span> Analytics
-            </button>
-            <button
-              onClick={() => navigate("/admin/reports")}
-              className="text-gray-600 hover:text-gray-800 flex items-center gap-1"
-            >
-              <span>📈</span> Reports
-            </button>
-            {session?.staffRole === "super_admin" && (
-              <>
-                <button
-                  onClick={() => navigate("/admin/staff")}
-                  className="text-gray-600 hover:text-gray-800 flex items-center gap-1"
-                >
-                  <span>👥</span> Staff
-                </button>
-                <button
-                  onClick={() => navigate("/admin/settings")}
-                  className="text-gray-600 hover:text-gray-800 flex items-center gap-1"
-                >
-                  <span>⚙️</span> Settings
-                </button>
-              </>
-            )}
-            <span className="text-gray-600">{session?.staffEmail}</span>
-            <button
-              onClick={handleLogout}
-              className="text-red-600 hover:text-red-800 font-medium"
-            >
-              Logout
-            </button>
-          </div>
+    <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">HITL Queue</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Human-in-the-loop review workload overview.
+          </p>
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main>
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow p-4">
