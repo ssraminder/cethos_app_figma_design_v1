@@ -1,6 +1,5 @@
 import React, { ReactNode } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { useAdminAuthContext } from "../../../context/AdminAuthContext";
+import { useNavigate } from "react-router-dom";
 
 interface AdminSettingsLayoutProps {
   title: string;
