@@ -79,9 +79,9 @@ export default function AdminQuotesList() {
           is_rush,
           created_at,
           expires_at,
-          customer:customers(email, full_name),
-          source_language:languages!source_language_id(name, code),
-          target_language:languages!target_language_id(name, code),
+          customer:customers(id, full_name, email),
+          source_language:languages!source_language_id(id, name, code),
+          target_language:languages!target_language_id(id, name, code),
           quote_files(count)
         `,
         { count: "exact" },
