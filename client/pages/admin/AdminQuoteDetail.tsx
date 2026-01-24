@@ -106,6 +106,7 @@ interface HITLReview {
   trigger_reasons: string[];
   is_customer_requested: boolean;
   customer_note: string;
+  assigned_to_id?: string | null;
   assigned_to_name: string;
   created_at: string;
   completed_at: string;
