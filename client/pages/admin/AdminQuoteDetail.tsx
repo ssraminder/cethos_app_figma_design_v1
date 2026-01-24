@@ -159,6 +159,19 @@ export default function AdminQuoteDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [documentTypes, setDocumentTypes] = useState<DocumentTypeOption[]>([]);
+  const [languages, setLanguages] = useState<LanguageOption[]>([]);
+  const [editModal, setEditModal] = useState<{
+    field: EditField;
+    currentValue: string | number;
+    analysisId: string;
+    aiValue: string | number;
+  } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showMessageModal, setShowMessageModal] = useState(false);
+
+  const { session: currentStaff } = useAdminAuthContext();
 
   useEffect(() => {
     if (id) {
