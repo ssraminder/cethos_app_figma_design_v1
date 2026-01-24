@@ -38,7 +38,6 @@ import AdminReports from "./pages/admin/AdminReports";
 import HITLQueue from "./pages/admin/HITLQueue";
 import HITLReviewDetail from "./pages/admin/HITLReviewDetail";
 import AdminSettings from "./pages/admin/AdminSettings";
-import Analytics from "./pages/admin/Analytics";
 import Patterns from "./pages/admin/Patterns";
 import Learning from "./pages/admin/Learning";
 import Thresholds from "./pages/admin/Thresholds";
@@ -132,10 +131,7 @@ const App = () => (
                   <Route path="reports" element={<AdminReports />} />
 
                   {/* Admin Settings screens */}
-                  <Route
-                    path="settings/pricing"
-                    element={<PricingSettings />}
-                  />
+                  <Route path="settings/pricing" element={<PricingSettings />} />
                   <Route
                     path="settings/complexity"
                     element={<ComplexitySettings />}
@@ -161,19 +157,13 @@ const App = () => (
                     path="settings/hours"
                     element={<BusinessHoursSettings />}
                   />
-                  <Route
-                    path="settings/holidays"
-                    element={<HolidaysSettings />}
-                  />
+                  <Route path="settings/holidays" element={<HolidaysSettings />} />
                   <Route
                     path="settings/ai-prompts"
                     element={<AIPromptsSettings />}
                   />
                   <Route path="settings/ocr" element={<OCRSettings />} />
-                  <Route
-                    path="settings/hitl"
-                    element={<HITLThresholdsSettings />}
-                  />
+                  <Route path="settings/hitl" element={<HITLThresholdsSettings />} />
                   <Route
                     path="settings/intended-uses"
                     element={<IntendedUsesSettings />}
@@ -182,18 +172,12 @@ const App = () => (
                     path="settings/pickup-locations"
                     element={<PickupLocationsSettings />}
                   />
-                  <Route
-                    path="settings/same-day"
-                    element={<SameDaySettings />}
-                  />
+                  <Route path="settings/same-day" element={<SameDaySettings />} />
                   <Route
                     path="settings/language-tiers"
                     element={<LanguageTiersSettings />}
                   />
-                  <Route
-                    path="settings/languages"
-                    element={<LanguagesSettings />}
-                  />
+                  <Route path="settings/languages" element={<LanguagesSettings />} />
                 </Route>
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
