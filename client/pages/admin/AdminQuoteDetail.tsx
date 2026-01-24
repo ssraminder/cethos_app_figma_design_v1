@@ -978,7 +978,21 @@ export default function AdminQuoteDetail() {
                 <p className="font-medium">
                   {quote.delivery_option?.name || "—"}
                 </p>
+                {quote.delivery_option?.description && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {quote.delivery_option.description}
+                  </p>
+                )}
               </div>
+
+              {quote.physical_delivery_option && (
+                <div>
+                  <p className="text-sm text-gray-500">Physical Delivery</p>
+                  <p className="font-medium">
+                    {quote.physical_delivery_option.name}
+                  </p>
+                </div>
+              )}
 
               <div>
                 <p className="text-sm text-gray-500">Estimated Delivery</p>
