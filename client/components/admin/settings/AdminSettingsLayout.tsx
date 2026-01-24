@@ -1,4 +1,5 @@
 import React, { ReactNode } from "react";
+import { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 interface AdminSettingsLayoutProps {
