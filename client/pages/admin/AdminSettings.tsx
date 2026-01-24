@@ -152,10 +152,9 @@ export default function AdminSettings() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
           <button
             onClick={() => navigate("/admin/hitl")}
             className="mb-2 text-blue-600 hover:text-blue-800 font-medium"
@@ -171,10 +170,10 @@ export default function AdminSettings() {
             </span>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main>
         {/* Settings Navigation */}
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
