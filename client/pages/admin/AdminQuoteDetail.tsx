@@ -470,6 +470,26 @@ export default function AdminQuoteDetail() {
     }
   };
 
+  const openEditModal = (field: EditField, item: AIAnalysis) => {
+    let value: string | number = "";
+    if (field === "document_type") {
+      value = item.document_type || "";
+    } else if (field === "language") {
+      value = item.detected_language || "";
+    } else if (field === "complexity") {
+      value = item.complexity || "";
+    } else {
+      value = item.word_count || 0;
+    }
+
+    setEditModal({
+      field,
+      currentValue: value,
+      analysisId: item.id,
+      aiValue: value,
+    });
+  };
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
