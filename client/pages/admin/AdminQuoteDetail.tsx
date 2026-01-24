@@ -243,7 +243,7 @@ export default function AdminQuoteDetail() {
         .select(
           `
           *,
-          assigned_to:staff_users!hitl_reviews_assigned_to_fkey(full_name)
+          assigned_to:staff_users!hitl_reviews_assigned_to_fkey(id, full_name)
         `,
         )
         .eq("quote_id", id)
