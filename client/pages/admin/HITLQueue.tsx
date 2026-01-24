@@ -77,10 +77,6 @@ export default function HITLQueue() {
     fetchReviews();
   }, [session, fetchReviews]);
 
-  const handleLogout = async () => {
-    await signOut();
-  };
-
   const getPriorityColor = (priority: number) => {
     if (priority <= 2) return "bg-red-100 text-red-700";
     if (priority <= 4) return "bg-orange-100 text-orange-700";
