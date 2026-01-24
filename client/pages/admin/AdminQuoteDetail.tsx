@@ -584,7 +584,7 @@ export default function AdminQuoteDetail() {
             {!hitlReview.assigned_to_id && (
               <button
                 onClick={claimReview}
-                disabled={actionLoading}
+                disabled={actionLoading || !currentStaff}
                 className="bg-amber-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-amber-700 disabled:opacity-50"
               >
                 Claim
@@ -1024,7 +1024,7 @@ export default function AdminQuoteDetail() {
         {!hitlReview && (
           <button
             onClick={startReview}
-            disabled={actionLoading}
+            disabled={actionLoading || !currentStaff}
             className="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
           >
             Start Review
@@ -1034,14 +1034,14 @@ export default function AdminQuoteDetail() {
           <>
             <button
               onClick={approveQuote}
-              disabled={actionLoading}
+              disabled={actionLoading || !currentStaff}
               className="px-4 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
             >
               Approve Quote
             </button>
             <button
               onClick={requestBetterScan}
-              disabled={actionLoading}
+              disabled={actionLoading || !currentStaff}
               className="px-4 py-2 rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50"
             >
               Request Better Scan
