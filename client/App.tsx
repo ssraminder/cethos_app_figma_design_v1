@@ -31,6 +31,9 @@ import AdminQuotesList from "./pages/admin/AdminQuotesList";
 import AdminQuoteDetail from "./pages/admin/AdminQuoteDetail";
 import AdminOrderDetail from "./pages/admin/AdminOrderDetail";
 import AdminOrdersList from "./pages/admin/AdminOrdersList";
+import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
+import AdminAIAnalytics from "./pages/admin/AdminAIAnalytics";
+import AdminReports from "./pages/admin/AdminReports";
 import HITLQueue from "./pages/admin/HITLQueue";
 import HITLReviewDetail from "./pages/admin/HITLReviewDetail";
 import AdminSettings from "./pages/admin/AdminSettings";
@@ -202,6 +205,30 @@ const App = () => (
                   element={
                     <AdminRoute>
                       <Thresholds />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/staff"
+                  element={
+                    <AdminRoute>
+                      <AdminStaffManagement />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/ai/analytics"
+                  element={
+                    <AdminRoute>
+                      <AdminAIAnalytics />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/reports"
+                  element={
+                    <AdminRoute>
+                      <AdminReports />
                     </AdminRoute>
                   }
                 />
