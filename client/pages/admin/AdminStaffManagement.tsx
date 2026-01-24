@@ -36,8 +36,18 @@ interface StaffUser {
 }
 
 const ROLES = [
-  { value: "reviewer", label: "Reviewer", icon: Shield, color: "text-blue-600" },
-  { value: "admin", label: "Admin", icon: ShieldCheck, color: "text-green-600" },
+  {
+    value: "reviewer",
+    label: "Reviewer",
+    icon: Shield,
+    color: "text-blue-600",
+  },
+  {
+    value: "admin",
+    label: "Admin",
+    icon: ShieldCheck,
+    color: "text-green-600",
+  },
   {
     value: "super_admin",
     label: "Super Admin",
@@ -367,9 +377,7 @@ export default function AdminStaffManagement() {
                               ? "text-gray-400 hover:text-red-600"
                               : "text-gray-400 hover:text-green-600"
                           }`}
-                          title={
-                            member.is_active ? "Deactivate" : "Reactivate"
-                          }
+                          title={member.is_active ? "Deactivate" : "Reactivate"}
                         >
                           {member.is_active ? (
                             <UserX className="w-4 h-4" />

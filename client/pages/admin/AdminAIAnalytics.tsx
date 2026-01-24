@@ -84,7 +84,8 @@ export default function AdminAIAnalytics() {
           hitl_trigger_rate: latestMetrics.hitl_trigger_rate || 0,
           hitl_correction_rate: latestMetrics.hitl_correction_rate || 0,
           avg_hitl_time_minutes: latestMetrics.avg_hitl_time_minutes || 0,
-          total_documents_processed: latestMetrics.total_documents_processed || 0,
+          total_documents_processed:
+            latestMetrics.total_documents_processed || 0,
         });
       }
 
@@ -173,8 +174,8 @@ export default function AdminAIAnalytics() {
             AI Analytics
           </h1>
           <p className="text-gray-500 mt-1">
-            {metrics?.total_documents_processed?.toLocaleString() || 0} documents
-            processed
+            {metrics?.total_documents_processed?.toLocaleString() || 0}{" "}
+            documents processed
           </p>
         </div>
         <div className="flex items-center gap-2">

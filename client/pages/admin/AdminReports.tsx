@@ -10,13 +10,7 @@ import {
   ShoppingCart,
   TrendingUp,
 } from "lucide-react";
-import {
-  endOfMonth,
-  format,
-  startOfMonth,
-  subDays,
-  subMonths,
-} from "date-fns";
+import { endOfMonth, format, startOfMonth, subDays, subMonths } from "date-fns";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -119,7 +113,8 @@ export default function AdminReports() {
         (sum, payment) => sum + (payment.amount || 0),
         0,
       );
-      const conversionRate = quoteCount && quoteCount > 0 ? (orderCount || 0) / quoteCount : 0;
+      const conversionRate =
+        quoteCount && quoteCount > 0 ? (orderCount || 0) / quoteCount : 0;
 
       setSummary({
         totalRevenue,
@@ -159,7 +154,11 @@ export default function AdminReports() {
           });
         });
         reportData = Array.from(grouped.entries())
-          .map(([date, values]) => ({ date, count: values.count, amount: values.amount }))
+          .map(([date, values]) => ({
+            date,
+            count: values.count,
+            amount: values.amount,
+          }))
           .sort((a, b) => a.date.localeCompare(b.date));
       } else if (reportType === "conversion") {
         const quotesByDate = new Map<string, number>();
@@ -172,7 +171,10 @@ export default function AdminReports() {
           const date = format(new Date(order.created_at), "yyyy-MM-dd");
           ordersByDate.set(date, (ordersByDate.get(date) || 0) + 1);
         });
-        const allDates = new Set([...quotesByDate.keys(), ...ordersByDate.keys()]);
+        const allDates = new Set([
+          ...quotesByDate.keys(),
+          ...ordersByDate.keys(),
+        ]);
         reportData = Array.from(allDates)
           .map((date) => ({
             date,
@@ -276,7 +278,9 @@ export default function AdminReports() {
 
           <select
             value={datePreset}
-            onChange={(event) => setDatePreset(event.target.value as DatePreset)}
+            onChange={(event) =>
+              setDatePreset(event.target.value as DatePreset)
+            }
             className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
           >
             {DATE_PRESETS.map((preset) => (
@@ -313,7 +317,8 @@ export default function AdminReports() {
             <DollarSign className="w-5 h-5 text-green-600" />
           </div>
           <p className="text-2xl font-bold text-gray-900">
-            ${summary.totalRevenue.toLocaleString(undefined, {
+            $
+            {summary.totalRevenue.toLocaleString(undefined, {
               minimumFractionDigits: 2,
             })}
           </p>
@@ -403,7 +408,9 @@ export default function AdminReports() {
                   {reportType === "conversion" ? (
                     <>
                       <td className="px-4 py-3 text-right">{row.count}</td>
-                      <td className="px-4 py-3 text-right">{row.amount || 0}</td>
+                      <td className="px-4 py-3 text-right">
+                        {row.amount || 0}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         {row.count > 0
                           ? (((row.amount || 0) / row.count) * 100).toFixed(1)
@@ -417,11 +424,10 @@ export default function AdminReports() {
                     <>
                       <td className="px-4 py-3 text-right">{row.count}</td>
                       <td className="px-4 py-3 text-right font-medium">
-                        ${
-                          row.amount?.toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                          })
-                        }
+                        $
+                        {row.amount?.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}
                       </td>
                     </>
                   )}
