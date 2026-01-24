@@ -152,13 +152,27 @@ export default function HITLQueue() {
             >
               <span>📊</span> Analytics
             </button>
+            <button
+              onClick={() => navigate("/admin/reports")}
+              className="text-gray-600 hover:text-gray-800 flex items-center gap-1"
+            >
+              <span>📈</span> Reports
+            </button>
             {session?.staffRole === "super_admin" && (
-              <button
-                onClick={() => navigate("/admin/settings")}
-                className="text-gray-600 hover:text-gray-800 flex items-center gap-1"
-              >
-                <span>⚙️</span> Settings
-              </button>
+              <>
+                <button
+                  onClick={() => navigate("/admin/staff")}
+                  className="text-gray-600 hover:text-gray-800 flex items-center gap-1"
+                >
+                  <span>👥</span> Staff
+                </button>
+                <button
+                  onClick={() => navigate("/admin/settings")}
+                  className="text-gray-600 hover:text-gray-800 flex items-center gap-1"
+                >
+                  <span>⚙️</span> Settings
+                </button>
+              </>
             )}
             <span className="text-gray-600">{session?.staffEmail}</span>
             <button
