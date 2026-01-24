@@ -32,14 +32,24 @@ const NAV_ITEMS: NavItem[] = [
     section: "Main",
   },
   { label: "Quotes", path: "/admin/quotes", icon: FileText, section: "Main" },
-  { label: "Orders", path: "/admin/orders", icon: ShoppingCart, section: "Main" },
+  {
+    label: "Orders",
+    path: "/admin/orders",
+    icon: ShoppingCart,
+    section: "Main",
+  },
   {
     label: "HITL Queue",
     path: "/admin/hitl",
     icon: ClipboardCheck,
     section: "Main",
   },
-  { label: "AI Analytics", path: "/admin/analytics", icon: Brain, section: "AI" },
+  {
+    label: "AI Analytics",
+    path: "/admin/analytics",
+    icon: Brain,
+    section: "AI",
+  },
   { label: "Staff", path: "/admin/staff", icon: Users, section: "Management" },
   {
     label: "Reports",
@@ -47,7 +57,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: BarChart3,
     section: "Management",
   },
-  { label: "Settings", path: "/admin/settings", icon: Settings, section: "Config" },
+  {
+    label: "Settings",
+    path: "/admin/settings",
+    icon: Settings,
+    section: "Config",
+  },
 ];
 
 export default function AdminLayout() {
@@ -77,11 +92,14 @@ export default function AdminLayout() {
   const isActivePath = (path: string) => {
     if (path === "/admin/dashboard") {
       return (
-        location.pathname === "/admin" || location.pathname === "/admin/dashboard"
+        location.pathname === "/admin" ||
+        location.pathname === "/admin/dashboard"
       );
     }
 
-    return location.pathname === path || location.pathname.startsWith(path + "/");
+    return (
+      location.pathname === path || location.pathname.startsWith(path + "/")
+    );
   };
 
   const renderNavItems = (isMobile = false) => {
@@ -92,7 +110,9 @@ export default function AdminLayout() {
       const active = isActivePath(item.path);
 
       const sectionHeader =
-        item.section && item.section !== currentSection && (sidebarOpen || isMobile)
+        item.section &&
+        item.section !== currentSection &&
+        (sidebarOpen || isMobile)
           ? (() => {
               currentSection = item.section || "";
               return (
@@ -118,7 +138,9 @@ export default function AdminLayout() {
             } ${!sidebarOpen && !isMobile ? "justify-center" : ""}`}
             title={!sidebarOpen && !isMobile ? item.label : undefined}
           >
-            <Icon className={`w-5 h-5 flex-shrink-0 ${active ? "text-teal-600" : ""}`} />
+            <Icon
+              className={`w-5 h-5 flex-shrink-0 ${active ? "text-teal-600" : ""}`}
+            />
             {(sidebarOpen || isMobile) && <span>{item.label}</span>}
           </NavLink>
         </div>
@@ -222,7 +244,11 @@ export default function AdminLayout() {
           onClick={() => setMobileMenuOpen((open) => !open)}
           className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
         >
-          {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          {mobileMenuOpen ? (
+            <X className="w-6 h-6" />
+          ) : (
+            <Menu className="w-6 h-6" />
+          )}
         </button>
       </div>
 

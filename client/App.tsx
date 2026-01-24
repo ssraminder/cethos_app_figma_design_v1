@@ -131,7 +131,10 @@ const App = () => (
                   <Route path="reports" element={<AdminReports />} />
 
                   {/* Admin Settings screens */}
-                  <Route path="settings/pricing" element={<PricingSettings />} />
+                  <Route
+                    path="settings/pricing"
+                    element={<PricingSettings />}
+                  />
                   <Route
                     path="settings/complexity"
                     element={<ComplexitySettings />}
@@ -157,13 +160,19 @@ const App = () => (
                     path="settings/hours"
                     element={<BusinessHoursSettings />}
                   />
-                  <Route path="settings/holidays" element={<HolidaysSettings />} />
+                  <Route
+                    path="settings/holidays"
+                    element={<HolidaysSettings />}
+                  />
                   <Route
                     path="settings/ai-prompts"
                     element={<AIPromptsSettings />}
                   />
                   <Route path="settings/ocr" element={<OCRSettings />} />
-                  <Route path="settings/hitl" element={<HITLThresholdsSettings />} />
+                  <Route
+                    path="settings/hitl"
+                    element={<HITLThresholdsSettings />}
+                  />
                   <Route
                     path="settings/intended-uses"
                     element={<IntendedUsesSettings />}
@@ -172,12 +181,18 @@ const App = () => (
                     path="settings/pickup-locations"
                     element={<PickupLocationsSettings />}
                   />
-                  <Route path="settings/same-day" element={<SameDaySettings />} />
+                  <Route
+                    path="settings/same-day"
+                    element={<SameDaySettings />}
+                  />
                   <Route
                     path="settings/language-tiers"
                     element={<LanguageTiersSettings />}
                   />
-                  <Route path="settings/languages" element={<LanguagesSettings />} />
+                  <Route
+                    path="settings/languages"
+                    element={<LanguagesSettings />}
+                  />
                 </Route>
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
