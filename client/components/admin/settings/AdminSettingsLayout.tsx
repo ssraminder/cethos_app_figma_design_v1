@@ -21,7 +21,6 @@ export default function AdminSettingsLayout({
   error,
 }: AdminSettingsLayoutProps) {
   const navigate = useNavigate();
-  const { session, signOut } = useAdminAuthContext();
 
   if (loading) {
     return (
