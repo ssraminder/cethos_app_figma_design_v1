@@ -1103,3 +1103,141 @@ export default function AdminQuoteDetail() {
     </div>
   );
 }
+
+interface EditFieldModalProps {
+  field: EditField;
+  currentValue: string | number;
+  analysisId: string;
+  onSave: (value: string | number) => void;
+  onClose: () => void;
+  documentTypes: DocumentTypeOption[];
+  languages: LanguageOption[];
+  isSaving: boolean;
+}
+
+function EditFieldModal({
+  field,
+  currentValue,
+  onSave,
+  onClose,
+  documentTypes,
+  languages,
+  isSaving,
+}: EditFieldModalProps) {
+  const [value, setValue] = useState<string | number>(currentValue);
+
+  useEffect(() => {
+    setValue(currentValue);
+  }, [currentValue, field]);
+
+  const stringValue = typeof value === "string" ? value : "";
+  const numberValue = typeof value === "number" ? value : Number(value);
+
+  const renderFieldInput = () => {
+    if (field === "document_type") {
+      const hasValue = documentTypes.some(
+        (type) => type.code === stringValue || type.name === stringValue,
+      );
+
+      return (
+        <select
+          value={stringValue}
+          onChange={(event) => setValue(event.target.value)}
+          className="w-full border rounded-lg px-3 py-2"
+        >
+          {!hasValue && stringValue && (
+            <option value={stringValue}>{stringValue}</option>
+          )}
+          {documentTypes.map((type) => (
+            <option key={type.id} value={type.code}>
+              {type.name}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (field === "language") {
+      const hasValue = languages.some(
+        (lang) => lang.code === stringValue || lang.name === stringValue,
+      );
+
+      return (
+        <select
+          value={stringValue}
+          onChange={(event) => setValue(event.target.value)}
+          className="w-full border rounded-lg px-3 py-2"
+        >
+          {!hasValue && stringValue && (
+            <option value={stringValue}>{stringValue}</option>
+          )}
+          {languages.map((lang) => (
+            <option key={lang.id} value={lang.code}>
+              {lang.name} ({lang.code})
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (field === "complexity") {
+      return (
+        <select
+          value={stringValue}
+          onChange={(event) => setValue(event.target.value)}
+          className="w-full border rounded-lg px-3 py-2"
+        >
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      );
+    }
+
+    return (
+      <input
+        type="number"
+        min={0}
+        value={Number.isNaN(numberValue) ? 0 : numberValue}
+        onChange={(event) => setValue(Number(event.target.value))}
+        className="w-full border rounded-lg px-3 py-2"
+      />
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="px-5 py-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Edit {field.replace(/_/g, " ")}
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            Close
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          {renderFieldInput()}
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onSave(value)}
+              disabled={isSaving}
+              className="px-4 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
