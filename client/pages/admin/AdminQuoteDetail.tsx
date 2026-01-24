@@ -57,7 +57,8 @@ interface QuoteDetail {
   tax_rate: number;
   total: number;
   is_rush: boolean;
-  delivery_option?: { id: string; name: string; price?: number };
+  delivery_option?: { id: string; name: string; price?: number; description?: string };
+  physical_delivery_option?: { id: string; name: string; price?: number };
   estimated_delivery_date: string;
   turnaround_days: number;
   hitl_required: boolean;
@@ -187,7 +188,10 @@ export default function AdminQuoteDetail() {
           .from("document_types")
           .select("id, name, code")
           .order("sort_order"),
-        supabase.from("languages").select("id, name, code").order("name"),
+        supabase
+          .from("languages")
+          .select("id, name, code")
+          .order("name"),
       ]);
 
       if (typesResult.error) throw typesResult.error;
@@ -356,10 +360,7 @@ export default function AdminQuoteDetail() {
 
       await supabase
         .from("quotes")
-        .update({
-          status: "hitl_in_review",
-          processing_status: "hitl_in_review",
-        })
+        .update({ status: "hitl_in_review", processing_status: "hitl_in_review" })
         .eq("id", id);
 
       await fetchQuoteDetails();
@@ -387,10 +388,7 @@ export default function AdminQuoteDetail() {
 
       await supabase
         .from("quotes")
-        .update({
-          status: "hitl_in_review",
-          processing_status: "hitl_in_review",
-        })
+        .update({ status: "hitl_in_review", processing_status: "hitl_in_review" })
         .eq("id", id);
 
       await fetchQuoteDetails();
