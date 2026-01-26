@@ -717,10 +717,10 @@ export default function Step4ReviewRush() {
 
           <div className="flex gap-3 justify-center">
             <button
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/quote")}
               className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
             >
-              Return to Home
+              Return to Quote Form
             </button>
             <button
               onClick={() =>
@@ -1173,7 +1173,7 @@ export default function Step4ReviewRush() {
             <button
               onClick={() => {
                 setShowHitlSuccessModal(false);
-                navigate("/");
+                navigate("/quote");
               }}
               className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
             >
