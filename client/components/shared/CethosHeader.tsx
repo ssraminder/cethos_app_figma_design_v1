@@ -1,58 +1,53 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      "cethos-header": React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement> & {
+          "current-site"?: string;
+          "hide-cta"?: boolean;
+          theme?: "light" | "dark";
+        },
+        HTMLElement
+      >;
+    }
+  }
+}
 
 interface CethosHeaderProps {
-  activePage?: string;
-  variant?: "default" | "transparent" | "dark";
+  currentSite?: string;
   hideCta?: boolean;
+  theme?: "light" | "dark";
 }
 
 export default function CethosHeader({
-  activePage = "",
-  variant = "default",
-  hideCta = false,
+  currentSite,
+  hideCta,
+  theme,
 }: CethosHeaderProps) {
-  const [isLoaded, setIsLoaded] = useState(false);
+  const scriptLoaded = useRef(false);
 
   useEffect(() => {
-    if (customElements.get("cethos-header")) {
-      setIsLoaded(true);
+    if (scriptLoaded.current) return;
+
+    if (document.querySelector('script[src*="cethos-components.js"]')) {
+      scriptLoaded.current = true;
       return;
     }
 
     const script = document.createElement("script");
     script.src = "https://cethos.com/embed/cethos-components.js";
     script.async = true;
-
-    script.onload = () => {
-      customElements.whenDefined("cethos-header").then(() => {
-        setIsLoaded(true);
-      });
-    };
-
-    script.onerror = () => {
-      console.error("Failed to load Cethos components");
-      const fallbackScript = document.createElement("script");
-      fallbackScript.src =
-        "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/components/cethos-components.js";
-      fallbackScript.onload = () => setIsLoaded(true);
-      document.body.appendChild(fallbackScript);
-    };
-
-    document.body.appendChild(script);
+    document.head.appendChild(script);
+    scriptLoaded.current = true;
   }, []);
 
   return (
-    <>
-      {!isLoaded && (
-        <div className="h-16 bg-white border-b border-gray-200 animate-pulse" />
-      )}
-
-      <cethos-header
-        active-page={activePage}
-        variant={variant}
-        hide-cta={hideCta ? "true" : undefined}
-        style={{ display: isLoaded ? "block" : "none" }}
-      />
-    </>
+    <cethos-header
+      current-site={currentSite}
+      hide-cta={hideCta || undefined}
+      theme={theme}
+    />
   );
 }
