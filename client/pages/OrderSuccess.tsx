@@ -245,10 +245,10 @@ export default function OrderSuccess() {
             {/* Actions */}
             <div className="flex flex-col gap-3">
               <Link
-                to="/"
+                to="/quote"
                 className="w-full py-3 px-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium text-center"
               >
-                Return to Home
+                Return to Quote Form
               </Link>
             </div>
           </div>
