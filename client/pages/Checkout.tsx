@@ -94,10 +94,10 @@ export default function Checkout() {
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/quote")}
             className="text-blue-600 hover:underline"
           >
-            Return to Home
+            Return to Quote Form
           </button>
         </div>
       </div>
