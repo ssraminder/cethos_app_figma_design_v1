@@ -217,10 +217,10 @@ export default function QuoteRevisionPage() {
           <h2 className="text-lg font-semibold text-red-800 mb-2">Error</h2>
           <p className="text-red-600 mb-4">{error}</p>
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/quote")}
             className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
           >
-            Return to Home
+            Return to Quote Form
           </button>
         </div>
       </div>
@@ -246,10 +246,10 @@ export default function QuoteRevisionPage() {
             Quote: <span className="font-medium">{quote?.quote_number}</span>
           </p>
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/quote")}
             className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
           >
-            Return to Home
+            Return to Quote Form
           </button>
         </div>
       </div>
