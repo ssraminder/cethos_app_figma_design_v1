@@ -12,6 +12,8 @@ import { QuoteProvider } from "./context/QuoteContext";
 import { StaffAuthProvider } from "./context/StaffAuthContext";
 import { AdminAuthProvider } from "./context/AdminAuthContext";
 import { BrandingProvider } from "./context/BrandingContext";
+import PublicLayout from "./components/layouts/PublicLayout";
+import QuoteFlowLayout from "./components/layouts/QuoteFlowLayout";
 import Index from "./pages/Index";
 import Success from "./pages/Success";
 import NotFound from "./pages/NotFound";
@@ -80,21 +82,30 @@ const App = () => (
           <StaffAuthProvider>
             <BrowserRouter>
               <Routes>
-                {/* Customer routes */}
-                <Route path="/" element={<Index />} />
-                <Route path="/success" element={<Success />} />
-                <Route path="/quote/:quoteId/checkout" element={<Checkout />} />
-                <Route path="/quote/recover" element={<QuoteRecoverPage />} />
-                <Route
-                  path="/quote/:quoteId/review"
-                  element={<QuoteReviewPage />}
-                />
-                <Route
-                  path="/quote/:quoteId/revision"
-                  element={<QuoteRevisionPage />}
-                />
-                <Route path="/order/success" element={<OrderSuccess />} />
-                <Route path="/payment/cancel" element={<PaymentCancel />} />
+                {/* Quote flow routes */}
+                <Route element={<QuoteFlowLayout />}>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/success" element={<Success />} />
+                  <Route
+                    path="/quote/:quoteId/checkout"
+                    element={<Checkout />}
+                  />
+                  <Route path="/quote/recover" element={<QuoteRecoverPage />} />
+                  <Route
+                    path="/quote/:quoteId/review"
+                    element={<QuoteReviewPage />}
+                  />
+                  <Route
+                    path="/quote/:quoteId/revision"
+                    element={<QuoteRevisionPage />}
+                  />
+                </Route>
+
+                {/* Public pages with shared footer */}
+                <Route element={<PublicLayout />}>
+                  <Route path="/order/success" element={<OrderSuccess />} />
+                  <Route path="/payment/cancel" element={<PaymentCancel />} />
+                </Route>
 
                 {/* Admin login (not protected) */}
                 <Route path="/admin/login" element={<AdminLogin />} />
