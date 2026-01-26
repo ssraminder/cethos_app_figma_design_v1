@@ -13,6 +13,7 @@ import { StaffAuthProvider } from "./context/StaffAuthContext";
 import { AdminAuthProvider } from "./context/AdminAuthContext";
 import { BrandingProvider } from "./context/BrandingContext";
 import AppLayout from "./components/layouts/AppLayout";
+import Login from "./pages/Login";
 import Index from "./pages/Index";
 import Success from "./pages/Success";
 import NotFound from "./pages/NotFound";
@@ -82,7 +83,8 @@ const App = () => (
             <BrowserRouter>
               <Routes>
                 <Route element={<AppLayout />}>
-                  <Route path="/" element={<Index />} />
+                  <Route path="/" element={<Login />} />
+                  <Route path="/quote" element={<Index />} />
                   <Route path="/success" element={<Success />} />
                   <Route
                     path="/quote/:quoteId/checkout"
