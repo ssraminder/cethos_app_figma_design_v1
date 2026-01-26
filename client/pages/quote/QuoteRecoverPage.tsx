@@ -424,10 +424,10 @@ export default function QuoteRecoverPage() {
           </div>
 
           <Link
-            to="/"
+            to="/quote"
             className="mt-4 inline-flex text-sm text-gray-500 hover:text-gray-700"
           >
-            Return to Home
+            Return to Quote Form
           </Link>
         </div>
       </div>
