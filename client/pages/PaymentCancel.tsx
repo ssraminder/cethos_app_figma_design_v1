@@ -60,11 +60,11 @@ export default function PaymentCancel() {
             )}
 
             <Link
-              to="/"
+              to="/quote"
               className="w-full text-gray-500 py-2 hover:text-gray-700 flex items-center justify-center gap-2"
             >
               <Home className="w-4 h-4" />
-              Return Home
+              Return to Quote Form
             </Link>
           </div>
 
