@@ -21,13 +21,13 @@ export default function Success() {
 
   const handleNewQuote = () => {
     resetQuote();
-    navigate("/");
+    navigate("/quote");
   };
 
   const handleViewDetails = () => {
     // Go back to review step (step 3)
     goToStep(3);
-    navigate("/");
+    navigate("/quote");
   };
 
   return (
