@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, Copy, Info } from "lucide-react";
 import { useQuote } from "@/context/QuoteContext";
-import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
 
 export default function Success() {
@@ -33,9 +32,6 @@ export default function Success() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <Header />
-
       {/* Main Content */}
       <main className="flex-1 w-full pb-8">
         <div className="max-w-[1536px] mx-auto px-4 sm:px-8 lg:px-12 py-8 sm:py-12 lg:py-16">
