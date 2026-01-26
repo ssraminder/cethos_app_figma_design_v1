@@ -1,10 +1,7 @@
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuote } from "@/context/QuoteContext";
 import { useDocumentProcessing } from "@/hooks/useDocumentProcessing";
-import Header from "@/components/Header";
 import StepIndicator from "@/components/StepIndicator";
-import Footer from "@/components/Footer";
 import ProcessingStatus from "@/components/ProcessingStatus";
 import EmailQuoteConfirmation from "@/components/EmailQuoteConfirmation";
 import Step1Upload from "@/components/steps/Step1Upload";
@@ -16,10 +13,6 @@ import Step6Payment from "@/components/quote/Step6Payment";
 import { X } from "lucide-react";
 
 export default function Index() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const embedMode = searchParams.get("embed") === "true";
-
   const {
     state,
     updateState,
@@ -115,9 +108,6 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header - Hidden in embed mode */}
-      {!embedMode && <Header />}
-
       {/* Main Content */}
       <main className="flex-1 w-full">
         <div className="max-w-[1536px] mx-auto px-4 sm:px-8 lg:px-12 py-8 sm:py-12 lg:py-16">
