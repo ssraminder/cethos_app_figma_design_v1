@@ -89,23 +89,22 @@ export default function HITLPanelLayout({
   React.useEffect(() => {
     if (reviewData) {
       console.log("📊 HITLPanelLayout reviewData:", reviewData);
-      console.log("📊 Quote data:", (reviewData as any).quotes);
-      console.log("📊 Customer:", (reviewData as any).quotes?.customer);
+      console.log("📊 Customer:", (reviewData as any).customer);
       console.log(
         "📊 Source language:",
-        (reviewData as any).quotes?.source_language,
+        (reviewData as any).source_language,
       );
       console.log(
         "📊 Target language:",
-        (reviewData as any).quotes?.target_language,
+        (reviewData as any).target_language,
       );
-      console.log("📊 Intended use:", (reviewData as any).quotes?.intended_use);
+      console.log("📊 Intended use:", (reviewData as any).intended_use);
       console.log(
         "📊 Country of issue:",
-        (reviewData as any).quotes?.country_of_issue,
+        (reviewData as any).country_of_issue,
       );
-      console.log("📊 Subtotal:", (reviewData as any).quotes?.subtotal);
-      console.log("📊 Total:", (reviewData as any).quotes?.total);
+      console.log("📊 Subtotal:", (reviewData as any).subtotal);
+      console.log("📊 Total:", (reviewData as any).total);
     }
   }, [reviewData]);
 
