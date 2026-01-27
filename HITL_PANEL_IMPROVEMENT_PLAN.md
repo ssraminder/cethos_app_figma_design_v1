@@ -1,6 +1,7 @@
 # Admin HITL Panel Redesign Plan
 
 ## Executive Summary
+
 Redesign the HITLReviewDetail page to provide staff with comprehensive visibility into customer data, document information, and quote details (Steps 2 & 3) while maintaining efficient access to messaging and document analysis tools.
 
 ---
@@ -8,6 +9,7 @@ Redesign the HITLReviewDetail page to provide staff with comprehensive visibilit
 ## Current State Analysis
 
 ### Issues
+
 - **Messaging dominates**: Message panel takes up most vertical space, relegating document analysis below the fold
 - **Limited context visibility**: Staff cannot see:
   - Customer contact information (email, phone)
@@ -19,6 +21,7 @@ Redesign the HITLReviewDetail page to provide staff with comprehensive visibilit
 - **Poor workflow**: Staff must scroll extensively to see all relevant information
 
 ### Current Components
+
 - Header: Basic review info + claim button
 - Main content: Document list with AI analysis (complex accordion structure)
 - Bottom section: Message panel (isolated at bottom)
@@ -48,6 +51,7 @@ Redesign the HITLReviewDetail page to provide staff with comprehensive visibilit
 ```
 
 ### Responsive Behavior
+
 - **Desktop (1400px+)**: 3-column layout as above
 - **Tablet (768px - 1400px)**: Stacked vertically or 2-column with messaging in collapsible panel
 - **Mobile (<768px)**: Tab-based navigation between panels
@@ -59,6 +63,7 @@ Redesign the HITLReviewDetail page to provide staff with comprehensive visibilit
 ### Left Panel Components
 
 #### 1. **CustomerInfoPanel** (New)
+
 ```
 ├─ Customer Header
 │  ├─ Full Name
@@ -77,6 +82,7 @@ Redesign the HITLReviewDetail page to provide staff with comprehensive visibilit
 ```
 
 #### 2. **DocumentFilesPanel** (New)
+
 ```
 ├─ File List
 │  ├─ File Item (repeating)
@@ -93,6 +99,7 @@ Redesign the HITLReviewDetail page to provide staff with comprehensive visibilit
 ```
 
 #### 3. **QuoteDetailsPanel** (New) - Steps 2 & 3 Data
+
 ```
 ├─ Translation Requirements (Step 2)
 │  ├─ Source Language
@@ -117,6 +124,7 @@ Redesign the HITLReviewDetail page to provide staff with comprehensive visibilit
 ### Center Panel Components
 
 #### 1. **DocumentAnalysisPanel** (Existing, Improved)
+
 ```
 ├─ Document Tab Navigation
 │  ├─ Tab: Document Name
@@ -150,6 +158,7 @@ Redesign the HITLReviewDetail page to provide staff with comprehensive visibilit
 ### Right Panel Components
 
 #### 1. **MessagingPanel** (Refactored)
+
 ```
 ├─ Message Thread Header
 │  ├─ Contact name
@@ -174,6 +183,7 @@ Redesign the HITLReviewDetail page to provide staff with comprehensive visibilit
 ```
 
 #### 2. **InternalNotesPanel** (New)
+
 ```
 ├─ Internal Notes Textarea
 ├─ Note History (collapsible)
@@ -189,12 +199,13 @@ Redesign the HITLReviewDetail page to provide staff with comprehensive visibilit
 ## Data Mapping
 
 ### From Quote Record (Existing)
+
 ```typescript
 interface Quote {
   id: string;
   quote_number: string;
   status: string;
-  
+
   // Step 2 Data
   source_language_id: string;
   target_language_id: string;
@@ -202,16 +213,16 @@ interface Quote {
   country_id: string;
   service_province?: string;
   special_instructions?: string;
-  
+
   // Step 3 Data (via customer_id)
   customer_id: string;
-  
+
   // Pricing
   subtotal: number;
   certification_total: number;
   tax_amount: number;
   total: number;
-  
+
   // Timestamps
   created_at: string;
   updated_at: string;
@@ -219,6 +230,7 @@ interface Quote {
 ```
 
 ### From Customer Record (Related)
+
 ```typescript
 interface Customer {
   id: string;
@@ -231,6 +243,7 @@ interface Customer {
 ```
 
 ### From Quote Files (Related)
+
 ```typescript
 interface QuoteFile {
   id: string;
@@ -246,6 +259,7 @@ interface QuoteFile {
 ```
 
 ### From Analysis Results (Existing)
+
 ```typescript
 interface AnalysisResult {
   id: string;
@@ -269,29 +283,35 @@ interface AnalysisResult {
 ### Messaging Improvements
 
 #### 1. **Reduced Visual Footprint**
+
 - Move from full-width section to fixed-width right panel
 - Limit height to ~500-600px with scrollable message list
 - Messages auto-scroll to latest when new message arrives
 
 #### 2. **Message Types**
+
 - **Customer Messages**: Blue background, left-aligned
 - **Staff Messages**: Gray background, right-aligned
 - **System Messages**: Italic, centered (e.g., "Review claimed by John")
 - **Internal Notes**: Separate from messages (shown in collapsible section)
 
 #### 3. **Quick Actions in Messaging Panel**
+
 Instead of separate buttons scattered around, integrate action buttons in the messaging panel:
+
 - "Request More Info" → Pre-fill message template
 - "Ready for Quote" → Show price summary before confirmation
 - "Reject" → Open reason modal with message notification
 - "Share Document" → Generate secure link and send
 
 #### 4. **Real-time Updates**
+
 - WebSocket or polling for new messages
 - Unread message indicator with count badge
 - Sound/visual notification for new messages
 
 #### 5. **Message Persistence**
+
 - Internal notes separated from customer-facing messages
 - Audit trail of who made corrections and when
 - Link corrections to specific messages
@@ -301,6 +321,7 @@ Instead of separate buttons scattered around, integrate action buttons in the me
 ## Implementation Phases
 
 ### Phase 1: Component Creation (Week 1)
+
 - Create `CustomerInfoPanel.tsx`
 - Create `DocumentFilesPanel.tsx`
 - Create `QuoteDetailsPanel.tsx` (shows Step 2 & 3 data)
@@ -308,6 +329,7 @@ Instead of separate buttons scattered around, integrate action buttons in the me
 - Create `DocumentAnalysisPanel.tsx` (refactored from existing)
 
 **Files to Create:**
+
 ```
 code/client/components/admin/hitl/
 ├─ CustomerInfoPanel.tsx
@@ -319,12 +341,14 @@ code/client/components/admin/hitl/
 ```
 
 ### Phase 2: Layout Restructuring (Week 1-2)
+
 - Refactor `HITLReviewDetail.tsx` to use 3-column grid layout
 - Implement responsive breakpoints for tablet/mobile
 - Integrate all new panels into main layout
 - Update styling with Tailwind grid/flex utilities
 
 ### Phase 3: Data Fetching Optimization (Week 2)
+
 - Add customer data fetch to `fetchReviewData()`
 - Add quote details fetch (language lookups, etc.)
 - Add file metadata to display
@@ -332,6 +356,7 @@ code/client/components/admin/hitl/
 - Add error states for missing data
 
 ### Phase 4: Messaging Refactor (Week 2-3)
+
 - Update `MessagePanel` component:
   - Reduce height to 500px max
   - Add unread indicator
@@ -341,6 +366,7 @@ code/client/components/admin/hitl/
 - Create message type constants
 
 ### Phase 5: Polish & Testing (Week 3-4)
+
 - Responsive design testing (desktop, tablet, mobile)
 - Accessibility audit (ARIA labels, keyboard navigation)
 - Performance optimization (lazy load panels if needed)
@@ -352,6 +378,7 @@ code/client/components/admin/hitl/
 ## Technical Implementation Details
 
 ### API Changes Needed
+
 ```typescript
 // Enhanced review data fetch
 GET /rest/v1/v_hitl_queue?review_id=eq.{id}&select=*,quotes(*),customers(*)
@@ -374,6 +401,7 @@ GET /rest/v1/quote_files?quote_id=eq.{quote_id}&select=*
 ```
 
 ### State Management Updates
+
 ```typescript
 // Existing state
 const [reviewData, setReviewData] = useState<any>(null);
@@ -388,6 +416,7 @@ const [showInternalNotes, setShowInternalNotes] = useState<boolean>(false);
 ```
 
 ### Styling Approach
+
 ```tsx
 // Main layout grid
 <div className="grid grid-cols-12 gap-4 h-full">
@@ -426,12 +455,14 @@ const [showInternalNotes, setShowInternalNotes] = useState<boolean>(false);
 ## Benefits
 
 ### For Staff
+
 - **Single View**: All relevant information visible without scrolling (on desktop)
 - **Better Context**: Understand customer needs and special requirements
 - **Faster Review**: Fewer clicks to access different information types
 - **Cleaner Interface**: Separated concerns (analysis, messaging, notes)
 
 ### For System
+
 - **Better UX**: Reduced cognitive load with organized information
 - **Improved Efficiency**: Staff can handle more reviews per hour
 - **Fewer Errors**: Full context reduces correction mistakes
@@ -442,15 +473,19 @@ const [showInternalNotes, setShowInternalNotes] = useState<boolean>(false);
 ## Migration Path
 
 ### Step 1: Add New Components
+
 Create new panel components alongside existing code without removing anything.
 
 ### Step 2: Update Layout Gradually
+
 Replace the bottom message panel section with new 3-column layout, keeping all existing logic intact.
 
 ### Step 3: Test Thoroughly
+
 Have staff test new layout with actual reviews before full rollout.
 
 ### Step 4: Retire Old Components
+
 Remove old layout code once new version is stable and staff trained.
 
 ---
