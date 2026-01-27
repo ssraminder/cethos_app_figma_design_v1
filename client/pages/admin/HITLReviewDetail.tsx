@@ -113,6 +113,7 @@ const HITLReviewDetail: React.FC = () => {
   const [reviewData, setReviewData] = useState<any>(null);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const [pageData, setPageData] = useState<Record<string, PageData[]>>({});
+  const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
 
   // Certification data
   const [certificationTypes, setCertificationTypes] = useState<
