@@ -50,7 +50,7 @@ interface UploadContextType {
   updateState: (updates: Partial<UploadFormState>) => void;
   addFile: (file: UploadedFile) => void;
   removeFile: (fileId: string) => void;
-  goToNextStep: () => Promise<boolean>;
+  goToNextStep: () => Promise<{ success: boolean; quoteId?: string }>;
   goToPreviousStep: () => void;
   resetUpload: () => void;
   submitManualQuote: () => Promise<void>;
@@ -88,7 +88,7 @@ const UploadContext = createContext<UploadContextType>({
   updateState: () => {},
   addFile: () => {},
   removeFile: () => {},
-  goToNextStep: async () => false,
+  goToNextStep: async () => ({ success: false }),
   goToPreviousStep: () => {},
   resetUpload: () => {},
   submitManualQuote: async () => {},
@@ -141,12 +141,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const goToNextStep = async (): Promise<boolean> => {
+  const goToNextStep = async (): Promise<{ success: boolean; quoteId?: string }> => {
     const { currentStep } = state;
 
-    // Step 1 -> 2: Create quote and upload files, trigger background processing
+    // Step 1 -> 2: Create quote and upload files
     if (currentStep === 1) {
-      if (state.files.length === 0) return false;
+      if (state.files.length === 0) return { success: false };
 
       try {
         // Create quote
@@ -154,7 +154,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
         if (!result) {
           console.error("Failed to create quote");
-          return false;
+          return { success: false };
         }
 
         // Update quote with entry_point tracking
@@ -165,15 +165,6 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             .eq("id", result.quoteId);
         }
 
-        // Invoke process-document in background (fire and forget)
-        if (supabase) {
-          supabase.functions
-            .invoke("process-document", {
-              body: { quoteId: result.quoteId },
-            })
-            .catch((err) => console.error("Background processing error:", err));
-        }
-
         // Update state and navigate immediately
         updateState({
           quoteId: result.quoteId,
@@ -182,11 +173,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           processingStatus: "processing",
         });
 
-        return true;
+        // Return the quoteId so it can be used to trigger processing
+        return { success: true, quoteId: result.quoteId };
       } catch (error) {
         console.error("Error in Step 1:", error);
         updateState({ error: "Failed to upload files. Please try again." });
-        return false;
+        return { success: false };
       }
     }
 
@@ -198,7 +190,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         !state.intendedUseId ||
         !state.countryId
       ) {
-        return false;
+        return { success: false };
       }
 
       if (state.quoteId) {
@@ -226,17 +218,17 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       }
 
       updateState({ currentStep: 3 });
-      return true;
+      return { success: true };
     }
 
     // Step 3 -> 4: Create/update customer
     if (currentStep === 3) {
       if (!state.fullName || !state.email || !state.phone) {
-        return false;
+        return { success: false };
       }
 
       if (state.customerType === "business" && !state.companyName) {
-        return false;
+        return { success: false };
       }
 
       if (state.quoteId) {
@@ -260,10 +252,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       }
 
       updateState({ currentStep: 4 });
-      return true;
+      return { success: true };
     }
 
-    return false;
+    return { success: false };
   };
 
   const goToPreviousStep = () => {
