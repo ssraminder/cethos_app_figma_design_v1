@@ -121,18 +121,9 @@ export default function CustomerInfoPanel({
       </div>
 
       {/* Quick Actions */}
-      <div className="space-y-2">
-        <button className="w-full px-3 py-2 bg-blue-50 text-blue-700 text-sm font-medium rounded hover:bg-blue-100 transition-colors">
-          Send Email
-        </button>
-        <a
-          href={`tel:${customerData.customer_phone}`}
-          className="w-full px-3 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded hover:bg-gray-200 transition-colors text-center"
-        >
-          Call Customer
-        </a>
+      <div>
         <button className="w-full px-3 py-2 text-gray-700 text-sm font-medium rounded border border-gray-300 hover:bg-gray-50 transition-colors">
-          View All Quotes
+          View All Customer Quotes
         </button>
       </div>
     </div>
