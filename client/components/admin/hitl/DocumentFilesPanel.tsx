@@ -1,5 +1,6 @@
-import React from "react";
-import { FileText, Download, Clock } from "lucide-react";
+import React, { useState } from "react";
+import { FileText, Download, Eye } from "lucide-react";
+import DocumentPreviewModal from "../../admin/DocumentPreviewModal";
 
 interface QuoteFile {
   id: string;
