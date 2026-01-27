@@ -6,6 +6,7 @@ import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
 import { HITLPanelLayout } from "../../components/admin/hitl";
+import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
 
 interface PageData {
   id: string;
