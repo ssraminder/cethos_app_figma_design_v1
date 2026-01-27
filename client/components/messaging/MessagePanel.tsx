@@ -1,12 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import { Send, Loader2, MessageSquare } from "lucide-react";
 import MessageBubble from "./MessageBubble";
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-);
 
 interface Message {
   id: string;
