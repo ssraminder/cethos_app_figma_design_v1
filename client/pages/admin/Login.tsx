@@ -33,7 +33,9 @@ export default function AdminLogin() {
 
       // If already authenticated with valid staff user, redirect
       if (session && staffUser) {
-        console.log("AdminLogin: Already authenticated as staff, redirecting...");
+        console.log(
+          "AdminLogin: Already authenticated as staff, redirecting...",
+        );
         navigate("/admin/hitl", { replace: true });
         return;
       }
@@ -43,7 +45,9 @@ export default function AdminLogin() {
         console.log("AdminLogin: Authenticated but not staff, signing out...");
         await supabase.auth.signOut();
         if (!mounted) return;
-        setError("Access denied. Your account is not authorized for admin access.");
+        setError(
+          "Access denied. Your account is not authorized for admin access.",
+        );
       }
 
       if (!mounted) return;
@@ -221,7 +225,9 @@ export default function AdminLogin() {
               />
             </svg>
           </div>
-          <p className="text-lg font-medium text-gray-900">Redirecting to dashboard...</p>
+          <p className="text-lg font-medium text-gray-900">
+            Redirecting to dashboard...
+          </p>
         </div>
       </div>
     );
