@@ -38,6 +38,8 @@ export interface QuoteState {
   targetLanguageId: string;
   intendedUseId: string;
   countryOfIssue: string;
+  countryId: string;
+  certificationTypeId: string;
   specialInstructions: string;
   customerType: "individual" | "business";
   companyName: string;
@@ -82,6 +84,8 @@ const initialState: QuoteState = {
   targetLanguageId: "",
   intendedUseId: "",
   countryOfIssue: "",
+  countryId: "",
+  certificationTypeId: "",
   specialInstructions: "",
   customerType: "individual",
   companyName: "",
