@@ -137,6 +137,49 @@ export default function Step4ReviewRush() {
     }
   }, [sourceLanguage, targetLanguage, documentType, intendedUse]);
 
+  // Auto-polling effect
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    if (processingState === "processing" && !isPolling) {
+      console.log("🔄 Starting auto-poll (every 3 seconds, 45 second timeout)");
+      setIsPolling(true);
+      setPollAttempts(0);
+
+      // Poll every 3 seconds
+      pollInterval = setInterval(() => {
+        setPollAttempts((prev) => {
+          const newCount = prev + 1;
+          console.log(`🔄 Poll attempt ${newCount}`);
+          return newCount;
+        });
+        fetchAnalysisData();
+      }, 3000);
+
+      // 45 second timeout
+      timeoutId = setTimeout(() => {
+        console.log("⏰ Polling timeout reached (45 seconds)");
+        if (pollInterval) clearInterval(pollInterval);
+        setIsPolling(false);
+        handleAutoHITLFallback("timeout");
+      }, 45000);
+    }
+
+    return () => {
+      if (pollInterval) {
+        console.log("🛑 Clearing poll interval");
+        clearInterval(pollInterval);
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (processingState !== "processing") {
+        setIsPolling(false);
+      }
+    };
+  }, [processingState]);
+
   const fetchTurnaroundOptions = async () => {
     try {
       const { data: turnaroundData, error: turnaroundError } = await supabase
