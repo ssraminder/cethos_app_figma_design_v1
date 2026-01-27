@@ -50,10 +50,12 @@ export default function Index() {
         // Fetch the quote with all related data
         const { data: quote, error } = await supabase
           .from("quotes")
-          .select(`
+          .select(
+            `
             *,
             customer:customers(*)
-          `)
+          `,
+          )
           .eq("id", quoteId)
           .single();
 
@@ -68,9 +70,10 @@ export default function Index() {
         updateState({
           quoteId: quote.id,
           quoteNumber: quote.quote_number,
-          currentStep: stepParam ? parseInt(stepParam) as 1 | 2 | 3 | 4 | 5 | 6 : 4,
+          currentStep: stepParam
+            ? (parseInt(stepParam) as 1 | 2 | 3 | 4 | 5 | 6)
+            : 4,
         });
-
       } catch (error) {
         console.error("Error loading quote:", error);
       } finally {

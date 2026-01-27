@@ -293,7 +293,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         console.log("🤖 Auto-triggering AI processing after contact info...");
         updateState({
           showProcessingModal: true,
-          processingStatus: "processing"
+          processingStatus: "processing",
         });
 
         // Trigger the edge function for document processing
@@ -306,7 +306,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
               Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             },
             body: JSON.stringify({ quoteId: state.quoteId }),
-          }
+          },
         );
 
         if (!processingResponse.ok) {
@@ -328,7 +328,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           .eq("id", state.quoteId)
           .single();
 
-        console.log("✅ Processing complete! HITL required:", quote?.hitl_required);
+        console.log(
+          "✅ Processing complete! HITL required:",
+          quote?.hitl_required,
+        );
 
         // Hide processing modal and show choice modal
         updateState({
@@ -343,7 +346,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       } catch (error: any) {
         console.error("Error in Step 3 processing:", error);
         updateState({
-          error: error?.message || "Failed to process documents. Please try again.",
+          error:
+            error?.message || "Failed to process documents. Please try again.",
           showProcessingModal: false,
           processingStatus: "failed",
         });
@@ -701,7 +705,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    console.log("🤖 AI Instant Quote selected, redirecting to main quote flow Step 4");
+    console.log(
+      "🤖 AI Instant Quote selected, redirecting to main quote flow Step 4",
+    );
 
     updateState({ showChoiceModal: false, isSubmitting: true });
 
@@ -764,7 +770,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             triggerReasons: ["customer_requested"],
             customerNote: state.specialInstructions || "",
           }),
-        }
+        },
       );
 
       const hitlResult = await hitlResponse.json();
@@ -793,7 +799,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
               review_reason: "You requested a human review for accuracy",
             },
           }),
-        }
+        },
       );
 
       // 4. Send staff notification email
@@ -817,16 +823,19 @@ export function UploadProvider({ children }: { children: ReactNode }) {
               document_count: state.files.length,
             },
           }),
-        }
+        },
       );
 
       // 5. Navigate to confirmation page
-      console.log("✅ Human review request complete, redirecting to confirmation");
+      console.log(
+        "✅ Human review request complete, redirecting to confirmation",
+      );
       window.location.href = `/upload/confirmation?quote_id=${state.quoteId}`;
     } catch (error: any) {
       console.error("Error in human review choice:", error);
       updateState({
-        error: error?.message || "Failed to request human review. Please try again.",
+        error:
+          error?.message || "Failed to request human review. Please try again.",
         isSubmitting: false,
         showChoiceModal: true,
       });

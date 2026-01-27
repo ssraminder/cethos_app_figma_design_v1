@@ -79,9 +79,9 @@ export default function UploadConfirmationPage() {
           {/* Description */}
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 max-w-lg mx-auto">
             <p className="text-base text-gray-700 leading-relaxed">
-              Our team will review your documents and email you a detailed quote at{" "}
-              <strong className="text-cethos-navy">{customerEmail}</strong> within{" "}
-              <strong>4 business hours</strong>.
+              Our team will review your documents and email you a detailed quote
+              at <strong className="text-cethos-navy">{customerEmail}</strong>{" "}
+              within <strong>4 business hours</strong>.
             </p>
           </div>
 
@@ -109,8 +109,12 @@ export default function UploadConfirmationPage() {
           {/* Additional Info */}
           <div className="pt-8 border-t border-gray-200 max-w-lg mx-auto">
             <p className="text-xs text-cethos-slate">
-              If you have any questions or need immediate assistance, please contact us at{" "}
-              <a href="mailto:support@cethos.com" className="text-cethos-teal hover:underline">
+              If you have any questions or need immediate assistance, please
+              contact us at{" "}
+              <a
+                href="mailto:support@cethos.com"
+                className="text-cethos-teal hover:underline"
+              >
                 support@cethos.com
               </a>
             </p>

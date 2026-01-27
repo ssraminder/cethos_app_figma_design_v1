@@ -111,7 +111,10 @@ const App = () => (
 
                     {/* Upload Form Routes */}
                     <Route path="/upload" element={<UploadPage />} />
-                    <Route path="/upload/confirmation" element={<UploadConfirmationPage />} />
+                    <Route
+                      path="/upload/confirmation"
+                      element={<UploadConfirmationPage />}
+                    />
                   </Route>
 
                   {/* Admin login (not protected) */}

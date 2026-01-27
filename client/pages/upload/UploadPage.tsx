@@ -10,7 +10,8 @@ import ProcessingModal from "@/components/upload/ProcessingModal";
 import UploadChoiceModal from "@/components/upload/UploadChoiceModal";
 
 export default function UploadPage() {
-  const { state, updateState, handleAIQuoteChoice, handleHumanReviewChoice } = useUpload();
+  const { state, updateState, handleAIQuoteChoice, handleHumanReviewChoice } =
+    useUpload();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
