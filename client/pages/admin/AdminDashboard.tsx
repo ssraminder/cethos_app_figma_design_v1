@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import {
   FileText,
   ShoppingCart,
@@ -15,11 +15,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-);
 
 interface DashboardStats {
   // Quotes
