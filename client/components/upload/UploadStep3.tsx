@@ -1,5 +1,6 @@
 import { Lock, ChevronRight, ChevronLeft } from "lucide-react";
 import { useUpload } from "@/context/UploadContext";
+import StartOverLink from "@/components/StartOverLink";
 
 export default function UploadStep3() {
   const { state, updateState, goToNextStep, goToPreviousStep } = useUpload();
