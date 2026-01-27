@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 export default function QuoteConfirmationPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  
+
   const quoteId = searchParams.get("quote_id");
   const reason = searchParams.get("reason");
 

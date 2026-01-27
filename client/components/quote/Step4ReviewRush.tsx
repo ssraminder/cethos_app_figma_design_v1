@@ -353,7 +353,8 @@ export default function Step4ReviewRush() {
           status: "pending",
           is_customer_requested: false,
           trigger_reasons: [reason],
-          priority: reason === "timeout" || reason === "processing_error" ? 1 : 2,
+          priority:
+            reason === "timeout" || reason === "processing_error" ? 1 : 2,
         });
       } else {
         console.log("✅ HITL review already exists");
@@ -391,14 +392,10 @@ export default function Step4ReviewRush() {
       });
 
       // 4. Navigate to confirmation page with reason
-      console.log(
-        "4️⃣ Navigating to confirmation page with reason:",
-        reason,
-      );
-      navigate(
-        `/quote/confirmation?quote_id=${quoteId}&reason=${reason}`,
-        { replace: true },
-      );
+      console.log("4️⃣ Navigating to confirmation page with reason:", reason);
+      navigate(`/quote/confirmation?quote_id=${quoteId}&reason=${reason}`, {
+        replace: true,
+      });
     } catch (error) {
       console.error("❌ Error in auto-HITL fallback:", error);
       setError(
@@ -443,7 +440,10 @@ export default function Step4ReviewRush() {
       }
 
       // If processing failed
-      if (quote?.processing_status === "error" || quote?.processing_status === "failed") {
+      if (
+        quote?.processing_status === "error" ||
+        quote?.processing_status === "failed"
+      ) {
         console.log("❌ Processing failed, triggering HITL fallback");
         handleAutoHITLFallback("processing_error");
         return;
