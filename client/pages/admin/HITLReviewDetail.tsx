@@ -1404,22 +1404,33 @@ const HITLReviewDetail: React.FC = () => {
                                 }}
                               />
                             </div>
-                            <div className="mt-2 flex justify-between text-sm text-gray-500">
-                              <span>
-                                {(
-                                  analysis.quote_file?.file_size /
-                                  1024 /
-                                  1024
-                                ).toFixed(2)}{" "}
-                                MB
-                              </span>
-                              <a
-                                href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
-                                target="_blank"
-                                className="text-blue-600 hover:underline"
+                            <div className="mt-2 space-y-2">
+                              <div className="flex justify-between text-sm text-gray-500">
+                                <span>
+                                  {(
+                                    analysis.quote_file?.file_size /
+                                    1024 /
+                                    1024
+                                  ).toFixed(2)}{" "}
+                                  MB
+                                </span>
+                                <a
+                                  href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
+                                  target="_blank"
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  ↓ Download
+                                </a>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  // Will add preview modal state
+                                  alert('Preview will open in modal - implementing next');
+                                }}
+                                className="w-full px-3 py-2 bg-blue-50 text-blue-700 text-sm font-medium rounded hover:bg-blue-100 transition-colors"
                               >
-                                ↓ Download
-                              </a>
+                                👁 Full Preview
+                              </button>
                             </div>
                           </div>
 
