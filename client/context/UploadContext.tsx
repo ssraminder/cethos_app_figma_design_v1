@@ -368,38 +368,71 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     );
 
     try {
-      // 1. Update quote status to hitl_pending
-      console.log("1️⃣ Updating quote status to hitl_pending");
-      await supabase
+      // 1. Update quote to mark HITL required (don't change status)
+      console.log("1️⃣ Updating quote to mark HITL required");
+      const { error: updateError } = await supabase
         .from("quotes")
-        .update({ status: "hitl_pending" })
+        .update({ hitl_required: true })
         .eq("id", state.quoteId);
 
-      // 2. Create HITL review record
-      console.log("2️⃣ Creating HITL review record");
-      await supabase.functions.invoke("create-hitl-review", {
-        body: {
-          quote_id: state.quoteId,
-          is_customer_requested: true,
-          trigger_reasons: ["upload_form_manual"],
-          customer_note:
-            state.specialInstructions ||
-            "Submitted via upload form - manual quote requested",
-        },
-      });
+      if (updateError) {
+        console.error("❌ Failed to update hitl_required:", updateError);
+        throw updateError;
+      }
 
-      // 3. Send confirmation email
-      console.log("3️⃣ Sending confirmation email to:", state.email);
-      await supabase.functions.invoke("send-email", {
-        body: {
-          template: "manual_quote_requested",
-          to: state.email,
-          data: {
-            customer_name: state.fullName,
-            quote_number: state.quoteNumber,
+      // 2. Create HITL review record using fetch (like Step4Review.tsx)
+      console.log("2️⃣ Creating HITL review record");
+      const hitlResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-hitl-review`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
+          body: JSON.stringify({
+            quoteId: state.quoteId, // camelCase
+            isCustomerRequested: true, // camelCase
+            triggerReasons: ["upload_form_manual"], // camelCase, array
+            customerNote:
+              state.specialInstructions ||
+              "Submitted via upload form - manual quote requested", // camelCase
+          }),
         },
-      });
+      );
+
+      const hitlResult = await hitlResponse.json();
+      if (!hitlResponse.ok || !hitlResult.success) {
+        console.error("❌ HITL review creation failed:", hitlResult);
+        throw new Error(hitlResult.error || "Failed to create HITL review");
+      }
+
+      // 3. Send confirmation email using fetch
+      console.log("3️⃣ Sending confirmation email to:", state.email);
+      const emailResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            template: "manual_quote_requested",
+            to: state.email,
+            data: {
+              customer_name: state.fullName,
+              quote_number: state.quoteNumber,
+            },
+          }),
+        },
+      );
+
+      const emailResult = await emailResponse.json();
+      if (!emailResponse.ok || !emailResult.success) {
+        console.error("❌ Email sending failed:", emailResult);
+        // Don't throw - email failure shouldn't prevent manual quote submission
+      }
 
       // 4. Show confirmation view
       console.log("✅ Manual quote submission complete!");
