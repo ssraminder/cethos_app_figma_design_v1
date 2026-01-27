@@ -824,9 +824,14 @@ export default function Step4ReviewRush() {
           <h2 className="font-semibold text-gray-900">Price Breakdown</h2>
         </div>
         <div className="px-6 py-4 space-y-3">
-          <div className="flex justify-between text-gray-700">
-            <span>Translation ({totalBillablePages.toFixed(1)} pages)</span>
-            <span>${totals.translationSubtotal.toFixed(2)}</span>
+          <div>
+            <div className="flex justify-between text-gray-700">
+              <span>Certified Translation</span>
+              <span>${totals.translationSubtotal.toFixed(2)}</span>
+            </div>
+            <div className="text-xs text-gray-500 ml-4 mt-0.5">
+              {totalBillablePages.toFixed(1)} pages × ${(baseRate * languageMultiplier).toFixed(2)} per page
+            </div>
           </div>
           {totals.certificationTotal > 0 && (
             <div className="flex justify-between text-gray-700">
