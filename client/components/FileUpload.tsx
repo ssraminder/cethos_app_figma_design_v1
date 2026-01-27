@@ -1,6 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useContext } from "react";
 import { X, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { useQuote } from "@/context/QuoteContext";
+import { useUpload } from "@/context/UploadContext";
 import { supabase } from "@/lib/supabase";
 
 interface UploadingFile {
@@ -13,7 +14,23 @@ interface UploadingFile {
 export default function FileUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
-  const { state, addFile, removeFile } = useQuote();
+
+  // Try to use UploadContext first, fall back to QuoteContext
+  let state: any, addFile: any, removeFile: any;
+
+  try {
+    const uploadContext = useUpload();
+    state = uploadContext.state;
+    addFile = uploadContext.addFile;
+    removeFile = uploadContext.removeFile;
+  } catch {
+    // Fall back to QuoteContext
+    const quoteContext = useQuote();
+    state = quoteContext.state;
+    addFile = quoteContext.addFile;
+    removeFile = quoteContext.removeFile;
+  }
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
