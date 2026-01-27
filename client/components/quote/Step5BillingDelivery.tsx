@@ -131,6 +131,20 @@ export default function Step5BillingDelivery() {
   const [taxRate, setTaxRate] = useState(0.05);
   const [taxName, setTaxName] = useState("GST");
 
+  // Separate common and other countries
+  const commonCountries = useMemo(
+    () => countries.filter((c) => c.is_common),
+    [countries],
+  );
+
+  const otherCountries = useMemo(
+    () =>
+      countries
+        .filter((c) => !c.is_common)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [countries],
+  );
+
   // Derived state
   const needsShippingAddress = physicalOptions
     .filter((opt) => opt.requires_address)
