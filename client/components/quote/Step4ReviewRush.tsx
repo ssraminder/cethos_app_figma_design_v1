@@ -1072,18 +1072,13 @@ export default function Step4ReviewRush() {
       {/* HITL Request Banner - MOVED HERE - Below pricing, above navigation */}
       {!hitlRequested && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <Info className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm text-amber-800 font-medium">
-                  Not sure about the analysis?
-                </p>
-                <p className="text-sm text-amber-700 mt-1">
-                  Our team can review your documents and provide an accurate
-                  quote within 4 working hours.
-                </p>
-              </div>
+          {/* Header row: icon, title, and button */}
+          <div className="flex items-start justify-between gap-4 mb-2">
+            <div className="flex items-center gap-2">
+              <Info className="w-5 h-5 text-amber-600 flex-shrink-0" />
+              <span className="text-sm text-amber-800 font-medium">
+                Not sure about the analysis?
+              </span>
             </div>
             <button
               onClick={() => setShowHitlModal(true)}
@@ -1092,6 +1087,12 @@ export default function Step4ReviewRush() {
               Request Human Review
             </button>
           </div>
+
+          {/* Description - FULL WIDTH */}
+          <p className="text-sm text-amber-700 ml-7">
+            Our team can review your documents and provide an accurate quote
+            within 4 working hours.
+          </p>
         </div>
       )}
 
