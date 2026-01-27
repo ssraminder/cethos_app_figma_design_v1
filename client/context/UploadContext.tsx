@@ -407,21 +407,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         throw new Error(hitlResult.error || "Failed to create HITL review");
       }
 
-      // 3. Send confirmation email using fetch
+      // 3. Send confirmation email using Brevo template
       console.log("3️⃣ Sending confirmation email to:", state.email);
-
-      // Build HTML content for the email
-      const htmlContent = `
-        <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-          <h2>Manual Quote Request Received</h2>
-          <p>Dear ${state.fullName},</p>
-          <p>Thank you for submitting your translation request! We have received your manual quote request.</p>
-          <p><strong>Quote Number:</strong> ${state.quoteNumber}</p>
-          <p>Our team will review your request and provide you with a detailed quote shortly. You will be notified via email once the quote is ready.</p>
-          <p>If you have any questions, please don't hesitate to contact us.</p>
-          <p>Best regards,<br/>Cethos Translation Services</p>
-        </div>
-      `;
 
       const emailResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
@@ -435,7 +422,11 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             to: state.email,
             toName: state.fullName,
             subject: "Manual Quote Request Received",
-            htmlContent: htmlContent, // Use htmlContent instead of template
+            templateId: 15, // Brevo template ID for customer notification
+            params: {
+              customer_name: state.fullName,
+              quote_number: state.quoteNumber,
+            },
           }),
         },
       );
@@ -445,7 +436,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         console.error("❌ Email sending failed:", emailResult);
         // Don't throw - email failure shouldn't prevent manual quote submission
       } else {
-        console.log("✅ Confirmation email sent successfully");
+        console.log("✅ Confirmation email sent successfully using Brevo template");
       }
 
       // 4. Show confirmation view
