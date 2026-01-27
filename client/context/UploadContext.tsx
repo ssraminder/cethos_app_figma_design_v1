@@ -230,7 +230,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             return { success: false };
           }
 
-          console.log("✅ Quote details updated successfully, proceeding to step 3");
+          console.log(
+            "✅ Quote details updated successfully, proceeding to step 3",
+          );
         } catch (error: any) {
           console.error("❌ Error updating quote details:", {
             message: error?.message || "Unknown error",
