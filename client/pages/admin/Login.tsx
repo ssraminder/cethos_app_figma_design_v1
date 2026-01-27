@@ -87,7 +87,10 @@ export default function AdminLogin() {
         .eq("email", normalizedEmail)
         .single();
 
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) {
+        console.warn("Login: Component unmounted after staff query, aborting...");
+        return;
+      }
 
       console.log("Staff query result:", { staffData, staffError });
 
