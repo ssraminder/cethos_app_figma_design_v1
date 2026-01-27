@@ -104,6 +104,7 @@ export default function Step5BillingDelivery() {
     city: "",
     province: "AB",
     postalCode: "",
+    country: "CA",
   });
 
   const [shippingAddress, setShippingAddress] = useState<Address>({
@@ -112,6 +113,7 @@ export default function Step5BillingDelivery() {
     city: "",
     province: "AB",
     postalCode: "",
+    country: "CA",
   });
 
   const [sameAsBilling, setSameAsBilling] = useState(false);
