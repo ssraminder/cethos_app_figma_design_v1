@@ -305,18 +305,36 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   };
 
   const submitManualQuote = async () => {
-    if (!state.quoteId || !supabase.supabase) return;
+    if (!state.quoteId) {
+      updateState({
+        error: "No quote ID found. Please start over from Step 1.",
+      });
+      console.error("submitManualQuote: Missing quoteId");
+      return;
+    }
+
+    if (!supabase.supabase) {
+      updateState({
+        error: "Database connection not available. Please try again.",
+      });
+      console.error("submitManualQuote: Supabase not initialized");
+      return;
+    }
 
     updateState({ isSubmitting: true, submissionType: "manual", error: null });
 
+    console.log("📝 Starting manual quote submission for quote:", state.quoteId);
+
     try {
       // 1. Update quote status to hitl_pending
+      console.log("1️⃣ Updating quote status to hitl_pending");
       await supabase.supabase
         .from("quotes")
         .update({ status: "hitl_pending" })
         .eq("id", state.quoteId);
 
       // 2. Create HITL review record
+      console.log("2️⃣ Creating HITL review record");
       await supabase.supabase.functions.invoke("create-hitl-review", {
         body: {
           quote_id: state.quoteId,
@@ -329,6 +347,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       });
 
       // 3. Send confirmation email
+      console.log("3️⃣ Sending confirmation email to:", state.email);
       await supabase.supabase.functions.invoke("send-email", {
         body: {
           template: "manual_quote_requested",
@@ -341,11 +360,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       });
 
       // 4. Show confirmation view
+      console.log("✅ Manual quote submission complete!");
       updateState({ showConfirmation: true });
     } catch (error) {
-      console.error("Error submitting manual quote:", error);
+      console.error("❌ Error submitting manual quote:", error);
       updateState({
-        error: "Something went wrong. Please try again.",
+        error: "Something went wrong submitting your request. Please try again or contact support.",
       });
     } finally {
       updateState({ isSubmitting: false });
@@ -353,12 +373,29 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   };
 
   const submitAIQuote = async () => {
-    if (!state.quoteId || !supabase.supabase) return;
+    if (!state.quoteId) {
+      updateState({
+        error: "No quote ID found. Please start over from Step 1.",
+      });
+      console.error("submitAIQuote: Missing quoteId");
+      return;
+    }
+
+    if (!supabase.supabase) {
+      updateState({
+        error: "Database connection not available. Please try again.",
+      });
+      console.error("submitAIQuote: Supabase not initialized");
+      return;
+    }
 
     updateState({ isSubmitting: true, submissionType: "ai", error: null });
 
+    console.log("🤖 Starting AI quote submission for quote:", state.quoteId);
+
     try {
       // 1. Check if AI processing is complete
+      console.log("1️⃣ Checking AI processing status");
       const { data: quote } = await supabase.supabase
         .from("quotes")
         .select("processing_status")
@@ -367,28 +404,36 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
       if (quote?.processing_status !== "complete") {
         // Show loading modal
+        console.log("⏳ Processing not complete, showing modal. Status:", quote?.processing_status);
         updateState({ showProcessingModal: true });
 
         // Wait for processing (60 second timeout)
+        console.log("⏱️ Waiting for processing to complete (60s timeout)");
         const completed = await waitForProcessingComplete(state.quoteId, 60000);
 
         if (!completed) {
+          console.log("⏰ Processing timeout!");
           throw new Error("Processing timeout");
         }
 
+        console.log("✅ Processing complete!");
         updateState({ showProcessingModal: false });
+      } else {
+        console.log("✅ Processing already complete");
       }
 
       // 2. Update quote status to quote_ready
+      console.log("2️⃣ Updating quote status to quote_ready");
       await supabase.supabase
         .from("quotes")
         .update({ status: "quote_ready" })
         .eq("id", state.quoteId);
 
       // 3. Redirect to main quote flow Step 4
+      console.log("3️⃣ Redirecting to review page:", `/quote/${state.quoteId}/review`);
       window.location.href = `/quote/${state.quoteId}/review`;
     } catch (error) {
-      console.error("Error submitting AI quote:", error);
+      console.error("❌ Error submitting AI quote:", error);
 
       updateState({
         showProcessingModal: false,
