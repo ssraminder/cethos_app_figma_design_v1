@@ -423,6 +423,32 @@ export default function Step4ReviewRush() {
         return;
       }
 
+      // First, check quote status for HITL or errors
+      const { data: quote, error: quoteError } = await supabase
+        .from("quotes")
+        .select("hitl_required, hitl_reasons, processing_status, status")
+        .eq("id", quoteId)
+        .single();
+
+      if (quoteError) {
+        console.error("Error fetching quote:", quoteError);
+      }
+
+      // If HITL triggered by AI (low confidence, high value, etc.)
+      if (quote?.hitl_required && quote?.status === "hitl_pending") {
+        console.log("🚨 HITL required by AI. Reasons:", quote.hitl_reasons);
+        const reason = quote.hitl_reasons?.[0] || "quality_check";
+        handleAutoHITLFallback(reason);
+        return;
+      }
+
+      // If processing failed
+      if (quote?.processing_status === "error" || quote?.processing_status === "failed") {
+        console.log("❌ Processing failed, triggering HITL fallback");
+        handleAutoHITLFallback("processing_error");
+        return;
+      }
+
       // Query 1: Get analysis results (without join to avoid 400 error)
       const { data: analysisResults, error: analysisError } = await supabase
         .from("ai_analysis_results")
