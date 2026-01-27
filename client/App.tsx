@@ -24,6 +24,7 @@ import PaymentCancel from "./pages/PaymentCancel";
 import QuoteRecoverPage from "./pages/quote/QuoteRecoverPage";
 import QuoteReviewPage from "./pages/quote/QuoteReviewPage";
 import QuoteRevisionPage from "./pages/quote/QuoteRevisionPage";
+import QuoteConfirmationPage from "./pages/quote/QuoteConfirmationPage";
 import UploadPage from "./pages/upload/UploadPage";
 import UploadConfirmationPage from "./pages/upload/UploadConfirmationPage";
 
@@ -111,10 +112,7 @@ const App = () => (
 
                     {/* Upload Form Routes */}
                     <Route path="/upload" element={<UploadPage />} />
-                    <Route
-                      path="/upload/confirmation"
-                      element={<UploadConfirmationPage />}
-                    />
+                    <Route path="/upload/confirmation" element={<UploadConfirmationPage />} />
                   </Route>
 
                   {/* Admin login (not protected) */}
