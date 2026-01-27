@@ -50,6 +50,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    let isMounted = true;
     const checkAuth = async () => {
       console.log("StaffAuthContext: Checking auth...");
 
@@ -72,13 +73,17 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
             const {
               data: { session },
             } = await supabase.auth.getSession();
+            if (!isMounted) return;
             setSession(session);
             setUser(session?.user ?? null);
 
             setLoading(false);
             return;
           }
-        } catch (e) {
+        } catch (e: any) {
+          if (e?.name === "AbortError") {
+            return;
+          }
           console.error("StaffAuthContext: Error parsing localStorage", e);
           localStorage.removeItem("staffSession");
         }
@@ -88,6 +93,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+      if (!isMounted) return;
       if (!session) {
         console.log("StaffAuthContext: No session found");
         setStaffUser(null);
@@ -109,6 +115,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
         .eq("is_active", true)
         .single();
 
+      if (!isMounted) return;
       if (error || !staffData) {
         console.error("StaffAuthContext: Staff lookup failed", error);
         setStaffUser(null);
@@ -172,6 +179,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -181,14 +189,21 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
       return { error: new Error("Supabase not configured") };
     }
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/admin/hitl`,
-      },
-    });
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/admin/hitl`,
+        },
+      });
 
-    return { error: error ? new Error(error.message) : null };
+      return { error: error ? new Error(error.message) : null };
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        return { error: null };
+      }
+      return { error: err instanceof Error ? err : new Error(String(err)) };
+    }
   };
 
   const signOut = async () => {
