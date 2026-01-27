@@ -53,47 +53,45 @@ export default function InternalNotesPanel({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg divide-y">
+    <div className="bg-white border border-gray-200 rounded-lg divide-y flex flex-col h-[400px]">
       {/* Header */}
-      <div className="px-4 py-3 flex items-center gap-2">
+      <div className="px-4 py-3 flex items-center gap-2 flex-shrink-0">
         <MessageSquare className="w-4 h-4 text-gray-600" />
-        <h3 className="text-sm font-semibold text-gray-900">Internal Notes</h3>
+        <h3 className="text-sm font-semibold text-gray-900 truncate">Internal Notes</h3>
       </div>
 
       {/* Notes Textarea */}
-      <div className="p-4 space-y-3">
+      <div className="p-3 space-y-2 flex-1 flex flex-col overflow-y-auto">
         <textarea
           value={notes}
           onChange={handleNoteChange}
-          placeholder="Add internal notes here... These notes are only visible to staff members."
-          className="w-full h-24 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+          placeholder="Add notes..."
+          className="flex-1 px-2 py-2 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent resize-none"
           disabled={loading || isSaving}
         />
 
         {/* Character count */}
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-500">
-            {notes.length} characters
-          </span>
+        <div className="flex justify-between items-center text-xs">
+          <span className="text-gray-500">{notes.length} chars</span>
 
           {/* Save/Cancel buttons */}
           {hasChanges && (
-            <div className="flex gap-2">
+            <div className="flex gap-1">
               <button
                 onClick={handleCancel}
                 disabled={isSaving}
-                className="px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1"
+                className="px-2 py-1 text-xs font-medium text-gray-700 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                title="Cancel"
               >
                 <X className="w-3 h-3" />
-                Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving || !hasChanges}
-                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1"
+                className="px-2 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                title="Save notes"
               >
                 <Save className="w-3 h-3" />
-                {isSaving ? "Saving..." : "Save"}
               </button>
             </div>
           )}
@@ -105,31 +103,29 @@ export default function InternalNotesPanel({
         <>
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex justify-between items-center"
+            className="w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50 transition-colors flex justify-between items-center flex-shrink-0"
           >
-            <span className="font-medium">
-              Edit History ({noteHistory.length})
-            </span>
+            <span className="font-medium">History ({noteHistory.length})</span>
             <span className="text-gray-400">{showHistory ? "−" : "+"}</span>
           </button>
 
           {/* Note History */}
           {showHistory && (
-            <div className="px-4 py-3 bg-gray-50 max-h-48 overflow-y-auto space-y-2">
+            <div className="px-3 py-2 bg-gray-50 max-h-40 overflow-y-auto space-y-1 flex-shrink-0">
               {noteHistory.map((note) => (
                 <div
                   key={note.id}
-                  className="border border-gray-200 rounded p-2 bg-white text-xs"
+                  className="border border-gray-200 rounded p-1.5 bg-white text-xs"
                 >
-                  <div className="flex justify-between mb-1">
-                    <span className="font-medium text-gray-900">
+                  <div className="flex justify-between mb-0.5 gap-1">
+                    <span className="font-medium text-gray-900 truncate">
                       {note.created_by}
                     </span>
-                    <span className="text-gray-500">
-                      {new Date(note.created_at).toLocaleString()}
+                    <span className="text-gray-500 flex-shrink-0 text-xs">
+                      {new Date(note.created_at).toLocaleDateString()}
                     </span>
                   </div>
-                  <p className="text-gray-700 whitespace-pre-wrap text-xs">
+                  <p className="text-gray-700 whitespace-pre-wrap text-xs break-words">
                     {note.text}
                   </p>
                 </div>
@@ -140,10 +136,9 @@ export default function InternalNotesPanel({
       )}
 
       {/* Info Message */}
-      <div className="px-4 py-2 bg-blue-50 border-t border-blue-100">
+      <div className="px-3 py-2 bg-blue-50 border-t border-blue-100 flex-shrink-0">
         <p className="text-xs text-blue-800">
-          💡 Internal notes are only visible to staff members and are not sent
-          to customers.
+          💡 Staff only, not sent to customers
         </p>
       </div>
     </div>
