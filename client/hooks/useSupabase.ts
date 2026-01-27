@@ -150,7 +150,7 @@ export function useSupabase() {
           service_province: details.serviceProvince || null,
           country_of_issue: details.countryOfIssue || null,
           country_id: details.countryId,
-          certification_type_id: details.certificationTypeId,
+          certification_type_id: details.certificationTypeId || null,
           special_instructions: details.specialInstructions || null,
           status: "details_pending",
         })
