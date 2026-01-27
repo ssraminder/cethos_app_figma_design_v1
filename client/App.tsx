@@ -107,6 +107,10 @@ const App = () => (
                       path="/quote/:quoteId/revision"
                       element={<QuoteRevisionPage />}
                     />
+                    <Route
+                      path="/quote/confirmation"
+                      element={<QuoteConfirmationPage />}
+                    />
                     <Route path="/order/success" element={<OrderSuccess />} />
                     <Route path="/payment/cancel" element={<PaymentCancel />} />
 
