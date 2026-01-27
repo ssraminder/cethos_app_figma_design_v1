@@ -409,6 +409,20 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
       // 3. Send confirmation email using fetch
       console.log("3️⃣ Sending confirmation email to:", state.email);
+
+      // Build HTML content for the email
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+          <h2>Manual Quote Request Received</h2>
+          <p>Dear ${state.fullName},</p>
+          <p>Thank you for submitting your translation request! We have received your manual quote request.</p>
+          <p><strong>Quote Number:</strong> ${state.quoteNumber}</p>
+          <p>Our team will review your request and provide you with a detailed quote shortly. You will be notified via email once the quote is ready.</p>
+          <p>If you have any questions, please don't hesitate to contact us.</p>
+          <p>Best regards,<br/>Cethos Translation Services</p>
+        </div>
+      `;
+
       const emailResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
         {
@@ -418,13 +432,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
-            template: "manual_quote_requested",
             to: state.email,
-            subject: "Manual Quote Request Received", // Required field
-            data: {
-              customer_name: state.fullName,
-              quote_number: state.quoteNumber,
-            },
+            toName: state.fullName,
+            subject: "Manual Quote Request Received",
+            htmlContent: htmlContent, // Use htmlContent instead of template
           }),
         },
       );
@@ -433,6 +444,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       if (!emailResponse.ok || !emailResult.success) {
         console.error("❌ Email sending failed:", emailResult);
         // Don't throw - email failure shouldn't prevent manual quote submission
+      } else {
+        console.log("✅ Confirmation email sent successfully");
       }
 
       // 4. Show confirmation view
