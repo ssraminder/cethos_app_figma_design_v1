@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import { useStaffAuth } from "../../context/StaffAuthContext";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
+  const { session, staffUser, loading: authLoading } = useStaffAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -23,27 +26,28 @@ export default function AdminLogin() {
     let mounted = true;
 
     const checkExistingSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      // If auth context is still loading, wait
+      if (authLoading) {
+        return;
+      }
+
+      // If already authenticated with valid staff user, redirect
+      if (session && staffUser) {
+        console.log("AdminLogin: Already authenticated as staff, redirecting...");
+        navigate("/admin/hitl", { replace: true });
+        return;
+      }
+
+      // If authenticated but not staff, sign out
+      if (session && !staffUser) {
+        console.log("AdminLogin: Authenticated but not staff, signing out...");
+        await supabase.auth.signOut();
+        if (!mounted) return;
+        setError("Access denied. Your account is not authorized for admin access.");
+      }
 
       if (!mounted) return;
-
-      if (session) {
-        // Verify user is still active staff
-        const { data: staffData } = await supabase
-          .from("staff_users")
-          .select("id, is_active")
-          .eq("email", session.user.email)
-          .eq("is_active", true)
-          .single();
-
-        if (!mounted) return;
-
-        if (staffData) {
-          navigate("/admin/hitl");
-        }
-      }
+      setCheckingAuth(false);
     };
 
     checkExistingSession();
@@ -51,7 +55,7 @@ export default function AdminLogin() {
     return () => {
       mounted = false;
     };
-  }, [navigate]);
+  }, [session, staffUser, authLoading, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
