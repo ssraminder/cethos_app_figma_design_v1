@@ -1,12 +1,14 @@
 import { CheckCircle, AlertCircle } from "lucide-react";
 import { useUpload } from "@/context/UploadContext";
+import { getStartNewQuoteRoute } from "@/utils/navigationHelpers";
 
 export default function ConfirmationView() {
   const { state, resetUpload } = useUpload();
 
   const handleUploadMore = () => {
     resetUpload();
-    window.location.href = "/upload";
+    // Use entry point logic - will go to /upload or /quote based on original entry
+    window.location.href = getStartNewQuoteRoute();
   };
 
   const handleClose = () => {
