@@ -114,7 +114,8 @@ export default function HITLPanelLayout({
       certification_code: certification?.code || "N/A",
       certification_name: certification?.name || "Not set",
       certification_price: certification?.price || 0,
-      total_certification_cost: (certification?.price || 0) + (analysis.certification_price || 0),
+      total_certification_cost:
+        (certification?.price || 0) + (analysis.certification_price || 0),
     };
   });
 
