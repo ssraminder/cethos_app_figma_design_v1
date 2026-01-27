@@ -46,13 +46,13 @@ export default function QuoteConfirmationPage() {
 
   const handleStartNewQuote = () => {
     // Clear all quote-related localStorage
-    localStorage.removeItem('quoteId');
-    localStorage.removeItem('quoteData');
-    localStorage.removeItem('quoteStep');
-    localStorage.removeItem('quoteContext');
+    localStorage.removeItem("quoteId");
+    localStorage.removeItem("quoteData");
+    localStorage.removeItem("quoteStep");
+    localStorage.removeItem("quoteContext");
 
     // Force full page reload to ensure clean state
-    window.location.href = '/quote?step=1';
+    window.location.href = "/quote?step=1";
   };
 
   const getCustomerFriendlyReason = (reason: string): string => {

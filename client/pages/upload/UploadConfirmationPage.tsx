@@ -15,13 +15,13 @@ export default function UploadConfirmationPage() {
 
   const handleStartNewQuote = () => {
     // Clear all quote-related localStorage
-    localStorage.removeItem('quoteId');
-    localStorage.removeItem('quoteData');
-    localStorage.removeItem('quoteStep');
-    localStorage.removeItem('uploadContext');
+    localStorage.removeItem("quoteId");
+    localStorage.removeItem("quoteData");
+    localStorage.removeItem("quoteStep");
+    localStorage.removeItem("uploadContext");
 
     // Force full page reload to ensure clean state
-    window.location.href = '/upload?step=1';
+    window.location.href = "/upload?step=1";
   };
 
   useEffect(() => {
