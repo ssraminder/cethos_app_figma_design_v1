@@ -820,15 +820,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         }
       );
 
-      // 5. Show confirmation screen
-      console.log("✅ Human review request complete, showing confirmation");
-      updateState({
-        showConfirmation: true,
-        isSubmitting: false,
-        hitlTriggered: true,
-        hitlReasons: ["customer_requested"],
-        submissionType: "manual",
-      });
+      // 5. Navigate to confirmation page
+      console.log("✅ Human review request complete, redirecting to confirmation");
+      window.location.href = `/upload/confirmation?quote_id=${state.quoteId}`;
     } catch (error: any) {
       console.error("Error in human review choice:", error);
       updateState({
