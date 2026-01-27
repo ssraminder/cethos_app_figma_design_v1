@@ -324,12 +324,16 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         .eq("id", quoteId)
         .single();
 
-      if (data?.processing_status === "complete") {
+      if (data?.processing_status === "quote_ready") {
         return true;
       }
 
       if (data?.processing_status === "failed") {
         throw new Error("Processing failed");
+      }
+
+      if (data?.processing_status === "hitl_pending") {
+        throw new Error("Manual review required");
       }
 
       // Wait 2 seconds before checking again
@@ -441,7 +445,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         .eq("id", state.quoteId)
         .single();
 
-      if (quote?.processing_status !== "complete") {
+      if (quote?.processing_status !== "quote_ready") {
         // Show loading modal
         console.log(
           "⏳ Processing not complete, showing modal. Status:",
@@ -461,7 +465,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         console.log("✅ Processing complete!");
         updateState({ showProcessingModal: false });
       } else {
-        console.log("✅ Processing already complete");
+        console.log("✅ Processing already complete (status: quote_ready)");
       }
 
       // 2. Update quote status to quote_ready
