@@ -369,7 +369,9 @@ export function useSupabase() {
     setError(null);
 
     try {
-      const storagePath = `${quoteId}/${file.name}`;
+      // Sanitize filename for storage
+      const sanitizedFilename = sanitizeFilename(file.name);
+      const storagePath = `${quoteId}/${sanitizedFilename}`;
 
       // Upload to storage
       const { error: uploadError } = await supabase.storage
@@ -381,7 +383,7 @@ export function useSupabase() {
 
       if (uploadError) throw uploadError;
 
-      // Update file record status
+      // Update file record status (match by original filename, not sanitized)
       const { error: updateError } = await supabase
         .from("quote_files")
         .update({ upload_status: "uploaded" })
