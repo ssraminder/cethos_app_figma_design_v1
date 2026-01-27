@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { getStartNewQuoteRoute } from "@/utils/navigationHelpers";
 import { format, isWeekend, isSameDay } from "date-fns";
 import {
   FileText,
