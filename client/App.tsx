@@ -25,6 +25,7 @@ import QuoteRecoverPage from "./pages/quote/QuoteRecoverPage";
 import QuoteReviewPage from "./pages/quote/QuoteReviewPage";
 import QuoteRevisionPage from "./pages/quote/QuoteRevisionPage";
 import UploadPage from "./pages/upload/UploadPage";
+import UploadConfirmationPage from "./pages/upload/UploadConfirmationPage";
 
 // Admin pages
 import AdminLogin from "./pages/admin/Login";
