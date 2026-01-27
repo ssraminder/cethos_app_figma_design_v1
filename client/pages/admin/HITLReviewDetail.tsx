@@ -2005,10 +2005,10 @@ const HITLReviewDetail: React.FC = () => {
         </div>
 
         {/* Messages Panel */}
-        {reviewData && reviewData.quotes && staffSession?.staffId && (
+        {reviewData?.quote_id && staffSession?.staffId && (
           <div className="mt-6">
             <MessagePanel
-              quoteId={reviewData.quotes.id}
+              quoteId={reviewData.quote_id}
               staffId={staffSession.staffId}
               staffName={staffSession.name || "Staff"}
             />
