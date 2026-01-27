@@ -124,6 +124,7 @@ export function useSupabase() {
       sourceLanguageId: string;
       targetLanguageId: string;
       intendedUseId: string;
+      serviceProvince: string;
       countryOfIssue: string;
       countryId: string;
       certificationTypeId: string;
@@ -146,6 +147,7 @@ export function useSupabase() {
           source_language_id: details.sourceLanguageId,
           target_language_id: details.targetLanguageId,
           intended_use_id: details.intendedUseId,
+          service_province: details.serviceProvince || null,
           country_of_issue: details.countryOfIssue,
           country_id: details.countryId,
           certification_type_id: details.certificationTypeId,
