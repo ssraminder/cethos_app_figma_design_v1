@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useUpload } from "@/context/UploadContext";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
+import StartOverLink from "@/components/StartOverLink";
 import { Loader2, ChevronRight, ChevronLeft } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
