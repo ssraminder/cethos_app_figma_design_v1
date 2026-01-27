@@ -99,6 +99,15 @@ export default function Step2Details() {
     fetchProvinces();
   }, []);
 
+  // Check if province dropdown should be shown based on current intended use
+  useEffect(() => {
+    if (state.intendedUseId && intendedUses.length > 0) {
+      const selectedUse = intendedUses.find((u) => u.id === state.intendedUseId);
+      const isProvincial = selectedUse?.subcategory === "Provincial Services";
+      setShowProvinceDropdown(isProvincial);
+    }
+  }, [state.intendedUseId, intendedUses]);
+
   // Group intended uses by subcategory
   const groupedIntendedUses = useMemo(() => {
     const groups: Record<string, typeof intendedUses> = {};
