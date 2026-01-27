@@ -339,6 +339,25 @@ export default function Step4ReviewRush() {
         return;
       }
 
+      // Fetch quote with customer info FIRST
+      const { data: quote } = await supabase
+        .from("quotes")
+        .select(
+          `
+          quote_number,
+          customers (
+            email,
+            full_name
+          )
+        `,
+        )
+        .eq("id", quoteId)
+        .single();
+
+      const customerEmail = quote?.customers?.email;
+      const customerName = quote?.customers?.full_name || "Customer";
+      const quoteNumber = quote?.quote_number;
+
       // 1. Check if HITL review already exists
       const { data: existing } = await supabase
         .from("hitl_reviews")
@@ -373,23 +392,25 @@ export default function Step4ReviewRush() {
 
       // 3. Send Brevo Template #16 to customer (AI fallback)
       console.log("3️⃣ Sending Brevo template #16 to customer");
-      const customerEmail = state.email;
-      const customerName =
-        state.firstName && state.lastName
-          ? `${state.firstName} ${state.lastName}`
-          : state.email;
 
-      await supabase.functions.invoke("send-email", {
-        body: {
-          templateId: 16,
-          to: customerEmail,
-          params: {
-            QUOTE_NUMBER: state.quoteNumber,
-            CUSTOMER_NAME: customerName,
-            FAILURE_REASON: getCustomerFriendlyReason(reason),
+      // Validate before sending
+      if (!customerEmail) {
+        console.error("No customer email found for quote");
+        // Still navigate to confirmation, just skip email
+      } else {
+        await supabase.functions.invoke("send-email", {
+          body: {
+            templateId: 16,
+            to: customerEmail,
+            subject: `Your Quote is Being Reviewed - ${quoteNumber}`,
+            params: {
+              QUOTE_NUMBER: quoteNumber,
+              CUSTOMER_NAME: customerName,
+              FAILURE_REASON: getCustomerFriendlyReason(reason),
+            },
           },
-        },
-      });
+        });
+      }
 
       // 4. Navigate to confirmation page with reason
       console.log("4️⃣ Navigating to confirmation page with reason:", reason);
