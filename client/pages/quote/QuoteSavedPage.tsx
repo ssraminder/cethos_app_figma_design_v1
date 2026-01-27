@@ -131,8 +131,8 @@ export default function QuoteSavedPage() {
           {/* Additional Info */}
           <div className="pt-8 border-t border-gray-200 max-w-lg mx-auto">
             <p className="text-xs text-cethos-slate mb-2">
-              <strong>Note:</strong> This quote is valid for 30 days. After that,
-              you'll need to request a new quote.
+              <strong>Note:</strong> This quote is valid for 30 days. After
+              that, you'll need to request a new quote.
             </p>
             <p className="text-xs text-cethos-slate">
               If you have any questions or need assistance, please contact us at{" "}
