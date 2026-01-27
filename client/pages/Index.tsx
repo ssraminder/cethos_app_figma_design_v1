@@ -160,6 +160,18 @@ export default function Index() {
     }
   };
 
+  // Show loading indicator while loading quote from URL
+  if (isLoadingQuote) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-cethos-teal border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-cethos-slate">Loading quote...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Main Content */}
