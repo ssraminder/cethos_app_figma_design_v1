@@ -271,6 +271,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Error clearing upload draft:", error);
     }
+
+    // Redirect to upload page
+    window.location.href = "/upload";
   };
 
   // Wait for AI processing to complete
