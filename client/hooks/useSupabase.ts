@@ -147,7 +147,8 @@ export function useSupabase() {
         intended_use_id: details.intendedUseId,
         service_province: details.serviceProvince || null,
         country_of_issue: details.countryOfIssue || null,
-        country_id: details.countryId,
+        // Note: country_id column doesn't exist in quotes table
+        // TODO: Add migration to create country_id column
         certification_type_id: details.certificationTypeId || null,
         special_instructions: details.specialInstructions || null,
         status: "details_pending",
