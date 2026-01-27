@@ -259,7 +259,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       return { success: true };
     }
 
-    // Step 3 -> 4: Create/update customer
+    // Step 3: Create/update customer and auto-trigger AI processing
     if (currentStep === 3) {
       if (!state.fullName || !state.email || !state.phone) {
         return { success: false };
@@ -269,28 +269,86 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         return { success: false };
       }
 
-      if (state.quoteId) {
-        try {
-          // Split fullName into firstName and lastName
-          const nameParts = state.fullName.trim().split(" ");
-          const firstName = nameParts[0] || "";
-          const lastName = nameParts.slice(1).join(" ") || "";
-
-          await supabaseHook.createOrUpdateCustomer(state.quoteId, {
-            email: state.email,
-            firstName,
-            lastName,
-            phone: state.phone,
-            customerType: state.customerType,
-            companyName: state.companyName,
-          });
-        } catch (error) {
-          console.error("Error creating customer:", error);
-        }
+      if (!state.quoteId) {
+        console.error("No quote ID found after Step 3");
+        return { success: false };
       }
 
-      updateState({ currentStep: 4 });
-      return { success: true };
+      try {
+        // Split fullName into firstName and lastName
+        const nameParts = state.fullName.trim().split(" ");
+        const firstName = nameParts[0] || "";
+        const lastName = nameParts.slice(1).join(" ") || "";
+
+        await supabaseHook.createOrUpdateCustomer(state.quoteId, {
+          email: state.email,
+          firstName,
+          lastName,
+          phone: state.phone,
+          customerType: state.customerType,
+          companyName: state.companyName,
+        });
+
+        // Auto-trigger AI processing
+        console.log("🤖 Auto-triggering AI processing after contact info...");
+        updateState({
+          showProcessingModal: true,
+          processingStatus: "processing"
+        });
+
+        // Trigger the edge function for document processing
+        const processingResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-document`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ quoteId: state.quoteId }),
+          }
+        );
+
+        if (!processingResponse.ok) {
+          throw new Error("Failed to start AI processing");
+        }
+
+        // Wait for processing to complete
+        console.log("⏱️ Waiting for AI processing to complete...");
+        const completed = await waitForProcessingComplete(state.quoteId, 60000);
+
+        if (!completed) {
+          throw new Error("Processing timeout - please try again");
+        }
+
+        // Check if HITL was triggered
+        const { data: quote } = await supabase
+          .from("quotes")
+          .select("hitl_required, hitl_reasons, processing_status")
+          .eq("id", state.quoteId)
+          .single();
+
+        console.log("✅ Processing complete! HITL required:", quote?.hitl_required);
+
+        // Hide processing modal and show choice modal
+        updateState({
+          showProcessingModal: false,
+          processingStatus: "complete",
+          showChoiceModal: true,
+          hitlTriggered: quote?.hitl_required || false,
+          hitlReasons: quote?.hitl_reasons || [],
+        });
+
+        return { success: true };
+      } catch (error: any) {
+        console.error("Error in Step 3 processing:", error);
+        updateState({
+          error: error?.message || "Failed to process documents. Please try again.",
+          showProcessingModal: false,
+          processingStatus: "failed",
+        });
+        return { success: false };
+      }
     }
 
     return { success: false };
