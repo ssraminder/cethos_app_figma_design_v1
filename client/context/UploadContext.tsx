@@ -83,6 +83,8 @@ const initialState: UploadFormState = {
   showConfirmation: false,
   showProcessingModal: false,
   processingStatus: null,
+  hitlTriggered: false,
+  hitlReasons: [],
 };
 
 const UploadContext = createContext<UploadContextType>({
@@ -552,7 +554,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         console.log("✅ HITL review created and customer notified");
         updateState({
           showConfirmation: true,
-          error: null
+          error: null,
+          hitlTriggered: true,
+          hitlReasons: quote?.hitl_reasons || []
         });
         return;
       }
