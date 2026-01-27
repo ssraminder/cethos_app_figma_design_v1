@@ -63,9 +63,9 @@ export default function HITLPanelLayout({
   onSaveInternalNotes,
 }: HITLPanelLayoutProps) {
   return (
-    <div className="grid grid-cols-12 gap-4 h-full">
+    <div className="grid grid-cols-12 gap-4 h-[calc(100vh-300px)]">
       {/* LEFT PANEL: Customer Info + Document Files + Quote Details (3 columns) */}
-      <aside className="col-span-3 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
+      <aside className="col-span-3 space-y-4 overflow-y-auto">
         {/* Customer Info */}
         <CustomerInfoPanel
           customerData={
@@ -93,7 +93,7 @@ export default function HITLPanelLayout({
       </aside>
 
       {/* CENTER PANEL: Document Analysis (6 columns) */}
-      <main className="col-span-6 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
+      <main className="col-span-6 space-y-4 overflow-y-auto">
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <p className="text-sm text-gray-600">
             📋 Document Analysis Panel Coming Soon
@@ -106,24 +106,24 @@ export default function HITLPanelLayout({
       </main>
 
       {/* RIGHT PANEL: Messaging + Internal Notes (3 columns) */}
-      <aside className="col-span-3 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
+      <aside className="col-span-3 space-y-4 overflow-y-auto flex flex-col">
         {/* Messaging Panel */}
         {reviewData?.quote_id && staffId && (
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <MessagePanel
-              quoteId={reviewData.quote_id}
-              staffId={staffId}
-              staffName={staffName || "Staff"}
-            />
-          </div>
+          <MessagePanel
+            quoteId={reviewData.quote_id}
+            staffId={staffId}
+            staffName={staffName || "Staff"}
+          />
         )}
 
         {/* Internal Notes Panel */}
-        <InternalNotesPanel
-          initialNotes={reviewData?.internal_notes || ""}
-          onSave={onSaveInternalNotes}
-          loading={loading}
-        />
+        <div className="flex-1 overflow-y-auto">
+          <InternalNotesPanel
+            initialNotes={reviewData?.internal_notes || ""}
+            onSave={onSaveInternalNotes}
+            loading={loading}
+          />
+        </div>
       </aside>
     </div>
   );
