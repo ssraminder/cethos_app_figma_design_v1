@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import {
   AlertTriangle,
   BarChart3,
@@ -12,11 +12,6 @@ import {
   Zap,
 } from "lucide-react";
 import { format, subDays } from "date-fns";
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-);
 
 interface Metrics {
   overall_accuracy: number;
