@@ -477,13 +477,83 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     console.log("🤖 Starting AI quote submission for quote:", state.quoteId);
 
     try {
-      // 1. Check if AI processing is complete
-      console.log("1️⃣ Checking AI processing status");
+      // 1. Check if AI processing is complete and if HITL is required
+      console.log("1️⃣ Checking AI processing status and HITL requirement");
       const { data: quote } = await supabase
         .from("quotes")
-        .select("processing_status")
+        .select("processing_status, hitl_required, hitl_reasons")
         .eq("id", state.quoteId)
         .single();
+
+      // 2. If HITL is required, automatically create HITL review
+      if (quote?.hitl_required || quote?.processing_status === "hitl_pending") {
+        console.log("🚨 HITL required! Reasons:", quote?.hitl_reasons);
+        updateState({ showProcessingModal: false });
+
+        // Create HITL review
+        console.log("2️⃣ Creating HITL review record automatically");
+        const hitlResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-hitl-review`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              quoteId: state.quoteId,
+              isCustomerRequested: false,
+              triggerReasons: quote?.hitl_reasons || ["ai_auto_triggered"],
+              customerNote: state.specialInstructions || "",
+            }),
+          },
+        );
+
+        const hitlResult = await hitlResponse.json();
+        if (!hitlResponse.ok || !hitlResult.success) {
+          console.error("❌ HITL review creation failed:", hitlResult);
+          throw new Error(hitlResult.error || "Failed to create HITL review");
+        }
+
+        // Send email notification using Brevo template 15
+        console.log("3️⃣ Sending HITL notification email to:", state.email);
+        const emailResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              to: state.email,
+              toName: state.fullName,
+              subject: "Manual Review Required for Your Quote",
+              templateId: 15,
+              params: {
+                customer_name: state.fullName,
+                quote_number: state.quoteNumber,
+                review_reason: formatHITLReasons(quote?.hitl_reasons),
+              },
+            }),
+          },
+        );
+
+        const emailResult = await emailResponse.json();
+        if (!emailResponse.ok || !emailResult.success) {
+          console.error("❌ Email sending failed:", emailResult);
+        } else {
+          console.log("✅ HITL notification email sent successfully");
+        }
+
+        // Show confirmation with HITL explanation
+        console.log("✅ HITL review created and customer notified");
+        updateState({
+          showConfirmation: true,
+          error: null
+        });
+        return;
+      }
 
       if (quote?.processing_status !== "quote_ready") {
         // Show loading modal
@@ -508,16 +578,16 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         console.log("✅ Processing already complete (status: quote_ready)");
       }
 
-      // 2. Update quote status to quote_ready
-      console.log("2️⃣ Updating quote status to quote_ready");
+      // Update quote status to quote_ready
+      console.log("4️⃣ Updating quote status to quote_ready");
       await supabase
         .from("quotes")
         .update({ status: "quote_ready" })
         .eq("id", state.quoteId);
 
-      // 3. Redirect to main quote flow Step 4
+      // Redirect to main quote flow review page
       console.log(
-        "3️⃣ Redirecting to review page:",
+        "5️⃣ Redirecting to review page:",
         `/quote/${state.quoteId}/review`,
       );
       window.location.href = `/quote/${state.quoteId}/review`;
@@ -532,6 +602,27 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     } finally {
       updateState({ isSubmitting: false });
     }
+  };
+
+  // Helper function to format HITL reasons for customer display
+  const formatHITLReasons = (reasons: string[] | null): string => {
+    if (!reasons || reasons.length === 0) {
+      return "Additional review needed for quality assurance";
+    }
+
+    const reasonMap: Record<string, string> = {
+      high_value_order: "Your quote exceeds our automatic processing threshold and requires specialist review",
+      complex_document: "Your document is complex and requires expert verification",
+      low_confidence: "Additional verification needed to ensure accuracy",
+      unusual_language_pair: "This language combination requires specialist attention",
+      special_certification: "Special certification requirements detected",
+    };
+
+    const formatted = reasons
+      .map((r) => reasonMap[r] || r.replace(/_/g, " "))
+      .join(", ");
+
+    return formatted;
   };
 
   return (
