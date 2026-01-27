@@ -59,8 +59,17 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-cethos-bg-light to-white">
-      {/* Processing Modal */}
+      {/* Processing Modal - shown during AI processing */}
       {state.showProcessingModal && <ProcessingModal />}
+
+      {/* Choice Modal - shown after processing completes */}
+      {state.showChoiceModal && (
+        <UploadChoiceModal
+          onAIQuote={handleAIQuoteChoice}
+          onHumanReview={handleHumanReviewChoice}
+          loading={state.isSubmitting}
+        />
+      )}
 
       <div className="container mx-auto px-4 py-8">
         {/* Header Section */}
@@ -73,11 +82,11 @@ export default function UploadPage() {
           </p>
         </div>
 
-        {/* Step Indicator */}
+        {/* Step Indicator (3 steps) */}
         <div className="mb-8">
           <StepIndicator
             currentStep={state.currentStep}
-            totalSteps={4}
+            totalSteps={3}
             labels={stepLabels}
           />
         </div>
@@ -88,7 +97,6 @@ export default function UploadPage() {
           {state.currentStep === 1 && <UploadStep1 />}
           {state.currentStep === 2 && <UploadStep2 />}
           {state.currentStep === 3 && <UploadStep3 />}
-          {state.currentStep === 4 && <UploadStep4 />}
         </div>
       </div>
     </div>
