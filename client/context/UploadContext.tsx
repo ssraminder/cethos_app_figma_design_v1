@@ -14,6 +14,7 @@ export interface UploadFormState {
   // Quote
   quoteId: string | null;
   quoteNumber: string | null;
+  entryPoint: string; // 'upload_form' - tracks where user started
 
   // Step 1: Files
   files: UploadedFile[];
@@ -63,6 +64,7 @@ interface UploadContextType {
 const initialState: UploadFormState = {
   quoteId: null,
   quoteNumber: null,
+  entryPoint: 'upload_form',
   files: [],
   sourceLanguageId: "",
   targetLanguageId: "",
