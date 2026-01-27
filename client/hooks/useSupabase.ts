@@ -125,6 +125,8 @@ export function useSupabase() {
       targetLanguageId: string;
       intendedUseId: string;
       countryOfIssue: string;
+      countryId: string;
+      certificationTypeId: string;
       specialInstructions: string;
     },
   ): Promise<boolean> => {
@@ -145,6 +147,8 @@ export function useSupabase() {
           target_language_id: details.targetLanguageId,
           intended_use_id: details.intendedUseId,
           country_of_issue: details.countryOfIssue,
+          country_id: details.countryId,
+          certification_type_id: details.certificationTypeId,
           special_instructions: details.specialInstructions,
           status: "details_pending",
         })
