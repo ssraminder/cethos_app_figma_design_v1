@@ -898,7 +898,7 @@ export default function Step5BillingDelivery() {
       {/* Physical Delivery Section */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Physical Delivery (Optional)
+          Physical Delivery
         </h3>
 
         <div className="space-y-3">
@@ -926,7 +926,7 @@ export default function Step5BillingDelivery() {
                 <span className="font-medium text-gray-900">
                   No physical copy needed
                 </span>
-                <span className="text-green-600 font-semibold">FREE</span>
+                <span className="text-green-600 font-semibold whitespace-nowrap flex-shrink-0 ml-2">FREE</span>
               </div>
               <p className="text-sm text-gray-600">Digital delivery only</p>
             </div>
@@ -968,7 +968,7 @@ export default function Step5BillingDelivery() {
                     {option.name}
                   </span>
                   <span
-                    className={`font-semibold ${
+                    className={`font-semibold whitespace-nowrap flex-shrink-0 ml-2 ${
                       option.price === 0 ? "text-green-600" : "text-gray-900"
                     }`}
                   >
