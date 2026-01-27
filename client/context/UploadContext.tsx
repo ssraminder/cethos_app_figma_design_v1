@@ -556,7 +556,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           showConfirmation: true,
           error: null,
           hitlTriggered: true,
-          hitlReasons: quote?.hitl_reasons || []
+          hitlReasons: quote?.hitl_reasons || [],
         });
         return;
       }
@@ -617,10 +617,13 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     }
 
     const reasonMap: Record<string, string> = {
-      high_value_order: "Your quote exceeds our automatic processing threshold and requires specialist review",
-      complex_document: "Your document is complex and requires expert verification",
+      high_value_order:
+        "Your quote exceeds our automatic processing threshold and requires specialist review",
+      complex_document:
+        "Your document is complex and requires expert verification",
       low_confidence: "Additional verification needed to ensure accuracy",
-      unusual_language_pair: "This language combination requires specialist attention",
+      unusual_language_pair:
+        "This language combination requires specialist attention",
       special_certification: "Special certification requirements detected",
     };
 

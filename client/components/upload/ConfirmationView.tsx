@@ -25,7 +25,8 @@ export default function ConfirmationView() {
       high_value_order: "Your quote exceeds our automatic processing threshold",
       complex_document: "Your document requires expert verification",
       low_confidence: "Additional verification needed for accuracy",
-      unusual_language_pair: "This language combination requires specialist attention",
+      unusual_language_pair:
+        "This language combination requires specialist attention",
       special_certification: "Special certification requirements detected",
     };
     return reasonMap[reason] || reason.replace(/_/g, " ");
@@ -84,13 +85,17 @@ export default function ConfirmationView() {
           <>
             Our translation specialists will personally review your request and
             email you a detailed quote at{" "}
-            <span className="font-semibold text-cethos-navy">{state.email}</span>{" "}
+            <span className="font-semibold text-cethos-navy">
+              {state.email}
+            </span>{" "}
             within <span className="font-semibold">4 working hours</span>.
           </>
         ) : (
           <>
             Our team will review your documents and email you at{" "}
-            <span className="font-semibold text-cethos-navy">{state.email}</span>{" "}
+            <span className="font-semibold text-cethos-navy">
+              {state.email}
+            </span>{" "}
             within 4 working hours.
           </>
         )}
