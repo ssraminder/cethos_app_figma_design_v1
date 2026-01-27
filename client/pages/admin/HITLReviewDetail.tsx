@@ -314,6 +314,15 @@ const HITLReviewDetail: React.FC = () => {
       );
 
       if (quote?.id) {
+        console.log("🔍 Fetching quote files for quote:", quote.id);
+
+        // Fetch quote files for the document files panel
+        const files = await fetchFromSupabase(
+          `quote_files?quote_id=eq.${quote.id}&order=created_at.desc`,
+        );
+        console.log("📁 Quote files:", files);
+        setQuoteFiles(files || []);
+
         console.log("🔍 Fetching analysis results for quote:", quote.id);
 
         // Fetch analysis results with quote_file relationship and AI metadata (using nested select)
