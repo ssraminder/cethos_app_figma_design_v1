@@ -5,12 +5,12 @@ import StepIndicator from "@/components/StepIndicator";
 import UploadStep1 from "@/components/upload/UploadStep1";
 import UploadStep2 from "@/components/upload/UploadStep2";
 import UploadStep3 from "@/components/upload/UploadStep3";
-import UploadStep4 from "@/components/upload/UploadStep4";
 import ConfirmationView from "@/components/upload/ConfirmationView";
 import ProcessingModal from "@/components/upload/ProcessingModal";
+import UploadChoiceModal from "@/components/upload/UploadChoiceModal";
 
 export default function UploadPage() {
-  const { state, updateState } = useUpload();
+  const { state, updateState, handleAIQuoteChoice, handleHumanReviewChoice } = useUpload();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -20,8 +20,8 @@ export default function UploadPage() {
 
   // Sync URL with state
   useEffect(() => {
-    if (urlStep !== state.currentStep && urlStep >= 1 && urlStep <= 4) {
-      updateState({ currentStep: urlStep as 1 | 2 | 3 | 4 });
+    if (urlStep !== state.currentStep && urlStep >= 1 && urlStep <= 3) {
+      updateState({ currentStep: urlStep as 1 | 2 | 3 });
     }
   }, [urlStep]);
 
@@ -43,8 +43,8 @@ export default function UploadPage() {
     }
   }, [state.currentStep, state.quoteId]);
 
-  // Step labels for indicator
-  const stepLabels = ["Upload", "Details", "Contact", "Quote Type"];
+  // Step labels for indicator (3 steps only)
+  const stepLabels = ["Upload", "Details", "Contact"];
 
   // If showing confirmation, render that instead
   if (state.showConfirmation) {
