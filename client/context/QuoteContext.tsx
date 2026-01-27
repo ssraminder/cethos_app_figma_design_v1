@@ -33,6 +33,7 @@ export interface ShippingAddress {
 export interface QuoteState {
   currentStep: number;
   quoteId: string;
+  entryPoint: string; // 'order_form' - tracks where user started
   files: UploadedFile[];
   sourceLanguageId: string;
   targetLanguageId: string;
@@ -80,6 +81,7 @@ interface QuoteContextType {
 const initialState: QuoteState = {
   currentStep: 1,
   quoteId: "",
+  entryPoint: 'order_form',
   files: [],
   sourceLanguageId: "",
   targetLanguageId: "",
