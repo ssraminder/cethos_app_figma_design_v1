@@ -2146,47 +2146,31 @@ const HITLReviewDetail: React.FC = () => {
       {claimedByMe && reviewData?.status === "in_review" && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-40">
           <div className="max-w-7xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              {/* Internal Notes */}
-              <div className="flex-1 mr-6">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Internal Notes (optional)
-                </label>
-                <input
-                  type="text"
-                  value={internalNotes}
-                  onChange={(e) => setInternalNotes(e.target.value)}
-                  placeholder="Add notes visible only to staff..."
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-
+            <div className="flex items-center justify-end gap-3">
               {/* Action Buttons */}
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setShowRejectModal(true)}
-                  disabled={isSubmitting}
-                  className="px-4 py-2 bg-red-100 text-red-700 border border-red-300 rounded-lg hover:bg-red-200 font-medium disabled:opacity-50"
-                >
-                  Request Better Scan
-                </button>
+              <button
+                onClick={() => setShowRejectModal(true)}
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-red-100 text-red-700 border border-red-300 rounded-lg hover:bg-red-200 font-medium disabled:opacity-50"
+              >
+                Request Better Scan
+              </button>
 
-                <button
-                  onClick={handleEscalateReview}
-                  disabled={isSubmitting}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-200 font-medium disabled:opacity-50"
-                >
-                  Escalate to Admin
-                </button>
+              <button
+                onClick={handleEscalateReview}
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-200 font-medium disabled:opacity-50"
+              >
+                Escalate to Admin
+              </button>
 
-                <button
-                  onClick={handleApproveReview}
-                  disabled={isSubmitting}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50"
-                >
-                  {isSubmitting ? "Processing..." : "Approve Quote ✓"}
-                </button>
-              </div>
+              <button
+                onClick={handleApproveReview}
+                disabled={isSubmitting}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50"
+              >
+                {isSubmitting ? "Processing..." : "Approve Quote ✓"}
+              </button>
             </div>
           </div>
         </div>
@@ -2194,7 +2178,7 @@ const HITLReviewDetail: React.FC = () => {
 
       {/* Add padding at bottom for fixed footer */}
       {claimedByMe && reviewData?.status === "in_review" && (
-        <div className="h-24"></div>
+        <div className="h-20"></div>
       )}
 
       {/* Reject Modal */}
