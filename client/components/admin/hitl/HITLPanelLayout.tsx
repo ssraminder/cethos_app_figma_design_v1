@@ -152,10 +152,10 @@ export default function HITLPanelLayout({
           pricingData={
             reviewData
               ? {
-                  subtotal: reviewData.subtotal,
-                  certification_total: reviewData.certification_total,
-                  tax_amount: reviewData.tax_amount,
-                  total: reviewData.total,
+                  subtotal: (reviewData as any).subtotal || 0,
+                  certification_total: (reviewData as any).certification_total || 0,
+                  tax_amount: (reviewData as any).tax_amount || 0,
+                  total: (reviewData as any).total || 0,
                 }
               : null
           }
