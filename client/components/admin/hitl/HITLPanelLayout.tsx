@@ -90,19 +90,10 @@ export default function HITLPanelLayout({
     if (reviewData) {
       console.log("📊 HITLPanelLayout reviewData:", reviewData);
       console.log("📊 Customer:", (reviewData as any).customer);
-      console.log(
-        "📊 Source language:",
-        (reviewData as any).source_language,
-      );
-      console.log(
-        "📊 Target language:",
-        (reviewData as any).target_language,
-      );
+      console.log("📊 Source language:", (reviewData as any).source_language);
+      console.log("📊 Target language:", (reviewData as any).target_language);
       console.log("📊 Intended use:", (reviewData as any).intended_use);
-      console.log(
-        "📊 Country of issue:",
-        (reviewData as any).country_of_issue,
-      );
+      console.log("📊 Country of issue:", (reviewData as any).country_of_issue);
       console.log("📊 Subtotal:", (reviewData as any).subtotal);
       console.log("📊 Total:", (reviewData as any).total);
     }
@@ -126,8 +117,7 @@ export default function HITLPanelLayout({
                     (reviewData as any).customer?.email ||
                     reviewData.customer_email ||
                     "",
-                  customer_phone:
-                    (reviewData as any).customer?.phone || "",
+                  customer_phone: (reviewData as any).customer?.phone || "",
                   quote_number: reviewData.quote_number,
                   total: (reviewData as any).total || reviewData.total || 0,
                   status: reviewData.status,
@@ -156,10 +146,10 @@ export default function HITLPanelLayout({
                     (reviewData as any).target_language?.code || "",
                   intended_use_name:
                     (reviewData as any).intended_use?.name || "",
-                  country_of_issue:
-                    (reviewData as any).country_of_issue || "",
+                  country_of_issue: (reviewData as any).country_of_issue || "",
                   service_province: (reviewData as any).service_province,
-                  special_instructions: (reviewData as any).special_instructions,
+                  special_instructions: (reviewData as any)
+                    .special_instructions,
                 }
               : null
           }
@@ -177,16 +167,14 @@ export default function HITLPanelLayout({
                   contact_email:
                     (reviewData as any).customer?.email ||
                     reviewData.customer_email,
-                  contact_phone:
-                    (reviewData as any).customer?.phone || "",
+                  contact_phone: (reviewData as any).customer?.phone || "",
                   customer_name:
                     (reviewData as any).customer?.full_name ||
                     reviewData.customer_name,
                   customer_email:
                     (reviewData as any).customer?.email ||
                     reviewData.customer_email,
-                  customer_phone:
-                    (reviewData as any).customer?.phone || "",
+                  customer_phone: (reviewData as any).customer?.phone || "",
                 }
               : null
           }
@@ -198,10 +186,16 @@ export default function HITLPanelLayout({
           pricingData={
             reviewData
               ? {
-                  subtotal: (reviewData as any).subtotal || reviewData.subtotal || 0,
+                  subtotal:
+                    (reviewData as any).subtotal || reviewData.subtotal || 0,
                   certification_total:
-                    (reviewData as any).certification_total || reviewData.certification_total || 0,
-                  tax_amount: (reviewData as any).tax_amount || reviewData.tax_amount || 0,
+                    (reviewData as any).certification_total ||
+                    reviewData.certification_total ||
+                    0,
+                  tax_amount:
+                    (reviewData as any).tax_amount ||
+                    reviewData.tax_amount ||
+                    0,
                   total: (reviewData as any).total || reviewData.total || 0,
                 }
               : null
