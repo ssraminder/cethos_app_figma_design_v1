@@ -268,6 +268,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
           sourceLanguageId: state.sourceLanguageId,
           targetLanguageId: state.targetLanguageId,
           intendedUseId: state.intendedUseId,
+          serviceProvince: state.serviceProvince,
           countryOfIssue: state.countryOfIssue,
           countryId: state.countryId,
           certificationTypeId: state.certificationTypeId,
