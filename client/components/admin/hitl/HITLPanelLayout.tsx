@@ -87,7 +87,7 @@ export default function HITLPanelLayout({
 }: HITLPanelLayoutProps) {
   return (
     <div className="grid grid-cols-12 gap-4 h-[calc(100vh-300px)]">
-      {/* LEFT PANEL: Customer Info + Document Files + Quote Details (3 columns) */}
+      {/* LEFT PANEL: Customer Info + Document Files + Translation + Contact + Pricing (3 columns) */}
       <aside className="col-span-3 space-y-4 overflow-y-auto">
         {/* Customer Info */}
         <CustomerInfoPanel
@@ -111,8 +111,56 @@ export default function HITLPanelLayout({
         {/* Document Files */}
         <DocumentFilesPanel files={quoteFiles} loading={loading} />
 
-        {/* Quote Details (Step 2 & 3) */}
-        <QuoteDetailsPanel quoteData={reviewData} loading={loading} />
+        {/* Translation Details */}
+        <TranslationDetailsPanel
+          translationData={
+            reviewData
+              ? {
+                  source_language_name: reviewData.source_language_name,
+                  source_language_code: reviewData.source_language_code,
+                  target_language_name: reviewData.target_language_name,
+                  target_language_code: reviewData.target_language_code,
+                  intended_use_name: reviewData.intended_use_name,
+                  country_of_issue: reviewData.country_of_issue,
+                  service_province: reviewData.service_province,
+                  special_instructions: reviewData.special_instructions,
+                }
+              : null
+          }
+          loading={loading}
+        />
+
+        {/* Contact Information */}
+        <ContactInfoPanel
+          contactData={
+            reviewData
+              ? {
+                  contact_name: reviewData.customer_name,
+                  contact_email: reviewData.customer_email,
+                  contact_phone: reviewData.customer_phone,
+                  customer_name: reviewData.customer_name,
+                  customer_email: reviewData.customer_email,
+                  customer_phone: reviewData.customer_phone,
+                }
+              : null
+          }
+          loading={loading}
+        />
+
+        {/* Pricing Summary */}
+        <PricingSummaryPanel
+          pricingData={
+            reviewData
+              ? {
+                  subtotal: reviewData.subtotal,
+                  certification_total: reviewData.certification_total,
+                  tax_amount: reviewData.tax_amount,
+                  total: reviewData.total,
+                }
+              : null
+          }
+          loading={loading}
+        />
       </aside>
 
       {/* CENTER PANEL: Document Analysis (6 columns) */}
