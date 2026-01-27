@@ -34,7 +34,9 @@ interface DocumentAnalysis {
   certification_price: string;
   processing_status: string;
   ocr_confidence: number | null;
+  language_confidence: number | null;
   document_type_confidence: number | null;
+  complexity_confidence: number | null;
   quote_files: {
     id: string;
     original_filename: string;
@@ -281,7 +283,7 @@ export default function Step4ReviewRush() {
       const { data: analysisResults, error: analysisError } = await supabase
         .from("ai_analysis_results")
         .select(
-          "id, quote_file_id, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status, ocr_confidence, document_type_confidence",
+          "id, quote_file_id, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status, ocr_confidence, language_confidence, document_type_confidence, complexity_confidence",
         )
         .eq("quote_id", quoteId)
         .eq("processing_status", "complete");
@@ -798,7 +800,7 @@ export default function Step4ReviewRush() {
                       Billable Pages: {doc.billable_pages.toFixed(1)}
                     </span>
                     <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
-                      AI Confidence: {Math.round(((doc.ocr_confidence || 0) + (doc.document_type_confidence || 0)) / 2 * 100)}%
+                      AI Confidence: {Math.round((((doc.ocr_confidence || 0) + (doc.language_confidence || 0) + (doc.document_type_confidence || 0) + (doc.complexity_confidence || 0)) / 4) * 100)}%
                     </span>
                   </div>
                 </div>
