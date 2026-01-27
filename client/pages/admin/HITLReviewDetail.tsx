@@ -255,6 +255,11 @@ const HITLReviewDetail: React.FC = () => {
       const quote = quotes[0];
 
       console.log("💰 Quote found:", quote);
+      console.log("💰 Quote customer:", quote?.customer);
+      console.log("💰 Quote source_language:", quote?.source_language);
+      console.log("💰 Quote target_language:", quote?.target_language);
+      console.log("💰 Quote intended_use:", quote?.intended_use);
+      console.log("💰 Quote pricing - subtotal:", quote?.subtotal, "certification_total:", quote?.certification_total, "tax_amount:", quote?.tax_amount, "total:", quote?.total);
 
       if (!quote) {
         console.error(
