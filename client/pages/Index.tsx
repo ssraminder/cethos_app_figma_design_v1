@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useDocumentProcessing } from "@/hooks/useDocumentProcessing";
+import { useSearchParams } from "react-router-dom";
 import StepIndicator from "@/components/StepIndicator";
 import ProcessingStatus from "@/components/ProcessingStatus";
 import EmailQuoteConfirmation from "@/components/EmailQuoteConfirmation";
@@ -11,6 +12,7 @@ import Step4ReviewRush from "@/components/quote/Step4ReviewRush";
 import Step5BillingDelivery from "@/components/quote/Step5BillingDelivery";
 import Step6Payment from "@/components/quote/Step6Payment";
 import { X } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 export default function Index() {
   const {
@@ -24,12 +26,60 @@ export default function Index() {
   } = useQuote();
 
   const { triggerProcessing } = useDocumentProcessing();
+  const [searchParams] = useSearchParams();
 
   // Save for Later modal state
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveEmail, setSaveEmail] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [saveSent, setSaveSent] = useState(false);
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+
+  // Load existing quote from URL parameters (for upload route redirect)
+  useEffect(() => {
+    const loadExistingQuote = async () => {
+      const quoteId = searchParams.get("quote_id");
+      const stepParam = searchParams.get("step");
+
+      if (!quoteId || state.quoteId === quoteId) return;
+
+      console.log("📥 Loading existing quote from URL:", quoteId);
+      setIsLoadingQuote(true);
+
+      try {
+        // Fetch the quote with all related data
+        const { data: quote, error } = await supabase
+          .from("quotes")
+          .select(`
+            *,
+            customer:customers(*)
+          `)
+          .eq("id", quoteId)
+          .single();
+
+        if (error || !quote) {
+          console.error("Failed to load quote:", error);
+          return;
+        }
+
+        console.log("✅ Quote loaded successfully:", quote);
+
+        // Update quote context with loaded data
+        updateState({
+          quoteId: quote.id,
+          quoteNumber: quote.quote_number,
+          currentStep: stepParam ? parseInt(stepParam) as 1 | 2 | 3 | 4 | 5 | 6 : 4,
+        });
+
+      } catch (error) {
+        console.error("Error loading quote:", error);
+      } finally {
+        setIsLoadingQuote(false);
+      }
+    };
+
+    loadExistingQuote();
+  }, [searchParams]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
