@@ -5,6 +5,14 @@ import { useParams, useNavigate } from "react-router-dom";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
+import {
+  CustomerInfoPanel,
+  DocumentFilesPanel,
+  QuoteDetailsPanel,
+  InternalNotesPanel,
+  DocumentAnalysisPanel,
+  HITLPanelLayout,
+} from "../../components/admin/hitl";
 
 interface PageData {
   id: string;
