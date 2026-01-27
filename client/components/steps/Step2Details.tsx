@@ -28,7 +28,9 @@ export default function Step2Details() {
 
   // Check if source language is English
   const isSourceEnglish = useMemo(() => {
-    const selected = sourceLanguages.find((l) => l.id === state.sourceLanguageId);
+    const selected = sourceLanguages.find(
+      (l) => l.id === state.sourceLanguageId,
+    );
     return selected?.code?.startsWith("en") || false;
   }, [state.sourceLanguageId, sourceLanguages]);
 
@@ -61,7 +63,10 @@ export default function Step2Details() {
 
     // Auto-select the default certification type
     if (selectedUse?.default_certification_type_id) {
-      updateField("certificationTypeId", selectedUse.default_certification_type_id);
+      updateField(
+        "certificationTypeId",
+        selectedUse.default_certification_type_id,
+      );
     }
   };
 

@@ -38,7 +38,9 @@ export function useDropdownOptions() {
   const [targetLanguages, setTargetLanguages] = useState<Language[]>([]);
   const [intendedUses, setIntendedUses] = useState<IntendedUse[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
-  const [certificationTypes, setCertificationTypes] = useState<CertificationType[]>([]);
+  const [certificationTypes, setCertificationTypes] = useState<
+    CertificationType[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,7 +83,9 @@ export function useDropdownOptions() {
           // Fetch intended uses
           supabase
             .from("intended_uses")
-            .select("id, code, name, description, subcategory, default_certification_type_id")
+            .select(
+              "id, code, name, description, subcategory, default_certification_type_id",
+            )
             .eq("is_active", true)
             .order("sort_order"),
 
@@ -101,12 +105,18 @@ export function useDropdownOptions() {
         ]);
 
         if (sourceLangResult.error) {
-          console.error("Error fetching source languages:", sourceLangResult.error);
+          console.error(
+            "Error fetching source languages:",
+            sourceLangResult.error,
+          );
           setError("Failed to load source languages");
         }
 
         if (targetLangResult.error) {
-          console.error("Error fetching target languages:", targetLangResult.error);
+          console.error(
+            "Error fetching target languages:",
+            targetLangResult.error,
+          );
           setError("Failed to load target languages");
         }
 
@@ -121,7 +131,10 @@ export function useDropdownOptions() {
         }
 
         if (certTypesResult.error) {
-          console.error("Error fetching certification types:", certTypesResult.error);
+          console.error(
+            "Error fetching certification types:",
+            certTypesResult.error,
+          );
           setError("Failed to load certification types");
         }
 
