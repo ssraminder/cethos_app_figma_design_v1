@@ -3,7 +3,6 @@ import CustomerInfoPanel from "./CustomerInfoPanel";
 import DocumentFilesPanel from "./DocumentFilesPanel";
 import QuoteDetailsPanel from "./QuoteDetailsPanel";
 import InternalNotesPanel from "./InternalNotesPanel";
-import DocumentAnalysisPanel from "./DocumentAnalysisPanel";
 import MessagePanel from "../../messaging/MessagePanel";
 
 interface QuoteFile {
