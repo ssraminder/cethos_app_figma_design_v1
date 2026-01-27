@@ -1,4 +1,4 @@
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, AlertCircle } from "lucide-react";
 import { useUpload } from "@/context/UploadContext";
 
 export default function ConfirmationView() {
@@ -19,16 +19,34 @@ export default function ConfirmationView() {
     }
   };
 
+  // Format HITL reasons for customer display
+  const formatHITLReason = (reason: string): string => {
+    const reasonMap: Record<string, string> = {
+      high_value_order: "Your quote exceeds our automatic processing threshold",
+      complex_document: "Your document requires expert verification",
+      low_confidence: "Additional verification needed for accuracy",
+      unusual_language_pair: "This language combination requires specialist attention",
+      special_certification: "Special certification requirements detected",
+    };
+    return reasonMap[reason] || reason.replace(/_/g, " ");
+  };
+
+  const isHITL = state.hitlTriggered || state.submissionType === "manual";
+
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       {/* Success Icon */}
       <div className="mb-6">
-        <CheckCircle className="w-20 h-20 text-green-500 mx-auto" />
+        {isHITL ? (
+          <AlertCircle className="w-20 h-20 text-amber-500 mx-auto" />
+        ) : (
+          <CheckCircle className="w-20 h-20 text-green-500 mx-auto" />
+        )}
       </div>
 
       {/* Title */}
       <h1 className="text-2xl sm:text-3xl font-bold font-jakarta text-cethos-navy mb-4">
-        Quote Request Submitted
+        {isHITL ? "Manual Review Requested" : "Quote Request Submitted"}
       </h1>
 
       {/* Quote Number */}
@@ -43,12 +61,47 @@ export default function ConfirmationView() {
         </div>
       </div>
 
+      {/* HITL-specific explanation */}
+      {isHITL && state.hitlReasons && state.hitlReasons.length > 0 && (
+        <div className="mb-6 max-w-lg bg-amber-50 border-2 border-amber-200 rounded-lg p-6">
+          <h3 className="text-sm font-semibold text-amber-900 mb-3">
+            Why manual review is needed:
+          </h3>
+          <ul className="text-left text-sm text-amber-800 space-y-2">
+            {state.hitlReasons.map((reason, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="text-amber-600 mt-0.5">•</span>
+                <span>{formatHITLReason(reason)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Description */}
       <p className="text-base text-cethos-slate max-w-md mb-8">
-        Our team will review your documents and email you at{" "}
-        <span className="font-semibold text-cethos-navy">{state.email}</span>{" "}
-        within 4 working hours.
+        {isHITL ? (
+          <>
+            Our translation specialists will personally review your request and
+            email you a detailed quote at{" "}
+            <span className="font-semibold text-cethos-navy">{state.email}</span>{" "}
+            within <span className="font-semibold">4 working hours</span>.
+          </>
+        ) : (
+          <>
+            Our team will review your documents and email you at{" "}
+            <span className="font-semibold text-cethos-navy">{state.email}</span>{" "}
+            within 4 working hours.
+          </>
+        )}
       </p>
+
+      {/* Confirmation email notice */}
+      <div className="mb-8 max-w-md">
+        <p className="text-sm text-cethos-slate italic">
+          A confirmation email has been sent to your inbox.
+        </p>
+      </div>
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-4">
