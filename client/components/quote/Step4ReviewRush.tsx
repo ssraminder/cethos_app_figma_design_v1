@@ -33,6 +33,8 @@ interface DocumentAnalysis {
   line_total: string;
   certification_price: string;
   processing_status: string;
+  ocr_confidence: number | null;
+  overall_confidence: number | null;
   quote_files: {
     id: string;
     original_filename: string;
@@ -107,8 +109,11 @@ export default function Step4ReviewRush() {
   // Language/document info for same-day eligibility
   const [sourceLanguage, setSourceLanguage] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("");
+  const [targetLanguageName, setTargetLanguageName] = useState("");
   const [documentType, setDocumentType] = useState("");
   const [intendedUse, setIntendedUse] = useState("");
+  const [baseRate, setBaseRate] = useState(65);
+  const [languageMultiplier, setLanguageMultiplier] = useState(1.0);
 
   // Delivery dates
   const [standardDays, setStandardDays] = useState(2);
@@ -276,7 +281,7 @@ export default function Step4ReviewRush() {
       const { data: analysisResults, error: analysisError } = await supabase
         .from("ai_analysis_results")
         .select(
-          "id, quote_file_id, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status",
+          "id, quote_file_id, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status, ocr_confidence, overall_confidence",
         )
         .eq("quote_id", quoteId)
         .eq("processing_status", "complete");
@@ -350,17 +355,38 @@ export default function Step4ReviewRush() {
       if (mergedData.length > 0) {
         const firstDoc = mergedData[0];
         setSourceLanguage(firstDoc.detected_language || "");
-        setTargetLanguage("en"); // Assuming English target
         setDocumentType(firstDoc.detected_document_type || "");
 
         // Get intended use from quote AND check HITL status
         const { data: quoteData } = await supabase
           .from("quotes")
           .select(
-            "intended_use:intended_uses(code), hitl_required, hitl_reason",
+            "intended_use:intended_uses(code), hitl_required, hitl_reason, target_language_id, source_language_id, target_language:languages!quotes_target_language_id_fkey(id, name, code), source_language:languages!quotes_source_language_id_fkey(id, name, code, multiplier)",
           )
           .eq("id", quoteId)
           .single();
+
+        // Fetch base rate from settings
+        const { data: baseRateSetting } = await supabase
+          .from("app_settings")
+          .select("setting_value")
+          .eq("setting_key", "base_rate")
+          .single();
+
+        const fetchedBaseRate = parseFloat(baseRateSetting?.setting_value || "65");
+        setBaseRate(fetchedBaseRate);
+
+        // Set target language from quote data
+        if (quoteData?.target_language) {
+          setTargetLanguage((quoteData.target_language as any)?.code || "");
+          setTargetLanguageName((quoteData.target_language as any)?.name || "");
+        }
+
+        // Set source language multiplier
+        if (quoteData?.source_language) {
+          const multiplier = parseFloat((quoteData.source_language as any)?.multiplier || "1.0");
+          setLanguageMultiplier(multiplier);
+        }
 
         if (quoteData?.intended_use) {
           setIntendedUse((quoteData.intended_use as any)?.code || "");
@@ -763,21 +789,16 @@ export default function Step4ReviewRush() {
                   </p>
                   <div className="flex flex-wrap gap-2 mt-1">
                     <span className="text-xs bg-cethos-teal-50 text-cethos-teal px-2 py-0.5 rounded">
-                      {doc.language_name || doc.detected_language}
+                      Detected Language: {doc.language_name || doc.detected_language}
+                    </span>
+                    <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                      Target Language: {targetLanguageName}
                     </span>
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                      {doc.billable_pages.toFixed(1)} billable pages
+                      Billable Pages: {doc.billable_pages.toFixed(1)}
                     </span>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded ${
-                        doc.assessed_complexity === "easy"
-                          ? "bg-green-100 text-green-700"
-                          : doc.assessed_complexity === "medium"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {doc.assessed_complexity}
+                    <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
+                      AI Confidence: {Math.round(((doc.ocr_confidence || 0) + (doc.overall_confidence || 0)) / 2 * 100)}%
                     </span>
                   </div>
                 </div>
