@@ -3,6 +3,9 @@ export { default as DocumentFilesPanel } from "./DocumentFilesPanel";
 export { default as QuoteDetailsPanel } from "./QuoteDetailsPanel";
 export { default as InternalNotesPanel } from "./InternalNotesPanel";
 export { default as DocumentAnalysisPanel } from "./DocumentAnalysisPanel";
+export { default as TranslationDetailsPanel } from "./TranslationDetailsPanel";
+export { default as ContactInfoPanel } from "./ContactInfoPanel";
+export { default as PricingSummaryPanel } from "./PricingSummaryPanel";
 export {
   default as HITLPanelLayout,
   useResponsiveLayout,
