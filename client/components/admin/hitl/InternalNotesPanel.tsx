@@ -57,7 +57,9 @@ export default function InternalNotesPanel({
       {/* Header */}
       <div className="px-4 py-3 flex items-center gap-2 flex-shrink-0">
         <MessageSquare className="w-4 h-4 text-gray-600" />
-        <h3 className="text-sm font-semibold text-gray-900 truncate">Internal Notes</h3>
+        <h3 className="text-sm font-semibold text-gray-900 truncate">
+          Internal Notes
+        </h3>
       </div>
 
       {/* Notes Textarea */}
