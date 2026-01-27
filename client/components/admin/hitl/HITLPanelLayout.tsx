@@ -109,14 +109,14 @@ export default function HITLPanelLayout({
           customerData={
             reviewData
               ? {
-                  customer_id: reviewData.customer_id,
-                  customer_name: reviewData.customer_name,
-                  customer_email: reviewData.customer_email,
-                  customer_phone: reviewData.customer_phone,
+                  customer_id: (reviewData as any).quotes?.customer?.id || "",
+                  customer_name: (reviewData as any).quotes?.customer?.full_name || reviewData.customer_name || "",
+                  customer_email: (reviewData as any).quotes?.customer?.email || reviewData.customer_email || "",
+                  customer_phone: (reviewData as any).quotes?.customer?.phone || "",
                   quote_number: reviewData.quote_number,
-                  total: reviewData.total,
+                  total: (reviewData as any).quotes?.total || 0,
                   status: reviewData.status,
-                  created_at: reviewData.created_at,
+                  created_at: (reviewData as any).quotes?.created_at || "",
                 }
               : null
           }
@@ -132,19 +132,19 @@ export default function HITLPanelLayout({
             reviewData
               ? {
                   source_language_name:
-                    (reviewData as any).source_language?.name || "",
+                    (reviewData as any).quotes?.source_language?.name || "",
                   source_language_code:
-                    (reviewData as any).source_language?.code || "",
+                    (reviewData as any).quotes?.source_language?.code || "",
                   target_language_name:
-                    (reviewData as any).target_language?.name || "",
+                    (reviewData as any).quotes?.target_language?.name || "",
                   target_language_code:
-                    (reviewData as any).target_language?.code || "",
+                    (reviewData as any).quotes?.target_language?.code || "",
                   intended_use_name:
-                    (reviewData as any).intended_use?.name || "",
-                  country_of_issue: (reviewData as any).country_of_issue || "",
-                  service_province: (reviewData as any).service_province,
-                  special_instructions: (reviewData as any)
-                    .special_instructions,
+                    (reviewData as any).quotes?.intended_use?.name || "",
+                  country_of_issue: (reviewData as any).quotes?.country_of_issue || "",
+                  service_province: (reviewData as any).quotes?.service_province,
+                  special_instructions: (reviewData as any).quotes
+                    ?.special_instructions,
                 }
               : null
           }
