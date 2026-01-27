@@ -91,10 +91,19 @@ export default function HITLPanelLayout({
       console.log("📊 HITLPanelLayout reviewData:", reviewData);
       console.log("📊 Quote data:", (reviewData as any).quotes);
       console.log("📊 Customer:", (reviewData as any).quotes?.customer);
-      console.log("📊 Source language:", (reviewData as any).quotes?.source_language);
-      console.log("📊 Target language:", (reviewData as any).quotes?.target_language);
+      console.log(
+        "📊 Source language:",
+        (reviewData as any).quotes?.source_language,
+      );
+      console.log(
+        "📊 Target language:",
+        (reviewData as any).quotes?.target_language,
+      );
       console.log("📊 Intended use:", (reviewData as any).quotes?.intended_use);
-      console.log("📊 Country of issue:", (reviewData as any).quotes?.country_of_issue);
+      console.log(
+        "📊 Country of issue:",
+        (reviewData as any).quotes?.country_of_issue,
+      );
       console.log("📊 Subtotal:", (reviewData as any).quotes?.subtotal);
       console.log("📊 Total:", (reviewData as any).quotes?.total);
     }
@@ -110,9 +119,16 @@ export default function HITLPanelLayout({
             reviewData
               ? {
                   customer_id: (reviewData as any).quotes?.customer?.id || "",
-                  customer_name: (reviewData as any).quotes?.customer?.full_name || reviewData.customer_name || "",
-                  customer_email: (reviewData as any).quotes?.customer?.email || reviewData.customer_email || "",
-                  customer_phone: (reviewData as any).quotes?.customer?.phone || "",
+                  customer_name:
+                    (reviewData as any).quotes?.customer?.full_name ||
+                    reviewData.customer_name ||
+                    "",
+                  customer_email:
+                    (reviewData as any).quotes?.customer?.email ||
+                    reviewData.customer_email ||
+                    "",
+                  customer_phone:
+                    (reviewData as any).quotes?.customer?.phone || "",
                   quote_number: reviewData.quote_number,
                   total: (reviewData as any).quotes?.total || 0,
                   status: reviewData.status,
@@ -141,8 +157,10 @@ export default function HITLPanelLayout({
                     (reviewData as any).quotes?.target_language?.code || "",
                   intended_use_name:
                     (reviewData as any).quotes?.intended_use?.name || "",
-                  country_of_issue: (reviewData as any).quotes?.country_of_issue || "",
-                  service_province: (reviewData as any).quotes?.service_province,
+                  country_of_issue:
+                    (reviewData as any).quotes?.country_of_issue || "",
+                  service_province: (reviewData as any).quotes
+                    ?.service_province,
                   special_instructions: (reviewData as any).quotes
                     ?.special_instructions,
                 }
@@ -156,12 +174,22 @@ export default function HITLPanelLayout({
           contactData={
             reviewData
               ? {
-                  contact_name: (reviewData as any).quotes?.customer?.full_name || reviewData.customer_name,
-                  contact_email: (reviewData as any).quotes?.customer?.email || reviewData.customer_email,
-                  contact_phone: (reviewData as any).quotes?.customer?.phone || "",
-                  customer_name: (reviewData as any).quotes?.customer?.full_name || reviewData.customer_name,
-                  customer_email: (reviewData as any).quotes?.customer?.email || reviewData.customer_email,
-                  customer_phone: (reviewData as any).quotes?.customer?.phone || "",
+                  contact_name:
+                    (reviewData as any).quotes?.customer?.full_name ||
+                    reviewData.customer_name,
+                  contact_email:
+                    (reviewData as any).quotes?.customer?.email ||
+                    reviewData.customer_email,
+                  contact_phone:
+                    (reviewData as any).quotes?.customer?.phone || "",
+                  customer_name:
+                    (reviewData as any).quotes?.customer?.full_name ||
+                    reviewData.customer_name,
+                  customer_email:
+                    (reviewData as any).quotes?.customer?.email ||
+                    reviewData.customer_email,
+                  customer_phone:
+                    (reviewData as any).quotes?.customer?.phone || "",
                 }
               : null
           }
