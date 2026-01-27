@@ -1284,6 +1284,8 @@ const HITLReviewDetail: React.FC = () => {
           <HITLPanelLayout
             reviewData={reviewData.quotes}
             quoteFiles={quoteFiles}
+            analysisResults={analysisResults}
+            certificationTypes={certificationTypes}
             staffId={staffSession?.staffId}
             staffName={staffSession?.name}
             loading={loading}
