@@ -25,6 +25,7 @@ import QuoteRecoverPage from "./pages/quote/QuoteRecoverPage";
 import QuoteReviewPage from "./pages/quote/QuoteReviewPage";
 import QuoteRevisionPage from "./pages/quote/QuoteRevisionPage";
 import QuoteConfirmationPage from "./pages/quote/QuoteConfirmationPage";
+import QuoteSavedPage from "./pages/quote/QuoteSavedPage";
 import UploadPage from "./pages/upload/UploadPage";
 import UploadConfirmationPage from "./pages/upload/UploadConfirmationPage";
 
@@ -111,6 +112,7 @@ const App = () => (
                       path="/quote/confirmation"
                       element={<QuoteConfirmationPage />}
                     />
+                    <Route path="/quote/saved" element={<QuoteSavedPage />} />
                     <Route path="/order/success" element={<OrderSuccess />} />
                     <Route path="/payment/cancel" element={<PaymentCancel />} />
 
