@@ -21,6 +21,8 @@ export default function DocumentFilesPanel({
   files,
   loading = false,
 }: DocumentFilesPanelProps) {
+  const [previewFile, setPreviewFile] = useState<QuoteFile | null>(null);
+
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 B";
     const k = 1024;
