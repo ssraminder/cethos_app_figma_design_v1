@@ -43,7 +43,16 @@ export default function CustomerInfoPanel({
     );
   }
 
-  const createdDate = new Date(customerData.created_at).toLocaleDateString();
+  const createdDate = customerData.created_at
+    ? new Date(customerData.created_at).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    : 'N/A';
+
   const statusColor =
     customerData.status === "quote_ready"
       ? "bg-green-100 text-green-800"
