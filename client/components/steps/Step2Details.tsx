@@ -135,6 +135,7 @@ export default function Step2Details() {
     "Personal",
     "Business",
     "Real Estate",
+    "Provincial Services",
     "Other",
   ];
 
