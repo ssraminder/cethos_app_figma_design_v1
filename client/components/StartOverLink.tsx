@@ -1,12 +1,16 @@
 import { RotateCcw } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useQuote } from "@/context/QuoteContext";
 import { useUpload } from "@/context/UploadContext";
+import { handleStartNewQuote } from "@/utils/navigationHelpers";
 
 interface StartOverLinkProps {
   className?: string;
 }
 
 export default function StartOverLink({ className = "" }: StartOverLinkProps) {
+  const navigate = useNavigate();
+
   // Try to use UploadContext first, fall back to QuoteContext
   let resetFunction: (() => void) | undefined;
 
@@ -29,18 +33,12 @@ export default function StartOverLink({ className = "" }: StartOverLinkProps) {
     );
 
     if (confirmed) {
-      // Clear all possible localStorage keys
-      localStorage.removeItem("cethos_quote_draft");
-      localStorage.removeItem("cethos_quote_id");
-      localStorage.removeItem("cethos_quote_state");
-      localStorage.removeItem("cethos_upload_draft");
+      // Use the navigation helper which clears storage and navigates to correct entry point
+      handleStartNewQuote(navigate);
 
-      // Call the appropriate reset function
+      // Call the appropriate reset function if available
       if (resetFunction) {
         resetFunction();
-      } else {
-        // Fallback: redirect to quote page
-        window.location.href = "/quote";
       }
     }
   };
