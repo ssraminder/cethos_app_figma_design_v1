@@ -455,13 +455,15 @@ export default function Step2Details() {
               !state.sourceLanguageId ||
               !state.targetLanguageId ||
               !state.intendedUseId ||
-              !state.countryId
+              !state.countryId ||
+              (showProvinceDropdown && !state.serviceProvince)
             }
             className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
               state.sourceLanguageId &&
               state.targetLanguageId &&
               state.intendedUseId &&
-              state.countryId
+              state.countryId &&
+              (!showProvinceDropdown || state.serviceProvince)
                 ? "bg-cethos-teal hover:bg-cethos-teal-light"
                 : "bg-gray-300 cursor-not-allowed"
             }`}
