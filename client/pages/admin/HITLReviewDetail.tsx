@@ -183,6 +183,13 @@ const HITLReviewDetail: React.FC = () => {
   const [splitDocumentName, setSplitDocumentName] = useState("");
   const [targetDocumentId, setTargetDocumentId] = useState("");
 
+  // Document preview modal
+  const [previewDocument, setPreviewDocument] = useState<{
+    url: string;
+    name: string;
+    type: string;
+  } | null>(null);
+
   // ============================================
   // DATA FETCHING
   // ============================================
