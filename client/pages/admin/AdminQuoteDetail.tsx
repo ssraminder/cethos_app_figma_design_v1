@@ -81,14 +81,16 @@ interface QuoteFile {
 
 interface AIAnalysis {
   id: string;
-  document_type: string;
-  detected_language: string;
-  word_count: number;
-  page_count: number;
-  complexity: string;
-  overall_confidence: number;
-  translation_cost: number;
-  certification_cost: number;
+  detected_document_type: string | null;
+  detected_language: string | null;
+  word_count: number | null;
+  page_count: number | null;
+  assessed_complexity: string | null;
+  ocr_confidence: number | null;
+  document_type_confidence: number | null;
+  complexity_confidence: number | null;
+  translation_cost: number | null;
+  certification_cost: number | null;
 }
 
 interface DocumentTypeOption {
@@ -308,6 +310,23 @@ export default function AdminQuoteDetail() {
 
   const hitlReview = hitlReviews[0] || null;
 
+  const formatLabel = (value?: string | null) => {
+    if (!value) return "—";
+    return value
+      .split("_")
+      .map((segment) =>
+        segment.length > 0
+          ? `${segment[0].toUpperCase()}${segment.slice(1)}`
+          : segment,
+      )
+      .join(" ");
+  };
+
+  const formatConfidence = (value?: number | null) => {
+    if (typeof value !== "number") return "—";
+    return `${Math.round(value * 100)}%`;
+  };
+
   const saveCorrection = async (
     analysisId: string,
     field: EditField,
@@ -484,11 +503,11 @@ export default function AdminQuoteDetail() {
   const openEditModal = (field: EditField, item: AIAnalysis) => {
     let value: string | number = "";
     if (field === "document_type") {
-      value = item.document_type || "";
+      value = item.detected_document_type || "";
     } else if (field === "language") {
       value = item.detected_language || "";
     } else if (field === "complexity") {
-      value = item.complexity || "";
+      value = item.assessed_complexity || "";
     } else {
       value = item.word_count || 0;
     }
@@ -746,8 +765,7 @@ export default function AdminQuoteDetail() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium">Document {index + 1}</span>
                       <span className="text-sm text-gray-500">
-                        Confidence: {(item.overall_confidence * 100).toFixed(0)}
-                        %
+                        Confidence: {formatConfidence(item.ocr_confidence)}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -763,7 +781,7 @@ export default function AdminQuoteDetail() {
                           </button>
                         </div>
                         <p className="font-medium">
-                          {item.document_type || "—"}
+                          {formatLabel(item.detected_document_type)}
                         </p>
                       </div>
                       <div>
@@ -807,8 +825,8 @@ export default function AdminQuoteDetail() {
                             Edit
                           </button>
                         </div>
-                        <p className="font-medium capitalize">
-                          {item.complexity || "—"}
+                        <p className="font-medium">
+                          {formatLabel(item.assessed_complexity)}
                         </p>
                       </div>
                     </div>
