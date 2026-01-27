@@ -85,6 +85,18 @@ export default function HITLPanelLayout({
   onSaveInternalNotes,
   children,
 }: HITLPanelLayoutProps) {
+  // Debug: Log the actual data structure
+  React.useEffect(() => {
+    if (reviewData) {
+      console.log("📊 HITLPanelLayout reviewData:", reviewData);
+      console.log("📊 Source language:", (reviewData as any).source_language);
+      console.log("📊 Target language:", (reviewData as any).target_language);
+      console.log("📊 Intended use:", (reviewData as any).intended_use);
+      console.log("📊 Subtotal:", (reviewData as any).subtotal);
+      console.log("📊 Total:", (reviewData as any).total);
+    }
+  }, [reviewData]);
+
   return (
     <div className="grid grid-cols-12 gap-4 h-[calc(100vh-300px)]">
       {/* LEFT PANEL: Customer Info + Document Files + Translation + Contact + Pricing (3 columns) */}
