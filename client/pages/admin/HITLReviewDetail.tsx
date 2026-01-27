@@ -1284,17 +1284,14 @@ const HITLReviewDetail: React.FC = () => {
           <HITLPanelLayout
             reviewData={reviewData.quotes}
             quoteFiles={quoteFiles}
-            analysisResults={analysisResults}
-            certificationTypes={certificationTypes}
             staffId={staffSession?.staffId}
             staffName={staffSession?.name}
             loading={loading}
             onSaveInternalNotes={handleSaveInternalNotes}
-          />
-        )}
-
-        {/* Page Selection Toolbar */}
-        {claimedByMe && analysisResults.length > 0 && (
+          >
+            {/* Center Panel Content: Document Accordion */}
+            {/* Page Selection Toolbar */}
+            {claimedByMe && analysisResults.length > 0 && (
           <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
             <div className="flex items-center gap-3">
               <button
@@ -2044,6 +2041,8 @@ const HITLReviewDetail: React.FC = () => {
             );
           })}
         </div>
+          </HITLPanelLayout>
+        )}
 
         {/* Messages Panel - Now integrated in HITLPanelLayout */}
         {false && reviewData && reviewData.quotes && staffSession?.staffId && (
