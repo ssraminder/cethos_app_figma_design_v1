@@ -63,22 +63,14 @@ interface ReviewData {
   tax_amount: number;
 }
 
-interface CertificationType {
-  id: string;
-  code: string;
-  name: string;
-  price: number;
-}
-
 interface HITLPanelLayoutProps {
   reviewData: ReviewData | null;
   quoteFiles: QuoteFile[];
-  analysisResults?: any[];
-  certificationTypes?: CertificationType[];
   staffId?: string;
   staffName?: string;
   loading?: boolean;
   onSaveInternalNotes?: (notes: string) => Promise<void>;
+  children?: React.ReactNode; // Center panel content
 }
 
 export default function HITLPanelLayout({
