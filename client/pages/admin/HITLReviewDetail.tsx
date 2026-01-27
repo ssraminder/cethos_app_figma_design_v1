@@ -1432,8 +1432,11 @@ const HITLReviewDetail: React.FC = () => {
                               </div>
                               <button
                                 onClick={() => {
-                                  // Will add preview modal state
-                                  alert('Preview will open in modal - implementing next');
+                                  setPreviewDocument({
+                                    url: `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`,
+                                    name: analysis.quote_file?.original_filename || 'Document',
+                                    type: analysis.quote_file?.mime_type?.includes('pdf') ? 'pdf' : 'image',
+                                  });
                                 }}
                                 className="w-full px-3 py-2 bg-blue-50 text-blue-700 text-sm font-medium rounded hover:bg-blue-100 transition-colors"
                               >
