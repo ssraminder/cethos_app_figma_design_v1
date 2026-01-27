@@ -2392,6 +2392,17 @@ const HITLReviewDetail: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Document Preview Modal */}
+      {previewDocument && (
+        <DocumentPreviewModal
+          isOpen={true}
+          onClose={() => setPreviewDocument(null)}
+          fileUrl={previewDocument.url}
+          fileName={previewDocument.name}
+          fileType={previewDocument.type}
+        />
+      )}
     </div>
   );
 };
