@@ -34,7 +34,7 @@ interface DocumentAnalysis {
   certification_price: string;
   processing_status: string;
   ocr_confidence: number | null;
-  overall_confidence: number | null;
+  document_type_confidence: number | null;
   quote_files: {
     id: string;
     original_filename: string;
@@ -281,7 +281,7 @@ export default function Step4ReviewRush() {
       const { data: analysisResults, error: analysisError } = await supabase
         .from("ai_analysis_results")
         .select(
-          "id, quote_file_id, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status, ocr_confidence, overall_confidence",
+          "id, quote_file_id, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status, ocr_confidence, document_type_confidence",
         )
         .eq("quote_id", quoteId)
         .eq("processing_status", "complete");
@@ -373,9 +373,7 @@ export default function Step4ReviewRush() {
           .eq("setting_key", "base_rate")
           .single();
 
-        const fetchedBaseRate = parseFloat(
-          baseRateSetting?.setting_value || "65",
-        );
+        const fetchedBaseRate = parseFloat(baseRateSetting?.setting_value || "65");
         setBaseRate(fetchedBaseRate);
 
         // Set target language from quote data
@@ -386,9 +384,7 @@ export default function Step4ReviewRush() {
 
         // Set source language multiplier
         if (quoteData?.source_language) {
-          const multiplier = parseFloat(
-            (quoteData.source_language as any)?.multiplier || "1.0",
-          );
+          const multiplier = parseFloat((quoteData.source_language as any)?.multiplier || "1.0");
           setLanguageMultiplier(multiplier);
         }
 
@@ -793,8 +789,7 @@ export default function Step4ReviewRush() {
                   </p>
                   <div className="flex flex-wrap gap-2 mt-1">
                     <span className="text-xs bg-cethos-teal-50 text-cethos-teal px-2 py-0.5 rounded">
-                      Detected Language:{" "}
-                      {doc.language_name || doc.detected_language}
+                      Detected Language: {doc.language_name || doc.detected_language}
                     </span>
                     <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
                       Target Language: {targetLanguageName}
@@ -803,14 +798,7 @@ export default function Step4ReviewRush() {
                       Billable Pages: {doc.billable_pages.toFixed(1)}
                     </span>
                     <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
-                      AI Confidence:{" "}
-                      {Math.round(
-                        (((doc.ocr_confidence || 0) +
-                          (doc.overall_confidence || 0)) /
-                          2) *
-                          100,
-                      )}
-                      %
+                      AI Confidence: {Math.round(((doc.ocr_confidence || 0) + (doc.document_type_confidence || 0)) / 2 * 100)}%
                     </span>
                   </div>
                 </div>
@@ -842,8 +830,7 @@ export default function Step4ReviewRush() {
               <span>${totals.translationSubtotal.toFixed(2)}</span>
             </div>
             <div className="text-xs text-gray-500 ml-4 mt-0.5">
-              {totalBillablePages.toFixed(1)} pages × $
-              {(baseRate * languageMultiplier).toFixed(2)} per page
+              {totalBillablePages.toFixed(1)} pages × ${(baseRate * languageMultiplier).toFixed(2)} per page
             </div>
           </div>
           {totals.certificationTotal > 0 && (
