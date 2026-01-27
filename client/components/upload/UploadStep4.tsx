@@ -46,64 +46,8 @@ export default function UploadStep4() {
 
       {/* Quote Option Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {/* Manual Quote Card */}
-        <div className="bg-white border-2 border-cethos-border rounded-xl p-8 text-center hover:border-cethos-teal hover:shadow-lg transition-all">
-          {/* Icon */}
-          <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-              <User className="w-8 h-8 text-gray-700" />
-            </div>
-          </div>
-
-          {/* Title */}
-          <h2 className="text-xl font-bold text-cethos-navy mb-4">
-            Request Manual Quote
-          </h2>
-
-          {/* Divider */}
-          <div className="border-t border-gray-200 mb-4"></div>
-
-          {/* Description */}
-          <p className="text-sm text-cethos-slate mb-6 leading-relaxed">
-            Our translation team will personally review your documents and email
-            you a detailed quote within 4 working hours.
-          </p>
-
-          {/* Best For */}
-          <div className="text-left mb-6">
-            <p className="text-sm font-semibold text-cethos-navy mb-2">
-              Best for:
-            </p>
-            <ul className="text-sm text-cethos-slate space-y-1">
-              <li>• Complex documents</li>
-              <li>• Special requirements</li>
-              <li>• Questions about pricing</li>
-            </ul>
-          </div>
-
-          {/* Button */}
-          <button
-            onClick={handleManualQuote}
-            disabled={state.isSubmitting}
-            className={`w-full h-12 rounded-lg font-semibold text-base transition-all flex items-center justify-center gap-2 ${
-              state.isSubmitting
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                : "bg-white border-2 border-cethos-navy text-cethos-navy hover:bg-gray-50"
-            }`}
-          >
-            {isManualLoading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Submitting...</span>
-              </>
-            ) : (
-              "Request Quote"
-            )}
-          </button>
-        </div>
-
-        {/* AI Quote Card */}
-        <div className="bg-white border-2 border-cethos-teal rounded-xl p-8 text-center hover:shadow-lg transition-all">
+        {/* AI Quote Card - First on mobile for immediate payment priority */}
+        <div className="bg-white border-2 border-cethos-teal rounded-xl p-8 text-center hover:shadow-lg transition-all md:order-2">
           {/* Icon */}
           <div className="flex justify-center mb-4">
             <div className="w-16 h-16 bg-cethos-teal-50 rounded-full flex items-center justify-center">
@@ -169,6 +113,62 @@ export default function UploadStep4() {
                   />
                 </svg>
               </>
+            )}
+          </button>
+        </div>
+
+        {/* Manual Quote Card - Second on mobile */}
+        <div className="bg-white border-2 border-cethos-border rounded-xl p-8 text-center hover:border-cethos-teal hover:shadow-lg transition-all md:order-1">
+          {/* Icon */}
+          <div className="flex justify-center mb-4">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+              <User className="w-8 h-8 text-gray-700" />
+            </div>
+          </div>
+
+          {/* Title */}
+          <h2 className="text-xl font-bold text-cethos-navy mb-4">
+            Request Manual Quote
+          </h2>
+
+          {/* Divider */}
+          <div className="border-t border-gray-200 mb-4"></div>
+
+          {/* Description */}
+          <p className="text-sm text-cethos-slate mb-6 leading-relaxed">
+            Our translation team will personally review your documents and email
+            you a detailed quote within 4 working hours.
+          </p>
+
+          {/* Best For */}
+          <div className="text-left mb-6">
+            <p className="text-sm font-semibold text-cethos-navy mb-2">
+              Best for:
+            </p>
+            <ul className="text-sm text-cethos-slate space-y-1">
+              <li>• Complex documents</li>
+              <li>• Special requirements</li>
+              <li>• Questions about pricing</li>
+            </ul>
+          </div>
+
+          {/* Button */}
+          <button
+            onClick={handleManualQuote}
+            disabled={state.isSubmitting}
+            className={`w-full h-12 rounded-lg font-semibold text-base transition-all flex items-center justify-center gap-2 ${
+              state.isSubmitting
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                : "bg-white border-2 border-cethos-navy text-cethos-navy hover:bg-gray-50"
+            }`}
+          >
+            {isManualLoading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Submitting...</span>
+              </>
+            ) : (
+              "Request Quote"
             )}
           </button>
         </div>
