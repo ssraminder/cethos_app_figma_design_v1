@@ -37,6 +37,7 @@ export interface QuoteState {
   sourceLanguageId: string;
   targetLanguageId: string;
   intendedUseId: string;
+  serviceProvince: string;
   countryOfIssue: string;
   countryId: string;
   certificationTypeId: string;
@@ -83,6 +84,7 @@ const initialState: QuoteState = {
   sourceLanguageId: "",
   targetLanguageId: "",
   intendedUseId: "",
+  serviceProvince: "",
   countryOfIssue: "",
   countryId: "",
   certificationTypeId: "",
