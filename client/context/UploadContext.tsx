@@ -694,6 +694,151 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     return formatted;
   };
 
+  // Handler for "AI Instant Quote" choice - redirect to main quote flow Step 4
+  const handleAIQuoteChoice = async () => {
+    if (!state.quoteId) {
+      console.error("No quote ID found for AI quote choice");
+      return;
+    }
+
+    console.log("🤖 AI Instant Quote selected, redirecting to main quote flow Step 4");
+
+    updateState({ showChoiceModal: false, isSubmitting: true });
+
+    try {
+      // Update quote status to quote_ready
+      await supabase
+        .from("quotes")
+        .update({ status: "quote_ready" })
+        .eq("id", state.quoteId);
+
+      // Redirect to main quote flow Step 4 (NOT /quote/{id}/review)
+      window.location.href = `/quote?step=4&quote_id=${state.quoteId}`;
+    } catch (error) {
+      console.error("Error in AI quote choice:", error);
+      updateState({
+        error: "Failed to proceed. Please try again.",
+        isSubmitting: false,
+        showChoiceModal: true,
+      });
+    }
+  };
+
+  // Handler for "Request Human Review" choice - create HITL and show confirmation
+  const handleHumanReviewChoice = async () => {
+    if (!state.quoteId) {
+      console.error("No quote ID found for human review choice");
+      return;
+    }
+
+    console.log("👤 Human Review requested by customer");
+
+    updateState({ showChoiceModal: false, isSubmitting: true });
+
+    try {
+      // 1. Update quote to require HITL
+      console.log("1️⃣ Updating quote to require HITL");
+      await supabase
+        .from("quotes")
+        .update({
+          status: "hitl_pending",
+          hitl_required: true,
+          hitl_reasons: ["customer_requested"],
+          hitl_requested_at: new Date().toISOString(),
+        })
+        .eq("id", state.quoteId);
+
+      // 2. Create HITL review record
+      console.log("2️⃣ Creating HITL review record");
+      const hitlResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-hitl-review`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: state.quoteId,
+            isCustomerRequested: true,
+            triggerReasons: ["customer_requested"],
+            customerNote: state.specialInstructions || "",
+          }),
+        }
+      );
+
+      const hitlResult = await hitlResponse.json();
+      if (!hitlResponse.ok || !hitlResult.success) {
+        throw new Error(hitlResult.error || "Failed to create HITL review");
+      }
+
+      // 3. Send confirmation email to customer (Brevo Template #15)
+      console.log("3️⃣ Sending confirmation email to customer");
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            to: state.email,
+            toName: state.fullName,
+            subject: "Manual Review Request Received",
+            templateId: 15,
+            params: {
+              customer_name: state.fullName,
+              quote_number: state.quoteNumber,
+              review_reason: "You requested a human review for accuracy",
+            },
+          }),
+        }
+      );
+
+      // 4. Send staff notification email
+      console.log("4️⃣ Sending staff notification email");
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            to: "support@cethos.com", // Update with actual staff email
+            subject: `New HITL Review Request - ${state.quoteNumber}`,
+            templateId: "staff-new-hitl", // Staff notification template
+            params: {
+              quote_number: state.quoteNumber,
+              customer_name: state.fullName,
+              customer_email: state.email,
+              document_count: state.files.length,
+            },
+          }),
+        }
+      );
+
+      // 5. Show confirmation screen
+      console.log("✅ Human review request complete, showing confirmation");
+      updateState({
+        showConfirmation: true,
+        isSubmitting: false,
+        hitlTriggered: true,
+        hitlReasons: ["customer_requested"],
+        submissionType: "manual",
+      });
+    } catch (error: any) {
+      console.error("Error in human review choice:", error);
+      updateState({
+        error: error?.message || "Failed to request human review. Please try again.",
+        isSubmitting: false,
+        showChoiceModal: true,
+      });
+    }
+  };
+
   return (
     <UploadContext.Provider
       value={{
@@ -704,8 +849,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         goToNextStep,
         goToPreviousStep,
         resetUpload,
-        submitManualQuote,
-        submitAIQuote,
+        handleAIQuoteChoice,
+        handleHumanReviewChoice,
       }}
     >
       {children}
