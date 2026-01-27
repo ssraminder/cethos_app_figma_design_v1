@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { supabase } from "@/lib/supabase";
 import {
