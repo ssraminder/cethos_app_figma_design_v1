@@ -926,7 +926,9 @@ export default function Step5BillingDelivery() {
                 <span className="font-medium text-gray-900">
                   No physical copy needed
                 </span>
-                <span className="text-green-600 font-semibold whitespace-nowrap flex-shrink-0 ml-2">FREE</span>
+                <span className="text-green-600 font-semibold whitespace-nowrap flex-shrink-0 ml-2">
+                  FREE
+                </span>
               </div>
               <p className="text-sm text-gray-600">Digital delivery only</p>
             </div>
