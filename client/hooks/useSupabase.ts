@@ -147,11 +147,11 @@ export function useSupabase() {
         intended_use_id: details.intendedUseId,
         service_province: details.serviceProvince || null,
         country_of_issue: details.countryOfIssue || null,
-        // Note: country_id column doesn't exist in quotes table
-        // TODO: Add migration to create country_id column
-        certification_type_id: details.certificationTypeId || null,
         special_instructions: details.specialInstructions || null,
         status: "details_pending",
+        // Note: country_id and certification_type_id columns don't exist in quotes table
+        // These fields are accepted in the function params but not sent to DB
+        // TODO: Add database migration to create these columns if needed
       };
 
       console.log("📤 Sending to Supabase:", {
