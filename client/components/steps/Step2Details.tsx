@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 import StartOverLink from "@/components/StartOverLink";
@@ -7,7 +7,16 @@ import { supabase } from "@/lib/supabase";
 
 export default function Step2Details() {
   const { state, updateState, goToNextStep, goToPreviousStep } = useQuote();
-  const { languages, intendedUses, loading, error } = useDropdownOptions();
+  const {
+    sourceLanguages,
+    targetLanguages,
+    intendedUses,
+    countries,
+    certificationTypes,
+    loading,
+    error,
+  } = useDropdownOptions();
+
   const [processingStatus, setProcessingStatus] = useState<
     "pending" | "processing" | "quote_ready" | null
   >(null);
@@ -17,15 +26,85 @@ export default function Step2Details() {
     updateState({ [field]: value });
   };
 
-  // Set English as default target language
-  useEffect(() => {
-    if (!state.targetLanguageId && languages.length > 0) {
-      const english = languages.find((l) => l.code === "en");
-      if (english) {
-        updateState({ targetLanguageId: english.id });
+  // Check if source language is English
+  const isSourceEnglish = useMemo(() => {
+    const selected = sourceLanguages.find((l) => l.id === state.sourceLanguageId);
+    return selected?.code?.startsWith("en") || false;
+  }, [state.sourceLanguageId, sourceLanguages]);
+
+  // Handle source language change with smart target auto-selection
+  const handleSourceLanguageChange = (languageId: string) => {
+    updateField("sourceLanguageId", languageId);
+
+    // Find the selected source language
+    const selectedLanguage = sourceLanguages.find((l) => l.id === languageId);
+
+    // If source is NOT English, auto-select English as target
+    if (selectedLanguage && !selectedLanguage.code.startsWith("en")) {
+      // Find English in target languages
+      const englishLang = targetLanguages.find((l) => l.code === "en");
+      if (englishLang) {
+        updateField("targetLanguageId", englishLang.id);
       }
+    } else {
+      // If source IS English, reset target to empty (user must select)
+      updateField("targetLanguageId", "");
     }
-  }, [languages.length, state.targetLanguageId, updateState]);
+  };
+
+  // Handle intended use change with auto-select certification type
+  const handleIntendedUseChange = (useId: string) => {
+    updateField("intendedUseId", useId);
+
+    // Find the selected intended use
+    const selectedUse = intendedUses.find((u) => u.id === useId);
+
+    // Auto-select the default certification type
+    if (selectedUse?.default_certification_type_id) {
+      updateField("certificationTypeId", selectedUse.default_certification_type_id);
+    }
+  };
+
+  // Group intended uses by subcategory
+  const groupedIntendedUses = useMemo(() => {
+    const groups: Record<string, typeof intendedUses> = {};
+
+    intendedUses.forEach((use) => {
+      const category = use.subcategory || "Other";
+      if (!groups[category]) {
+        groups[category] = [];
+      }
+      groups[category].push(use);
+    });
+
+    return groups;
+  }, [intendedUses]);
+
+  // Define subcategory order
+  const subcategoryOrder = [
+    "Immigration",
+    "Legal",
+    "Academic",
+    "Government",
+    "Employment",
+    "Healthcare",
+    "Financial",
+    "Personal",
+    "Business",
+    "Real Estate",
+    "Other",
+  ];
+
+  // Separate common and other countries
+  const { commonCountries, otherCountries } = useMemo(() => {
+    const common = countries.filter((c) => c.is_common);
+    const other = countries.filter((c) => !c.is_common);
+
+    return {
+      commonCountries: common,
+      otherCountries: other.sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }, [countries]);
 
   // Subscribe to processing status updates
   useEffect(() => {
@@ -179,15 +258,15 @@ export default function Step2Details() {
           </label>
           <select
             value={state.sourceLanguageId || ""}
-            onChange={(e) => updateField("sourceLanguageId", e.target.value)}
+            onChange={(e) => handleSourceLanguageChange(e.target.value)}
             className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
           >
             <option value="">Select source language...</option>
-            {languages
+            {sourceLanguages
               .filter((lang) => lang.id !== state.targetLanguageId)
               .map((lang) => (
                 <option key={lang.id} value={lang.id}>
-                  {lang.name} ({lang.native_name})
+                  {lang.name}
                 </option>
               ))}
           </select>
@@ -204,11 +283,11 @@ export default function Step2Details() {
             className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
           >
             <option value="">Select target language...</option>
-            {languages
+            {targetLanguages
               .filter((lang) => lang.id !== state.sourceLanguageId)
               .map((lang) => (
                 <option key={lang.id} value={lang.id}>
-                  {lang.name} ({lang.native_name})
+                  {lang.name}
                 </option>
               ))}
           </select>
@@ -221,15 +300,24 @@ export default function Step2Details() {
           </label>
           <select
             value={state.intendedUseId || ""}
-            onChange={(e) => updateField("intendedUseId", e.target.value)}
+            onChange={(e) => handleIntendedUseChange(e.target.value)}
             className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
           >
             <option value="">Select intended use...</option>
-            {intendedUses.map((use) => (
-              <option key={use.id} value={use.id}>
-                {use.name}
-              </option>
-            ))}
+            {subcategoryOrder.map((category) => {
+              const uses = groupedIntendedUses[category];
+              if (!uses || uses.length === 0) return null;
+
+              return (
+                <optgroup key={category} label={category}>
+                  {uses.map((use) => (
+                    <option key={use.id} value={use.id}>
+                      {use.name}
+                    </option>
+                  ))}
+                </optgroup>
+              );
+            })}
           </select>
         </div>
 
@@ -240,22 +328,33 @@ export default function Step2Details() {
             <span className="text-red-500">*</span>
           </label>
           <select
-            value={state.countryOfIssue || ""}
-            onChange={(e) => updateField("countryOfIssue", e.target.value)}
+            value={state.countryId || ""}
+            onChange={(e) => updateField("countryId", e.target.value)}
             className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
           >
-            <option value="">Select country...</option>
-            <option value="Canada">Canada</option>
-            <option value="United States">United States</option>
-            <option value="Mexico">Mexico</option>
-            <option value="India">India</option>
-            <option value="China">China</option>
-            <option value="Philippines">Philippines</option>
-            <option value="United Kingdom">United Kingdom</option>
-            <option value="Germany">Germany</option>
-            <option value="France">France</option>
-            <option value="Brazil">Brazil</option>
-            <option value="Other">Other</option>
+            <option value="">Select country of document origin...</option>
+
+            {/* Common Countries */}
+            {commonCountries.length > 0 && (
+              <optgroup label="Common Countries">
+                {commonCountries.map((country) => (
+                  <option key={country.id} value={country.id}>
+                    {country.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+
+            {/* All Other Countries */}
+            {otherCountries.length > 0 && (
+              <optgroup label="All Countries">
+                {otherCountries.map((country) => (
+                  <option key={country.id} value={country.id}>
+                    {country.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
 
@@ -298,13 +397,13 @@ export default function Step2Details() {
               !state.sourceLanguageId ||
               !state.targetLanguageId ||
               !state.intendedUseId ||
-              !state.countryOfIssue
+              !state.countryId
             }
             className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
               state.sourceLanguageId &&
               state.targetLanguageId &&
               state.intendedUseId &&
-              state.countryOfIssue
+              state.countryId
                 ? "bg-cethos-teal hover:bg-cethos-teal-light"
                 : "bg-gray-300 cursor-not-allowed"
             }`}
