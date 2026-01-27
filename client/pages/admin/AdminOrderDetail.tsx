@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import {
   AlertCircle,
   ArrowLeft,
@@ -19,11 +19,6 @@ import {
   Zap,
 } from "lucide-react";
 import { format } from "date-fns";
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-);
 
 interface OrderDetail {
   id: string;
