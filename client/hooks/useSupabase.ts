@@ -156,17 +156,32 @@ export function useSupabase() {
         })
         .eq("id", quoteId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error("❌ Supabase update error:", {
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+          code: updateError.code,
+        });
+        throw updateError;
+      }
 
+      console.log("✅ Quote details saved successfully");
       toast.success("Quote details saved");
       setLoading(false);
       return true;
     } catch (err) {
-      const error = err as Error;
+      const error = err as any;
       setError(error);
       setLoading(false);
       toast.error("Failed to save quote details");
-      console.error("Update quote details error:", error);
+      console.error("❌ Update quote details error:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        full: error,
+      });
       return false;
     }
   };
