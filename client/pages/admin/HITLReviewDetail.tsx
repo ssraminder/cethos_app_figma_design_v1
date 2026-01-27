@@ -1154,7 +1154,7 @@ const HITLReviewDetail: React.FC = () => {
   // CLAIM REVIEW
   // ============================================
 
-  const claimReview = async () => {
+  const handleClaimReview = async () => {
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/claim-hitl-review`,
@@ -1177,6 +1177,37 @@ const HITLReviewDetail: React.FC = () => {
       }
     } catch (error) {
       console.error("Error claiming review:", error);
+    }
+  };
+
+  // ============================================
+  // SAVE INTERNAL NOTES
+  // ============================================
+
+  const handleSaveInternalNotes = async (notes: string) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewData?.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ internal_notes: notes }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to save internal notes");
+      }
+
+      setReviewData({ ...reviewData, internal_notes: notes });
+      console.log("✅ Internal notes saved successfully");
+    } catch (error) {
+      console.error("Error saving internal notes:", error);
+      throw error;
     }
   };
 
