@@ -59,6 +59,8 @@ export default function AdminLogin() {
           password,
         });
 
+      if (!isMountedRef.current) return;
+
       console.log("Auth response:", { authData, authError });
 
       if (authError) {
@@ -85,6 +87,8 @@ export default function AdminLogin() {
         .select("id, full_name, email, role, is_active")
         .eq("email", normalizedEmail)
         .single();
+
+      if (!isMountedRef.current) return;
 
       console.log("Staff query result:", { staffData, staffError });
 
@@ -118,11 +122,18 @@ export default function AdminLogin() {
       console.log("Navigating to /admin/hitl");
       navigate("/admin/hitl");
     } catch (err: any) {
+      if (err?.name === "AbortError") {
+        console.warn("Login aborted due to unmount.");
+        return;
+      }
+      if (!isMountedRef.current) return;
       console.error("LOGIN ERROR:", err);
       setError(err.message || "Failed to sign in. Please try again.");
     } finally {
       console.log("=== LOGIN END ===");
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
