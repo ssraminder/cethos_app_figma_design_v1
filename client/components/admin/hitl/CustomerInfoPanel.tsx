@@ -21,6 +21,17 @@ export default function CustomerInfoPanel({
   customerData,
   loading = false,
 }: CustomerInfoPanelProps) {
+  // Debug logging
+  React.useEffect(() => {
+    if (customerData) {
+      console.log("👤 CustomerInfoPanel data:", customerData);
+      console.log("👤 Customer name:", customerData.customer_name);
+      console.log("👤 Customer email:", customerData.customer_email);
+      console.log("👤 Total:", customerData.total);
+      console.log("👤 Created at:", customerData.created_at);
+    }
+  }, [customerData]);
+
   if (loading) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-4">
