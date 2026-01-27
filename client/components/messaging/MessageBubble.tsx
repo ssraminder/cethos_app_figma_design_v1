@@ -18,25 +18,25 @@ export default function MessageBubble({
 }: MessageBubbleProps) {
   const getStyles = () => {
     if (senderType === "system") {
-      return "bg-gray-100 text-gray-600 text-center text-sm italic mx-auto max-w-md";
+      return "bg-gray-100 text-gray-600 text-center text-xs italic w-full";
     }
     if (isOwn) {
-      return "bg-blue-600 text-white ml-auto";
+      return "bg-blue-600 text-white ml-auto max-w-[90%]";
     }
-    return "bg-gray-100 text-gray-800";
+    return "bg-gray-100 text-gray-800 max-w-[90%]";
   };
 
   return (
-    <div className={`max-w-[80%] rounded-xl px-4 py-3 ${getStyles()}`}>
+    <div className={`rounded-lg px-3 py-2 ${getStyles()}`}>
       {senderType !== "system" && (
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-medium opacity-75">{senderName}</span>
-          <span className="text-xs opacity-50">
-            {format(new Date(createdAt), "MMM d, h:mm a")}
+        <div className="flex items-center justify-between gap-2 mb-0.5">
+          <span className="text-xs font-medium opacity-75 truncate">{senderName}</span>
+          <span className="text-xs opacity-50 flex-shrink-0">
+            {format(new Date(createdAt), "h:mm a")}
           </span>
         </div>
       )}
-      <p className="text-sm whitespace-pre-wrap">{messageText}</p>
+      <p className="text-xs whitespace-pre-wrap break-words">{messageText}</p>
       {senderType === "system" && (
         <span className="text-xs opacity-50 block mt-1">
           {format(new Date(createdAt), "MMM d, h:mm a")}
