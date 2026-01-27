@@ -192,7 +192,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
           state.targetLanguageId &&
           state.sourceLanguageId !== state.targetLanguageId &&
           state.intendedUseId &&
-          state.countryOfIssue
+          state.countryId
         );
 
       case 3: // Contact
