@@ -765,7 +765,9 @@ export default function AdminQuoteDetail() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium">Document {index + 1}</span>
                       <span className="text-sm text-gray-500">
-                        Confidence: {formatConfidence(item.ocr_confidence)}
+                        Confidence: {formatConfidence(
+                          item.ocr_confidence ?? item.document_type_confidence,
+                        )}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
