@@ -202,7 +202,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
       if (state.quoteId) {
         try {
-          await supabase.updateQuoteDetails(state.quoteId, {
+          const updateData = {
             sourceLanguageId: state.sourceLanguageId,
             targetLanguageId: state.targetLanguageId,
             intendedUseId: state.intendedUseId,
@@ -211,9 +211,16 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             countryId: state.countryId,
             certificationTypeId: state.certificationTypeId,
             specialInstructions: state.specialInstructions,
+          };
+
+          console.log("📝 Updating quote details:", {
+            quoteId: state.quoteId,
+            data: updateData,
           });
+
+          await supabase.updateQuoteDetails(state.quoteId, updateData);
         } catch (error) {
-          console.error("Error updating quote details:", error);
+          console.error("❌ Error updating quote details:", error);
         }
       }
 
