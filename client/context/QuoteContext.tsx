@@ -267,6 +267,8 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
           targetLanguageId: state.targetLanguageId,
           intendedUseId: state.intendedUseId,
           countryOfIssue: state.countryOfIssue,
+          countryId: state.countryId,
+          certificationTypeId: state.certificationTypeId,
           specialInstructions: state.specialInstructions,
         });
       }
