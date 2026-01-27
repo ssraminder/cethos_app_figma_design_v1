@@ -85,11 +85,39 @@ interface HITLPanelLayoutProps {
 export default function HITLPanelLayout({
   reviewData,
   quoteFiles,
+  analysisResults = [],
+  certificationTypes = [],
   staffId,
   staffName,
   loading = false,
   onSaveInternalNotes,
 }: HITLPanelLayoutProps) {
+  // Transform analysis results to match DocumentAnalysisPanel interface
+  const transformedAnalysisResults = analysisResults.map((analysis: any) => {
+    // Find certification details
+    const certification = certificationTypes.find(
+      (ct) => ct.id === analysis.certification_type_id,
+    );
+
+    return {
+      analysis_id: analysis.id,
+      quote_file_id: analysis.quote_file_id,
+      original_filename: analysis.quote_file?.original_filename || "Unknown",
+      detected_language: analysis.detected_language,
+      detected_document_type: analysis.detected_document_type,
+      assessed_complexity: analysis.assessed_complexity,
+      complexity_multiplier: analysis.complexity_multiplier,
+      word_count: analysis.word_count,
+      page_count: analysis.page_count,
+      billable_pages: analysis.billable_pages,
+      line_total: analysis.line_total,
+      certification_code: certification?.code || "N/A",
+      certification_name: certification?.name || "Not set",
+      certification_price: certification?.price || 0,
+      total_certification_cost: (certification?.price || 0) + (analysis.certification_price || 0),
+    };
+  });
+
   return (
     <div className="grid grid-cols-12 gap-4 h-[calc(100vh-300px)]">
       {/* LEFT PANEL: Customer Info + Document Files + Quote Details (3 columns) */}
@@ -122,15 +150,10 @@ export default function HITLPanelLayout({
 
       {/* CENTER PANEL: Document Analysis (6 columns) */}
       <main className="col-span-6 space-y-4 overflow-y-auto">
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-gray-600">
-            📋 Document Analysis Panel Coming Soon
-          </p>
-          <p className="text-xs text-gray-500 mt-2">
-            This will display AI analysis results, document details, and
-            correction interface.
-          </p>
-        </div>
+        <DocumentAnalysisPanel
+          analysisResults={transformedAnalysisResults}
+          loading={loading}
+        />
       </main>
 
       {/* RIGHT PANEL: Messaging + Internal Notes (3 columns) */}
