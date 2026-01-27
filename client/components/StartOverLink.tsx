@@ -1,12 +1,27 @@
 import { RotateCcw } from "lucide-react";
 import { useQuote } from "@/context/QuoteContext";
+import { useUpload } from "@/context/UploadContext";
 
 interface StartOverLinkProps {
   className?: string;
 }
 
 export default function StartOverLink({ className = "" }: StartOverLinkProps) {
-  const { resetQuote } = useQuote();
+  // Try to use UploadContext first, fall back to QuoteContext
+  let resetFunction: (() => void) | undefined;
+
+  try {
+    const uploadContext = useUpload();
+    resetFunction = uploadContext.resetUpload;
+  } catch {
+    // Fall back to QuoteContext
+    try {
+      const quoteContext = useQuote();
+      resetFunction = quoteContext.resetQuote;
+    } catch {
+      // Neither context available
+    }
+  }
 
   const handleStartOver = () => {
     const confirmed = window.confirm(
@@ -14,11 +29,19 @@ export default function StartOverLink({ className = "" }: StartOverLinkProps) {
     );
 
     if (confirmed) {
+      // Clear all possible localStorage keys
       localStorage.removeItem("cethos_quote_draft");
       localStorage.removeItem("cethos_quote_id");
       localStorage.removeItem("cethos_quote_state");
+      localStorage.removeItem("cethos_upload_draft");
 
-      resetQuote();
+      // Call the appropriate reset function
+      if (resetFunction) {
+        resetFunction();
+      } else {
+        // Fallback: redirect to quote page
+        window.location.href = "/quote";
+      }
     }
   };
 
