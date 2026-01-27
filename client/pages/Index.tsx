@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useDocumentProcessing } from "@/hooks/useDocumentProcessing";
 import StepIndicator from "@/components/StepIndicator";
