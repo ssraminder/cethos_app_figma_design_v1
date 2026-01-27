@@ -329,6 +329,37 @@ export default function Step4ReviewRush() {
     return messages[reason] || messages["quality_check"];
   };
 
+  // Handler: Return to Quote Form (clears storage, navigates to clean URL)
+  const handleReturnToQuoteForm = () => {
+    // Get entry point BEFORE clearing storage
+    let entryPoint = 'upload_form';
+
+    try {
+      const uploadDraft = localStorage.getItem('cethos_upload_draft');
+      const quoteDraft = localStorage.getItem('cethos_quote_draft');
+
+      if (uploadDraft) {
+        entryPoint = JSON.parse(uploadDraft)?.entryPoint || 'upload_form';
+      } else if (quoteDraft) {
+        entryPoint = JSON.parse(quoteDraft)?.entryPoint || 'upload_form';
+      }
+    } catch (e) {
+      console.error('Error reading entryPoint:', e);
+    }
+
+    // Clear storage - IMPORTANT: must happen AFTER reading entryPoint
+    localStorage.removeItem('cethos_upload_draft');
+    localStorage.removeItem('cethos_quote_draft');
+
+    // Navigate to CLEAN URL (NO quote_id parameter!)
+    // Using replace: true to prevent back-button loop
+    if (entryPoint === 'order_form') {
+      navigate('/quote?step=1', { replace: true });
+    } else {
+      navigate('/upload?step=1', { replace: true });
+    }
+  };
+
   // Handler: Auto-HITL fallback (timeout, error, low confidence, etc.)
   const handleAutoHITLFallback = async (reason: string) => {
     console.log("🚨 Auto-HITL fallback triggered. Reason:", reason);
