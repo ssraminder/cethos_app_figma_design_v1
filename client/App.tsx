@@ -81,8 +81,9 @@ const App = () => (
       <Sonner />
       <BrandingProvider>
         <QuoteProvider>
-          <StaffAuthProvider>
-            <BrowserRouter>
+          <UploadProvider>
+            <StaffAuthProvider>
+              <BrowserRouter>
               <Routes>
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<Login />} />
@@ -103,6 +104,9 @@ const App = () => (
                   />
                   <Route path="/order/success" element={<OrderSuccess />} />
                   <Route path="/payment/cancel" element={<PaymentCancel />} />
+
+                  {/* Upload Form Routes */}
+                  <Route path="/upload" element={<UploadPage />} />
                 </Route>
 
                 {/* Admin login (not protected) */}
@@ -207,8 +211,9 @@ const App = () => (
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
-            </BrowserRouter>
-          </StaffAuthProvider>
+              </BrowserRouter>
+            </StaffAuthProvider>
+          </UploadProvider>
         </QuoteProvider>
       </BrandingProvider>
     </TooltipProvider>
