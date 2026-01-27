@@ -89,10 +89,7 @@ export default function HITLPanelLayout({
         <DocumentFilesPanel files={quoteFiles} loading={loading} />
 
         {/* Quote Details (Step 2 & 3) */}
-        <QuoteDetailsPanel
-          quoteData={reviewData}
-          loading={loading}
-        />
+        <QuoteDetailsPanel quoteData={reviewData} loading={loading} />
       </aside>
 
       {/* CENTER PANEL: Document Analysis (6 columns) */}
@@ -102,7 +99,8 @@ export default function HITLPanelLayout({
             📋 Document Analysis Panel Coming Soon
           </p>
           <p className="text-xs text-gray-500 mt-2">
-            This will display AI analysis results, document details, and correction interface.
+            This will display AI analysis results, document details, and
+            correction interface.
           </p>
         </div>
       </main>

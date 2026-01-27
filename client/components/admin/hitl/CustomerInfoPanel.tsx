@@ -36,7 +36,9 @@ export default function CustomerInfoPanel({
   if (!customerData) {
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
-        <p className="text-sm text-gray-500">No customer information available</p>
+        <p className="text-sm text-gray-500">
+          No customer information available
+        </p>
       </div>
     );
   }
@@ -46,8 +48,8 @@ export default function CustomerInfoPanel({
     customerData.status === "quote_ready"
       ? "bg-green-100 text-green-800"
       : customerData.status === "awaiting_payment"
-      ? "bg-yellow-100 text-yellow-800"
-      : "bg-blue-100 text-blue-800";
+        ? "bg-yellow-100 text-yellow-800"
+        : "bg-blue-100 text-blue-800";
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
@@ -84,7 +86,9 @@ export default function CustomerInfoPanel({
 
       {/* Quote Summary */}
       <div className="border-b pb-3">
-        <h3 className="text-sm font-semibold text-gray-900 mb-2">Quote Summary</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-2">
+          Quote Summary
+        </h3>
         <div className="space-y-2">
           <div className="flex justify-between">
             <span className="text-sm text-gray-600">Quote Number:</span>

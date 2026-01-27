@@ -33,7 +33,8 @@ export default function QuoteDetailsPanel({
   quoteData,
   loading = false,
 }: QuoteDetailsPanelProps) {
-  const [expandedSection, setExpandedSection] = React.useState<string>("translation");
+  const [expandedSection, setExpandedSection] =
+    React.useState<string>("translation");
 
   if (loading) {
     return (
@@ -68,7 +69,9 @@ export default function QuoteDetailsPanel({
         >
           <div className="flex items-center gap-2">
             <Globe className="w-4 h-4 text-gray-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Translation Details</h3>
+            <h3 className="text-sm font-semibold text-gray-900">
+              Translation Details
+            </h3>
           </div>
           <span className="text-gray-400">
             {expandedSection === "translation" ? "−" : "+"}
@@ -122,7 +125,9 @@ export default function QuoteDetailsPanel({
 
             {quoteData.special_instructions && (
               <div className="col-span-2 mt-2 p-2 bg-white rounded border border-gray-200">
-                <p className="text-xs font-medium text-gray-600 mb-1">Special Instructions:</p>
+                <p className="text-xs font-medium text-gray-600 mb-1">
+                  Special Instructions:
+                </p>
                 <p className="text-xs text-gray-700 whitespace-pre-wrap">
                   {quoteData.special_instructions}
                 </p>
@@ -140,7 +145,9 @@ export default function QuoteDetailsPanel({
         >
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-gray-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Contact Information</h3>
+            <h3 className="text-sm font-semibold text-gray-900">
+              Contact Information
+            </h3>
           </div>
           <span className="text-gray-400">
             {expandedSection === "contact" ? "−" : "+"}

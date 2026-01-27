@@ -113,7 +113,7 @@ export default function DocumentFilesPanel({
                   <div className="mt-1 flex items-center gap-1">
                     <span
                       className={`text-xs px-2 py-0.5 rounded font-medium ${getStatusBadge(
-                        file.processing_status
+                        file.processing_status,
                       )}`}
                     >
                       {getStatusIcon(file.processing_status)}{" "}

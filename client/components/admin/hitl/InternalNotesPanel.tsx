@@ -107,7 +107,9 @@ export default function InternalNotesPanel({
             onClick={() => setShowHistory(!showHistory)}
             className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex justify-between items-center"
           >
-            <span className="font-medium">Edit History ({noteHistory.length})</span>
+            <span className="font-medium">
+              Edit History ({noteHistory.length})
+            </span>
             <span className="text-gray-400">{showHistory ? "−" : "+"}</span>
           </button>
 
@@ -140,7 +142,8 @@ export default function InternalNotesPanel({
       {/* Info Message */}
       <div className="px-4 py-2 bg-blue-50 border-t border-blue-100">
         <p className="text-xs text-blue-800">
-          💡 Internal notes are only visible to staff members and are not sent to customers.
+          💡 Internal notes are only visible to staff members and are not sent
+          to customers.
         </p>
       </div>
     </div>

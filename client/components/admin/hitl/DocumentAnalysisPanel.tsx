@@ -29,14 +29,14 @@ export default function DocumentAnalysisPanel({
   loading = false,
 }: DocumentAnalysisPanelProps) {
   const [selectedFileId, setSelectedFileId] = useState<string | null>(
-    analysisResults[0]?.quote_file_id || null
+    analysisResults[0]?.quote_file_id || null,
   );
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(["summary"])
+    new Set(["summary"]),
   );
 
   const currentAnalysis = analysisResults.find(
-    (a) => a.quote_file_id === selectedFileId
+    (a) => a.quote_file_id === selectedFileId,
   );
 
   const toggleSection = (section: string) => {
@@ -150,7 +150,7 @@ export default function DocumentAnalysisPanel({
                     <p className="text-xs text-gray-600">Complexity</p>
                     <span
                       className={`inline-block px-2 py-1 rounded text-xs font-medium ${getComplexityColor(
-                        currentAnalysis.assessed_complexity
+                        currentAnalysis.assessed_complexity,
                       )}`}
                     >
                       {currentAnalysis.assessed_complexity}
@@ -224,7 +224,10 @@ export default function DocumentAnalysisPanel({
                 <div className="border-t pt-2 flex justify-between font-semibold">
                   <span className="text-gray-900">Total Cost:</span>
                   <span className="text-green-600">
-                    ${Number(currentAnalysis.total_certification_cost).toFixed(2)}
+                    $
+                    {Number(currentAnalysis.total_certification_cost).toFixed(
+                      2,
+                    )}
                   </span>
                 </div>
               </div>
