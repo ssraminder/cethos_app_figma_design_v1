@@ -172,6 +172,7 @@ export function useSupabase() {
         quoteId,
         payload: updatePayload,
       });
+      console.log("📍 Country of Issue value:", details.countryOfIssue);
 
       const { error: updateError } = await supabase
         .from("quotes")
