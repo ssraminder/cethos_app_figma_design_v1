@@ -63,6 +63,7 @@ interface Address {
   city: string;
   province: string;
   postalCode: string;
+  country: string;
 }
 
 interface PricingSummary {
