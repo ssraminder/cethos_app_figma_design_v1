@@ -127,16 +127,48 @@ export default function DocumentFilesPanel({
                 )}
               </div>
 
-              {/* Download Button */}
-              <button
-                className="flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                title="Download file"
-              >
-                <Download className="w-4 h-4" />
-              </button>
+              {/* Action Buttons */}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {/* Preview Button */}
+                <button
+                  onClick={() => setPreviewFile(file)}
+                  className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                  title="Preview file"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+
+                {/* Download Button */}
+                <button
+                  onClick={() => {
+                    const fileUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${file.storage_path}`;
+                    const link = document.createElement('a');
+                    link.href = fileUrl;
+                    link.download = file.original_filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                  title="Download file"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
+      )}
+
+      {/* Document Preview Modal */}
+      {previewFile && (
+        <DocumentPreviewModal
+          isOpen={true}
+          onClose={() => setPreviewFile(null)}
+          fileUrl={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${previewFile.storage_path}`}
+          fileName={previewFile.original_filename}
+          fileType={previewFile.mime_type?.includes('pdf') ? 'pdf' : 'image'}
+        />
       )}
 
       {/* File Statistics */}
