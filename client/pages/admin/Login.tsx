@@ -20,10 +20,15 @@ export default function AdminLogin() {
 
   // Check if already logged in
   useEffect(() => {
+    let mounted = true;
+
     const checkExistingSession = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+
+      if (!mounted) return;
+
       if (session) {
         // Verify user is still active staff
         const { data: staffData } = await supabase
@@ -33,12 +38,19 @@ export default function AdminLogin() {
           .eq("is_active", true)
           .single();
 
+        if (!mounted) return;
+
         if (staffData) {
           navigate("/admin/hitl");
         }
       }
     };
+
     checkExistingSession();
+
+    return () => {
+      mounted = false;
+    };
   }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
