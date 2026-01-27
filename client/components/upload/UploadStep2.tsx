@@ -176,6 +176,13 @@ export default function UploadStep2() {
         </div>
       )}
 
+      {/* Error Message Display */}
+      {state.error && (
+        <div className="mb-6 bg-red-50 border-l-4 border-red-500 rounded-lg p-4">
+          <p className="text-sm font-medium text-red-800">{state.error}</p>
+        </div>
+      )}
+
       {/* Form Section */}
       <div className="bg-white border-2 border-cethos-border rounded-xl p-6 sm:p-8 space-y-6">
         {/* Source Language */}
