@@ -821,14 +821,20 @@ export default function Step4ReviewRush() {
             Analyzing your documents...
           </p>
           <p className="text-sm text-gray-500 mt-1">
-            This usually takes 10-30 seconds
+            {isPolling
+              ? `Auto-checking every 3 seconds... (${pollAttempts > 0 ? `attempt ${pollAttempts}` : "starting"})`
+              : "This usually takes 10-30 seconds"}
           </p>
+          <div className="mt-4 text-xs text-gray-400">
+            {isPolling && "Maximum wait: 45 seconds"}
+          </div>
           <button
             onClick={fetchAnalysisData}
-            className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light transition-colors"
+            disabled={isPolling}
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw className="w-4 h-4" />
-            Refresh Status
+            {isPolling ? "Auto-Polling..." : "Refresh Status"}
           </button>
         </div>
       </div>
