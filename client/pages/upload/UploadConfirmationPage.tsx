@@ -15,11 +15,11 @@ export default function UploadConfirmationPage() {
 
   const handleStartNewQuote = () => {
     // Clear both localStorage items
-    localStorage.removeItem('cethos_upload_draft');
-    localStorage.removeItem('cethos_quote_draft');
+    localStorage.removeItem("cethos_upload_draft");
+    localStorage.removeItem("cethos_quote_draft");
 
     // Force full page reload to ensure clean state
-    window.location.href = '/upload?step=1';
+    window.location.href = "/upload?step=1";
   };
 
   useEffect(() => {

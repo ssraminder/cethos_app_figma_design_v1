@@ -46,11 +46,11 @@ export default function QuoteConfirmationPage() {
 
   const handleStartNewQuote = () => {
     // Clear both localStorage items
-    localStorage.removeItem('cethos_upload_draft');
-    localStorage.removeItem('cethos_quote_draft');
+    localStorage.removeItem("cethos_upload_draft");
+    localStorage.removeItem("cethos_quote_draft");
 
     // Force full page reload to ensure clean state
-    window.location.href = '/quote?step=1';
+    window.location.href = "/quote?step=1";
   };
 
   const getCustomerFriendlyReason = (reason: string): string => {
