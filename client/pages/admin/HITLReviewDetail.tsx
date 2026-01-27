@@ -5,14 +5,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
-import {
-  CustomerInfoPanel,
-  DocumentFilesPanel,
-  QuoteDetailsPanel,
-  InternalNotesPanel,
-  DocumentAnalysisPanel,
-  HITLPanelLayout,
-} from "../../components/admin/hitl";
 
 interface PageData {
   id: string;
@@ -113,7 +105,6 @@ const HITLReviewDetail: React.FC = () => {
   const [reviewData, setReviewData] = useState<any>(null);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const [pageData, setPageData] = useState<Record<string, PageData[]>>({});
-  const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
 
   // Certification data
   const [certificationTypes, setCertificationTypes] = useState<
@@ -314,15 +305,6 @@ const HITLReviewDetail: React.FC = () => {
       );
 
       if (quote?.id) {
-        console.log("🔍 Fetching quote files for quote:", quote.id);
-
-        // Fetch quote files for the document files panel
-        const files = await fetchFromSupabase(
-          `quote_files?quote_id=eq.${quote.id}&order=created_at.desc`,
-        );
-        console.log("📁 Quote files:", files);
-        setQuoteFiles(files || []);
-
         console.log("🔍 Fetching analysis results for quote:", quote.id);
 
         // Fetch analysis results with quote_file relationship and AI metadata (using nested select)
@@ -1154,7 +1136,7 @@ const HITLReviewDetail: React.FC = () => {
   // CLAIM REVIEW
   // ============================================
 
-  const handleClaimReview = async () => {
+  const claimReview = async () => {
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/claim-hitl-review`,
@@ -1177,37 +1159,6 @@ const HITLReviewDetail: React.FC = () => {
       }
     } catch (error) {
       console.error("Error claiming review:", error);
-    }
-  };
-
-  // ============================================
-  // SAVE INTERNAL NOTES
-  // ============================================
-
-  const handleSaveInternalNotes = async (notes: string) => {
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewData?.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ internal_notes: notes }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to save internal notes");
-      }
-
-      setReviewData({ ...reviewData, internal_notes: notes });
-      console.log("✅ Internal notes saved successfully");
-    } catch (error) {
-      console.error("Error saving internal notes:", error);
-      throw error;
     }
   };
 
@@ -1261,8 +1212,8 @@ const HITLReviewDetail: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content - New HITL Panel Layout */}
-      <main className="mx-auto px-4 py-6 h-[calc(100vh-200px)]">
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 py-6">
         {/* No Data Warning */}
         {!reviewData && !loading && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
@@ -1287,15 +1238,18 @@ const HITLReviewDetail: React.FC = () => {
           </div>
         )}
 
-        {reviewData && reviewData.quotes && (
-          <HITLPanelLayout
-            reviewData={reviewData.quotes}
-            quoteFiles={quoteFiles}
-            staffId={staffSession?.staffId}
-            staffName={staffSession?.name}
-            loading={loading}
-            onSaveInternalNotes={handleSaveInternalNotes}
-          />
+        {reviewData && reviewData.quotes && analysisResults.length === 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
+            <p className="text-blue-800 font-medium">
+              No documents found for this quote
+            </p>
+            <p className="text-blue-600 text-sm mt-2">
+              Quote: {reviewData.quotes.quote_number}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              The AI analysis may not have completed yet
+            </p>
+          </div>
         )}
 
         {/* Page Selection Toolbar */}
@@ -2051,10 +2005,10 @@ const HITLReviewDetail: React.FC = () => {
         </div>
 
         {/* Messages Panel */}
-        {reviewData?.quote_id && staffSession?.staffId && (
+        {reviewData && reviewData.quotes && staffSession?.staffId && (
           <div className="mt-6">
             <MessagePanel
-              quoteId={reviewData.quote_id}
+              quoteId={reviewData.quotes.id}
               staffId={staffSession.staffId}
               staffName={staffSession.name || "Staff"}
             />
