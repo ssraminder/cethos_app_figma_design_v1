@@ -35,13 +35,14 @@ export interface UploadFormState {
   customerType: "individual" | "business";
   companyName: string;
 
-  // Step 4: UI State
-  currentStep: 1 | 2 | 3 | 4;
+  // UI State
+  currentStep: 1 | 2 | 3;
   isSubmitting: boolean;
   submissionType: "manual" | "ai" | null;
   error: string | null;
   showConfirmation: boolean;
   showProcessingModal: boolean;
+  showChoiceModal: boolean;
   processingStatus: "pending" | "processing" | "complete" | "failed" | null;
   hitlTriggered: boolean;
   hitlReasons: string[];
@@ -55,8 +56,8 @@ interface UploadContextType {
   goToNextStep: () => Promise<{ success: boolean; quoteId?: string }>;
   goToPreviousStep: () => void;
   resetUpload: () => void;
-  submitManualQuote: () => Promise<void>;
-  submitAIQuote: () => Promise<void>;
+  handleAIQuoteChoice: () => Promise<void>;
+  handleHumanReviewChoice: () => Promise<void>;
 }
 
 const initialState: UploadFormState = {
@@ -82,6 +83,7 @@ const initialState: UploadFormState = {
   error: null,
   showConfirmation: false,
   showProcessingModal: false,
+  showChoiceModal: false,
   processingStatus: null,
   hitlTriggered: false,
   hitlReasons: [],
@@ -95,8 +97,8 @@ const UploadContext = createContext<UploadContextType>({
   goToNextStep: async () => ({ success: false }),
   goToPreviousStep: () => {},
   resetUpload: () => {},
-  submitManualQuote: async () => {},
-  submitAIQuote: async () => {},
+  handleAIQuoteChoice: async () => {},
+  handleHumanReviewChoice: async () => {},
 });
 
 const STORAGE_KEY = "cethos_upload_draft";
