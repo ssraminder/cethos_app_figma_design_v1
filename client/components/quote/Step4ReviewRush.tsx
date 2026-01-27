@@ -309,6 +309,105 @@ export default function Step4ReviewRush() {
     }
   };
 
+  // Helper: Get customer-friendly reason messages
+  const getCustomerFriendlyReason = (reason: string): string => {
+    const messages: Record<string, string> = {
+      timeout:
+        "Our system took longer than expected to analyze your documents.",
+      processing_error: "We encountered a technical issue while processing.",
+      low_ocr_confidence: "Some text was difficult to read clearly.",
+      low_language_confidence:
+        "We need to verify the language in your documents.",
+      low_classification_confidence: "We need to confirm the document type.",
+      high_value_order:
+        "Due to the size of your order, we provide personalized review.",
+      high_page_count:
+        "Due to the number of pages, we provide personalized review.",
+      quality_check: "We want to ensure the most accurate quote possible.",
+    };
+    return messages[reason] || messages["quality_check"];
+  };
+
+  // Handler: Auto-HITL fallback (timeout, error, low confidence, etc.)
+  const handleAutoHITLFallback = async (reason: string) => {
+    console.log("🚨 Auto-HITL fallback triggered. Reason:", reason);
+
+    try {
+      const quoteId = state.quoteId;
+      if (!quoteId) {
+        console.error("No quote ID for HITL fallback");
+        return;
+      }
+
+      // 1. Check if HITL review already exists
+      const { data: existing } = await supabase
+        .from("hitl_reviews")
+        .select("id")
+        .eq("quote_id", quoteId)
+        .maybeSingle();
+
+      if (!existing) {
+        console.log("1️⃣ Creating HITL review record");
+        await supabase.from("hitl_reviews").insert({
+          quote_id: quoteId,
+          status: "pending",
+          is_customer_requested: false,
+          trigger_reasons: [reason],
+          priority: reason === "timeout" || reason === "processing_error" ? 1 : 2,
+        });
+      } else {
+        console.log("✅ HITL review already exists");
+      }
+
+      // 2. Update quote status
+      console.log("2️⃣ Updating quote to HITL pending");
+      await supabase
+        .from("quotes")
+        .update({
+          status: "hitl_pending",
+          hitl_required: true,
+          hitl_reasons: [reason],
+        })
+        .eq("id", quoteId);
+
+      // 3. Send Brevo Template #16 to customer (AI fallback)
+      console.log("3️⃣ Sending Brevo template #16 to customer");
+      const customerEmail = state.email;
+      const customerName =
+        state.firstName && state.lastName
+          ? `${state.firstName} ${state.lastName}`
+          : state.email;
+
+      await supabase.functions.invoke("send-email", {
+        body: {
+          templateId: 16,
+          to: customerEmail,
+          params: {
+            QUOTE_NUMBER: state.quoteNumber,
+            CUSTOMER_NAME: customerName,
+            FAILURE_REASON: getCustomerFriendlyReason(reason),
+          },
+        },
+      });
+
+      // 4. Navigate to confirmation page with reason
+      console.log(
+        "4️⃣ Navigating to confirmation page with reason:",
+        reason,
+      );
+      navigate(
+        `/quote/confirmation?quote_id=${quoteId}&reason=${reason}`,
+        { replace: true },
+      );
+    } catch (error) {
+      console.error("❌ Error in auto-HITL fallback:", error);
+      setError(
+        "Failed to process your request. Please contact support with your quote number: " +
+          state.quoteNumber,
+      );
+    }
+  };
+
   const fetchAnalysisData = async () => {
     setLoading(true);
     setError(null);
