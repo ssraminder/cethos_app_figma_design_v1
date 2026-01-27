@@ -349,7 +349,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       console.error("Error clearing quote draft:", error);
     }
 
-    window.location.href = "/";
+    window.location.href = "/quote";
   };
 
   const completeProcessing = () => {
