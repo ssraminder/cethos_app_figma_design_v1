@@ -3,6 +3,7 @@ import CustomerInfoPanel from "./CustomerInfoPanel";
 import DocumentFilesPanel from "./DocumentFilesPanel";
 import QuoteDetailsPanel from "./QuoteDetailsPanel";
 import InternalNotesPanel from "./InternalNotesPanel";
+import DocumentAnalysisPanel from "./DocumentAnalysisPanel";
 import MessagePanel from "../../messaging/MessagePanel";
 
 interface QuoteFile {
@@ -13,6 +14,24 @@ interface QuoteFile {
   processing_status?: string;
   storage_path?: string;
   mime_type: string;
+}
+
+interface AnalysisResult {
+  analysis_id: string;
+  quote_file_id: string;
+  original_filename: string;
+  detected_language: string;
+  detected_document_type: string;
+  assessed_complexity: string;
+  complexity_multiplier: number;
+  word_count: number;
+  page_count: number;
+  billable_pages: number;
+  line_total: number;
+  certification_code: string;
+  certification_name: string;
+  certification_price: number;
+  total_certification_cost: number;
 }
 
 interface ReviewData {
