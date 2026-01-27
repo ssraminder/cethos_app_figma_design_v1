@@ -9,6 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QuoteProvider } from "./context/QuoteContext";
+import { UploadProvider } from "./context/UploadContext";
 import { StaffAuthProvider } from "./context/StaffAuthContext";
 import { AdminAuthProvider } from "./context/AdminAuthContext";
 import { BrandingProvider } from "./context/BrandingContext";
@@ -23,6 +24,7 @@ import PaymentCancel from "./pages/PaymentCancel";
 import QuoteRecoverPage from "./pages/quote/QuoteRecoverPage";
 import QuoteReviewPage from "./pages/quote/QuoteReviewPage";
 import QuoteRevisionPage from "./pages/quote/QuoteRevisionPage";
+import UploadPage from "./pages/upload/UploadPage";
 
 // Admin pages
 import AdminLogin from "./pages/admin/Login";
