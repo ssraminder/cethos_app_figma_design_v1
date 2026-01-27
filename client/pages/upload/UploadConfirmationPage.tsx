@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { CheckCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { handleStartNewQuote } from "@/utils/navigationHelpers";
 
 export default function UploadConfirmationPage() {
   const [searchParams] = useSearchParams();
@@ -13,14 +14,7 @@ export default function UploadConfirmationPage() {
   const [customerName, setCustomerName] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
-  const handleStartNewQuote = () => {
-    // Clear both localStorage items
-    localStorage.removeItem("cethos_upload_draft");
-    localStorage.removeItem("cethos_quote_draft");
-
-    // Force full page reload to ensure clean state
-    window.location.href = "/upload?step=1";
-  };
+  // handleStartNewQuote is imported from navigationHelpers
 
   useEffect(() => {
     const fetchQuoteInfo = async () => {
@@ -102,7 +96,7 @@ export default function UploadConfirmationPage() {
           {/* Action Buttons */}
           <div className="pt-6 flex flex-col sm:flex-row gap-4 justify-center">
             <button
-              onClick={handleStartNewQuote}
+              onClick={() => handleStartNewQuote(navigate)}
               className="px-6 py-3 border-2 border-cethos-border text-cethos-gray rounded-lg hover:bg-cethos-bg-light font-medium transition-colors"
             >
               Start New Quote
