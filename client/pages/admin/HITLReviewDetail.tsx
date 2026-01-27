@@ -1261,8 +1261,8 @@ const HITLReviewDetail: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      {/* Main Content - New HITL Panel Layout */}
+      <main className="mx-auto px-4 py-6 h-[calc(100vh-200px)]">
         {/* No Data Warning */}
         {!reviewData && !loading && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
@@ -1287,18 +1287,15 @@ const HITLReviewDetail: React.FC = () => {
           </div>
         )}
 
-        {reviewData && reviewData.quotes && analysisResults.length === 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-            <p className="text-blue-800 font-medium">
-              No documents found for this quote
-            </p>
-            <p className="text-blue-600 text-sm mt-2">
-              Quote: {reviewData.quotes.quote_number}
-            </p>
-            <p className="text-xs text-gray-500 mt-2">
-              The AI analysis may not have completed yet
-            </p>
-          </div>
+        {reviewData && reviewData.quotes && (
+          <HITLPanelLayout
+            reviewData={reviewData.quotes}
+            quoteFiles={quoteFiles}
+            staffId={staffSession?.staffId}
+            staffName={staffSession?.name}
+            loading={loading}
+            onSaveInternalNotes={handleSaveInternalNotes}
+          />
         )}
 
         {/* Page Selection Toolbar */}
