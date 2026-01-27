@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { CreditCard, Calendar, Lock, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,7 +19,9 @@ interface PricingSummary {
 
 export default function Step6Payment() {
   const { state, goToPreviousStep } = useQuote();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [savingQuote, setSavingQuote] = useState(false);
   const [pricing, setPricing] = useState<PricingSummary | null>(null);
   const [loadingPricing, setLoadingPricing] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +140,86 @@ export default function Step6Payment() {
       setError(err.message || "An error occurred. Please try again.");
       toast.error(err.message || "Failed to process payment");
       setLoading(false);
+    }
+  };
+
+  const handleSaveAndEmail = async () => {
+    setSavingQuote(true);
+    setError(null);
+
+    try {
+      const quoteId = state.quoteId;
+
+      if (!quoteId) {
+        throw new Error("Quote ID not found.");
+      }
+
+      if (!pricing) {
+        throw new Error("Pricing information not available.");
+      }
+
+      // Fetch quote with customer info
+      const { data: quote } = await supabase
+        .from("quotes")
+        .select(
+          `
+          quote_number,
+          customers (
+            email,
+            full_name
+          )
+        `,
+        )
+        .eq("id", quoteId)
+        .single();
+
+      const customerEmail = quote?.customers?.email;
+      const customerName = quote?.customers?.full_name || "Customer";
+      const quoteNumber = quote?.quote_number;
+
+      if (!customerEmail) {
+        throw new Error("Customer email not found.");
+      }
+
+      // 1. Update quote status
+      await supabase
+        .from("quotes")
+        .update({
+          status: "pending_payment",
+          saved_at: new Date().toISOString(),
+        })
+        .eq("id", quoteId);
+
+      // 2. Send email with quote summary and payment link
+      const validUntilDate = new Date();
+      validUntilDate.setDate(validUntilDate.getDate() + 7); // 7 days from now
+
+      await supabase.functions.invoke("send-email", {
+        body: {
+          templateId: 17, // New template for saved quote
+          to: customerEmail,
+          subject: `Your Quote is Ready - ${quoteNumber}`,
+          params: {
+            QUOTE_NUMBER: quoteNumber,
+            CUSTOMER_NAME: customerName,
+            TOTAL: pricing.total.toFixed(2),
+            PAYMENT_LINK: `${window.location.origin}/quote?step=6&quote_id=${quoteId}`,
+            VALID_UNTIL: validUntilDate.toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            }),
+          },
+        },
+      });
+
+      // 3. Show confirmation
+      navigate(`/quote/saved?quote_id=${quoteId}`);
+    } catch (err: any) {
+      console.error("Save and email error:", err);
+      setError(err.message || "Failed to save quote. Please try again.");
+      toast.error(err.message || "Failed to save quote");
+      setSavingQuote(false);
     }
   };
 
@@ -385,6 +468,19 @@ export default function Step6Payment() {
           Privacy Policy
         </a>
       </p>
+
+      {/* Save and Email Quote Option */}
+      <div className="text-center mt-6">
+        <p className="text-sm text-gray-500 mb-2">Not ready to pay now?</p>
+        <button
+          type="button"
+          onClick={handleSaveAndEmail}
+          disabled={savingQuote || loadingPricing || !pricing}
+          className="text-sm text-cethos-teal hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+        >
+          {savingQuote ? "Saving..." : "Save and email my quote"}
+        </button>
+      </div>
     </div>
   );
 }
