@@ -117,21 +117,21 @@ export default function HITLPanelLayout({
           customerData={
             reviewData
               ? {
-                  customer_id: (reviewData as any).quotes?.customer?.id || "",
+                  customer_id: (reviewData as any).customer?.id || "",
                   customer_name:
-                    (reviewData as any).quotes?.customer?.full_name ||
+                    (reviewData as any).customer?.full_name ||
                     reviewData.customer_name ||
                     "",
                   customer_email:
-                    (reviewData as any).quotes?.customer?.email ||
+                    (reviewData as any).customer?.email ||
                     reviewData.customer_email ||
                     "",
                   customer_phone:
-                    (reviewData as any).quotes?.customer?.phone || "",
+                    (reviewData as any).customer?.phone || "",
                   quote_number: reviewData.quote_number,
-                  total: (reviewData as any).quotes?.total || 0,
+                  total: (reviewData as any).total || reviewData.total || 0,
                   status: reviewData.status,
-                  created_at: (reviewData as any).quotes?.created_at || "",
+                  created_at: (reviewData as any).created_at || "",
                 }
               : null
           }
