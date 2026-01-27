@@ -789,6 +789,40 @@ export default function Step5BillingDelivery() {
               </p>
             )}
           </div>
+
+          {/* Country */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Country <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={billingAddress.country}
+              onChange={(e) =>
+                handleBillingFieldChange("country", e.target.value)
+              }
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
+            >
+              <option value="">Select country...</option>
+              {commonCountries.length > 0 && (
+                <optgroup label="Common Countries">
+                  {commonCountries.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {otherCountries.length > 0 && (
+                <optgroup label="All Countries">
+                  {otherCountries.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
         </div>
       </div>
 
