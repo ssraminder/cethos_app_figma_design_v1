@@ -765,7 +765,8 @@ export default function AdminQuoteDetail() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium">Document {index + 1}</span>
                       <span className="text-sm text-gray-500">
-                        Confidence: {formatConfidence(
+                        Confidence:{" "}
+                        {formatConfidence(
                           item.ocr_confidence ?? item.document_type_confidence,
                         )}
                       </span>
