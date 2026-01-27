@@ -116,14 +116,14 @@ export default function HITLPanelLayout({
           translationData={
             reviewData
               ? {
-                  source_language_name: reviewData.source_language_name,
-                  source_language_code: reviewData.source_language_code,
-                  target_language_name: reviewData.target_language_name,
-                  target_language_code: reviewData.target_language_code,
-                  intended_use_name: reviewData.intended_use_name,
-                  country_of_issue: reviewData.country_of_issue,
-                  service_province: reviewData.service_province,
-                  special_instructions: reviewData.special_instructions,
+                  source_language_name: (reviewData as any).source_language?.name || '',
+                  source_language_code: (reviewData as any).source_language?.code || '',
+                  target_language_name: (reviewData as any).target_language?.name || '',
+                  target_language_code: (reviewData as any).target_language?.code || '',
+                  intended_use_name: (reviewData as any).intended_use?.name || '',
+                  country_of_issue: (reviewData as any).country_of_issue || '',
+                  service_province: (reviewData as any).service_province,
+                  special_instructions: (reviewData as any).special_instructions,
                 }
               : null
           }
