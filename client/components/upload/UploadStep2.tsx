@@ -341,24 +341,24 @@ export default function UploadStep2() {
           </button>
 
           <button
-          onClick={goToNextStep}
-          disabled={
-            !state.sourceLanguageId ||
-            !state.targetLanguageId ||
-            !state.intendedUseId ||
-            !state.countryId ||
-            (showProvinceDropdown && !state.serviceProvince)
-          }
-          className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
-            state.sourceLanguageId &&
-            state.targetLanguageId &&
-            state.intendedUseId &&
-            state.countryId &&
-            (!showProvinceDropdown || state.serviceProvince)
-              ? "bg-cethos-teal hover:bg-cethos-teal-light"
-              : "bg-gray-300 cursor-not-allowed"
-          }`}
-        >
+            onClick={goToNextStep}
+            disabled={
+              !state.sourceLanguageId ||
+              !state.targetLanguageId ||
+              !state.intendedUseId ||
+              !state.countryId ||
+              (showProvinceDropdown && !state.serviceProvince)
+            }
+            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
+              state.sourceLanguageId &&
+              state.targetLanguageId &&
+              state.intendedUseId &&
+              state.countryId &&
+              (!showProvinceDropdown || state.serviceProvince)
+                ? "bg-cethos-teal hover:bg-cethos-teal-light"
+                : "bg-gray-300 cursor-not-allowed"
+            }`}
+          >
             <span>Continue</span>
             <ChevronRight className="w-5 h-5" />
           </button>

@@ -141,7 +141,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const goToNextStep = async (): Promise<{ success: boolean; quoteId?: string }> => {
+  const goToNextStep = async (): Promise<{
+    success: boolean;
+    quoteId?: string;
+  }> => {
     const { currentStep } = state;
 
     // Step 1 -> 2: Create quote and upload files
