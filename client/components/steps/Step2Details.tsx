@@ -22,9 +22,9 @@ export default function Step2Details() {
   >(null);
   const [fileProgress, setFileProgress] = useState({ completed: 0, total: 0 });
   const [showProvinceDropdown, setShowProvinceDropdown] = useState(false);
-  const [provinces, setProvinces] = useState<
-    { code: string; name: string }[]
-  >([]);
+  const [provinces, setProvinces] = useState<{ code: string; name: string }[]>(
+    [],
+  );
 
   const updateField = (field: string, value: string) => {
     updateState({ [field]: value });
