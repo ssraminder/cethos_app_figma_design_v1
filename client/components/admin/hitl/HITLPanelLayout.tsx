@@ -156,12 +156,12 @@ export default function HITLPanelLayout({
           contactData={
             reviewData
               ? {
-                  contact_name: reviewData.customer_name,
-                  contact_email: reviewData.customer_email,
-                  contact_phone: reviewData.customer_phone,
-                  customer_name: reviewData.customer_name,
-                  customer_email: reviewData.customer_email,
-                  customer_phone: reviewData.customer_phone,
+                  contact_name: (reviewData as any).quotes?.customer?.full_name || reviewData.customer_name,
+                  contact_email: (reviewData as any).quotes?.customer?.email || reviewData.customer_email,
+                  contact_phone: (reviewData as any).quotes?.customer?.phone || "",
+                  customer_name: (reviewData as any).quotes?.customer?.full_name || reviewData.customer_name,
+                  customer_email: (reviewData as any).quotes?.customer?.email || reviewData.customer_email,
+                  customer_phone: (reviewData as any).quotes?.customer?.phone || "",
                 }
               : null
           }
@@ -173,11 +173,11 @@ export default function HITLPanelLayout({
           pricingData={
             reviewData
               ? {
-                  subtotal: (reviewData as any).subtotal || 0,
+                  subtotal: (reviewData as any).quotes?.subtotal || 0,
                   certification_total:
-                    (reviewData as any).certification_total || 0,
-                  tax_amount: (reviewData as any).tax_amount || 0,
-                  total: (reviewData as any).total || 0,
+                    (reviewData as any).quotes?.certification_total || 0,
+                  tax_amount: (reviewData as any).quotes?.tax_amount || 0,
+                  total: (reviewData as any).quotes?.total || 0,
                 }
               : null
           }
