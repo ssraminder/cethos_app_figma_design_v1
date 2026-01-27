@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { CheckCircle, Mail } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { handleStartNewQuote } from "@/utils/navigationHelpers";
 
 export default function QuoteSavedPage() {
   const [searchParams] = useSearchParams();
@@ -41,14 +42,7 @@ export default function QuoteSavedPage() {
     fetchQuoteInfo();
   }, [quoteId, navigate]);
 
-  const handleStartNewQuote = () => {
-    // Clear both localStorage items
-    localStorage.removeItem("cethos_upload_draft");
-    localStorage.removeItem("cethos_quote_draft");
-
-    // Force full page reload to ensure clean state
-    window.location.href = "/quote?step=1";
-  };
+  // handleStartNewQuote is imported from navigationHelpers
 
   if (loading) {
     return (
@@ -115,7 +109,7 @@ export default function QuoteSavedPage() {
           {/* Action Buttons */}
           <div className="pt-6 flex flex-col sm:flex-row gap-4 justify-center">
             <button
-              onClick={handleStartNewQuote}
+              onClick={() => handleStartNewQuote(navigate)}
               className="px-6 py-3 border-2 border-cethos-border text-cethos-gray rounded-lg hover:bg-cethos-bg-light font-medium transition-colors"
             >
               Start New Quote
@@ -131,8 +125,8 @@ export default function QuoteSavedPage() {
           {/* Additional Info */}
           <div className="pt-8 border-t border-gray-200 max-w-lg mx-auto">
             <p className="text-xs text-cethos-slate mb-2">
-              <strong>Note:</strong> This quote is valid for 30 days. After
-              that, you'll need to request a new quote.
+              <strong>Note:</strong> This quote is valid for 30 days. After that,
+              you'll need to request a new quote.
             </p>
             <p className="text-xs text-cethos-slate">
               If you have any questions or need assistance, please contact us at{" "}
