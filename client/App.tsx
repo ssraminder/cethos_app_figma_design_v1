@@ -122,10 +122,7 @@ const App = () => (
                   <Route index element={<AdminDashboard />} />
                   <Route path="dashboard" element={<AdminDashboard />} />
                   <Route path="hitl" element={<HITLQueue />} />
-                  <Route
-                    path="hitl/:reviewId"
-                    element={<HITLReviewDetail />}
-                  />
+                  <Route path="hitl/:reviewId" element={<HITLReviewDetail />} />
                   <Route path="quotes" element={<AdminQuotesList />} />
                   <Route path="quotes/:id" element={<AdminQuoteDetail />} />
                   <Route path="orders" element={<AdminOrdersList />} />
