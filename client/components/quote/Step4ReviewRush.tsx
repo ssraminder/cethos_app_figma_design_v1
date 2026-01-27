@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { getStartNewQuoteRoute } from "@/utils/navigationHelpers";
 import { format, isWeekend, isSameDay } from "date-fns";
 import {
   FileText,
@@ -946,7 +947,7 @@ export default function Step4ReviewRush() {
 
           <div className="flex gap-3 justify-center">
             <button
-              onClick={() => navigate("/quote")}
+              onClick={() => navigate(getStartNewQuoteRoute())}
               className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Return to Quote Form
@@ -1414,7 +1415,7 @@ export default function Step4ReviewRush() {
             <button
               onClick={() => {
                 setShowHitlSuccessModal(false);
-                navigate("/quote");
+                navigate(getStartNewQuoteRoute());
               }}
               className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
             >
