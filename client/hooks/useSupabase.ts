@@ -61,8 +61,12 @@ export function useSupabase() {
       // Upload files and create file records
       const uploadPromises = files.map(async (file) => {
         try {
-          // Upload to storage
-          const storagePath = `${quote.id}/${file.name}`;
+          // Sanitize filename for storage (Supabase doesn't like special chars)
+          const sanitizedFilename = sanitizeFilename(file.name);
+          const storagePath = `${quote.id}/${sanitizedFilename}`;
+
+          console.log(`Uploading file: ${file.name} → ${sanitizedFilename}`);
+
           const { error: uploadError } = await supabase.storage
             .from("quote-files")
             .upload(storagePath, file.file, {
@@ -76,13 +80,13 @@ export function useSupabase() {
             return null;
           }
 
-          // Create file record in database
+          // Create file record in database (store original filename for reference)
           const { error: fileRecordError } = await supabase
             .from("quote_files")
             .insert({
               quote_id: quote.id,
-              original_filename: file.name,
-              storage_path: storagePath,
+              original_filename: file.name, // Store original for user reference
+              storage_path: storagePath, // Store sanitized path used in storage
               file_size: file.size,
               mime_type: file.type,
               upload_status: "uploaded",
