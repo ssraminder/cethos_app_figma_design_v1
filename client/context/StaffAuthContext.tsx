@@ -153,15 +153,18 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setSession(null);
       } else if (event === "SIGNED_IN" && session) {
-        setSession(session);
-        setUser(session.user);
-
-        // Check localStorage first
+        // Don't set session/user here - let the login handler complete
+        // the full sequence (auth -> staff verification -> localStorage -> navigate)
+        // Only check if localStorage already has the session (from login handler)
         const storedSession = localStorage.getItem("staffSession");
         if (storedSession) {
           try {
             const parsed = JSON.parse(storedSession);
             if (parsed.staffId && parsed.loggedIn) {
+              if (!isMounted) return;
+
+              setSession(session);
+              setUser(session.user);
               setStaffUser({
                 id: parsed.staffId,
                 email: parsed.staffEmail,
@@ -175,6 +178,10 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
             console.error("Error parsing localStorage", e);
           }
         }
+
+        // If no localStorage session, this is a fresh SIGNED_IN event
+        // Don't do anything - let the login handler complete the flow
+        console.log("StaffAuthContext: SIGNED_IN event received, waiting for login handler to complete...");
       }
     });
 
