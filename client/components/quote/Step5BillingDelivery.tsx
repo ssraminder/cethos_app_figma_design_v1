@@ -593,7 +593,7 @@ export default function Step5BillingDelivery() {
           city: billingAddress.city,
           state: billingAddress.province,
           postalCode: billingAddress.postalCode,
-          country: "Canada",
+          country: billingAddress.country,
           phone: state.phone || "",
         },
         shippingAddress: needsShippingAddress
@@ -609,7 +609,7 @@ export default function Step5BillingDelivery() {
               city: shippingAddress.city,
               state: shippingAddress.province,
               postalCode: shippingAddress.postalCode,
-              country: "Canada",
+              country: shippingAddress.country,
               phone: state.phone || "",
             }
           : null,
