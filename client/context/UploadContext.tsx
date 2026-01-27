@@ -214,13 +214,40 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             data: updateData,
           });
 
-          await supabaseHook.updateQuoteDetails(state.quoteId, updateData);
-        } catch (error) {
-          console.error("❌ Error updating quote details:", error);
+          const success = await supabaseHook.updateQuoteDetails(
+            state.quoteId,
+            updateData,
+          );
+
+          if (!success) {
+            console.error(
+              "❌ Failed to update quote details - updateQuoteDetails returned false",
+            );
+            updateState({
+              error:
+                "Failed to save translation details. Please check your selections and try again.",
+            });
+            return { success: false };
+          }
+
+          console.log("✅ Quote details updated successfully, proceeding to step 3");
+        } catch (error: any) {
+          console.error("❌ Error updating quote details:", {
+            message: error?.message || "Unknown error",
+            details: error?.details || "No details",
+            hint: error?.hint || "No hint",
+            code: error?.code || "No code",
+            full: error,
+          });
+          updateState({
+            error:
+              "Failed to save translation details. Please check your selections and try again.",
+          });
+          return { success: false };
         }
       }
 
-      updateState({ currentStep: 3 });
+      updateState({ currentStep: 3, error: null });
       return { success: true };
     }
 
