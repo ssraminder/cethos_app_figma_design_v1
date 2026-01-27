@@ -192,7 +192,7 @@ export default function Step6Payment() {
 
       // 2. Send email with quote summary and payment link
       const validUntilDate = new Date();
-      validUntilDate.setDate(validUntilDate.getDate() + 7); // 7 days from now
+      validUntilDate.setDate(validUntilDate.getDate() + 30); // 30 days from now
 
       await supabase.functions.invoke("send-email", {
         body: {

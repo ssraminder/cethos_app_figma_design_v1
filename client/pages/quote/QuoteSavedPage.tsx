@@ -95,7 +95,7 @@ export default function QuoteSavedPage() {
             </p>
             <p className="text-base text-gray-700 leading-relaxed mt-3">
               Click the link in your email to complete payment anytime within
-              the next <strong>7 days</strong>.
+              the next <strong>30 days</strong>.
             </p>
           </div>
 
@@ -131,7 +131,7 @@ export default function QuoteSavedPage() {
           {/* Additional Info */}
           <div className="pt-8 border-t border-gray-200 max-w-lg mx-auto">
             <p className="text-xs text-cethos-slate mb-2">
-              <strong>Note:</strong> This quote is valid for 7 days. After that,
+              <strong>Note:</strong> This quote is valid for 30 days. After that,
               you'll need to request a new quote.
             </p>
             <p className="text-xs text-cethos-slate">
