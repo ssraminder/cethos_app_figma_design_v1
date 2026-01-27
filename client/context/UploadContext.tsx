@@ -6,6 +6,7 @@ import React, {
   ReactNode,
 } from "react";
 import { useSupabase } from "@/hooks/useSupabase";
+import { supabase } from "@/lib/supabase";
 import type { UploadedFile } from "./QuoteContext";
 
 // Upload Form State Interface
@@ -110,7 +111,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     return initialState;
   });
 
-  const supabase = useSupabase();
+  const supabaseHook = useSupabase();
 
   // Save to localStorage whenever state changes
   useEffect(() => {
@@ -218,7 +219,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             data: updateData,
           });
 
-          await supabase.updateQuoteDetails(state.quoteId, updateData);
+          await supabaseHook.updateQuoteDetails(state.quoteId, updateData);
         } catch (error) {
           console.error("❌ Error updating quote details:", error);
         }
@@ -245,7 +246,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           const firstName = nameParts[0] || "";
           const lastName = nameParts.slice(1).join(" ") || "";
 
-          await supabase.createOrUpdateCustomer(state.quoteId, {
+          await supabaseHook.createOrUpdateCustomer(state.quoteId, {
             email: state.email,
             firstName,
             lastName,
@@ -288,9 +289,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeoutMs) {
-      if (!supabase.supabase) return false;
+      if (!supabase) return false;
 
-      const { data } = await supabase.supabase
+      const { data } = await supabase
         .from("quotes")
         .select("processing_status")
         .eq("id", quoteId)
@@ -392,7 +393,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (!supabase.supabase) {
+    if (!supabase) {
       updateState({
         error: "Database connection not available. Please try again.",
       });
@@ -407,7 +408,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     try {
       // 1. Check if AI processing is complete
       console.log("1️⃣ Checking AI processing status");
-      const { data: quote } = await supabase.supabase
+      const { data: quote } = await supabase
         .from("quotes")
         .select("processing_status")
         .eq("id", state.quoteId)
@@ -438,7 +439,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
       // 2. Update quote status to quote_ready
       console.log("2️⃣ Updating quote status to quote_ready");
-      await supabase.supabase
+      await supabase
         .from("quotes")
         .update({ status: "quote_ready" })
         .eq("id", state.quoteId);
