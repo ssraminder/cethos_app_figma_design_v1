@@ -147,21 +147,19 @@ export default function HITLPanelLayout({
             reviewData
               ? {
                   source_language_name:
-                    (reviewData as any).quotes?.source_language?.name || "",
+                    (reviewData as any).source_language?.name || "",
                   source_language_code:
-                    (reviewData as any).quotes?.source_language?.code || "",
+                    (reviewData as any).source_language?.code || "",
                   target_language_name:
-                    (reviewData as any).quotes?.target_language?.name || "",
+                    (reviewData as any).target_language?.name || "",
                   target_language_code:
-                    (reviewData as any).quotes?.target_language?.code || "",
+                    (reviewData as any).target_language?.code || "",
                   intended_use_name:
-                    (reviewData as any).quotes?.intended_use?.name || "",
+                    (reviewData as any).intended_use?.name || "",
                   country_of_issue:
-                    (reviewData as any).quotes?.country_of_issue || "",
-                  service_province: (reviewData as any).quotes
-                    ?.service_province,
-                  special_instructions: (reviewData as any).quotes
-                    ?.special_instructions,
+                    (reviewData as any).country_of_issue || "",
+                  service_province: (reviewData as any).service_province,
+                  special_instructions: (reviewData as any).special_instructions,
                 }
               : null
           }
@@ -174,21 +172,21 @@ export default function HITLPanelLayout({
             reviewData
               ? {
                   contact_name:
-                    (reviewData as any).quotes?.customer?.full_name ||
+                    (reviewData as any).customer?.full_name ||
                     reviewData.customer_name,
                   contact_email:
-                    (reviewData as any).quotes?.customer?.email ||
+                    (reviewData as any).customer?.email ||
                     reviewData.customer_email,
                   contact_phone:
-                    (reviewData as any).quotes?.customer?.phone || "",
+                    (reviewData as any).customer?.phone || "",
                   customer_name:
-                    (reviewData as any).quotes?.customer?.full_name ||
+                    (reviewData as any).customer?.full_name ||
                     reviewData.customer_name,
                   customer_email:
-                    (reviewData as any).quotes?.customer?.email ||
+                    (reviewData as any).customer?.email ||
                     reviewData.customer_email,
                   customer_phone:
-                    (reviewData as any).quotes?.customer?.phone || "",
+                    (reviewData as any).customer?.phone || "",
                 }
               : null
           }
@@ -200,11 +198,11 @@ export default function HITLPanelLayout({
           pricingData={
             reviewData
               ? {
-                  subtotal: (reviewData as any).quotes?.subtotal || 0,
+                  subtotal: (reviewData as any).subtotal || reviewData.subtotal || 0,
                   certification_total:
-                    (reviewData as any).quotes?.certification_total || 0,
-                  tax_amount: (reviewData as any).quotes?.tax_amount || 0,
-                  total: (reviewData as any).quotes?.total || 0,
+                    (reviewData as any).certification_total || reviewData.certification_total || 0,
+                  tax_amount: (reviewData as any).tax_amount || reviewData.tax_amount || 0,
+                  total: (reviewData as any).total || reviewData.total || 0,
                 }
               : null
           }
