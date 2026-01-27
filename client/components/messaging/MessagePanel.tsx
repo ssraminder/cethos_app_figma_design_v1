@@ -132,6 +132,24 @@ export default function MessagePanel({
           message_text: newMessage.trim(),
         });
         if (error) throw error;
+      } else {
+        try {
+          const payload = await response.json();
+          if (payload?.success && payload?.message) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: payload.message.id,
+                sender_type: payload.message.sender_type,
+                sender_name: payload.message.sender_name || staffName,
+                message_text: payload.message.message_text,
+                created_at: payload.message.created_at,
+              },
+            ]);
+          }
+        } catch (parseError) {
+          console.warn("Failed to parse message response:", parseError);
+        }
       }
 
       setNewMessage("");
