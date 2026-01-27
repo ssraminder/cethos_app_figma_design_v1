@@ -420,6 +420,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({
             template: "manual_quote_requested",
             to: state.email,
+            subject: "Manual Quote Request Received", // Required field
             data: {
               customer_name: state.fullName,
               quote_number: state.quoteNumber,
