@@ -19,6 +19,16 @@ export function useSupabase() {
     return `QT-2026-${randomNum}`;
   };
 
+  // Sanitize filename for storage - remove special characters
+  const sanitizeFilename = (filename: string): string => {
+    return filename
+      .replace(/[()[\]]/g, "_") // Replace (), [], with _
+      .replace(/\s+/g, "_") // Replace spaces with _
+      .replace(/[^a-zA-Z0-9._-]/g, "_") // Replace other special chars with _
+      .replace(/_+/g, "_") // Collapse multiple underscores to single
+      .toLowerCase(); // Use lowercase for consistency
+  };
+
   // Step 1: Create quote and upload files
   const createQuoteWithFiles = async (
     files: UploadedFile[],
