@@ -1292,755 +1292,774 @@ const HITLReviewDetail: React.FC = () => {
             {/* Center Panel Content: Document Accordion */}
             {/* Page Selection Toolbar */}
             {claimedByMe && analysisResults.length > 0 && (
-          <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSplitMode(!splitMode)}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                  splitMode
-                    ? "bg-blue-600 text-white"
-                    : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {splitMode ? "✓ Selection Mode" : "Select Pages"}
-              </button>
-
-              {splitMode && selectedPages.size > 0 && (
-                <>
-                  <span className="text-sm text-gray-600">
-                    {selectedPages.size} page(s) selected
-                  </span>
+              <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
                   <button
-                    onClick={() => setShowSplitModal(true)}
-                    className="px-3 py-1.5 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
+                    onClick={() => setSplitMode(!splitMode)}
+                    className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                      splitMode
+                        ? "bg-blue-600 text-white"
+                        : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    }`}
                   >
-                    Split to New Document
+                    {splitMode ? "✓ Selection Mode" : "Select Pages"}
                   </button>
-                  <button
-                    onClick={() => setShowCombineModal(true)}
-                    className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700"
-                  >
-                    Combine Into...
-                  </button>
-                  <button
-                    onClick={clearSelection}
-                    className="px-3 py-1.5 text-gray-600 hover:text-gray-800 text-sm"
-                  >
-                    Clear
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
 
-        {/* Document List */}
-        <div className="space-y-4">
-          {analysisResults.map((analysis, index) => {
-            const pages = pageData[analysis.quote_file_id] || [];
-            const totalWords = pages.reduce(
-              (sum, p) => sum + getPageWordCount(p),
-              0,
-            );
-
-            return (
-              <div
-                key={analysis.id}
-                className="bg-white rounded-lg shadow overflow-hidden"
-              >
-                {/* File Header */}
-                <button
-                  onClick={() =>
-                    setExpandedFile(
-                      expandedFile === analysis.id ? null : analysis.id,
-                    )
-                  }
-                  className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
-                >
-                  <div className="flex items-center gap-4">
-                    <span className="text-lg font-medium">
-                      {index + 1}. {analysis.quote_file?.original_filename}
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      {totalWords} words • {pages.length} page(s)
-                    </span>
-                    {hasChanges(analysis.quote_file_id) && (
-                      <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
-                        Unsaved changes
+                  {splitMode && selectedPages.size > 0 && (
+                    <>
+                      <span className="text-sm text-gray-600">
+                        {selectedPages.size} page(s) selected
                       </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-lg font-bold text-blue-600">
-                      $
-                      {calculateLineTotal(
-                        analysis.quote_file_id,
-                        analysis,
-                      ).toFixed(2)}
-                    </span>
-                    <span className="text-gray-400">
-                      {expandedFile === analysis.id ? "▼" : "▶"}
-                    </span>
-                  </div>
-                </button>
+                      <button
+                        onClick={() => setShowSplitModal(true)}
+                        className="px-3 py-1.5 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
+                      >
+                        Split to New Document
+                      </button>
+                      <button
+                        onClick={() => setShowCombineModal(true)}
+                        className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700"
+                      >
+                        Combine Into...
+                      </button>
+                      <button
+                        onClick={clearSelection}
+                        className="px-3 py-1.5 text-gray-600 hover:text-gray-800 text-sm"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 
-                {/* Expanded Content */}
-                {expandedFile === analysis.id && (
-                  <div className="p-6 border-t">
-                    <div className="grid grid-cols-2 gap-6">
-                      {/* Left Column: Document Preview */}
-                      <div>
-                        <h4 className="font-semibold mb-3">Document Preview</h4>
-                        <div className="border rounded-lg overflow-hidden bg-gray-50">
-                          <img
-                            src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
-                            alt={analysis.quote_file?.original_filename}
-                            className="w-full max-h-[400px] object-contain"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display =
-                                "none";
-                            }}
-                          />
-                        </div>
-                        <div className="mt-2 flex justify-between text-sm text-gray-500">
-                          <span>
-                            {(
-                              analysis.quote_file?.file_size /
-                              1024 /
-                              1024
-                            ).toFixed(2)}{" "}
-                            MB
+            {/* Document List */}
+            <div className="space-y-4">
+              {analysisResults.map((analysis, index) => {
+                const pages = pageData[analysis.quote_file_id] || [];
+                const totalWords = pages.reduce(
+                  (sum, p) => sum + getPageWordCount(p),
+                  0,
+                );
+
+                return (
+                  <div
+                    key={analysis.id}
+                    className="bg-white rounded-lg shadow overflow-hidden"
+                  >
+                    {/* File Header */}
+                    <button
+                      onClick={() =>
+                        setExpandedFile(
+                          expandedFile === analysis.id ? null : analysis.id,
+                        )
+                      }
+                      className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className="text-lg font-medium">
+                          {index + 1}. {analysis.quote_file?.original_filename}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          {totalWords} words • {pages.length} page(s)
+                        </span>
+                        {hasChanges(analysis.quote_file_id) && (
+                          <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
+                            Unsaved changes
                           </span>
-                          <a
-                            href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
-                            target="_blank"
-                            className="text-blue-600 hover:underline"
-                          >
-                            ↓ Download
-                          </a>
-                        </div>
+                        )}
                       </div>
-
-                      {/* Right Column: Analysis & Editing */}
-                      <div className="space-y-4">
-                        {/* Document Type */}
-                        <div className="bg-white border rounded p-3">
-                          <label className="text-sm text-gray-500 block mb-1">
-                            Document Type
-                          </label>
-                          {claimedByMe ? (
-                            <input
-                              type="text"
-                              value={
-                                getValue(
-                                  analysis.quote_file_id,
-                                  "detected_document_type",
-                                  analysis.detected_document_type,
-                                ) || ""
-                              }
-                              onChange={(e) =>
-                                updateLocalEdit(
-                                  analysis.quote_file_id,
-                                  "detected_document_type",
-                                  e.target.value,
-                                )
-                              }
-                              onBlur={(e) => {
-                                const newValue = e.target.value;
-                                if (
-                                  newValue !== analysis.detected_document_type
-                                ) {
-                                  handleFieldEdit(
-                                    "detected_document_type",
-                                    analysis.detected_document_type,
-                                    newValue,
-                                    analysis.quote_file_id,
-                                    analysis.id,
-                                  );
-                                }
-                              }}
-                              className="w-full border rounded px-3 py-2"
-                            />
-                          ) : (
-                            <div className="font-medium">
-                              {analysis.detected_document_type}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Language */}
-                        <div className="bg-white border rounded p-3">
-                          <label className="text-sm text-gray-500 block mb-1">
-                            Detected Language
-                          </label>
-                          {claimedByMe ? (
-                            <select
-                              value={
-                                getValue(
-                                  analysis.quote_file_id,
-                                  "detected_language",
-                                  analysis.detected_language,
-                                ) || ""
-                              }
-                              onChange={(e) => {
-                                const newValue = e.target.value;
-                                updateLocalEdit(
-                                  analysis.quote_file_id,
-                                  "detected_language",
-                                  newValue,
-                                );
-                                if (newValue !== analysis.detected_language) {
-                                  handleFieldEdit(
-                                    "detected_language",
-                                    analysis.detected_language,
-                                    newValue,
-                                    analysis.quote_file_id,
-                                    analysis.id,
-                                  );
-                                }
-                              }}
-                              className="w-full border rounded px-3 py-2"
-                            >
-                              {languages.map((lang) => (
-                                <option key={lang.code} value={lang.code}>
-                                  {lang.name} ({lang.price_multiplier}x)
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <div className="font-medium">
-                              {analysis.detected_language}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Complexity */}
-                        <div className="bg-white border rounded p-3">
-                          <label className="text-sm text-gray-500 block mb-1">
-                            Complexity
-                          </label>
-                          {claimedByMe ? (
-                            <select
-                              value={
-                                getValue(
-                                  analysis.quote_file_id,
-                                  "assessed_complexity",
-                                  analysis.assessed_complexity,
-                                ) || "easy"
-                              }
-                              onChange={(e) => {
-                                const newValue = e.target.value;
-                                handleComplexityChange(
-                                  analysis.quote_file_id,
-                                  newValue,
-                                );
-                                if (newValue !== analysis.assessed_complexity) {
-                                  handleFieldEdit(
-                                    "assessed_complexity",
-                                    analysis.assessed_complexity,
-                                    newValue,
-                                    analysis.quote_file_id,
-                                    analysis.id,
-                                  );
-                                }
-                              }}
-                              className="w-full border rounded px-3 py-2"
-                            >
-                              <option value="easy">Easy (1.0x)</option>
-                              <option value="medium">Medium (1.15x)</option>
-                              <option value="hard">Hard (1.25x)</option>
-                            </select>
-                          ) : (
-                            <div className="font-medium capitalize">
-                              {analysis.assessed_complexity} (
-                              {analysis.complexity_multiplier}x)
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Page Breakdown */}
-                        <div className="bg-white border rounded p-3">
-                          <label className="text-sm text-gray-500 block mb-2">
-                            Page Breakdown ({pages.length} page
-                            {pages.length !== 1 ? "s" : ""})
-                          </label>
-                          <div className="space-y-2">
-                            {pages.map((page, idx) => {
-                              const words = getPageWordCount(page);
-                              const complexity =
-                                getValue(
-                                  analysis.quote_file_id,
-                                  "complexity_multiplier",
-                                  analysis.complexity_multiplier,
-                                ) || 1.0;
-                              const pageBillable = calculatePageBillable(
-                                words,
-                                complexity,
-                              );
-
-                              return (
-                                <div
-                                  key={page.id}
-                                  className={`flex items-center justify-between p-2 rounded ${
-                                    selectedPages.has(page.id)
-                                      ? "bg-blue-50 border border-blue-200"
-                                      : "bg-gray-50"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    {splitMode && (
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedPages.has(page.id)}
-                                        onChange={() =>
-                                          togglePageSelection(page.id)
-                                        }
-                                        className="w-4 h-4 text-blue-600 rounded cursor-pointer"
-                                      />
-                                    )}
-                                    <span className="text-sm font-medium">
-                                      Page {idx + 1}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-3">
-                                    {claimedByMe ? (
-                                      <input
-                                        type="number"
-                                        value={words}
-                                        onChange={(e) =>
-                                          updatePageWordCount(
-                                            page,
-                                            parseInt(e.target.value) || 0,
-                                          )
-                                        }
-                                        onBlur={(e) => {
-                                          const newValue =
-                                            parseInt(e.target.value) || 0;
-                                          if (newValue !== page.word_count) {
-                                            handleFieldEdit(
-                                              "page_word_count",
-                                              page.word_count,
-                                              newValue,
-                                              page.quote_file_id,
-                                              undefined,
-                                              page.id,
-                                            );
-                                          }
-                                        }}
-                                        className="w-20 text-right border rounded px-2 py-1 text-sm"
-                                        min="0"
-                                      />
-                                    ) : (
-                                      <span className="text-sm">{words}</span>
-                                    )}
-                                    <span className="text-xs text-gray-500">
-                                      words
-                                    </span>
-                                    <span className="text-xs text-blue-600 font-medium">
-                                      = {pageBillable.toFixed(2)} bp
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          {/* Document Billable Total */}
-                          <div className="flex justify-between mt-3 pt-2 border-t font-medium">
-                            <span>Document Billable:</span>
-                            <span>
-                              {calculateDocumentBillable(
-                                analysis.quote_file_id,
-                                analysis,
-                              ).toFixed(2)}{" "}
-                              pages
-                            </span>
-                          </div>
-                          {calculateDocumentBillable(
+                      <div className="flex items-center gap-4">
+                        <span className="text-lg font-bold text-blue-600">
+                          $
+                          {calculateLineTotal(
                             analysis.quote_file_id,
                             analysis,
-                          ) === 1.0 &&
-                            pages.reduce(
-                              (sum, p) =>
-                                sum +
-                                calculatePageBillable(
-                                  getPageWordCount(p),
-                                  getValue(
-                                    analysis.quote_file_id,
-                                    "complexity_multiplier",
-                                    analysis.complexity_multiplier,
-                                  ) || 1.0,
-                                ),
-                              0,
-                            ) < 1.0 && (
-                              <div className="text-xs text-orange-600 mt-1">
-                                * Minimum 1.00 applied
-                              </div>
-                            )}
-                        </div>
+                          ).toFixed(2)}
+                        </span>
+                        <span className="text-gray-400">
+                          {expandedFile === analysis.id ? "▼" : "▶"}
+                        </span>
+                      </div>
+                    </button>
 
-                        {/* CERTIFICATION SECTION */}
-                        <div className="bg-white border rounded p-3">
-                          <label className="text-sm text-gray-500 block mb-2">
-                            Certification
-                          </label>
+                    {/* Expanded Content */}
+                    {expandedFile === analysis.id && (
+                      <div className="p-6 border-t">
+                        <div className="grid grid-cols-2 gap-6">
+                          {/* Left Column: Document Preview */}
+                          <div>
+                            <h4 className="font-semibold mb-3">
+                              Document Preview
+                            </h4>
+                            <div className="border rounded-lg overflow-hidden bg-gray-50">
+                              <img
+                                src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
+                                alt={analysis.quote_file?.original_filename}
+                                className="w-full max-h-[400px] object-contain"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display =
+                                    "none";
+                                }}
+                              />
+                            </div>
+                            <div className="mt-2 flex justify-between text-sm text-gray-500">
+                              <span>
+                                {(
+                                  analysis.quote_file?.file_size /
+                                  1024 /
+                                  1024
+                                ).toFixed(2)}{" "}
+                                MB
+                              </span>
+                              <a
+                                href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
+                                target="_blank"
+                                className="text-blue-600 hover:underline"
+                              >
+                                ↓ Download
+                              </a>
+                            </div>
+                          </div>
 
-                          {/* Primary Certification */}
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-sm font-medium">
-                              Primary:
-                            </span>
-                            <div className="flex items-center gap-2 flex-1 ml-4">
+                          {/* Right Column: Analysis & Editing */}
+                          <div className="space-y-4">
+                            {/* Document Type */}
+                            <div className="bg-white border rounded p-3">
+                              <label className="text-sm text-gray-500 block mb-1">
+                                Document Type
+                              </label>
+                              {claimedByMe ? (
+                                <input
+                                  type="text"
+                                  value={
+                                    getValue(
+                                      analysis.quote_file_id,
+                                      "detected_document_type",
+                                      analysis.detected_document_type,
+                                    ) || ""
+                                  }
+                                  onChange={(e) =>
+                                    updateLocalEdit(
+                                      analysis.quote_file_id,
+                                      "detected_document_type",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onBlur={(e) => {
+                                    const newValue = e.target.value;
+                                    if (
+                                      newValue !==
+                                      analysis.detected_document_type
+                                    ) {
+                                      handleFieldEdit(
+                                        "detected_document_type",
+                                        analysis.detected_document_type,
+                                        newValue,
+                                        analysis.quote_file_id,
+                                        analysis.id,
+                                      );
+                                    }
+                                  }}
+                                  className="w-full border rounded px-3 py-2"
+                                />
+                              ) : (
+                                <div className="font-medium">
+                                  {analysis.detected_document_type}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Language */}
+                            <div className="bg-white border rounded p-3">
+                              <label className="text-sm text-gray-500 block mb-1">
+                                Detected Language
+                              </label>
                               {claimedByMe ? (
                                 <select
                                   value={
                                     getValue(
                                       analysis.quote_file_id,
-                                      "certification_type_id",
-                                      analysis.certification_type_id,
+                                      "detected_language",
+                                      analysis.detected_language,
                                     ) || ""
                                   }
-                                  onChange={(e) =>
-                                    handleCertificationChange(
+                                  onChange={(e) => {
+                                    const newValue = e.target.value;
+                                    updateLocalEdit(
                                       analysis.quote_file_id,
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="flex-1 border rounded px-3 py-1 text-sm"
+                                      "detected_language",
+                                      newValue,
+                                    );
+                                    if (
+                                      newValue !== analysis.detected_language
+                                    ) {
+                                      handleFieldEdit(
+                                        "detected_language",
+                                        analysis.detected_language,
+                                        newValue,
+                                        analysis.quote_file_id,
+                                        analysis.id,
+                                      );
+                                    }
+                                  }}
+                                  className="w-full border rounded px-3 py-2"
                                 >
-                                  {certificationTypes.map((cert) => (
-                                    <option key={cert.id} value={cert.id}>
-                                      {cert.name} (${cert.price.toFixed(2)})
+                                  {languages.map((lang) => (
+                                    <option key={lang.code} value={lang.code}>
+                                      {lang.name} ({lang.price_multiplier}x)
                                     </option>
                                   ))}
                                 </select>
                               ) : (
-                                <span className="text-sm flex-1">
-                                  {certificationTypes.find(
-                                    (c) =>
-                                      c.id === analysis.certification_type_id,
-                                  )?.name || "Not set"}
-                                </span>
+                                <div className="font-medium">
+                                  {analysis.detected_language}
+                                </div>
                               )}
-                              <span className="text-sm font-medium w-20 text-right">
-                                $
-                                {(
-                                  certificationTypes.find(
-                                    (c) =>
-                                      c.id ===
-                                      getValue(
+                            </div>
+
+                            {/* Complexity */}
+                            <div className="bg-white border rounded p-3">
+                              <label className="text-sm text-gray-500 block mb-1">
+                                Complexity
+                              </label>
+                              {claimedByMe ? (
+                                <select
+                                  value={
+                                    getValue(
+                                      analysis.quote_file_id,
+                                      "assessed_complexity",
+                                      analysis.assessed_complexity,
+                                    ) || "easy"
+                                  }
+                                  onChange={(e) => {
+                                    const newValue = e.target.value;
+                                    handleComplexityChange(
+                                      analysis.quote_file_id,
+                                      newValue,
+                                    );
+                                    if (
+                                      newValue !== analysis.assessed_complexity
+                                    ) {
+                                      handleFieldEdit(
+                                        "assessed_complexity",
+                                        analysis.assessed_complexity,
+                                        newValue,
                                         analysis.quote_file_id,
-                                        "certification_type_id",
-                                        analysis.certification_type_id,
-                                      ),
-                                  )?.price || 0
-                                ).toFixed(2)}
-                              </span>
+                                        analysis.id,
+                                      );
+                                    }
+                                  }}
+                                  className="w-full border rounded px-3 py-2"
+                                >
+                                  <option value="easy">Easy (1.0x)</option>
+                                  <option value="medium">Medium (1.15x)</option>
+                                  <option value="hard">Hard (1.25x)</option>
+                                </select>
+                              ) : (
+                                <div className="font-medium capitalize">
+                                  {analysis.assessed_complexity} (
+                                  {analysis.complexity_multiplier}x)
+                                </div>
+                              )}
                             </div>
-                          </div>
 
-                          {/* Additional Certifications */}
-                          <div className="border-t pt-2">
-                            <div className="text-xs text-gray-500 mb-2">
-                              Additional Certifications:
-                            </div>
+                            {/* Page Breakdown */}
+                            <div className="bg-white border rounded p-3">
+                              <label className="text-sm text-gray-500 block mb-2">
+                                Page Breakdown ({pages.length} page
+                                {pages.length !== 1 ? "s" : ""})
+                              </label>
+                              <div className="space-y-2">
+                                {pages.map((page, idx) => {
+                                  const words = getPageWordCount(page);
+                                  const complexity =
+                                    getValue(
+                                      analysis.quote_file_id,
+                                      "complexity_multiplier",
+                                      analysis.complexity_multiplier,
+                                    ) || 1.0;
+                                  const pageBillable = calculatePageBillable(
+                                    words,
+                                    complexity,
+                                  );
 
-                            {(additionalCerts[analysis.quote_file_id] || [])
-                              .length === 0 ? (
-                              <p className="text-xs text-gray-400 italic">
-                                None added
-                              </p>
-                            ) : (
-                              <div className="space-y-1">
-                                {(
-                                  additionalCerts[analysis.quote_file_id] || []
-                                ).map((cert) => (
-                                  <div
-                                    key={cert.id}
-                                    className="flex items-center justify-between py-1 px-2 bg-gray-50 rounded"
-                                  >
-                                    <span className="text-sm">{cert.name}</span>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm">
-                                        ${cert.price.toFixed(2)}
-                                      </span>
-                                      {claimedByMe && (
-                                        <button
-                                          onClick={() =>
-                                            removeAdditionalCert(
-                                              analysis.quote_file_id,
-                                              cert.id,
-                                            )
-                                          }
-                                          className="text-red-500 text-xs hover:text-red-700"
-                                        >
-                                          ✕
-                                        </button>
-                                      )}
+                                  return (
+                                    <div
+                                      key={page.id}
+                                      className={`flex items-center justify-between p-2 rounded ${
+                                        selectedPages.has(page.id)
+                                          ? "bg-blue-50 border border-blue-200"
+                                          : "bg-gray-50"
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        {splitMode && (
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedPages.has(page.id)}
+                                            onChange={() =>
+                                              togglePageSelection(page.id)
+                                            }
+                                            className="w-4 h-4 text-blue-600 rounded cursor-pointer"
+                                          />
+                                        )}
+                                        <span className="text-sm font-medium">
+                                          Page {idx + 1}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        {claimedByMe ? (
+                                          <input
+                                            type="number"
+                                            value={words}
+                                            onChange={(e) =>
+                                              updatePageWordCount(
+                                                page,
+                                                parseInt(e.target.value) || 0,
+                                              )
+                                            }
+                                            onBlur={(e) => {
+                                              const newValue =
+                                                parseInt(e.target.value) || 0;
+                                              if (
+                                                newValue !== page.word_count
+                                              ) {
+                                                handleFieldEdit(
+                                                  "page_word_count",
+                                                  page.word_count,
+                                                  newValue,
+                                                  page.quote_file_id,
+                                                  undefined,
+                                                  page.id,
+                                                );
+                                              }
+                                            }}
+                                            className="w-20 text-right border rounded px-2 py-1 text-sm"
+                                            min="0"
+                                          />
+                                        ) : (
+                                          <span className="text-sm">
+                                            {words}
+                                          </span>
+                                        )}
+                                        <span className="text-xs text-gray-500">
+                                          words
+                                        </span>
+                                        <span className="text-xs text-blue-600 font-medium">
+                                          = {pageBillable.toFixed(2)} bp
+                                        </span>
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
-                            )}
 
-                            {claimedByMe && (
-                              <button
-                                onClick={() =>
-                                  setShowAddCertModal(analysis.quote_file_id)
-                                }
-                                className="text-blue-600 text-sm mt-2 hover:underline"
-                              >
-                                + Add Certification
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Certification Total */}
-                          <div className="border-t pt-2 mt-3 flex justify-between">
-                            <span className="text-sm font-medium">
-                              Certification Total:
-                            </span>
-                            <span className="text-sm font-bold">
-                              $
-                              {calculateCertificationTotal(
+                              {/* Document Billable Total */}
+                              <div className="flex justify-between mt-3 pt-2 border-t font-medium">
+                                <span>Document Billable:</span>
+                                <span>
+                                  {calculateDocumentBillable(
+                                    analysis.quote_file_id,
+                                    analysis,
+                                  ).toFixed(2)}{" "}
+                                  pages
+                                </span>
+                              </div>
+                              {calculateDocumentBillable(
                                 analysis.quote_file_id,
                                 analysis,
-                              ).toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* PRICING SUMMARY */}
-                        <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                          <h4 className="text-sm font-semibold text-blue-800 mb-2">
-                            Document Total
-                          </h4>
-                          <div className="space-y-1 text-sm">
-                            <div className="flex justify-between">
-                              <span>Billable Pages:</span>
-                              <span>
-                                {calculateDocumentBillable(
-                                  analysis.quote_file_id,
-                                  analysis,
-                                ).toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Translation:</span>
-                              <span>
-                                $
-                                {calculateTranslationCost(
-                                  analysis.quote_file_id,
-                                  analysis,
-                                ).toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Certification:</span>
-                              <span>
-                                $
-                                {calculateCertificationTotal(
-                                  analysis.quote_file_id,
-                                  analysis,
-                                ).toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between font-bold border-t pt-1 mt-1 text-blue-800">
-                              <span>Line Total:</span>
-                              <span>
-                                $
-                                {calculateLineTotal(
-                                  analysis.quote_file_id,
-                                  analysis,
-                                ).toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* AI Processing Details - Collapsible */}
-                    <div className="bg-gray-50 rounded-lg border mt-6">
-                      <button
-                        onClick={() =>
-                          setShowAiDetails((prev) => ({
-                            ...prev,
-                            [analysis.id]: !prev[analysis.id],
-                          }))
-                        }
-                        className="w-full flex justify-between items-center p-4 text-left hover:bg-gray-100"
-                      >
-                        <span className="font-medium text-gray-700">
-                          🤖 AI Processing Details
-                        </span>
-                        <span className="text-gray-400 text-lg">
-                          {showAiDetails[analysis.id] ? "−" : "+"}
-                        </span>
-                      </button>
-
-                      {showAiDetails[analysis.id] && (
-                        <div className="px-4 pb-4 border-t">
-                          {/* Processing Info Grid */}
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                            <div className="bg-white p-3 rounded border">
-                              <p className="text-xs text-gray-500 uppercase">
-                                OCR Provider
-                              </p>
-                              <p className="font-medium">
-                                {analysis?.ocr_provider || "Google Document AI"}
-                              </p>
+                              ) === 1.0 &&
+                                pages.reduce(
+                                  (sum, p) =>
+                                    sum +
+                                    calculatePageBillable(
+                                      getPageWordCount(p),
+                                      getValue(
+                                        analysis.quote_file_id,
+                                        "complexity_multiplier",
+                                        analysis.complexity_multiplier,
+                                      ) || 1.0,
+                                    ),
+                                  0,
+                                ) < 1.0 && (
+                                  <div className="text-xs text-orange-600 mt-1">
+                                    * Minimum 1.00 applied
+                                  </div>
+                                )}
                             </div>
 
-                            <div className="bg-white p-3 rounded border">
-                              <p className="text-xs text-gray-500 uppercase">
-                                OCR Confidence
-                              </p>
-                              <p
-                                className={`font-medium ${
-                                  (analysis?.ocr_confidence || 0) > 0.8
-                                    ? "text-green-600"
-                                    : (analysis?.ocr_confidence || 0) > 0.6
-                                      ? "text-yellow-600"
-                                      : "text-red-600"
-                                }`}
-                              >
-                                {analysis?.ocr_confidence
-                                  ? `${(analysis.ocr_confidence * 100).toFixed(1)}%`
-                                  : "N/A"}
-                              </p>
-                            </div>
+                            {/* CERTIFICATION SECTION */}
+                            <div className="bg-white border rounded p-3">
+                              <label className="text-sm text-gray-500 block mb-2">
+                                Certification
+                              </label>
 
-                            <div className="bg-white p-3 rounded border">
-                              <p className="text-xs text-gray-500 uppercase">
-                                AI Model
-                              </p>
-                              <p className="font-medium">
-                                {analysis?.llm_model || "Claude Sonnet"}
-                              </p>
-                            </div>
-
-                            <div className="bg-white p-3 rounded border">
-                              <p className="text-xs text-gray-500 uppercase">
-                                Processing Time
-                              </p>
-                              <p className="font-medium">
-                                {analysis?.processing_time_ms
-                                  ? `${(analysis.processing_time_ms / 1000).toFixed(1)}s`
-                                  : "N/A"}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Confidence Scores */}
-                          <div className="mt-4">
-                            <p className="text-sm font-medium text-gray-700 mb-2">
-                              AI Confidence Scores
-                            </p>
-                            <div className="grid grid-cols-3 gap-3">
-                              <div className="bg-white p-3 rounded border">
-                                <div className="flex justify-between">
-                                  <span className="text-sm text-gray-600">
-                                    Language
-                                  </span>
-                                  <span
-                                    className={`text-sm font-medium ${
-                                      (analysis?.language_confidence || 0) > 0.9
-                                        ? "text-green-600"
-                                        : (analysis?.language_confidence || 0) >
-                                            0.8
-                                          ? "text-yellow-600"
-                                          : "text-red-600"
-                                    }`}
-                                  >
-                                    {analysis?.language_confidence
-                                      ? `${(analysis.language_confidence * 100).toFixed(0)}%`
-                                      : "N/A"}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="bg-white p-3 rounded border">
-                                <div className="flex justify-between">
-                                  <span className="text-sm text-gray-600">
-                                    Document Type
-                                  </span>
-                                  <span
-                                    className={`text-sm font-medium ${
-                                      (analysis?.document_type_confidence ||
-                                        0) > 0.85
-                                        ? "text-green-600"
-                                        : (analysis?.document_type_confidence ||
-                                              0) > 0.7
-                                          ? "text-yellow-600"
-                                          : "text-red-600"
-                                    }`}
-                                  >
-                                    {analysis?.document_type_confidence
-                                      ? `${(analysis.document_type_confidence * 100).toFixed(0)}%`
-                                      : "N/A"}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="bg-white p-3 rounded border">
-                                <div className="flex justify-between">
-                                  <span className="text-sm text-gray-600">
-                                    Complexity
-                                  </span>
-                                  <span
-                                    className={`text-sm font-medium ${
-                                      (analysis?.complexity_confidence || 0) >
-                                      0.8
-                                        ? "text-green-600"
-                                        : (analysis?.complexity_confidence ||
-                                              0) > 0.6
-                                          ? "text-yellow-600"
-                                          : "text-red-600"
-                                    }`}
-                                  >
-                                    {analysis?.complexity_confidence
-                                      ? `${(analysis.complexity_confidence * 100).toFixed(0)}%`
-                                      : "N/A"}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* HITL Trigger Reasons */}
-                          {reviewData?.trigger_reasons?.length > 0 && (
-                            <div className="mt-4">
-                              <p className="text-sm font-medium text-gray-700 mb-2">
-                                Why HITL Was Triggered
-                              </p>
-                              <div className="flex flex-wrap gap-2">
-                                {reviewData.trigger_reasons.map(
-                                  (reason: string, idx: number) => (
-                                    <span
-                                      key={idx}
-                                      className="px-3 py-1 bg-amber-100 text-amber-800 text-sm rounded-full"
+                              {/* Primary Certification */}
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="text-sm font-medium">
+                                  Primary:
+                                </span>
+                                <div className="flex items-center gap-2 flex-1 ml-4">
+                                  {claimedByMe ? (
+                                    <select
+                                      value={
+                                        getValue(
+                                          analysis.quote_file_id,
+                                          "certification_type_id",
+                                          analysis.certification_type_id,
+                                        ) || ""
+                                      }
+                                      onChange={(e) =>
+                                        handleCertificationChange(
+                                          analysis.quote_file_id,
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="flex-1 border rounded px-3 py-1 text-sm"
                                     >
-                                      {reason
-                                        .replace(/_/g, " ")
-                                        .replace(/\b\w/g, (l) =>
-                                          l.toUpperCase(),
-                                        )}
+                                      {certificationTypes.map((cert) => (
+                                        <option key={cert.id} value={cert.id}>
+                                          {cert.name} (${cert.price.toFixed(2)})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className="text-sm flex-1">
+                                      {certificationTypes.find(
+                                        (c) =>
+                                          c.id ===
+                                          analysis.certification_type_id,
+                                      )?.name || "Not set"}
                                     </span>
-                                  ),
+                                  )}
+                                  <span className="text-sm font-medium w-20 text-right">
+                                    $
+                                    {(
+                                      certificationTypes.find(
+                                        (c) =>
+                                          c.id ===
+                                          getValue(
+                                            analysis.quote_file_id,
+                                            "certification_type_id",
+                                            analysis.certification_type_id,
+                                          ),
+                                      )?.price || 0
+                                    ).toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Additional Certifications */}
+                              <div className="border-t pt-2">
+                                <div className="text-xs text-gray-500 mb-2">
+                                  Additional Certifications:
+                                </div>
+
+                                {(additionalCerts[analysis.quote_file_id] || [])
+                                  .length === 0 ? (
+                                  <p className="text-xs text-gray-400 italic">
+                                    None added
+                                  </p>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {(
+                                      additionalCerts[analysis.quote_file_id] ||
+                                      []
+                                    ).map((cert) => (
+                                      <div
+                                        key={cert.id}
+                                        className="flex items-center justify-between py-1 px-2 bg-gray-50 rounded"
+                                      >
+                                        <span className="text-sm">
+                                          {cert.name}
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm">
+                                            ${cert.price.toFixed(2)}
+                                          </span>
+                                          {claimedByMe && (
+                                            <button
+                                              onClick={() =>
+                                                removeAdditionalCert(
+                                                  analysis.quote_file_id,
+                                                  cert.id,
+                                                )
+                                              }
+                                              className="text-red-500 text-xs hover:text-red-700"
+                                            >
+                                              ✕
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {claimedByMe && (
+                                  <button
+                                    onClick={() =>
+                                      setShowAddCertModal(
+                                        analysis.quote_file_id,
+                                      )
+                                    }
+                                    className="text-blue-600 text-sm mt-2 hover:underline"
+                                  >
+                                    + Add Certification
+                                  </button>
                                 )}
                               </div>
+
+                              {/* Certification Total */}
+                              <div className="border-t pt-2 mt-3 flex justify-between">
+                                <span className="text-sm font-medium">
+                                  Certification Total:
+                                </span>
+                                <span className="text-sm font-bold">
+                                  $
+                                  {calculateCertificationTotal(
+                                    analysis.quote_file_id,
+                                    analysis,
+                                  ).toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* PRICING SUMMARY */}
+                            <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                              <h4 className="text-sm font-semibold text-blue-800 mb-2">
+                                Document Total
+                              </h4>
+                              <div className="space-y-1 text-sm">
+                                <div className="flex justify-between">
+                                  <span>Billable Pages:</span>
+                                  <span>
+                                    {calculateDocumentBillable(
+                                      analysis.quote_file_id,
+                                      analysis,
+                                    ).toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Translation:</span>
+                                  <span>
+                                    $
+                                    {calculateTranslationCost(
+                                      analysis.quote_file_id,
+                                      analysis,
+                                    ).toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Certification:</span>
+                                  <span>
+                                    $
+                                    {calculateCertificationTotal(
+                                      analysis.quote_file_id,
+                                      analysis,
+                                    ).toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between font-bold border-t pt-1 mt-1 text-blue-800">
+                                  <span>Line Total:</span>
+                                  <span>
+                                    $
+                                    {calculateLineTotal(
+                                      analysis.quote_file_id,
+                                      analysis,
+                                    ).toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* AI Processing Details - Collapsible */}
+                        <div className="bg-gray-50 rounded-lg border mt-6">
+                          <button
+                            onClick={() =>
+                              setShowAiDetails((prev) => ({
+                                ...prev,
+                                [analysis.id]: !prev[analysis.id],
+                              }))
+                            }
+                            className="w-full flex justify-between items-center p-4 text-left hover:bg-gray-100"
+                          >
+                            <span className="font-medium text-gray-700">
+                              🤖 AI Processing Details
+                            </span>
+                            <span className="text-gray-400 text-lg">
+                              {showAiDetails[analysis.id] ? "−" : "+"}
+                            </span>
+                          </button>
+
+                          {showAiDetails[analysis.id] && (
+                            <div className="px-4 pb-4 border-t">
+                              {/* Processing Info Grid */}
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                                <div className="bg-white p-3 rounded border">
+                                  <p className="text-xs text-gray-500 uppercase">
+                                    OCR Provider
+                                  </p>
+                                  <p className="font-medium">
+                                    {analysis?.ocr_provider ||
+                                      "Google Document AI"}
+                                  </p>
+                                </div>
+
+                                <div className="bg-white p-3 rounded border">
+                                  <p className="text-xs text-gray-500 uppercase">
+                                    OCR Confidence
+                                  </p>
+                                  <p
+                                    className={`font-medium ${
+                                      (analysis?.ocr_confidence || 0) > 0.8
+                                        ? "text-green-600"
+                                        : (analysis?.ocr_confidence || 0) > 0.6
+                                          ? "text-yellow-600"
+                                          : "text-red-600"
+                                    }`}
+                                  >
+                                    {analysis?.ocr_confidence
+                                      ? `${(analysis.ocr_confidence * 100).toFixed(1)}%`
+                                      : "N/A"}
+                                  </p>
+                                </div>
+
+                                <div className="bg-white p-3 rounded border">
+                                  <p className="text-xs text-gray-500 uppercase">
+                                    AI Model
+                                  </p>
+                                  <p className="font-medium">
+                                    {analysis?.llm_model || "Claude Sonnet"}
+                                  </p>
+                                </div>
+
+                                <div className="bg-white p-3 rounded border">
+                                  <p className="text-xs text-gray-500 uppercase">
+                                    Processing Time
+                                  </p>
+                                  <p className="font-medium">
+                                    {analysis?.processing_time_ms
+                                      ? `${(analysis.processing_time_ms / 1000).toFixed(1)}s`
+                                      : "N/A"}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Confidence Scores */}
+                              <div className="mt-4">
+                                <p className="text-sm font-medium text-gray-700 mb-2">
+                                  AI Confidence Scores
+                                </p>
+                                <div className="grid grid-cols-3 gap-3">
+                                  <div className="bg-white p-3 rounded border">
+                                    <div className="flex justify-between">
+                                      <span className="text-sm text-gray-600">
+                                        Language
+                                      </span>
+                                      <span
+                                        className={`text-sm font-medium ${
+                                          (analysis?.language_confidence || 0) >
+                                          0.9
+                                            ? "text-green-600"
+                                            : (analysis?.language_confidence ||
+                                                  0) > 0.8
+                                              ? "text-yellow-600"
+                                              : "text-red-600"
+                                        }`}
+                                      >
+                                        {analysis?.language_confidence
+                                          ? `${(analysis.language_confidence * 100).toFixed(0)}%`
+                                          : "N/A"}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-white p-3 rounded border">
+                                    <div className="flex justify-between">
+                                      <span className="text-sm text-gray-600">
+                                        Document Type
+                                      </span>
+                                      <span
+                                        className={`text-sm font-medium ${
+                                          (analysis?.document_type_confidence ||
+                                            0) > 0.85
+                                            ? "text-green-600"
+                                            : (analysis?.document_type_confidence ||
+                                                  0) > 0.7
+                                              ? "text-yellow-600"
+                                              : "text-red-600"
+                                        }`}
+                                      >
+                                        {analysis?.document_type_confidence
+                                          ? `${(analysis.document_type_confidence * 100).toFixed(0)}%`
+                                          : "N/A"}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-white p-3 rounded border">
+                                    <div className="flex justify-between">
+                                      <span className="text-sm text-gray-600">
+                                        Complexity
+                                      </span>
+                                      <span
+                                        className={`text-sm font-medium ${
+                                          (analysis?.complexity_confidence ||
+                                            0) > 0.8
+                                            ? "text-green-600"
+                                            : (analysis?.complexity_confidence ||
+                                                  0) > 0.6
+                                              ? "text-yellow-600"
+                                              : "text-red-600"
+                                        }`}
+                                      >
+                                        {analysis?.complexity_confidence
+                                          ? `${(analysis.complexity_confidence * 100).toFixed(0)}%`
+                                          : "N/A"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* HITL Trigger Reasons */}
+                              {reviewData?.trigger_reasons?.length > 0 && (
+                                <div className="mt-4">
+                                  <p className="text-sm font-medium text-gray-700 mb-2">
+                                    Why HITL Was Triggered
+                                  </p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {reviewData.trigger_reasons.map(
+                                      (reason: string, idx: number) => (
+                                        <span
+                                          key={idx}
+                                          className="px-3 py-1 bg-amber-100 text-amber-800 text-sm rounded-full"
+                                        >
+                                          {reason
+                                            .replace(/_/g, " ")
+                                            .replace(/\b\w/g, (l) =>
+                                              l.toUpperCase(),
+                                            )}
+                                        </span>
+                                      ),
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
           </HITLPanelLayout>
         )}
 

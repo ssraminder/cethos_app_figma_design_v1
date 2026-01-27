@@ -124,9 +124,7 @@ export default function TranslationDetailsPanel({
           {/* Special Instructions (optional) */}
           {translationData.special_instructions && (
             <div>
-              <p className="text-xs text-gray-500 mb-1">
-                Special Instructions
-              </p>
+              <p className="text-xs text-gray-500 mb-1">Special Instructions</p>
               <p className="text-sm text-gray-700 bg-gray-50 p-2 rounded border border-gray-200">
                 {translationData.special_instructions}
               </p>

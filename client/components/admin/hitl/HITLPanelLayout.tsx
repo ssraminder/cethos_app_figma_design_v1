@@ -164,9 +164,7 @@ export default function HITLPanelLayout({
       </aside>
 
       {/* CENTER PANEL: Document Analysis (6 columns) */}
-      <main className="col-span-6 space-y-4 overflow-y-auto">
-        {children}
-      </main>
+      <main className="col-span-6 space-y-4 overflow-y-auto">{children}</main>
 
       {/* RIGHT PANEL: Messaging + Internal Notes (3 columns) */}
       <aside className="col-span-3 space-y-4 overflow-y-auto flex flex-col">
