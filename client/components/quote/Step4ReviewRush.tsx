@@ -107,6 +107,8 @@ export default function Step4ReviewRush() {
     "loading" | "processing" | "complete" | "no_data"
   >("loading");
   const [error, setError] = useState<string | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const [pollAttempts, setPollAttempts] = useState(0);
 
   // Language/document info for same-day eligibility
   const [sourceLanguage, setSourceLanguage] = useState("");
