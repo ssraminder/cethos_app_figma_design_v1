@@ -170,9 +170,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             .invoke("process-document", {
               body: { quoteId: result.quoteId },
             })
-            .catch((err) =>
-              console.error("Background processing error:", err),
-            );
+            .catch((err) => console.error("Background processing error:", err));
         }
 
         // Update state and navigate immediately
