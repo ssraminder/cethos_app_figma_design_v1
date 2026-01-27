@@ -148,12 +148,20 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       if (state.files.length === 0) return false;
 
       try {
-        // Create quote with entry_point tracking
+        // Create quote
         const result = await supabase.createQuoteWithFiles(state.files);
 
         if (!result) {
           console.error("Failed to create quote");
           return false;
+        }
+
+        // Update quote with entry_point tracking
+        if (supabase.supabase) {
+          await supabase.supabase
+            .from("quotes")
+            .update({ entry_point: "upload_form" })
+            .eq("id", result.quoteId);
         }
 
         // Invoke process-document in background (fire and forget)
