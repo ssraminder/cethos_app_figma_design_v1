@@ -150,7 +150,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
       try {
         // Create quote
-        const result = await supabase.createQuoteWithFiles(state.files);
+        const result = await supabaseHook.createQuoteWithFiles(state.files);
 
         if (!result) {
           console.error("Failed to create quote");
@@ -158,16 +158,16 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         }
 
         // Update quote with entry_point tracking
-        if (supabase.supabase) {
-          await supabase.supabase
+        if (supabase) {
+          await supabase
             .from("quotes")
             .update({ entry_point: "upload_form" })
             .eq("id", result.quoteId);
         }
 
         // Invoke process-document in background (fire and forget)
-        if (supabase.supabase) {
-          supabase.supabase.functions
+        if (supabase) {
+          supabase.functions
             .invoke("process-document", {
               body: { quoteId: result.quoteId },
             })
@@ -321,7 +321,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (!supabase.supabase) {
+    if (!supabase) {
       updateState({
         error: "Database connection not available. Please try again.",
       });
@@ -339,14 +339,14 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     try {
       // 1. Update quote status to hitl_pending
       console.log("1️⃣ Updating quote status to hitl_pending");
-      await supabase.supabase
+      await supabase
         .from("quotes")
         .update({ status: "hitl_pending" })
         .eq("id", state.quoteId);
 
       // 2. Create HITL review record
       console.log("2️⃣ Creating HITL review record");
-      await supabase.supabase.functions.invoke("create-hitl-review", {
+      await supabase.functions.invoke("create-hitl-review", {
         body: {
           quote_id: state.quoteId,
           is_customer_requested: true,
@@ -359,7 +359,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
       // 3. Send confirmation email
       console.log("3️⃣ Sending confirmation email to:", state.email);
-      await supabase.supabase.functions.invoke("send-email", {
+      await supabase.functions.invoke("send-email", {
         body: {
           template: "manual_quote_requested",
           to: state.email,
