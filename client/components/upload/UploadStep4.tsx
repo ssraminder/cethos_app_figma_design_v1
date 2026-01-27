@@ -1,5 +1,6 @@
 import { ChevronLeft, User, Sparkles, Loader2 } from "lucide-react";
 import { useUpload } from "@/context/UploadContext";
+import StartOverLink from "@/components/StartOverLink";
 
 export default function UploadStep4() {
   const { state, goToPreviousStep, submitManualQuote, submitAIQuote } =
@@ -175,7 +176,8 @@ export default function UploadStep4() {
       </div>
 
       {/* Back Button */}
-      <div className="flex justify-start">
+      <div className="flex items-center justify-between">
+        <StartOverLink />
         <button
           onClick={goToPreviousStep}
           disabled={state.isSubmitting}
