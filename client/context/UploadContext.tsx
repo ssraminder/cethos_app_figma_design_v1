@@ -436,7 +436,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         console.error("❌ Email sending failed:", emailResult);
         // Don't throw - email failure shouldn't prevent manual quote submission
       } else {
-        console.log("✅ Confirmation email sent successfully using Brevo template");
+        console.log(
+          "✅ Confirmation email sent successfully using Brevo template",
+        );
       }
 
       // 4. Show confirmation view
