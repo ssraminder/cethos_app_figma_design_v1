@@ -287,7 +287,14 @@ export default function UploadStep2() {
           </label>
           <select
             value={state.countryId || ""}
-            onChange={(e) => updateField("countryId", e.target.value)}
+            onChange={(e) => {
+              const countryId = e.target.value;
+              const selectedCountry = countries.find((c) => c.id === countryId);
+              updateState({
+                countryId,
+                countryOfIssue: selectedCountry?.name || "",
+              });
+            }}
             className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
           >
             <option value="">Select country of document origin...</option>
