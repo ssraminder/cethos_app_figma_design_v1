@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { X, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  X,
+  Download,
+  ZoomIn,
+  ZoomOut,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 interface DocumentPreviewModalProps {
   isOpen: boolean;
@@ -21,25 +28,26 @@ export default function DocumentPreviewModal({
   const [totalPages, setTotalPages] = useState(1);
 
   // Determine file type from filename if not provided
-  const detectedType = fileType || (fileName.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image');
-  const isPdf = detectedType === 'pdf';
+  const detectedType =
+    fileType || (fileName.toLowerCase().endsWith(".pdf") ? "pdf" : "image");
+  const isPdf = detectedType === "pdf";
 
   // Close on ESC key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
 
     if (isOpen) {
-      document.addEventListener('keydown', handleEsc);
-      document.body.style.overflow = 'hidden';
+      document.addEventListener("keydown", handleEsc);
+      document.body.style.overflow = "hidden";
     }
 
     return () => {
-      document.removeEventListener('keydown', handleEsc);
-      document.body.style.overflow = 'unset';
+      document.removeEventListener("keydown", handleEsc);
+      document.body.style.overflow = "unset";
     };
   }, [isOpen, onClose]);
 
@@ -54,7 +62,7 @@ export default function DocumentPreviewModal({
   };
 
   const handleDownload = () => {
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = fileUrl;
     link.download = fileName;
     document.body.appendChild(link);

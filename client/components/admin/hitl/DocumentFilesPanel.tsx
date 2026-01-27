@@ -142,7 +142,7 @@ export default function DocumentFilesPanel({
                 <button
                   onClick={() => {
                     const fileUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${file.storage_path}`;
-                    const link = document.createElement('a');
+                    const link = document.createElement("a");
                     link.href = fileUrl;
                     link.download = file.original_filename;
                     document.body.appendChild(link);
@@ -167,7 +167,7 @@ export default function DocumentFilesPanel({
           onClose={() => setPreviewFile(null)}
           fileUrl={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${previewFile.storage_path}`}
           fileName={previewFile.original_filename}
-          fileType={previewFile.mime_type?.includes('pdf') ? 'pdf' : 'image'}
+          fileType={previewFile.mime_type?.includes("pdf") ? "pdf" : "image"}
         />
       )}
 
