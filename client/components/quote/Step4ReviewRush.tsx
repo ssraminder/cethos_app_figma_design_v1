@@ -1058,7 +1058,7 @@ export default function Step4ReviewRush() {
           )}
 
           <div className="flex justify-between items-center text-sm">
-            <span className="text-cethos-teal-50">Tax (5% GST)</span>
+            <span className="text-cethos-teal-50">Estimated Tax (5% GST)</span>
             <span className="font-medium">${taxAmount.toFixed(2)}</span>
           </div>
 
