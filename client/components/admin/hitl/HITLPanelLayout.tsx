@@ -2,6 +2,9 @@ import React from "react";
 import CustomerInfoPanel from "./CustomerInfoPanel";
 import DocumentFilesPanel from "./DocumentFilesPanel";
 import QuoteDetailsPanel from "./QuoteDetailsPanel";
+import TranslationDetailsPanel from "./TranslationDetailsPanel";
+import ContactInfoPanel from "./ContactInfoPanel";
+import PricingSummaryPanel from "./PricingSummaryPanel";
 import InternalNotesPanel from "./InternalNotesPanel";
 import MessagePanel from "../../messaging/MessagePanel";
 
