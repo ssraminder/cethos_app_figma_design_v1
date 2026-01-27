@@ -1,13 +1,49 @@
 import FileUpload from "@/components/FileUpload";
 import { useUpload } from "@/context/UploadContext";
+import { useDocumentProcessing } from "@/hooks/useDocumentProcessing";
+import StartOverLink from "@/components/StartOverLink";
 import { ChevronRight } from "lucide-react";
 
 export default function UploadStep1() {
   const { state, goToNextStep } = useUpload();
+  const { triggerProcessing } = useDocumentProcessing();
   const canContinue = state.files.length > 0;
 
   const handleContinue = async () => {
-    await goToNextStep();
+    // Navigate to next step - this creates the quote and returns the quoteId
+    const result = await goToNextStep();
+
+    if (!result.success) {
+      console.error("❌ Failed to navigate to next step");
+      return;
+    }
+
+    // Use the quoteId returned by goToNextStep (not state.quoteId which is stale)
+    const quoteId = result.quoteId;
+
+    if (!quoteId) {
+      console.error("❌ No quoteId returned from navigation");
+      return;
+    }
+
+    // Trigger document processing in background (fire and forget)
+    console.log("🚀 Triggering document processing for quote:", quoteId);
+
+    triggerProcessing(quoteId)
+      .then((processingResult) => {
+        if (processingResult) {
+          console.log(
+            "✅ Document processing triggered successfully:",
+            processingResult,
+          );
+        } else {
+          console.error("❌ Document processing returned empty result");
+        }
+      })
+      .catch((error) => {
+        console.error("❌ Error triggering document processing:", error);
+        // Don't block user - processing can be retried later
+      });
   };
 
   return (
@@ -26,7 +62,8 @@ export default function UploadStep1() {
       <FileUpload />
 
       {/* Navigation Button */}
-      <div className="flex items-center justify-end mt-8">
+      <div className="flex items-center justify-between mt-8">
+        <StartOverLink />
         <button
           onClick={handleContinue}
           disabled={!canContinue}
