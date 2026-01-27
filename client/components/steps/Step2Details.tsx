@@ -65,6 +65,15 @@ export default function Step2Details() {
     // Find the selected intended use
     const selectedUse = intendedUses.find((u) => u.id === useId);
 
+    // Show/hide province dropdown based on subcategory
+    const isProvincial = selectedUse?.subcategory === "Provincial Services";
+    setShowProvinceDropdown(isProvincial);
+
+    // Clear province if not provincial
+    if (!isProvincial) {
+      updateField("serviceProvince", "");
+    }
+
     // Auto-select the default certification type
     if (selectedUse?.default_certification_type_id) {
       updateField(
@@ -73,6 +82,22 @@ export default function Step2Details() {
       );
     }
   };
+
+  // Fetch provinces on mount
+  useEffect(() => {
+    const fetchProvinces = async () => {
+      if (!supabase) return;
+
+      const { data } = await supabase
+        .from("canadian_provinces")
+        .select("code, name")
+        .eq("is_active", true)
+        .order("sort_order");
+
+      if (data) setProvinces(data);
+    };
+    fetchProvinces();
+  }, []);
 
   // Group intended uses by subcategory
   const groupedIntendedUses = useMemo(() => {
