@@ -43,6 +43,8 @@ export interface UploadFormState {
   showConfirmation: boolean;
   showProcessingModal: boolean;
   processingStatus: "pending" | "processing" | "complete" | "failed" | null;
+  hitlTriggered: boolean;
+  hitlReasons: string[];
 }
 
 interface UploadContextType {
