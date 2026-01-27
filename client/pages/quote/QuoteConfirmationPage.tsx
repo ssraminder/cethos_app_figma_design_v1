@@ -45,14 +45,12 @@ export default function QuoteConfirmationPage() {
   }, [quoteId, navigate]);
 
   const handleStartNewQuote = () => {
-    // Clear all quote-related localStorage
-    localStorage.removeItem("quoteId");
-    localStorage.removeItem("quoteData");
-    localStorage.removeItem("quoteStep");
-    localStorage.removeItem("quoteContext");
+    // Clear both localStorage items
+    localStorage.removeItem('cethos_upload_draft');
+    localStorage.removeItem('cethos_quote_draft');
 
     // Force full page reload to ensure clean state
-    window.location.href = "/quote?step=1";
+    window.location.href = '/quote?step=1';
   };
 
   const getCustomerFriendlyReason = (reason: string): string => {
