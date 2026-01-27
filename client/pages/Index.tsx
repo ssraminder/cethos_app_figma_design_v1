@@ -32,6 +32,10 @@ export default function Index() {
   const [isSending, setIsSending] = useState(false);
   const [saveSent, setSaveSent] = useState(false);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [state.currentStep]);
+
   const handleContinue = async () => {
     const currentStep = state.currentStep;
     const isLastStep = currentStep === 6; // Updated to 6 steps
