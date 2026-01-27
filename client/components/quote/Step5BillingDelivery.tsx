@@ -288,6 +288,7 @@ export default function Step5BillingDelivery() {
             city: state.billingAddress.city || "",
             province: state.billingAddress.state || "AB",
             postalCode: state.billingAddress.postalCode || "",
+            country: state.billingAddress.country || "CA",
           });
         }
 
@@ -302,6 +303,7 @@ export default function Step5BillingDelivery() {
             city: state.shippingAddress.city || "",
             province: state.shippingAddress.state || "AB",
             postalCode: state.shippingAddress.postalCode || "",
+            country: state.shippingAddress.country || "CA",
           });
         }
 
