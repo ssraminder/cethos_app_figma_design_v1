@@ -323,7 +323,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
     updateState({ isSubmitting: true, submissionType: "manual", error: null });
 
-    console.log("📝 Starting manual quote submission for quote:", state.quoteId);
+    console.log(
+      "📝 Starting manual quote submission for quote:",
+      state.quoteId,
+    );
 
     try {
       // 1. Update quote status to hitl_pending
@@ -365,7 +368,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("❌ Error submitting manual quote:", error);
       updateState({
-        error: "Something went wrong submitting your request. Please try again or contact support.",
+        error:
+          "Something went wrong submitting your request. Please try again or contact support.",
       });
     } finally {
       updateState({ isSubmitting: false });
@@ -404,7 +408,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
       if (quote?.processing_status !== "complete") {
         // Show loading modal
-        console.log("⏳ Processing not complete, showing modal. Status:", quote?.processing_status);
+        console.log(
+          "⏳ Processing not complete, showing modal. Status:",
+          quote?.processing_status,
+        );
         updateState({ showProcessingModal: true });
 
         // Wait for processing (60 second timeout)
@@ -430,7 +437,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         .eq("id", state.quoteId);
 
       // 3. Redirect to main quote flow Step 4
-      console.log("3️⃣ Redirecting to review page:", `/quote/${state.quoteId}/review`);
+      console.log(
+        "3️⃣ Redirecting to review page:",
+        `/quote/${state.quoteId}/review`,
+      );
       window.location.href = `/quote/${state.quoteId}/review`;
     } catch (error) {
       console.error("❌ Error submitting AI quote:", error);
