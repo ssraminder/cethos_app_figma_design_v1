@@ -181,7 +181,9 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
 
         // If no localStorage session, this is a fresh SIGNED_IN event
         // Don't do anything - let the login handler complete the flow
-        console.log("StaffAuthContext: SIGNED_IN event received, waiting for login handler to complete...");
+        console.log(
+          "StaffAuthContext: SIGNED_IN event received, waiting for login handler to complete...",
+        );
       }
     });
 

@@ -100,7 +100,9 @@ export default function AdminLogin() {
         .single();
 
       if (!isMountedRef.current) {
-        console.warn("Login: Component unmounted after staff query, aborting...");
+        console.warn(
+          "Login: Component unmounted after staff query, aborting...",
+        );
         return;
       }
 
