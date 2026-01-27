@@ -85,6 +85,9 @@ export default function Step5BillingDelivery() {
   const [digitalOptions, setDigitalOptions] = useState<DeliveryOption[]>([]);
   const [physicalOptions, setPhysicalOptions] = useState<DeliveryOption[]>([]);
   const [pickupLocations, setPickupLocations] = useState<PickupLocation[]>([]);
+  const [countries, setCountries] = useState<
+    { code: string; name: string; is_common: boolean }[]
+  >([]);
 
   // Selection state
   const [selectedDigitalOptions, setSelectedDigitalOptions] = useState<
