@@ -13,6 +13,17 @@ export default function UploadConfirmationPage() {
   const [customerName, setCustomerName] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
+  const handleStartNewQuote = () => {
+    // Clear all quote-related localStorage
+    localStorage.removeItem('quoteId');
+    localStorage.removeItem('quoteData');
+    localStorage.removeItem('quoteStep');
+    localStorage.removeItem('uploadContext');
+
+    // Force full page reload to ensure clean state
+    window.location.href = '/upload?step=1';
+  };
+
   useEffect(() => {
     const fetchQuoteInfo = async () => {
       if (!quoteId) {
@@ -93,7 +104,7 @@ export default function UploadConfirmationPage() {
           {/* Action Buttons */}
           <div className="pt-6 flex flex-col sm:flex-row gap-4 justify-center">
             <button
-              onClick={() => navigate("/upload?step=1")}
+              onClick={handleStartNewQuote}
               className="px-6 py-3 border-2 border-cethos-border text-cethos-gray rounded-lg hover:bg-cethos-bg-light font-medium transition-colors"
             >
               Start New Quote

@@ -26,6 +26,11 @@ export default function UploadPage() {
     }
   }, [urlStep]);
 
+  // Scroll to top when step changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [state.currentStep]);
+
   // Update URL when step changes
   useEffect(() => {
     const newStep = state.currentStep;
