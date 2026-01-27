@@ -355,6 +355,30 @@ export default function Step2Details() {
           </select>
         </div>
 
+        {/* Province Dropdown - Conditional */}
+        {showProvinceDropdown && (
+          <div>
+            <label className="block text-cethos-slate-dark font-semibold text-sm mb-2">
+              Province / Territory <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={state.serviceProvince || ""}
+              onChange={(e) => updateField("serviceProvince", e.target.value)}
+              className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
+            >
+              <option value="">Select province or territory...</option>
+              {provinces.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-cethos-slate">
+              Select where this document will be submitted.
+            </p>
+          </div>
+        )}
+
         {/* Country of Issue */}
         <div>
           <label className="block text-cethos-slate-dark font-semibold text-sm mb-2">
