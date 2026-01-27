@@ -1446,7 +1446,7 @@ export default function Step4ReviewRush() {
             <button
               onClick={() => {
                 setShowHitlSuccessModal(false);
-                navigate(getStartNewQuoteRoute());
+                handleReturnToQuoteForm();
               }}
               className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
             >
