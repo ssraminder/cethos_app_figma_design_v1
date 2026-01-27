@@ -64,7 +64,7 @@ interface UploadContextType {
 const initialState: UploadFormState = {
   quoteId: null,
   quoteNumber: null,
-  entryPoint: 'upload_form',
+  entryPoint: "upload_form",
   files: [],
   sourceLanguageId: "",
   targetLanguageId: "",

@@ -81,7 +81,7 @@ interface QuoteContextType {
 const initialState: QuoteState = {
   currentStep: 1,
   quoteId: "",
-  entryPoint: 'order_form',
+  entryPoint: "order_form",
   files: [],
   sourceLanguageId: "",
   targetLanguageId: "",

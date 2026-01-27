@@ -9,31 +9,31 @@
  */
 export const getEntryPointFromStorage = (): string => {
   try {
-    const uploadDraft = localStorage.getItem('cethos_upload_draft');
-    const quoteDraft = localStorage.getItem('cethos_quote_draft');
-    
+    const uploadDraft = localStorage.getItem("cethos_upload_draft");
+    const quoteDraft = localStorage.getItem("cethos_quote_draft");
+
     if (uploadDraft) {
       const parsed = JSON.parse(uploadDraft);
       if (parsed?.entryPoint) {
-        console.log('📍 Found entry point in upload draft:', parsed.entryPoint);
+        console.log("📍 Found entry point in upload draft:", parsed.entryPoint);
         return parsed.entryPoint;
       }
     }
-    
+
     if (quoteDraft) {
       const parsed = JSON.parse(quoteDraft);
       if (parsed?.entryPoint) {
-        console.log('📍 Found entry point in quote draft:', parsed.entryPoint);
+        console.log("📍 Found entry point in quote draft:", parsed.entryPoint);
         return parsed.entryPoint;
       }
     }
   } catch (e) {
-    console.error('Error reading entryPoint from storage:', e);
+    console.error("Error reading entryPoint from storage:", e);
   }
-  
+
   // Default to upload_form
-  console.log('📍 No entry point found, defaulting to upload_form');
-  return 'upload_form';
+  console.log("📍 No entry point found, defaulting to upload_form");
+  return "upload_form";
 };
 
 /**
@@ -41,13 +41,13 @@ export const getEntryPointFromStorage = (): string => {
  */
 export const getStartNewQuoteRoute = (entryPoint?: string): string => {
   const ep = entryPoint || getEntryPointFromStorage();
-  
+
   switch (ep) {
-    case 'order_form':
-      return '/quote?step=1';
-    case 'upload_form':
+    case "order_form":
+      return "/quote?step=1";
+    case "upload_form":
     default:
-      return '/upload?step=1';
+      return "/upload?step=1";
   }
 };
 
@@ -59,15 +59,15 @@ export const handleStartNewQuote = (navigate: (path: string) => void): void => {
   // Get entry point BEFORE clearing storage
   const entryPoint = getEntryPointFromStorage();
   const route = getStartNewQuoteRoute(entryPoint);
-  
-  console.log('🚀 Start New Quote');
-  console.log('📍 Entry Point:', entryPoint);
-  console.log('🔗 Navigating to:', route);
-  
+
+  console.log("🚀 Start New Quote");
+  console.log("📍 Entry Point:", entryPoint);
+  console.log("🔗 Navigating to:", route);
+
   // Clear storage
-  localStorage.removeItem('cethos_upload_draft');
-  localStorage.removeItem('cethos_quote_draft');
-  
+  localStorage.removeItem("cethos_upload_draft");
+  localStorage.removeItem("cethos_quote_draft");
+
   // Navigate to correct route
   navigate(route);
 };
@@ -78,9 +78,9 @@ export const handleStartNewQuote = (navigate: (path: string) => void): void => {
  */
 export const handleStartOver = (navigate: (path: string) => void): void => {
   const route = getStartNewQuoteRoute();
-  
-  console.log('🔄 Start Over');
-  console.log('🔗 Navigating to:', route);
-  
+
+  console.log("🔄 Start Over");
+  console.log("🔗 Navigating to:", route);
+
   navigate(route);
 };
