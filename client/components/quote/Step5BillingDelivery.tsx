@@ -247,6 +247,17 @@ export default function Step5BillingDelivery() {
         setSelectedPickupLocation(locations[0].id);
       }
 
+      // Fetch countries
+      const { data: countriesData, error: countriesError } = await supabase
+        .from("countries")
+        .select("code, name, is_common")
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("name");
+
+      if (countriesError) throw countriesError;
+      setCountries(countriesData || []);
+
       // Fetch pricing data
       if (state.quoteId) {
         const { data: quoteData, error } = await supabase
