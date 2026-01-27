@@ -247,10 +247,10 @@ const HITLReviewDetail: React.FC = () => {
       // Step 2: Fetch quote using quote_number from view (with necessary joins)
       const quotes = await fetchFromSupabase(
         `quotes?quote_number=eq.${viewReview.quote_number}&select=*,` +
-        `customer:customers(id,full_name,email,phone),` +
-        `source_language:languages!source_language_id(id,name,code),` +
-        `target_language:languages!target_language_id(id,name,code),` +
-        `intended_use:intended_uses!intended_use_id(id,name)`
+          `customer:customers(id,full_name,email,phone),` +
+          `source_language:languages!source_language_id(id,name,code),` +
+          `target_language:languages!target_language_id(id,name,code),` +
+          `intended_use:intended_uses!intended_use_id(id,name)`,
       );
       const quote = quotes[0];
 

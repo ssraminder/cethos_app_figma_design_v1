@@ -128,14 +128,20 @@ export default function HITLPanelLayout({
           translationData={
             reviewData
               ? {
-                  source_language_name: (reviewData as any).source_language?.name || '',
-                  source_language_code: (reviewData as any).source_language?.code || '',
-                  target_language_name: (reviewData as any).target_language?.name || '',
-                  target_language_code: (reviewData as any).target_language?.code || '',
-                  intended_use_name: (reviewData as any).intended_use?.name || '',
-                  country_of_issue: (reviewData as any).country_of_issue || '',
+                  source_language_name:
+                    (reviewData as any).source_language?.name || "",
+                  source_language_code:
+                    (reviewData as any).source_language?.code || "",
+                  target_language_name:
+                    (reviewData as any).target_language?.name || "",
+                  target_language_code:
+                    (reviewData as any).target_language?.code || "",
+                  intended_use_name:
+                    (reviewData as any).intended_use?.name || "",
+                  country_of_issue: (reviewData as any).country_of_issue || "",
                   service_province: (reviewData as any).service_province,
-                  special_instructions: (reviewData as any).special_instructions,
+                  special_instructions: (reviewData as any)
+                    .special_instructions,
                 }
               : null
           }
@@ -165,7 +171,8 @@ export default function HITLPanelLayout({
             reviewData
               ? {
                   subtotal: (reviewData as any).subtotal || 0,
-                  certification_total: (reviewData as any).certification_total || 0,
+                  certification_total:
+                    (reviewData as any).certification_total || 0,
                   tax_amount: (reviewData as any).tax_amount || 0,
                   total: (reviewData as any).total || 0,
                 }
