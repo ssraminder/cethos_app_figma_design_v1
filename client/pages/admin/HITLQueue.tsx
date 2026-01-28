@@ -278,7 +278,7 @@ export default function HITLQueue() {
                         <span
                           className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${getPriorityColor(review.priority)}`}
                         >
-                          {review.priority}
+                          {review.priority ?? "?"}
                         </span>
                       </td>
                       <td
