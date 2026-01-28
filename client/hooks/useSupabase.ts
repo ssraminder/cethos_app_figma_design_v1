@@ -45,12 +45,13 @@ export function useSupabase() {
     try {
       const quoteNumber = generateQuoteNumber();
 
-      // Create quote record
+      // Create quote record with details_pending status (no customer info yet)
       const { data: quote, error: quoteError } = await supabase
         .from("quotes")
         .insert({
           quote_number: quoteNumber,
-          status: "draft",
+          status: "details_pending", // Customer hasn't provided contact info yet
+          entry_point: "customer_web",
         })
         .select()
         .single();
