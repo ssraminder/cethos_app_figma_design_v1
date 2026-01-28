@@ -32,11 +32,11 @@ export default function MessagePanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Mark customer messages as read by staff
-  const markMessagesAsRead = async (messageIds: string[]) => {
-    if (messageIds.length === 0) return;
+  const markMessagesAsRead = async () => {
+    if (!conversationId || !staffId) return;
 
     try {
-      console.log("📝 Marking messages as read:", messageIds);
+      console.log("📝 Marking unread customer messages as read by staff");
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-messages-read`,
@@ -47,8 +47,9 @@ export default function MessagePanel({
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
-            message_ids: messageIds,
-            read_by: "staff",
+            conversation_id: conversationId,
+            reader_type: "staff",
+            reader_id: staffId,
           }),
         },
       );
@@ -59,7 +60,8 @@ export default function MessagePanel({
         return;
       }
 
-      console.log("✅ Messages marked as read");
+      const result = await response.json();
+      console.log("✅ Messages marked as read. Unread count:", result.data?.unread_count);
     } catch (err) {
       console.error("❌ Failed to mark messages as read:", err);
     }
