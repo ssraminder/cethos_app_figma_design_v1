@@ -23,6 +23,7 @@ import {
 import { format } from "date-fns";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
+import MessageCustomerModal from "../../components/admin/MessageCustomerModal";
 
 interface QuoteDetail {
   id: string;
