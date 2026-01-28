@@ -2,8 +2,11 @@ import { Download } from "lucide-react";
 
 interface Attachment {
   id: string;
-  original_filename: string;
-  mime_type: string;
+  original_filename?: string;
+  file_name?: string;  // Alternative field name from database
+  filename?: string;   // Alternative field name
+  mime_type?: string;
+  file_type?: string;  // Alternative field name from database
   file_size: number;
   download_url?: string;
   storage_path?: string;
@@ -18,13 +21,17 @@ export default function FileAttachment({
   attachment,
   isOwn,
 }: FileAttachmentProps) {
-  const fileIcon = getFileIcon(attachment.mime_type);
+  // Handle different field name conventions
+  const fileName = attachment.original_filename || attachment.file_name || attachment.filename || "file";
+  const mimeType = attachment.mime_type || attachment.file_type || "application/octet-stream";
+
+  const fileIcon = getFileIcon(mimeType);
   const fileSize = formatFileSize(attachment.file_size);
 
   // Construct download URL if not provided
   const downloadUrl =
     attachment.download_url ||
-    `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/${attachment.storage_path}`;
+    `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/message-attachments/${attachment.storage_path}`;
 
   return (
     <div
@@ -39,7 +46,7 @@ export default function FileAttachment({
             isOwn ? "text-white" : "text-gray-900"
           }`}
         >
-          {attachment.original_filename}
+          {fileName}
         </p>
         <p className={`text-xs ${isOwn ? "text-teal-200" : "text-gray-500"}`}>
           {fileSize}
