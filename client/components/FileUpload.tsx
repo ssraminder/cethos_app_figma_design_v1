@@ -23,7 +23,9 @@ export default function FileUpload() {
   const quoteContext = useQuote();
   const uploadContext = useUpload();
 
-  const { state, addFile, removeFile } = isUploadRoute ? uploadContext : quoteContext;
+  const { state, addFile, removeFile } = isUploadRoute
+    ? uploadContext
+    : quoteContext;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
