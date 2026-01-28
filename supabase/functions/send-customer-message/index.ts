@@ -66,11 +66,14 @@ serve(async (req) => {
     console.log("✅ Customer found:", customer.full_name);
 
     // 2. Validate quote ownership if quote_id provided
+    let quoteNumber: string | null = null;
+    let orderNumber: string | null = null;
+
     if (quote_id) {
       console.log("📋 Validating quote ownership:", quote_id);
       const { data: quote, error: quoteError } = await supabaseAdmin
         .from("quotes")
-        .select("id, customer_id, quote_number")
+        .select("id, customer_id, quote_number, orders(order_number)")
         .eq("id", quote_id)
         .eq("customer_id", customer_id)
         .is("deleted_at", null)
@@ -81,6 +84,8 @@ serve(async (req) => {
         throw new Error("Quote not found or access denied");
       }
       console.log("✅ Quote validated:", quote.quote_number);
+      quoteNumber = quote.quote_number;
+      orderNumber = quote.orders?.[0]?.order_number || null;
     }
 
     // 3. Get or create conversation for this customer
@@ -132,6 +137,10 @@ serve(async (req) => {
         message_text,
         message_type: "text",
         source: "app",
+        metadata: {
+          quote_number: quoteNumber,
+          order_number: orderNumber,
+        },
       })
       .select()
       .single();
