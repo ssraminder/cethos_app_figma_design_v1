@@ -53,30 +53,33 @@ export default function CustomerOrders() {
     if (customer?.id) {
       loadOrders();
     }
-  }, [customer?.id]);
+  }, [customer?.id, statusFilter, searchTerm]);
 
   const loadOrders = async () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
-        .from("orders")
-        .select(
-          `
-          id,
-          order_number,
-          status,
-          total_amount,
-          created_at,
-          updated_at,
-          quote_id
-        `,
-        )
-        .eq("customer_id", customer?.id)
-        .order("created_at", { ascending: false });
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/get-customer-orders?customer_id=${customer?.id}&status=${statusFilter}&search=${searchTerm}`,
+        {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
 
-      if (error) throw error;
-      setOrders(data || []);
+      if (!response.ok) {
+        throw new Error("Failed to load orders");
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to load orders");
+      }
+
+      setOrders(result.data || []);
     } catch (err) {
       console.error("Failed to load orders:", err);
     } finally {
