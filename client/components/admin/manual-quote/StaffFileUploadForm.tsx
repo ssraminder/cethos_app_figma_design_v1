@@ -136,54 +136,6 @@ export default function StaffFileUploadForm({
     });
   };
 
-  const analyzeFiles = async () => {
-    if (!processWithAI || files.length === 0) return;
-
-    setIsAnalyzing(true);
-
-    // Process each file with timeout
-    for (const file of files) {
-      setAnalysisStatus((prev) => ({ ...prev, [file.id]: "analyzing" }));
-
-      try {
-        // Create a promise that rejects after 1 minute (60000ms)
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error("Analysis timeout")), 60000);
-        });
-
-        // Create the analysis promise (simulated for now)
-        // In production, this would call your process-document edge function
-        const analysisPromise = simulateAIAnalysis(file);
-
-        // Race between analysis and timeout
-        await Promise.race([analysisPromise, timeoutPromise]);
-
-        setAnalysisStatus((prev) => ({ ...prev, [file.id]: "completed" }));
-      } catch (error) {
-        console.error(`Analysis failed for ${file.name}:`, error);
-
-        if (error instanceof Error && error.message === "Analysis timeout") {
-          setAnalysisStatus((prev) => ({ ...prev, [file.id]: "timeout" }));
-        } else {
-          setAnalysisStatus((prev) => ({ ...prev, [file.id]: "failed" }));
-        }
-      }
-    }
-
-    setIsAnalyzing(false);
-  };
-
-  // Simulated AI analysis (replace with actual API call)
-  const simulateAIAnalysis = (file: FileData): Promise<void> => {
-    return new Promise((resolve) => {
-      // Simulate processing time (2-5 seconds per file)
-      const processingTime = Math.random() * 3000 + 2000;
-      setTimeout(() => {
-        console.log(`Analyzed ${file.name}`);
-        resolve();
-      }, processingTime);
-    });
-  };
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 B";
@@ -230,18 +182,9 @@ export default function StaffFileUploadForm({
     }
   };
 
-  const allFilesAnalyzed =
+  const allFilesUploaded =
     files.length > 0 &&
-    files.every((file) => analysisStatus[file.id] === "completed");
-
-  const hasFilesToAnalyze =
-    files.length > 0 &&
-    files.some(
-      (file) =>
-        analysisStatus[file.id] === "idle" ||
-        analysisStatus[file.id] === "failed" ||
-        analysisStatus[file.id] === "timeout",
-    );
+    files.every((file) => uploadStatus[file.id] === "success");
 
   return (
     <div className="space-y-6">
@@ -308,31 +251,13 @@ export default function StaffFileUploadForm({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-gray-900">
-              Uploaded Files ({files.length})
+              Files ({files.length})
             </h3>
 
-            {/* Analyze Files Button */}
-            {processWithAI && hasFilesToAnalyze && !isAnalyzing && (
-              <button
-                onClick={analyzeFiles}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
-              >
-                <Brain className="w-4 h-4" />
-                Analyze Files with AI
-              </button>
-            )}
-
-            {isAnalyzing && (
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 text-sm font-medium rounded-md">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Analyzing files...
-              </div>
-            )}
-
-            {allFilesAnalyzed && (
+            {allFilesUploaded && (
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 text-sm font-medium rounded-md">
                 <CheckCircle className="w-4 h-4" />
-                All files analyzed
+                All files uploaded
               </div>
             )}
           </div>
@@ -392,16 +317,15 @@ export default function StaffFileUploadForm({
 
       {/* Info Message */}
       {!quoteId && files.length > 0 && (
-        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
-          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-800">
+        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-blue-800">
             <p className="font-medium">
-              Files will be uploaded after quote creation
+              Files will upload when you click Next
             </p>
             <p className="text-xs mt-1">
-              Files will be uploaded to the server when you complete the quote
-              in the final step.
-              {processWithAI && " AI analysis will happen after upload."}
+              Files will be uploaded to the server when you move to the next step.
+              {processWithAI && " AI analysis will happen automatically during upload."}
             </p>
           </div>
         </div>
@@ -414,18 +338,20 @@ export default function StaffFileUploadForm({
           <li>
             Files are optional - you can create a quote without uploading files
           </li>
-          {processWithAI ? (
+          {quoteId ? (
             <>
               <li>
-                Click "Analyze Files with AI" after uploading to extract
-                document details
+                Files are uploaded immediately and stored securely
               </li>
-              <li>Each file analysis has a 1-minute timeout</li>
-              <li>You can override AI results in the next step if needed</li>
+              {processWithAI && (
+                <li>
+                  AI analysis happens automatically during upload (1-minute timeout per file)
+                </li>
+              )}
             </>
           ) : (
             <li>
-              Manual entry required for all document details in the next step
+              Files will be uploaded when you proceed to the next step
             </li>
           )}
         </ul>
