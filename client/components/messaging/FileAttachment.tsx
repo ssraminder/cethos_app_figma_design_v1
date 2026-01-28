@@ -52,7 +52,11 @@ export default function FileAttachment({
           if (data?.signedUrl) {
             setSignedUrl(data.signedUrl);
           } else {
-            console.error("Failed to get signed URL for:", attachment.storage_path, error);
+            console.error(
+              "Failed to get signed URL for:",
+              attachment.storage_path,
+              error,
+            );
             setError(error?.message || "Failed to load file");
           }
         })
