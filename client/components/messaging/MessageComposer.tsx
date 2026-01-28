@@ -53,7 +53,7 @@ export default function MessageComposer({
       // Check file type
       if (!allowedTypes.includes(file.type)) {
         alert(
-          `File "${file.name}" type is not supported. Allowed types: PDF, images, Word docs, text files.`
+          `File "${file.name}" type is not supported. Allowed types: PDF, images, Word docs, text files.`,
         );
         continue;
       }
@@ -75,7 +75,10 @@ export default function MessageComposer({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("conversation_id", conversationId || `temp_${customerId}`);
+      formData.append(
+        "conversation_id",
+        conversationId || `temp_${customerId}`,
+      );
       formData.append("uploader_type", customerId ? "customer" : "staff");
       formData.append("uploader_id", customerId || staffId || "");
 
@@ -167,7 +170,9 @@ export default function MessageComposer({
       }
     } catch (error) {
       console.error("Failed to send message:", error);
-      alert(`Failed to send message: ${error instanceof Error ? error.message : "Unknown error"}`);
+      alert(
+        `Failed to send message: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     } finally {
       setIsUploading(false);
     }
