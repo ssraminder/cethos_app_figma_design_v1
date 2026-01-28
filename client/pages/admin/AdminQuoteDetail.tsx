@@ -498,6 +498,64 @@ export default function AdminQuoteDetail() {
     }
   };
 
+  const handleDeleteQuote = async () => {
+    if (!currentStaff?.staffId || !id) return;
+    setIsDeleting(true);
+
+    try {
+      const deletedAt = new Date().toISOString();
+
+      // Soft delete quote
+      const { error: quoteError } = await supabase
+        .from('quotes')
+        .update({
+          deleted_at: deletedAt,
+          status: 'deleted'
+        })
+        .eq('id', id);
+
+      if (quoteError) throw quoteError;
+
+      // Log to audit
+      await supabase.from('staff_activity_log').insert({
+        staff_id: currentStaff.staffId,
+        action: 'delete_quote',
+        entity_type: 'quote',
+        entity_id: id,
+        details: {
+          quote_number: quote?.quote_number,
+          previous_status: quote?.status
+        }
+      });
+
+      // Cascade soft delete to related tables
+      await Promise.all([
+        supabase
+          .from('quote_files')
+          .update({ deleted_at: deletedAt })
+          .eq('quote_id', id),
+        supabase
+          .from('ai_analysis_results')
+          .update({ deleted_at: deletedAt })
+          .eq('quote_id', id),
+        supabase
+          .from('hitl_reviews')
+          .update({ deleted_at: deletedAt })
+          .eq('quote_id', id)
+      ]);
+
+      // Navigate back to quotes list
+      navigate('/admin/quotes');
+
+    } catch (error) {
+      console.error('Failed to delete quote:', error);
+      alert('Failed to delete quote. Please try again.');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
+
   const openEditModal = (field: EditField, item: AIAnalysis) => {
     let value: string | number = "";
     if (field === "document_type") {
