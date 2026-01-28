@@ -64,7 +64,9 @@ serve(async (req) => {
       .eq("id", review.quote_id);
 
     if (quoteUpdateError) {
-      throw new Error("Failed to update quote status: " + quoteUpdateError.message);
+      throw new Error(
+        "Failed to update quote status: " + quoteUpdateError.message,
+      );
     }
 
     // 3. Update HITL review status
@@ -112,9 +114,9 @@ serve(async (req) => {
           .from("quote_files")
           .select("original_filename")
           .in("id", fileIds);
-        
+
         if (files && files.length > 0) {
-          fileNames = files.map(f => f.original_filename).join(", ");
+          fileNames = files.map((f) => f.original_filename).join(", ");
         }
       }
 

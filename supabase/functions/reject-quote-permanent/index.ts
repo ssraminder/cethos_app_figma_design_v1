@@ -78,7 +78,9 @@ serve(async (req) => {
       .eq("id", review.quote_id);
 
     if (quoteDeleteError) {
-      throw new Error("Failed to soft delete quote: " + quoteDeleteError.message);
+      throw new Error(
+        "Failed to soft delete quote: " + quoteDeleteError.message,
+      );
     }
 
     // Cascade soft delete to related records
