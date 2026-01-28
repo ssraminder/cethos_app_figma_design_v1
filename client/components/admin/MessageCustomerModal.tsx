@@ -372,7 +372,7 @@ export default function MessageCustomerModal({
         {isImage ? (
           <img
             src={attachment.url}
-            alt={attachment.file_name}
+            alt={attachment.filename}
             className="w-16 h-16 object-cover rounded"
           />
         ) : (
@@ -381,7 +381,7 @@ export default function MessageCustomerModal({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{attachment.file_name}</p>
+          <p className="text-sm font-medium truncate">{attachment.filename}</p>
           <p className="text-xs opacity-75">{fileSize}</p>
         </div>
         <Download className="w-4 h-4 opacity-75 flex-shrink-0" />
