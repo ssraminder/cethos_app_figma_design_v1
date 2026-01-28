@@ -424,6 +424,15 @@ export default function MessageCustomerModal({
                   </div>
                 )}
                 <p className="text-sm whitespace-pre-wrap">{msg.message_text}</p>
+
+                {/* Attachments */}
+                {msg.attachments && msg.attachments.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {msg.attachments.map((attachment) => (
+                      <AttachmentDisplay key={attachment.id} attachment={attachment} />
+                    ))}
+                  </div>
+                )}
               </div>
             ))
           )}
