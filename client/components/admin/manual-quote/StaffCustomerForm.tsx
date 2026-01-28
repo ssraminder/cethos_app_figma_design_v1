@@ -46,7 +46,12 @@ export default function StaffCustomerForm({
 
   // Search for existing customers
   const handleSearch = async () => {
-    if (!searchQuery.trim() || !supabase) return;
+    if (!searchQuery.trim()) return;
+
+    if (!supabase) {
+      console.error("Supabase client not initialized");
+      return;
+    }
 
     setIsSearching(true);
     try {
