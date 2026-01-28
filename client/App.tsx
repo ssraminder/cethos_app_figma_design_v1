@@ -50,6 +50,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminQuotesList from "./pages/admin/AdminQuotesList";
 import AdminQuoteDetail from "./pages/admin/AdminQuoteDetail";
 import ManualQuoteCreate from "./pages/admin/ManualQuoteCreate";
+import PurgeDraftQuotes from "./pages/admin/PurgeDraftQuotes";
 import AdminOrderDetail from "./pages/admin/AdminOrderDetail";
 import AdminOrdersList from "./pages/admin/AdminOrdersList";
 import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
@@ -237,15 +238,13 @@ const App = () => (
                       element={<HITLReviewDetail />}
                     />
                     <Route path="quotes" element={<AdminQuotesList />} />
-                    <Route
-                      path="quotes/create"
-                      element={<ManualQuoteCreate />}
-                    />
+                    <Route path="quotes/create" element={<ManualQuoteCreate />} />
                     <Route path="quotes/:id" element={<AdminQuoteDetail />} />
                     <Route path="orders" element={<AdminOrdersList />} />
                     <Route path="orders/:id" element={<AdminOrderDetail />} />
                     <Route path="settings" element={<AdminSettings />} />
                     <Route path="settings/*" element={<AdminSettings />} />
+                    <Route path="settings/purge-quotes" element={<PurgeDraftQuotes />} />
                     <Route path="analytics" element={<AdminAIAnalytics />} />
                     <Route path="ai/analytics" element={<AdminAIAnalytics />} />
                     <Route path="patterns" element={<Patterns />} />
