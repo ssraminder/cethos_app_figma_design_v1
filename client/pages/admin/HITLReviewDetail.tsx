@@ -176,6 +176,12 @@ const HITLReviewDetail: React.FC = () => {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
+  // Reject Quote (permanent rejection) state
+  const [showRejectQuoteModal, setShowRejectQuoteModal] = useState(false);
+  const [rejectQuoteReason, setRejectQuoteReason] = useState("");
+  const [sendEmailToCustomer, setSendEmailToCustomer] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+
   // Page splitting/combining
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
   const [splitMode, setSplitMode] = useState(false);
