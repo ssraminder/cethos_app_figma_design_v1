@@ -35,7 +35,9 @@ import UploadConfirmationPage from "./pages/upload/UploadConfirmationPage";
 import ProtectedCustomerRoute from "./components/customer/ProtectedCustomerRoute";
 import CustomerDashboard from "./pages/customer/CustomerDashboard";
 import CustomerQuotes from "./pages/customer/CustomerQuotes";
+import CustomerQuoteDetail from "./pages/customer/CustomerQuoteDetail";
 import CustomerOrders from "./pages/customer/CustomerOrders";
+import CustomerOrderDetail from "./pages/customer/CustomerOrderDetail";
 import CustomerMessages from "./pages/customer/CustomerMessages";
 import CustomerProfile from "./pages/customer/CustomerProfile";
 
