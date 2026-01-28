@@ -226,19 +226,19 @@ export default function AdminLayout() {
         </aside>
 
         <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-40 flex items-center justify-between px-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1 overflow-hidden mr-4">
             {branding.logoUrl ? (
               <img
                 src={branding.logoUrl}
                 alt={branding.companyName}
-                className="h-8"
+                className="h-8 max-w-[150px] object-contain flex-shrink-0"
               />
             ) : (
-              <span className="font-bold text-lg text-gray-900">
+              <span className="font-bold text-lg text-gray-900 truncate flex-shrink">
                 {branding.companyName || "CETHOS"}
               </span>
             )}
-            <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded font-medium">
+            <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded font-medium flex-shrink-0 whitespace-nowrap">
               Admin
             </span>
           </div>
