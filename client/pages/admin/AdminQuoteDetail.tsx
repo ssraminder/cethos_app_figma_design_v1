@@ -636,15 +636,37 @@ export default function AdminQuoteDetail() {
             </div>
           </div>
 
-          {orderId && (
-            <Link
-              to={`/admin/orders/${orderId}`}
-              className="inline-flex items-center gap-2 bg-purple-100 text-purple-700 px-4 py-2 rounded-lg hover:bg-purple-200"
-            >
-              View Order
-              <ExternalLink className="w-4 h-4" />
-            </Link>
-          )}
+          <div className="flex items-center gap-3">
+            {orderId && (
+              <Link
+                to={`/admin/orders/${orderId}`}
+                className="inline-flex items-center gap-2 bg-purple-100 text-purple-700 px-4 py-2 rounded-lg hover:bg-purple-200"
+              >
+                View Order
+                <ExternalLink className="w-4 h-4" />
+              </Link>
+            )}
+
+            {/* Delete Quote Button */}
+            {!orderId && !['paid', 'converted'].includes(quote.status) ? (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Quote
+              </button>
+            ) : orderId && (
+              <button
+                disabled
+                className="flex items-center gap-2 px-4 py-2 text-gray-400 border border-gray-200 rounded-lg cursor-not-allowed"
+                title="Cannot delete - converted to order"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Quote
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
