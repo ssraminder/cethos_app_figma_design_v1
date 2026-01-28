@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { X, Send, Loader2, MessageSquare, Mail } from "lucide-react";
+import { X, Send, Loader2, MessageSquare, Mail, Paperclip, FileText, Download } from "lucide-react";
 import { format } from "date-fns";
+
+interface Attachment {
+  id: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  storage_path: string;
+  url?: string;
+}
 
 interface Message {
   id: string;
@@ -10,6 +19,7 @@ interface Message {
   message_text: string;
   source: "app" | "email";
   created_at: string;
+  attachments?: Attachment[];
 }
 
 interface MessageCustomerModalProps {
@@ -56,14 +66,14 @@ export default function MessageCustomerModal({
           body: JSON.stringify({
             quote_id: quoteId,
           }),
-        },
+        }
       );
 
       if (response.ok) {
         const data = await response.json();
         console.log("📨 Messages loaded:", data.messages?.length);
         setMessages(data.messages || []);
-
+        
         // Extract conversation ID from first message if available
         if (data.messages?.[0]?.conversation_id) {
           setConversationId(data.messages[0].conversation_id);
@@ -88,10 +98,7 @@ export default function MessageCustomerModal({
   useEffect(() => {
     if (!conversationId) return;
 
-    console.log(
-      "🔔 Setting up realtime subscription for conversation:",
-      conversationId,
-    );
+    console.log("🔔 Setting up realtime subscription for conversation:", conversationId);
 
     const channel = supabase
       .channel(`modal-messages:${conversationId}`)
@@ -106,7 +113,7 @@ export default function MessageCustomerModal({
         (payload) => {
           console.log("📩 New message in modal:", payload.new);
           fetchMessages();
-        },
+        }
       )
       .subscribe((status) => {
         console.log("🔔 Realtime subscription status:", status);
@@ -143,7 +150,7 @@ export default function MessageCustomerModal({
             message_text: newMessage.trim(),
             staff_id: staffId,
           }),
-        },
+        }
       );
 
       if (!response.ok) {
@@ -198,9 +205,7 @@ export default function MessageCustomerModal({
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <MessageSquare className="w-8 h-8 mb-2 opacity-50" />
               <p className="text-sm">No messages yet</p>
-              <p className="text-xs mt-1">
-                Send a message to start the conversation
-              </p>
+              <p className="text-xs mt-1">Send a message to start the conversation</p>
             </div>
           ) : (
             messages.map((msg) => (
@@ -210,8 +215,8 @@ export default function MessageCustomerModal({
                   msg.sender_type === "staff"
                     ? "bg-blue-600 text-white ml-auto"
                     : msg.sender_type === "system"
-                      ? "bg-gray-100 text-gray-600 text-center text-sm italic mx-auto"
-                      : "bg-gray-100 text-gray-800"
+                    ? "bg-gray-100 text-gray-600 text-center text-sm italic mx-auto"
+                    : "bg-gray-100 text-gray-800"
                 }`}
               >
                 {msg.sender_type !== "system" && (
@@ -242,9 +247,7 @@ export default function MessageCustomerModal({
                     </span>
                   </div>
                 )}
-                <p className="text-sm whitespace-pre-wrap">
-                  {msg.message_text}
-                </p>
+                <p className="text-sm whitespace-pre-wrap">{msg.message_text}</p>
               </div>
             ))
           )}
