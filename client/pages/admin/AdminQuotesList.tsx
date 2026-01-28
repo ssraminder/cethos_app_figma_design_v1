@@ -688,6 +688,7 @@ function StatusBadge({ status }: { status?: string }) {
     paid: "Paid",
     expired: "Expired",
     cancelled: "Cancelled",
+    deleted: "Deleted",
   };
 
   return (
