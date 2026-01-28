@@ -81,8 +81,9 @@ export default function CustomerOrderDetail() {
     try {
       setDownloadingInvoice(true);
 
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const response = await fetch(
-        `/functions/v1/generate-invoice-pdf?order_id=${order?.id}`,
+        `${supabaseUrl}/functions/v1/generate-invoice-pdf?order_id=${order?.id}`,
       );
 
       if (!response.ok) {
