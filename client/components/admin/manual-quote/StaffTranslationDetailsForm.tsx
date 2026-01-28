@@ -18,7 +18,7 @@ export default function StaffTranslationDetailsForm({
   value,
   onChange,
 }: StaffTranslationDetailsFormProps) {
-  const { languages, intendedUses, loading, error } = useDropdownOptions();
+  const { sourceLanguages, targetLanguages, intendedUses, loading, error } = useDropdownOptions();
   const [formData, setFormData] = useState<TranslationData>(value);
 
   useEffect(() => {
@@ -64,7 +64,7 @@ export default function StaffTranslationDetailsForm({
           className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
         >
           <option value="">Select source language...</option>
-          {languages.map((lang) => (
+          {sourceLanguages.map((lang) => (
             <option key={lang.id} value={lang.id}>
               {lang.name}
             </option>
@@ -87,7 +87,7 @@ export default function StaffTranslationDetailsForm({
           className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
         >
           <option value="">Select target language...</option>
-          {languages.map((lang) => (
+          {targetLanguages.map((lang) => (
             <option key={lang.id} value={lang.id}>
               {lang.name}
             </option>
