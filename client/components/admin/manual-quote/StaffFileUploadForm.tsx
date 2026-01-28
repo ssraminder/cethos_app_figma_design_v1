@@ -67,7 +67,10 @@ export default function StaffFileUploadForm({
     if (quoteId) {
       for (const file of fileData) {
         setUploadStatus((prev) => ({ ...prev, [file.id]: "uploading" }));
-        setAnalysisStatus((prev) => ({ ...prev, [file.id]: processWithAI ? "analyzing" : "idle" }));
+        setAnalysisStatus((prev) => ({
+          ...prev,
+          [file.id]: processWithAI ? "analyzing" : "idle",
+        }));
 
         try {
           const formData = new FormData();
@@ -133,7 +136,6 @@ export default function StaffFileUploadForm({
       return newStatus;
     });
   };
-
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 B";
@@ -295,7 +297,9 @@ export default function StaffFileUploadForm({
                       {uploadStatus[file.id] === "pending" && (
                         <span className="text-amber-600">Waiting...</span>
                       )}
-                      {processWithAI && uploadStatus[file.id] === "success" && getAnalysisStatusBadge(file.id)}
+                      {processWithAI &&
+                        uploadStatus[file.id] === "success" &&
+                        getAnalysisStatusBadge(file.id)}
                     </div>
                   </div>
                 </div>
@@ -318,12 +322,12 @@ export default function StaffFileUploadForm({
         <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
           <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-blue-800">
-            <p className="font-medium">
-              Files will upload when you click Next
-            </p>
+            <p className="font-medium">Files will upload when you click Next</p>
             <p className="text-xs mt-1">
-              Files will be uploaded to the server when you move to the next step.
-              {processWithAI && " AI analysis will happen automatically during upload."}
+              Files will be uploaded to the server when you move to the next
+              step.
+              {processWithAI &&
+                " AI analysis will happen automatically during upload."}
             </p>
           </div>
         </div>
@@ -338,19 +342,16 @@ export default function StaffFileUploadForm({
           </li>
           {quoteId ? (
             <>
-              <li>
-                Files are uploaded immediately and stored securely
-              </li>
+              <li>Files are uploaded immediately and stored securely</li>
               {processWithAI && (
                 <li>
-                  AI analysis happens automatically during upload (1-minute timeout per file)
+                  AI analysis happens automatically during upload (1-minute
+                  timeout per file)
                 </li>
               )}
             </>
           ) : (
-            <li>
-              Files will be uploaded when you proceed to the next step
-            </li>
+            <li>Files will be uploaded when you proceed to the next step</li>
           )}
         </ul>
       </div>
