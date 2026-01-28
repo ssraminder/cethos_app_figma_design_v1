@@ -122,6 +122,7 @@ export default function HITLPanelLayout({
                   total: (reviewData as any).total || reviewData.total || 0,
                   status: reviewData.status,
                   created_at: (reviewData as any).created_at || "",
+                  expires_at: (reviewData as any).expires_at || "",
                 }
               : null
           }
