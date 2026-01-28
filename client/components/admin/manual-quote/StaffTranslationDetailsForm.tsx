@@ -18,7 +18,8 @@ export default function StaffTranslationDetailsForm({
   value,
   onChange,
 }: StaffTranslationDetailsFormProps) {
-  const { sourceLanguages, targetLanguages, intendedUses, loading, error } = useDropdownOptions();
+  const { sourceLanguages, targetLanguages, intendedUses, loading, error } =
+    useDropdownOptions();
   const [formData, setFormData] = useState<TranslationData>(value);
 
   useEffect(() => {
@@ -94,7 +95,9 @@ export default function StaffTranslationDetailsForm({
           ))}
         </select>
         {!formData.targetLanguageId && (
-          <p className="mt-1 text-xs text-amber-600">Target language is required</p>
+          <p className="mt-1 text-xs text-amber-600">
+            Target language is required
+          </p>
         )}
       </div>
 

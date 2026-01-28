@@ -22,7 +22,9 @@ export default function StaffFileUploadForm({
   const [files, setFiles] = useState<FileData[]>([]);
   const [processWithAI, setProcessWithAI] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<Record<string, "pending" | "uploading" | "success" | "failed">>({});
+  const [uploadStatus, setUploadStatus] = useState<
+    Record<string, "pending" | "uploading" | "success" | "failed">
+  >({});
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
@@ -71,7 +73,7 @@ export default function StaffFileUploadForm({
     const k = 1024;
     const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + " " + sizes[i];
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
   };
 
   return (
@@ -158,7 +160,9 @@ export default function StaffFileUploadForm({
                         <span className="ml-2 text-amber-600">• Pending</span>
                       )}
                       {uploadStatus[file.id] === "uploading" && (
-                        <span className="ml-2 text-blue-600">• Uploading...</span>
+                        <span className="ml-2 text-blue-600">
+                          • Uploading...
+                        </span>
                       )}
                       {uploadStatus[file.id] === "success" && (
                         <span className="ml-2 text-green-600">• Uploaded</span>
@@ -187,9 +191,12 @@ export default function StaffFileUploadForm({
         <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
           <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-amber-800">
-            <p className="font-medium">Files will be uploaded after quote creation</p>
+            <p className="font-medium">
+              Files will be uploaded after quote creation
+            </p>
             <p className="text-xs mt-1">
-              Files will be uploaded to the server when you complete the quote in the final step.
+              Files will be uploaded to the server when you complete the quote
+              in the final step.
             </p>
           </div>
         </div>
@@ -199,8 +206,13 @@ export default function StaffFileUploadForm({
       <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-md">
         <p className="font-medium text-gray-700 mb-1">Note:</p>
         <ul className="list-disc list-inside space-y-1">
-          <li>Files are optional - you can create a quote without uploading files</li>
-          <li>If AI processing is enabled, we'll automatically extract document details</li>
+          <li>
+            Files are optional - you can create a quote without uploading files
+          </li>
+          <li>
+            If AI processing is enabled, we'll automatically extract document
+            details
+          </li>
           <li>You can override AI results in the next step if needed</li>
         </ul>
       </div>
