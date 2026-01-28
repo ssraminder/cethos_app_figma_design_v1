@@ -30,65 +30,43 @@ export default function MessagePanel({
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch messages
+  // Fetch messages using Edge Function (bypasses RLS)
   const fetchMessages = async () => {
     try {
       console.log("🔍 Fetching messages for quote:", quoteId);
 
-      const { data, error } = await supabase
-        .from("conversation_messages")
-        .select("*")
-        .eq("quote_id", quoteId)
-        .order("created_at", { ascending: true });
-
-      console.log("📨 Query result:", { data, error });
-
-      if (error) {
-        console.error("❌ Query error:", error);
-        throw error;
-      }
-
-      console.log("✅ Found messages:", data?.length || 0);
-
-      // Now fetch staff and customer names separately for each message
-      const formattedMessages = await Promise.all(
-        (data || []).map(async (msg: any) => {
-          let sender_name = "Unknown";
-
-          if (msg.sender_type === "staff" && msg.sender_staff_id) {
-            const { data: staffData } = await supabase
-              .from("staff_users")
-              .select("full_name")
-              .eq("id", msg.sender_staff_id)
-              .single();
-            sender_name = staffData?.full_name || "Staff";
-          } else if (msg.sender_type === "customer" && msg.sender_customer_id) {
-            const { data: customerData } = await supabase
-              .from("customers")
-              .select("full_name")
-              .eq("id", msg.sender_customer_id)
-              .single();
-            sender_name = customerData?.full_name || "Customer";
-          } else if (msg.sender_type === "system") {
-            sender_name = "System";
-          }
-
-          return {
-            id: msg.id,
-            sender_type: msg.sender_type,
-            sender_name,
-            message_text: msg.message_text,
-            created_at: msg.created_at,
-            read_by_customer_at: msg.read_by_customer_at,
-            read_by_staff_at: msg.read_by_staff_at,
-          };
-        }),
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-quote-messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quote_id: quoteId,
+          }),
+        },
       );
 
-      console.log("✅ Formatted messages:", formattedMessages);
-      setMessages(formattedMessages);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to fetch messages");
+      }
+
+      const result = await response.json();
+      console.log("📨 API result:", result);
+
+      if (result.success && result.messages) {
+        console.log("✅ Found messages:", result.messages.length);
+        setMessages(result.messages);
+      } else {
+        console.log("⚠️ No messages found");
+        setMessages([]);
+      }
     } catch (err) {
       console.error("❌ Failed to fetch messages:", err);
+      setMessages([]);
     } finally {
       setLoading(false);
     }
