@@ -185,7 +185,9 @@ export default function CustomerMessages() {
     }, 10000);
 
     return () => {
-      console.log("🔕 Unsubscribing from customer realtime and stopping polling");
+      console.log(
+        "🔕 Unsubscribing from customer realtime and stopping polling",
+      );
       supabase.removeChannel(channel);
       clearInterval(pollingInterval);
     };
