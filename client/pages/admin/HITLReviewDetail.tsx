@@ -287,30 +287,35 @@ const HITLReviewDetail: React.FC = () => {
 
       // Step 3: Get assigned_to from view if available, or try to fetch from base table
       let assignedTo = viewReview.assigned_to || null;
+      let reviewStatus = viewReview.review_status || viewReview.status || "pending";
 
-      // If view doesn't have assigned_to, try fetching from base table
+      // If view doesn't have assigned_to, fetch directly from hitl_reviews base table
       if (!assignedTo) {
         try {
           const baseReviews = await fetchFromSupabase(
-            `hitl_reviews?id=eq.${viewReview.review_id}&select=assigned_to`,
+            `hitl_reviews?id=eq.${viewReview.review_id}&select=assigned_to,status`,
           );
           if (baseReviews && baseReviews[0]) {
             assignedTo = baseReviews[0].assigned_to;
-            console.log("✅ Fetched assigned_to from base table:", assignedTo);
+            reviewStatus = baseReviews[0].status;
+            console.log("✅ Fetched from base table - assigned_to:", assignedTo, "status:", reviewStatus);
           }
         } catch (error) {
           console.warn(
-            "⚠️ Could not fetch assigned_to from base table (RLS):",
+            "⚠️ Could not fetch from base table (RLS):",
             error,
           );
         }
       }
 
+      console.log("📍 Final assigned_to:", assignedTo);
+      console.log("📍 Final status:", reviewStatus);
+
       // Construct review object from view data
       const review = {
         id: viewReview.review_id,
         quote_id: quote.id,
-        status: viewReview.status,
+        status: reviewStatus,
         quote_number: viewReview.quote_number,
         customer_name: viewReview.customer_name,
         customer_email: viewReview.customer_email,
