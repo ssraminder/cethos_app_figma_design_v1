@@ -485,9 +485,25 @@ const HITLReviewDetail: React.FC = () => {
       const result = await response.json();
 
       if (result.success) {
+        // Set claim status BEFORE refetching data
         setClaimedByMe(true);
         setClaimedByOther(false);
+
+        // Update reviewData to reflect claimed status and in_review state
+        if (reviewData) {
+          setReviewData({
+            ...reviewData,
+            assigned_to: session.staffId,
+            status: "in_review", // Status should change to in_review when claimed
+          });
+        }
+
+        // Refresh data (but don't let it override our claim status)
         await fetchAllData();
+
+        // CRITICAL: Re-assert the claim status after fetch in case fetchReviewData overwrote it
+        setClaimedByMe(true);
+        setClaimedByOther(false);
       } else {
         throw new Error(result.error || "Failed to claim review");
       }
