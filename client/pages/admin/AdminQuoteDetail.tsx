@@ -507,12 +507,11 @@ export default function AdminQuoteDetail() {
     try {
       const deletedAt = new Date().toISOString();
 
-      // Soft delete quote
+      // Soft delete quote (only set deleted_at, don't change status)
       const { error: quoteError } = await supabase
         .from("quotes")
         .update({
           deleted_at: deletedAt,
-          status: "deleted",
         })
         .eq("id", id);
 
