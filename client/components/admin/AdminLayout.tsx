@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
+import NotificationProvider from "./NotificationProvider";
 
 interface NavItem {
   label: string;
