@@ -7,6 +7,7 @@ export { default as EditableDocumentAnalysisPanel } from "./EditableDocumentAnal
 export { default as TranslationDetailsPanel } from "./TranslationDetailsPanel";
 export { default as ContactInfoPanel } from "./ContactInfoPanel";
 export { default as PricingSummaryPanel } from "./PricingSummaryPanel";
+export { default as EditablePricingSummaryPanel } from "./EditablePricingSummaryPanel";
 export { default as DocumentManagementPanel } from "./DocumentManagementPanel";
 export { default as ManualDocumentEntry } from "./ManualDocumentEntry";
 export {
