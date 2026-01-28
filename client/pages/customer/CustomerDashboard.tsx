@@ -50,7 +50,7 @@ export default function CustomerDashboard() {
           headers: {
             "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       const data = await response.json();

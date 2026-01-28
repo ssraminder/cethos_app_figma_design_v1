@@ -192,9 +192,7 @@ export default function CustomerQuoteDetail() {
             </div>
             {quote.estimated_delivery_date && (
               <div>
-                <p className="text-sm text-gray-600 mb-1">
-                  Estimated Delivery
-                </p>
+                <p className="text-sm text-gray-600 mb-1">Estimated Delivery</p>
                 <p className="font-medium text-gray-900">
                   {new Date(quote.estimated_delivery_date).toLocaleDateString()}
                 </p>
@@ -250,7 +248,9 @@ export default function CustomerQuoteDetail() {
                 <CreditCard className="w-5 h-5 text-green-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-green-900">Payment Received</h3>
+                <h3 className="font-semibold text-green-900">
+                  Payment Received
+                </h3>
                 <p className="text-sm text-green-700">
                   Your payment has been received and your order is being
                   processed.

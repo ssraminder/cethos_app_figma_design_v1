@@ -82,7 +82,7 @@ export default function CustomerOrderDetail() {
       setDownloadingInvoice(true);
 
       const response = await fetch(
-        `/functions/v1/generate-invoice-pdf?order_id=${order?.id}`
+        `/functions/v1/generate-invoice-pdf?order_id=${order?.id}`,
       );
 
       if (!response.ok) {
@@ -171,7 +171,7 @@ export default function CustomerOrderDetail() {
                     <Calendar className="w-4 h-4" />
                     Est. Completion:{" "}
                     {new Date(
-                      order.estimated_completion_date
+                      order.estimated_completion_date,
                     ).toLocaleDateString()}
                   </div>
                 )}
@@ -210,7 +210,10 @@ export default function CustomerOrderDetail() {
                   const isCurrent = index === currentStatusIndex;
 
                   return (
-                    <div key={timelineStatus.status} className="flex flex-col items-center">
+                    <div
+                      key={timelineStatus.status}
+                      className="flex flex-col items-center"
+                    >
                       <div
                         className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
                           isCompleted
@@ -226,7 +229,9 @@ export default function CustomerOrderDetail() {
                       </div>
                       <p
                         className={`text-xs mt-2 text-center max-w-20 ${
-                          isCompleted ? "text-gray-900 font-medium" : "text-gray-500"
+                          isCompleted
+                            ? "text-gray-900 font-medium"
+                            : "text-gray-500"
                         }`}
                       >
                         {timelineStatus.label}

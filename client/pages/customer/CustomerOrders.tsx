@@ -70,7 +70,7 @@ export default function CustomerOrders() {
           created_at,
           updated_at,
           quote_id
-        `
+        `,
         )
         .eq("customer_id", customer?.id)
         .order("created_at", { ascending: false });
@@ -175,8 +175,8 @@ export default function CustomerOrders() {
                         {new Date(order.created_at).toLocaleDateString()}
                       </div>
                       <div className="flex items-center gap-1">
-                        <DollarSign className="w-4 h-4" />
-                        ${order.total_amount.toFixed(2)}
+                        <DollarSign className="w-4 h-4" />$
+                        {order.total_amount.toFixed(2)}
                       </div>
                       <div className="flex items-center gap-1">
                         <Package className="w-4 h-4" />

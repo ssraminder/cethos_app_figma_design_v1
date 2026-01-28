@@ -28,7 +28,8 @@ export default function CustomerProfile() {
         billing_address_line1: (customer as any).billing_address_line1 || "",
         billing_address_line2: (customer as any).billing_address_line2 || "",
         billing_address_city: (customer as any).billing_address_city || "",
-        billing_address_province: (customer as any).billing_address_province || "",
+        billing_address_province:
+          (customer as any).billing_address_province || "",
         billing_address_postal_code:
           (customer as any).billing_address_postal_code || "",
         billing_address_country:
@@ -38,7 +39,7 @@ export default function CustomerProfile() {
   }, [customer]);
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     setFormData({
       ...formData,

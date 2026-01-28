@@ -67,7 +67,7 @@ export default function CustomerQuotes() {
           source_language,
           target_language,
           quote_files(count)
-        `
+        `,
         )
         .eq("customer_id", customer?.id)
         .order("created_at", { ascending: false });
@@ -183,8 +183,8 @@ export default function CustomerQuotes() {
                         {quote.document_count !== 1 ? "s" : ""}
                       </div>
                       <div className="flex items-center gap-1">
-                        <DollarSign className="w-4 h-4" />
-                        ${quote.total_amount.toFixed(2)}
+                        <DollarSign className="w-4 h-4" />$
+                        {quote.total_amount.toFixed(2)}
                       </div>
                     </div>
                   </div>
