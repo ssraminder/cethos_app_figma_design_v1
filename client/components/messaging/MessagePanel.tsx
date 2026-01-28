@@ -82,7 +82,7 @@ export default function MessagePanel({
             read_by_customer_at: msg.read_by_customer_at,
             read_by_staff_at: msg.read_by_staff_at,
           };
-        })
+        }),
       );
 
       console.log("✅ Formatted messages:", formattedMessages);
