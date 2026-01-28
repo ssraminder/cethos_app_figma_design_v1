@@ -153,6 +153,8 @@ serve(async (req) => {
           const fileName = tempPath.split("/").pop() || "file";
           const permanentPath = `conversations/${conversationId}/messages/${message.id}/${fileName}`;
 
+          console.log(`📦 Moving file from ${tempPath} to ${permanentPath}`);
+
           // Copy file from temp to permanent location
           const { error: copyError } = await supabaseAdmin.storage
             .from(tempBucket)
@@ -163,27 +165,46 @@ serve(async (req) => {
             continue;
           }
 
-          // Get file metadata
-          const { data: fileData } = await supabaseAdmin.storage
+          // Get file metadata from the permanent location
+          const { data: fileData, error: listError } = await supabaseAdmin.storage
             .from(tempBucket)
             .list(permanentPath.split("/").slice(0, -1).join("/"), {
               search: fileName,
             });
 
+          if (listError) {
+            console.error("Failed to get file metadata:", listError);
+          }
+
           const fileInfo = fileData?.[0];
 
-          // Insert attachment record
-          await supabaseAdmin.from("message_attachments").insert({
+          // Extract original filename (without timestamp prefix if it exists)
+          const originalFileName = fileName.replace(/^\d+-[a-z0-9]+-/, "");
+
+          // Insert attachment record with correct field names
+          const { error: insertError } = await supabaseAdmin.from("message_attachments").insert({
             message_id: message.id,
-            file_name: fileName,
-            file_type:
-              fileInfo?.metadata?.mimetype || "application/octet-stream",
+            filename: fileName,
+            original_filename: originalFileName,
+            mime_type: fileInfo?.metadata?.mimetype || "application/octet-stream",
             file_size: fileInfo?.metadata?.size || 0,
             storage_path: permanentPath,
           });
 
+          if (insertError) {
+            console.error("Failed to insert attachment record:", insertError);
+            continue;
+          }
+
           // Delete temp file
-          await supabaseAdmin.storage.from(tempBucket).remove([tempPath]);
+          const { error: deleteError } = await supabaseAdmin.storage
+            .from(tempBucket)
+            .remove([tempPath]);
+
+          if (deleteError) {
+            console.error("Failed to delete temp file:", deleteError);
+            // Not critical, continue
+          }
 
           console.log("✅ Attachment processed:", fileName);
         } catch (attachmentError) {
