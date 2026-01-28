@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Upload, X, FileText, AlertCircle, Brain, CheckCircle, Loader2 } from "lucide-react";
+import {
+  Upload,
+  X,
+  FileText,
+  AlertCircle,
+  Brain,
+  CheckCircle,
+  Loader2,
+} from "lucide-react";
 
 interface FileData {
   id: string;
@@ -107,7 +115,7 @@ export default function StaffFileUploadForm({
         setAnalysisStatus((prev) => ({ ...prev, [file.id]: "completed" }));
       } catch (error) {
         console.error(`Analysis failed for ${file.name}:`, error);
-        
+
         if (error instanceof Error && error.message === "Analysis timeout") {
           setAnalysisStatus((prev) => ({ ...prev, [file.id]: "timeout" }));
         } else {
@@ -141,7 +149,7 @@ export default function StaffFileUploadForm({
 
   const getAnalysisStatusBadge = (fileId: string) => {
     const status = analysisStatus[fileId];
-    
+
     switch (status) {
       case "analyzing":
         return (
@@ -176,13 +184,18 @@ export default function StaffFileUploadForm({
     }
   };
 
-  const allFilesAnalyzed = files.length > 0 && files.every(
-    (file) => analysisStatus[file.id] === "completed"
-  );
+  const allFilesAnalyzed =
+    files.length > 0 &&
+    files.every((file) => analysisStatus[file.id] === "completed");
 
-  const hasFilesToAnalyze = files.length > 0 && files.some(
-    (file) => analysisStatus[file.id] === "idle" || analysisStatus[file.id] === "failed" || analysisStatus[file.id] === "timeout"
-  );
+  const hasFilesToAnalyze =
+    files.length > 0 &&
+    files.some(
+      (file) =>
+        analysisStatus[file.id] === "idle" ||
+        analysisStatus[file.id] === "failed" ||
+        analysisStatus[file.id] === "timeout",
+    );
 
   return (
     <div className="space-y-6">
@@ -251,7 +264,7 @@ export default function StaffFileUploadForm({
             <h3 className="text-sm font-medium text-gray-900">
               Uploaded Files ({files.length})
             </h3>
-            
+
             {/* Analyze Files Button */}
             {processWithAI && hasFilesToAnalyze && !isAnalyzing && (
               <button
@@ -349,15 +362,16 @@ export default function StaffFileUploadForm({
           {processWithAI ? (
             <>
               <li>
-                Click "Analyze Files with AI" after uploading to extract document details
+                Click "Analyze Files with AI" after uploading to extract
+                document details
               </li>
-              <li>
-                Each file analysis has a 1-minute timeout
-              </li>
+              <li>Each file analysis has a 1-minute timeout</li>
               <li>You can override AI results in the next step if needed</li>
             </>
           ) : (
-            <li>Manual entry required for all document details in the next step</li>
+            <li>
+              Manual entry required for all document details in the next step
+            </li>
           )}
         </ul>
       </div>
