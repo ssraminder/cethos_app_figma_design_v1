@@ -558,10 +558,11 @@ export default function AdminOrdersList() {
   );
 }
 
-// Order Status Badge
+// Order Status Badge - Normalized to Title Case
 function OrderStatusBadge({ status }: { status?: string }) {
   const styles: Record<string, string> = {
     pending: "bg-amber-100 text-amber-700",
+    pending_payment: "bg-amber-100 text-amber-700",
     paid: "bg-green-100 text-green-700",
     processing: "bg-blue-100 text-blue-700",
     completed: "bg-green-100 text-green-700",
@@ -572,6 +573,7 @@ function OrderStatusBadge({ status }: { status?: string }) {
 
   const labels: Record<string, string> = {
     pending: "Pending",
+    pending_payment: "Pending Payment",
     paid: "Paid",
     processing: "Processing",
     completed: "Completed",
@@ -580,16 +582,24 @@ function OrderStatusBadge({ status }: { status?: string }) {
     cancelled: "Cancelled",
   };
 
+  // Fallback: convert snake_case to Title Case
+  const formatStatus = (s: string) => {
+    return s
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
+
   return (
     <span
       className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${styles[status || ""] || "bg-gray-100 text-gray-700"}`}
     >
-      {labels[status || ""] || status || "Unknown"}
+      {labels[status || ""] || (status ? formatStatus(status) : "Unknown")}
     </span>
   );
 }
 
-// Work Status Badge
+// Work Status Badge - Normalized to Title Case
 function WorkStatusBadge({ status }: { status?: string }) {
   const config: Record<
     string,
@@ -617,10 +627,18 @@ function WorkStatusBadge({ status }: { status?: string }) {
     },
   };
 
+  // Fallback: convert snake_case to Title Case
+  const formatStatus = (s: string) => {
+    return s
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
+
   const { style, icon, label } = config[status || ""] || {
     style: "bg-gray-100 text-gray-700",
     icon: null,
-    label: status || "Unknown",
+    label: status ? formatStatus(status) : "Unknown",
   };
 
   return (
