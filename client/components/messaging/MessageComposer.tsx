@@ -27,7 +27,43 @@ export default function MessageComposer({
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setAttachments((prev) => [...prev, ...files]);
+
+    // Validate each file
+    const validFiles: File[] = [];
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const allowedTypes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+    ];
+
+    for (const file of files) {
+      // Check file size
+      if (file.size > maxSize) {
+        alert(`File "${file.name}" is too large. Maximum size is 10MB.`);
+        continue;
+      }
+
+      // Check file type
+      if (!allowedTypes.includes(file.type)) {
+        alert(
+          `File "${file.name}" type is not supported. Allowed types: PDF, images, Word docs, text files.`
+        );
+        continue;
+      }
+
+      validFiles.push(file);
+    }
+
+    if (validFiles.length > 0) {
+      setAttachments((prev) => [...prev, ...validFiles]);
+    }
   };
 
   const removeAttachment = (index: number) => {
