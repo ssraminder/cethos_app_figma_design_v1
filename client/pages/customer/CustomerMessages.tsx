@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { MessageSquare, Loader2 } from "lucide-react";
 import { useAuth } from "../../context/CustomerAuthContext";
+import { supabase } from "../../lib/supabase";
 import CustomerLayout from "../../components/layouts/CustomerLayout";
 import MessageThread from "../../components/messaging/MessageThread";
 import MessageComposer from "../../components/messaging/MessageComposer";
