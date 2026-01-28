@@ -78,6 +78,7 @@ export default function AdminQuotesList() {
   const [searchInput, setSearchInput] = useState(search);
   const [showFilters, setShowFilters] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
+  const [showIncomplete, setShowIncomplete] = useState(false); // Show quotes without customer info
 
   // Helper function for expiry badge
   const getExpiryBadge = (expiresAt: string | null) => {
@@ -161,6 +162,11 @@ export default function AdminQuotesList() {
         query = query.or(
           `expires_at.is.null,expires_at.gt.${new Date().toISOString()}`,
         );
+      }
+
+      // Filter incomplete quotes (status=details_pending) unless showIncomplete is true
+      if (!showIncomplete && !status) {
+        query = query.neq("status", "details_pending");
       }
 
       // Pagination
