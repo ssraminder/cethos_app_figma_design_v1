@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import {
   Search,
   Filter,
