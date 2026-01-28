@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Trash2,
   X,
+  Clock,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -71,6 +72,39 @@ export default function AdminQuotesList() {
   // Local filter state (for inputs before applying)
   const [searchInput, setSearchInput] = useState(search);
   const [showFilters, setShowFilters] = useState(false);
+  const [showExpired, setShowExpired] = useState(false);
+
+  // Helper function for expiry badge
+  const getExpiryBadge = (expiresAt: string | null) => {
+    if (!expiresAt) return null;
+
+    const expiry = new Date(expiresAt);
+    const now = new Date();
+    const daysUntil = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysUntil < 0) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">
+          <Clock className="w-3 h-3" />
+          Expired
+        </span>
+      );
+    } else if (daysUntil <= 7) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">
+          <Clock className="w-3 h-3" />
+          {daysUntil}d left
+        </span>
+      );
+    } else {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+          <Clock className="w-3 h-3" />
+          {daysUntil}d left
+        </span>
+      );
+    }
+  };
 
   const fetchQuotes = async () => {
     setLoading(true);
@@ -565,12 +599,17 @@ export default function AdminQuotesList() {
                         </p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm text-gray-700">
-                          {format(new Date(quote.created_at), "MMM d, yyyy")}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {format(new Date(quote.created_at), "h:mm a")}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <p className="text-sm text-gray-700">
+                              {format(new Date(quote.created_at), "MMM d, yyyy")}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {format(new Date(quote.created_at), "h:mm a")}
+                            </p>
+                          </div>
+                          {getExpiryBadge(quote.expires_at)}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
