@@ -32,7 +32,12 @@ import UploadPage from "./pages/upload/UploadPage";
 import UploadConfirmationPage from "./pages/upload/UploadConfirmationPage";
 
 // Customer Dashboard pages
+import ProtectedCustomerRoute from "./components/customer/ProtectedCustomerRoute";
+import CustomerDashboard from "./pages/customer/CustomerDashboard";
+import CustomerQuotes from "./pages/customer/CustomerQuotes";
+import CustomerOrders from "./pages/customer/CustomerOrders";
 import CustomerMessages from "./pages/customer/CustomerMessages";
+import CustomerProfile from "./pages/customer/CustomerProfile";
 
 // Admin pages
 import AdminLogin from "./pages/admin/Login";
