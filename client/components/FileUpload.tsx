@@ -2,6 +2,7 @@ import { useState, useRef, useContext } from "react";
 import { X, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { useQuote } from "@/context/QuoteContext";
 import { useUpload } from "@/context/UploadContext";
+import { useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 
 interface UploadingFile {
@@ -14,22 +15,15 @@ interface UploadingFile {
 export default function FileUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const location = useLocation();
 
-  // Try to use QuoteContext first (for /quote route), fall back to UploadContext (for /upload route)
-  let state: any, addFile: any, removeFile: any;
+  // Use UploadContext for /upload route, QuoteContext for /quote route
+  const isUploadRoute = location.pathname.startsWith("/upload");
 
-  try {
-    const quoteContext = useQuote();
-    state = quoteContext.state;
-    addFile = quoteContext.addFile;
-    removeFile = quoteContext.removeFile;
-  } catch {
-    // Fall back to UploadContext
-    const uploadContext = useUpload();
-    state = uploadContext.state;
-    addFile = uploadContext.addFile;
-    removeFile = uploadContext.removeFile;
-  }
+  const quoteContext = useQuote();
+  const uploadContext = useUpload();
+
+  const { state, addFile, removeFile } = isUploadRoute ? uploadContext : quoteContext;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
