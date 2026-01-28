@@ -351,7 +351,28 @@ export default function StaffFileUploadForm({
                     </p>
                     <div className="flex items-center gap-3 text-xs text-gray-500">
                       <span>{formatFileSize(file.size)}</span>
-                      {processWithAI && getAnalysisStatusBadge(file.id)}
+                      {uploadStatus[file.id] === "uploading" && (
+                        <span className="inline-flex items-center gap-1 text-blue-600">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Uploading...
+                        </span>
+                      )}
+                      {uploadStatus[file.id] === "success" && (
+                        <span className="inline-flex items-center gap-1 text-green-600">
+                          <CheckCircle className="w-3 h-3" />
+                          Uploaded
+                        </span>
+                      )}
+                      {uploadStatus[file.id] === "failed" && (
+                        <span className="inline-flex items-center gap-1 text-red-600">
+                          <AlertCircle className="w-3 h-3" />
+                          Upload failed
+                        </span>
+                      )}
+                      {uploadStatus[file.id] === "pending" && (
+                        <span className="text-amber-600">Waiting...</span>
+                      )}
+                      {processWithAI && uploadStatus[file.id] === "success" && getAnalysisStatusBadge(file.id)}
                     </div>
                   </div>
                 </div>
