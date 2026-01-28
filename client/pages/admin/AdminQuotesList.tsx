@@ -616,6 +616,51 @@ export default function AdminQuotesList() {
           )}
         </div>
       </div>
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Delete {selectedQuotes.length} Quote{selectedQuotes.length > 1 ? 's' : ''}
+              </h3>
+            </div>
+
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to delete {selectedQuotes.length} quote{selectedQuotes.length > 1 ? 's' : ''}?
+            </p>
+
+            <p className="text-sm text-gray-500 mb-6">
+              This action will soft-delete the selected quotes and all related data.
+              The data will be permanently removed after 30 days.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowBulkDeleteModal(false);
+                  setSelectedQuotes([]);
+                }}
+                disabled={isBulkDeleting}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {isBulkDeleting ? 'Deleting...' : `Delete ${selectedQuotes.length} Quote${selectedQuotes.length > 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
