@@ -42,6 +42,7 @@ const STATUS_OPTIONS = [
   { value: "paid", label: "Paid" },
   { value: "expired", label: "Expired" },
   { value: "cancelled", label: "Cancelled" },
+  { value: "deleted", label: "Deleted" },
 ];
 
 const PAGE_SIZE = 25;
