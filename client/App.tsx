@@ -162,11 +162,31 @@ const App = () => (
                     }
                   />
                   <Route
+                    path="/dashboard/quotes/:id"
+                    element={
+                      <CustomerAuthProvider>
+                        <ProtectedCustomerRoute>
+                          <CustomerQuoteDetail />
+                        </ProtectedCustomerRoute>
+                      </CustomerAuthProvider>
+                    }
+                  />
+                  <Route
                     path="/dashboard/orders"
                     element={
                       <CustomerAuthProvider>
                         <ProtectedCustomerRoute>
                           <CustomerOrders />
+                        </ProtectedCustomerRoute>
+                      </CustomerAuthProvider>
+                    }
+                  />
+                  <Route
+                    path="/dashboard/orders/:id"
+                    element={
+                      <CustomerAuthProvider>
+                        <ProtectedCustomerRoute>
+                          <CustomerOrderDetail />
                         </ProtectedCustomerRoute>
                       </CustomerAuthProvider>
                     }
