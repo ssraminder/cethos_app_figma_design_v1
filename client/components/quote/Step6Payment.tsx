@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { CreditCard, Calendar, Lock, AlertCircle, Loader2 } from "lucide-react";
+import { CreditCard, Calendar, Lock, AlertCircle, Loader2, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 interface PricingSummary {
@@ -27,6 +27,8 @@ export default function Step6Payment() {
   const [error, setError] = useState<string | null>(null);
   const [documentCount, setDocumentCount] = useState<number | null>(null);
   const [documentNames, setDocumentNames] = useState<string[]>([]);
+  const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
 
   const shippingAddress = state.shippingAddress;
   const billingAddress = state.billingAddress;
@@ -51,7 +53,7 @@ export default function Step6Payment() {
     try {
       const { data: quoteData, error: fetchError } = await supabase
         .from("quotes")
-        .select("calculated_totals")
+        .select("calculated_totals, expires_at, quote_number")
         .eq("id", state.quoteId)
         .single();
 
@@ -69,6 +71,30 @@ export default function Step6Payment() {
       if (fetchError) throw fetchError;
       if (filesError) throw filesError;
       if (fileNamesError) throw fileNamesError;
+
+      // Check if quote is expired
+      if (quoteData?.expires_at) {
+        const expiryDate = new Date(quoteData.expires_at);
+        const now = new Date();
+
+        if (expiryDate < now) {
+          // Quote is expired - redirect to expired page
+          navigate('/quote/expired', {
+            replace: true,
+            state: {
+              quoteNumber: quoteData.quote_number,
+              documentsCount: fileCount || 0
+            }
+          });
+          return;
+        }
+
+        setExpiresAt(quoteData.expires_at);
+      }
+
+      if (quoteData?.quote_number) {
+        setQuoteNumber(quoteData.quote_number);
+      }
 
       if (quoteData?.calculated_totals) {
         setPricing(quoteData.calculated_totals as PricingSummary);
