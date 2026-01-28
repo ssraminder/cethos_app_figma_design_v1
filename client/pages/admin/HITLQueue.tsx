@@ -281,7 +281,7 @@ export default function HITLQueue() {
                       <td
                         className={`px-4 py-3 font-medium ${getSLAColor(review.sla_status)}`}
                       >
-                        {review.sla_status.toUpperCase()}
+                        {review.sla_status?.toUpperCase() || "N/A"}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
                         {formatSLA(review.minutes_to_sla)}
