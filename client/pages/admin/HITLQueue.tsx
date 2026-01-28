@@ -78,7 +78,8 @@ export default function HITLQueue() {
     fetchReviews();
   }, [session, fetchReviews]);
 
-  const getPriorityColor = (priority: number) => {
+  const getPriorityColor = (priority: number | null | undefined) => {
+    if (priority == null) return "bg-gray-100 text-gray-700";
     if (priority <= 2) return "bg-red-100 text-red-700";
     if (priority <= 4) return "bg-orange-100 text-orange-700";
     if (priority <= 6) return "bg-yellow-100 text-yellow-700";
