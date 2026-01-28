@@ -173,8 +173,10 @@ export default function AdminQuoteDetail() {
   const [isSaving, setIsSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const { session: currentStaff } = useAdminAuthContext();
+  const { session: currentStaff} = useAdminAuthContext();
 
   useEffect(() => {
     if (id) {
