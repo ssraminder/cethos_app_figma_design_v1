@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { Check, CheckCheck } from "lucide-react";
 import SystemMessageCard from "./SystemMessageCard";
 import FileAttachment from "./FileAttachment";
 
@@ -33,11 +34,48 @@ export default function MessageBubble({
 
   const bubbleStyles = isOwn
     ? "ml-auto bg-teal-600 text-white rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl"
-    : "mr-auto bg-white border border-gray-200 text-gray-800 rounded-tl-2xl rounded-tr-2xl rounded-br-2xl";
+    : "mr-auto bg-gray-100 text-gray-800 rounded-tl-2xl rounded-tr-2xl rounded-br-2xl";
 
   return (
-    <div className={`max-w-[75%] ${isOwn ? "ml-auto" : "mr-auto"}`}>
+    <div className={`max-w-[80%] ${isOwn ? "ml-auto" : "mr-auto"}`}>
       <div className={`px-4 py-3 ${bubbleStyles} shadow-sm`}>
+        {/* Sender name and timestamp header */}
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span
+            className={`text-xs font-medium ${
+              isOwn ? "text-teal-100" : "text-gray-500"
+            }`}
+          >
+            {message.sender_name || (isOwn ? "You" : "Staff")}
+          </span>
+          <span
+            className={`text-xs flex items-center gap-1 ${
+              isOwn ? "text-teal-200" : "text-gray-400"
+            }`}
+          >
+            {format(new Date(message.created_at), "MMM d, h:mm a")}
+
+            {/* Read receipts - show for sender's own messages */}
+            {isOwn && (
+              <>
+                {/* Customer view: show if staff read it */}
+                {!isStaffView && message.read_by_staff_at ? (
+                  <CheckCheck className="w-3 h-3" title="Read by staff" />
+                ) : !isStaffView ? (
+                  <Check className="w-3 h-3" title="Delivered" />
+                ) : null}
+
+                {/* Staff view: show if customer read it */}
+                {isStaffView && message.read_by_customer_at ? (
+                  <CheckCheck className="w-3 h-3" title="Read by customer" />
+                ) : isStaffView ? (
+                  <Check className="w-3 h-3" title="Delivered" />
+                ) : null}
+              </>
+            )}
+          </span>
+        </div>
+
         {/* Message text */}
         {message.message_text && (
           <p className="text-sm whitespace-pre-wrap">{message.message_text}</p>
@@ -51,40 +89,6 @@ export default function MessageBubble({
             ))}
           </div>
         )}
-      </div>
-
-      {/* Timestamp and read receipt */}
-      <div
-        className={`flex items-center gap-1 mt-1 text-xs text-gray-500 ${isOwn ? "justify-end" : ""}`}
-      >
-        <span>{message.sender_name || (isOwn ? "You" : "Staff")}</span>
-        <span>•</span>
-        <span>{format(new Date(message.created_at), "h:mm a")}</span>
-
-        {/* Read receipt for customer's own messages (staff read it) */}
-        {isOwn && !isStaffView && message.read_by_staff_at && (
-          <span className="text-teal-600 ml-1" title="Read by staff">
-            ✓✓
-          </span>
-        )}
-
-        {/* Read receipt for staff view (customer read it) */}
-        {isStaffView &&
-          message.sender_type === "staff" &&
-          message.read_by_customer_at && (
-            <span className="text-teal-600 ml-1" title="Read by customer">
-              ✓✓
-            </span>
-          )}
-
-        {/* Show when customer's message was read by staff (in staff view) */}
-        {isStaffView &&
-          message.sender_type === "customer" &&
-          message.read_by_staff_at && (
-            <span className="text-gray-400 ml-1">
-              Read {format(new Date(message.read_by_staff_at), "h:mm a")}
-            </span>
-          )}
       </div>
     </div>
   );
