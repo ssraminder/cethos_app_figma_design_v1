@@ -236,6 +236,7 @@ const App = () => (
                       element={<HITLReviewDetail />}
                     />
                     <Route path="quotes" element={<AdminQuotesList />} />
+                    <Route path="quotes/create" element={<ManualQuoteCreate />} />
                     <Route path="quotes/:id" element={<AdminQuoteDetail />} />
                     <Route path="orders" element={<AdminOrdersList />} />
                     <Route path="orders/:id" element={<AdminOrderDetail />} />
