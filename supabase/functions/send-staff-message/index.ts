@@ -245,7 +245,7 @@ serve(async (req) => {
       }
     }
 
-    // 6. Log staff activity
+    // 7. Log staff activity
     await supabaseAdmin.from("staff_activity_log").insert({
       staff_id,
       action_type: "send_message",
