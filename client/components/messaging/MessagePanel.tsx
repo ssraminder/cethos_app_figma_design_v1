@@ -137,34 +137,27 @@ export default function MessagePanel({
       );
 
       if (!response.ok) {
-        // Fallback: Direct insert (using new table)
-        const { error } = await supabase.from("conversation_messages").insert({
-          quote_id: quoteId,
-          sender_type: "staff",
-          sender_staff_id: staffId,
-          message_text: newMessage.trim(),
-          message_type: "text",
-          source: "web",
-        });
-        if (error) throw error;
-      } else {
-        try {
-          const payload = await response.json();
-          if (payload?.success && payload?.message) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: payload.message.id,
-                sender_type: payload.message.sender_type,
-                sender_name: payload.message.sender_name || staffName,
-                message_text: payload.message.message_text,
-                created_at: payload.message.created_at,
-              },
-            ]);
-          }
-        } catch (parseError) {
-          console.warn("Failed to parse message response:", parseError);
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to send message");
+      }
+
+      // Parse successful response
+      try {
+        const payload = await response.json();
+        if (payload?.success && payload?.message) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: payload.message.id,
+              sender_type: payload.message.sender_type,
+              sender_name: payload.message.sender_name || staffName,
+              message_text: payload.message.message_text,
+              created_at: payload.message.created_at,
+            },
+          ]);
         }
+      } catch (parseError) {
+        console.warn("Failed to parse message response:", parseError);
       }
 
       setNewMessage("");
