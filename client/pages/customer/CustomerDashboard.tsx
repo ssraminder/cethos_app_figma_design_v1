@@ -207,25 +207,27 @@ export default function CustomerDashboard() {
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3 sm:mb-4">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">
               Recent Activity
             </h2>
             {stats?.unreadMessages && stats.unreadMessages > 0 && (
               <Link
                 to="/dashboard/messages"
-                className="flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700"
+                className="flex items-center gap-2 text-xs sm:text-sm text-teal-600 hover:text-teal-700 active:scale-95"
               >
                 <MessageSquare className="w-4 h-4" />
-                {stats.unreadMessages} unread message
-                {stats.unreadMessages !== 1 ? "s" : ""}
+                <span className="font-medium">
+                  {stats.unreadMessages} unread message
+                  {stats.unreadMessages !== 1 ? "s" : ""}
+                </span>
               </Link>
             )}
           </div>
 
           {stats?.recentActivity && stats.recentActivity.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {stats.recentActivity.map((activity) => (
                 <Link
                   key={activity.id}
@@ -234,52 +236,49 @@ export default function CustomerDashboard() {
                       ? `/dashboard/quotes/${activity.id}`
                       : `/dashboard/orders/${activity.id}`
                   }
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors group"
+                  className="flex items-center justify-between p-3 sm:p-4 border border-gray-200 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors group active:scale-[0.98] min-h-[60px] sm:min-h-[auto]"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div
-                      className={`h-10 w-10 rounded-lg flex items-center justify-center ${
+                      className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                         activity.type === "quote"
                           ? "bg-blue-100 group-hover:bg-blue-200"
                           : "bg-green-100 group-hover:bg-green-200"
                       }`}
                     >
                       {activity.type === "quote" ? (
-                        <FileText
-                          className={`w-5 h-5 ${
-                            activity.type === "quote"
-                              ? "text-blue-600"
-                              : "text-green-600"
-                          }`}
-                        />
+                        <FileText className="w-5 h-5 text-blue-600" />
                       ) : (
                         <Package className="w-5 h-5 text-green-600" />
                       )}
                     </div>
-                    <div>
-                      <p className="font-medium text-gray-900">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm sm:text-base font-medium text-gray-900 truncate">
                         {activity.type === "quote" ? "Quote" : "Order"}{" "}
                         {activity.number}
                       </p>
-                      <p className="text-sm text-gray-600">{activity.action}</p>
+                      <p className="text-xs sm:text-sm text-gray-600 truncate">{activity.action}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-500">
-                      {new Date(activity.timestamp).toLocaleDateString()}
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
+                    <p className="text-xs sm:text-sm text-gray-500 whitespace-nowrap">
+                      {new Date(activity.timestamp).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric'
+                      })}
                     </p>
-                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-teal-600 ml-auto mt-1" />
+                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-teal-600" />
                   </div>
                 </Link>
               ))}
             </div>
           ) : (
-            <div className="text-center py-8">
-              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500">No recent activity</p>
+            <div className="text-center py-6 sm:py-8">
+              <FileText className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 mx-auto mb-2 sm:mb-3" />
+              <p className="text-sm sm:text-base text-gray-500">No recent activity</p>
               <Link
                 to="/quote"
-                className="text-teal-600 hover:text-teal-700 text-sm mt-2 inline-block"
+                className="text-teal-600 hover:text-teal-700 text-xs sm:text-sm mt-2 inline-block active:scale-95"
               >
                 Start your first quote →
               </Link>
