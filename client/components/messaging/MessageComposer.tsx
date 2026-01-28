@@ -174,10 +174,11 @@ export default function MessageComposer({
 
       {/* Composer */}
       <div className="flex gap-2 items-end">
-        {/* Attachment button - temporarily disabled */}
-        {/* <button
+        {/* Attachment button */}
+        <button
           onClick={() => fileInputRef.current?.click()}
-          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
+          disabled={isUploading}
+          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 disabled:opacity-50"
           title="Attach file"
           type="button"
         >
@@ -189,8 +190,8 @@ export default function MessageComposer({
           multiple
           onChange={handleFileSelect}
           className="hidden"
-          accept="image/*,.pdf,.doc,.docx"
-        /> */}
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.txt"
+        />
 
         {/* Message input */}
         <textarea
