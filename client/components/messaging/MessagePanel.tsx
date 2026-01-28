@@ -128,7 +128,10 @@ export default function MessagePanel({
   useEffect(() => {
     if (!conversationId) return;
 
-    console.log("🔔 Setting up realtime subscription for conversation:", conversationId);
+    console.log(
+      "🔔 Setting up realtime subscription for conversation:",
+      conversationId,
+    );
 
     // Set up realtime subscription
     const channel = supabase
