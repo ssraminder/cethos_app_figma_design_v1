@@ -166,11 +166,12 @@ serve(async (req) => {
           }
 
           // Get file metadata from the permanent location
-          const { data: fileData, error: listError } = await supabaseAdmin.storage
-            .from(tempBucket)
-            .list(permanentPath.split("/").slice(0, -1).join("/"), {
-              search: fileName,
-            });
+          const { data: fileData, error: listError } =
+            await supabaseAdmin.storage
+              .from(tempBucket)
+              .list(permanentPath.split("/").slice(0, -1).join("/"), {
+                search: fileName,
+              });
 
           if (listError) {
             console.error("Failed to get file metadata:", listError);
@@ -182,14 +183,17 @@ serve(async (req) => {
           const originalFileName = fileName.replace(/^\d+-[a-z0-9]+-/, "");
 
           // Insert attachment record with correct field names
-          const { error: insertError } = await supabaseAdmin.from("message_attachments").insert({
-            message_id: message.id,
-            filename: fileName,
-            original_filename: originalFileName,
-            mime_type: fileInfo?.metadata?.mimetype || "application/octet-stream",
-            file_size: fileInfo?.metadata?.size || 0,
-            storage_path: permanentPath,
-          });
+          const { error: insertError } = await supabaseAdmin
+            .from("message_attachments")
+            .insert({
+              message_id: message.id,
+              filename: fileName,
+              original_filename: originalFileName,
+              mime_type:
+                fileInfo?.metadata?.mimetype || "application/octet-stream",
+              file_size: fileInfo?.metadata?.size || 0,
+              storage_path: permanentPath,
+            });
 
           if (insertError) {
             console.error("Failed to insert attachment record:", insertError);

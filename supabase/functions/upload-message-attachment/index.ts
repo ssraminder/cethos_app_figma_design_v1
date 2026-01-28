@@ -109,7 +109,9 @@ serve(async (req) => {
         } catch (deleteError) {
           console.error("Failed to cleanup uploaded file:", deleteError);
         }
-        throw new Error("Failed to create attachment record: " + dbError.message);
+        throw new Error(
+          "Failed to create attachment record: " + dbError.message,
+        );
       }
 
       console.log(`✅ Attachment record created: ${attachment.id}`);
