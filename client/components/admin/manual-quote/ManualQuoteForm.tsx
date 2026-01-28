@@ -82,9 +82,67 @@ export default function ManualQuoteForm({
     { id: 5, name: "Review", description: "Finalize and create quote" },
   ];
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    // Create quote when moving to step 3 (file upload) if not already created
+    if (currentStep === 2 && !quoteId && staffUser?.id && customer) {
+      await createInitialQuote();
+    }
+
     if (currentStep < steps.length) {
       setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const createInitialQuote = async () => {
+    if (!staffUser?.id || !customer) return;
+
+    setIsSubmitting(true);
+    try {
+      const createQuoteResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-staff-quote`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            staffId: staffUser.id,
+            customerData: {
+              email: customer.email,
+              phone: customer.phone,
+              fullName: customer.fullName,
+              customerType: customer.customerType,
+              companyName: customer.companyName,
+            },
+            quoteData: {
+              sourceLanguageId: quote.sourceLanguageId,
+              targetLanguageId: quote.targetLanguageId,
+              intendedUseId: quote.intendedUseId,
+              countryOfIssue: quote.countryOfIssue,
+              specialInstructions: quote.specialInstructions,
+            },
+            entryPoint,
+            notes,
+          }),
+        },
+      );
+
+      if (!createQuoteResponse.ok) {
+        const error = await createQuoteResponse.json();
+        throw new Error(error.message || "Failed to create quote");
+      }
+
+      const quoteResult = await createQuoteResponse.json();
+      setQuoteId(quoteResult.quoteId);
+      toast.success("Quote created - ready for file uploads");
+    } catch (error) {
+      console.error("Error creating quote:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create quote",
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
