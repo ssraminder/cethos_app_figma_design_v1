@@ -38,8 +38,9 @@ export default function HITLQueue() {
 
     try {
       // Use direct fetch to Supabase REST API
+      // Filter out deleted reviews and only show pending/in_review statuses
       const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/v_hitl_queue?order=priority.asc,created_at.asc`,
+        `${SUPABASE_URL}/rest/v1/v_hitl_queue?deleted_at=is.null&status=in.(pending,in_review)&order=priority.asc,created_at.asc`,
         {
           method: "GET",
           headers: {
