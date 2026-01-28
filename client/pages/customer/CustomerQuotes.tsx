@@ -48,7 +48,7 @@ export default function CustomerQuotes() {
     if (customer?.id) {
       loadQuotes();
     }
-  }, [customer?.id]);
+  }, [customer?.id, statusFilter, searchTerm]);
 
   const loadQuotes = async () => {
     try {
