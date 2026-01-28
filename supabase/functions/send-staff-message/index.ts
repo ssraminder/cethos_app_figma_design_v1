@@ -15,19 +15,23 @@ serve(async (req) => {
 
   try {
     console.log("📨 Received request");
-    const { quote_id, staff_id, message_text, attachments } = await req.json();
+    const { quote_id, customer_id, staff_id, message_text, attachments } =
+      await req.json();
     console.log("📝 Parameters:", {
       quote_id,
+      customer_id,
       staff_id,
       message_text: message_text?.substring(0, 50),
+      attachments_count: attachments?.length || 0,
     });
 
-    if (!quote_id || !staff_id || !message_text) {
+    if ((!quote_id && !customer_id) || !staff_id || !message_text) {
       console.log("❌ Missing required fields");
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Missing required fields: quote_id, staff_id, message_text",
+          error:
+            "Missing required fields: (quote_id or customer_id), staff_id, message_text",
         }),
         {
           status: 400,
