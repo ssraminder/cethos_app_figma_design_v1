@@ -61,15 +61,27 @@ export default function CustomerOrderDetail() {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", id)
-        .eq("customer_id", customer?.id)
-        .single();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/get-customer-order-detail?order_id=${id}&customer_id=${customer?.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
 
-      if (error) throw error;
-      setOrder(data);
+      if (!response.ok) {
+        throw new Error("Failed to load order");
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to load order");
+      }
+
+      setOrder(result.data);
     } catch (err) {
       console.error("Failed to load order:", err);
     } finally {
