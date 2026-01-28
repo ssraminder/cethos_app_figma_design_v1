@@ -1,8 +1,18 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { 
-  CreditCard, Check, Mail, Loader2, User, Building2, 
-  Globe, FileText, DollarSign, Languages, MapPin, AlertCircle 
+import {
+  CreditCard,
+  Check,
+  Mail,
+  Loader2,
+  User,
+  Building2,
+  Globe,
+  FileText,
+  DollarSign,
+  Languages,
+  MapPin,
+  AlertCircle,
 } from "lucide-react";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 
@@ -37,11 +47,13 @@ export default function StaffPaymentReviewForm({
   isSubmitting,
 }: StaffPaymentReviewFormProps) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+    useState<string>("");
   const [sendPaymentLink, setSendPaymentLink] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const { sourceLanguages, targetLanguages, intendedUses } = useDropdownOptions();
+  const { sourceLanguages, targetLanguages, intendedUses } =
+    useDropdownOptions();
 
   useEffect(() => {
     fetchPaymentMethods();
@@ -92,19 +104,25 @@ export default function StaffPaymentReviewForm({
   // Get language names
   const getSourceLanguageName = () => {
     if (!reviewData.quote?.sourceLanguageId) return "Not specified";
-    const lang = sourceLanguages.find(l => l.id === reviewData.quote.sourceLanguageId);
+    const lang = sourceLanguages.find(
+      (l) => l.id === reviewData.quote.sourceLanguageId,
+    );
     return lang?.name || "Unknown";
   };
 
   const getTargetLanguageName = () => {
     if (!reviewData.quote?.targetLanguageId) return "Not specified";
-    const lang = targetLanguages.find(l => l.id === reviewData.quote.targetLanguageId);
+    const lang = targetLanguages.find(
+      (l) => l.id === reviewData.quote.targetLanguageId,
+    );
     return lang?.name || "Unknown";
   };
 
   const getIntendedUseName = () => {
     if (!reviewData.quote?.intendedUseId) return "Not specified";
-    const use = intendedUses.find(u => u.id === reviewData.quote.intendedUseId);
+    const use = intendedUses.find(
+      (u) => u.id === reviewData.quote.intendedUseId,
+    );
     return use?.name || "Unknown";
   };
 
@@ -218,9 +236,7 @@ export default function StaffPaymentReviewForm({
               <p className="text-xs font-medium text-gray-500 uppercase mb-1">
                 Source Language
               </p>
-              <p className="text-sm text-gray-900">
-                {getSourceLanguageName()}
-              </p>
+              <p className="text-sm text-gray-900">{getSourceLanguageName()}</p>
             </div>
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase mb-1">
@@ -237,9 +253,7 @@ export default function StaffPaymentReviewForm({
               <p className="text-xs font-medium text-gray-500 uppercase mb-1">
                 Intended Use
               </p>
-              <p className="text-sm text-gray-900">
-                {getIntendedUseName()}
-              </p>
+              <p className="text-sm text-gray-900">{getIntendedUseName()}</p>
             </div>
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase mb-1">
@@ -401,9 +415,7 @@ export default function StaffPaymentReviewForm({
               <p className="text-sm font-medium text-amber-900 mb-1">
                 Internal Notes
               </p>
-              <p className="text-sm text-amber-800">
-                {reviewData.notes}
-              </p>
+              <p className="text-sm text-amber-800">{reviewData.notes}</p>
             </div>
           </div>
         </div>
