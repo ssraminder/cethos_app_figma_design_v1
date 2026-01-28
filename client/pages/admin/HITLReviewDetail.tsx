@@ -683,87 +683,37 @@ const HITLReviewDetail: React.FC = () => {
     }
 
     setIsRejecting(true);
-    const now = new Date().toISOString();
 
     try {
-      // 1. Update HITL review status
-      await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
-        method: "PATCH",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({
-          status: "rejected",
-          completed_at: now,
-          completed_by: staffSession.staffId,
-          resolution_notes: rejectQuoteReason,
-        }),
-      });
-
-      // 2. Update quote status
-      await fetch(
-        `${SUPABASE_URL}/rest/v1/quotes?id=eq.${reviewData.quote_id}`,
+      // Call Edge Function to reject quote permanently
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/reject-quote-permanent`,
         {
-          method: "PATCH",
+          method: "POST",
           headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
             "Content-Type": "application/json",
-            Prefer: "return=minimal",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
-            status: "rejected",
-            updated_at: now,
+            reviewId: reviewId,
+            staffId: staffSession.staffId,
+            reason: rejectQuoteReason.trim(),
+            sendEmail: sendEmailToCustomer,
           }),
         },
       );
 
-      // 3. Log staff activity
-      await fetch(`${SUPABASE_URL}/rest/v1/staff_activity_log`, {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({
-          staff_id: staffSession.staffId,
-          action_type: "reject_hitl",
-          entity_type: "hitl_review",
-          entity_id: reviewId,
-          details: {
-            quote_id: reviewData.quote_id,
-            quote_number: reviewData.quote_number,
-            reason: rejectQuoteReason,
-            email_sent: sendEmailToCustomer,
-          },
-        }),
-      });
+      const result = await response.json();
 
-      // 4. Send email if opted in
-      const customerEmail =
-        reviewData?.customer_email || reviewData?.customer?.email;
-      const customerName =
-        reviewData?.customer_name || reviewData?.customer?.full_name;
-
-      if (sendEmailToCustomer && customerEmail) {
-        await sendRejectionEmail(
-          customerEmail,
-          customerName || "Customer",
-          reviewData.quote_number,
-          rejectQuoteReason,
-        );
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to reject quote");
       }
 
       alert("❌ Quote rejected successfully.");
       navigate("/admin/hitl");
     } catch (error) {
       console.error("Failed to reject quote:", error);
-      alert("Failed to reject quote. Please try again.");
+      alert("Failed to reject quote: " + (error as Error).message);
     } finally {
       setIsRejecting(false);
       setShowRejectQuoteModal(false);
