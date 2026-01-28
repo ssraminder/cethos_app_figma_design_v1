@@ -1383,14 +1383,37 @@ const HITLReviewDetail: React.FC = () => {
       <main className="flex-1 mx-auto w-full px-4 py-6 overflow-hidden">
         {/* No Data Warning */}
         {!reviewData && !loading && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-            <p className="text-yellow-800 font-medium">No review data found</p>
-            <p className="text-yellow-600 text-sm mt-2">
-              Review ID: {reviewId}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center max-w-2xl mx-auto mt-12">
+            <div className="mb-4">
+              <svg
+                className="w-16 h-16 mx-auto text-blue-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <p className="text-blue-900 font-semibold text-lg mb-2">
+              Review Not Found in Queue
             </p>
-            <p className="text-xs text-gray-500 mt-2">
-              Check browser console for details
+            <p className="text-blue-700 mb-4">
+              This review may have already been completed, rejected, or removed from the queue.
             </p>
+            <p className="text-blue-600 text-sm mb-6">
+              Review ID: <code className="bg-blue-100 px-2 py-1 rounded">{reviewId}</code>
+            </p>
+            <button
+              onClick={() => navigate("/admin/hitl")}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+            >
+              ← Return to HITL Queue
+            </button>
           </div>
         )}
 
