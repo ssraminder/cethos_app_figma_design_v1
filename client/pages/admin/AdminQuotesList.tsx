@@ -53,6 +53,13 @@ export default function AdminQuotesList() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Bulk delete state
+  const [selectedQuotes, setSelectedQuotes] = useState<string[]>([]);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  const { session: currentStaff } = useAdminAuthContext();
+
   // Filters from URL
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
