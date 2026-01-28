@@ -643,7 +643,6 @@ const HITLReviewDetail: React.FC = () => {
     const now = new Date().toISOString();
 
     try {
-
       // 1. Update HITL review status
       await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
         method: "PATCH",
@@ -703,13 +702,15 @@ const HITLReviewDetail: React.FC = () => {
       });
 
       // 4. Send email if opted in
-      const customerEmail = reviewData?.customer_email || reviewData?.customer?.email;
-      const customerName = reviewData?.customer_name || reviewData?.customer?.full_name;
+      const customerEmail =
+        reviewData?.customer_email || reviewData?.customer?.email;
+      const customerName =
+        reviewData?.customer_name || reviewData?.customer?.full_name;
 
       if (sendEmailToCustomer && customerEmail) {
         await sendRejectionEmail(
           customerEmail,
-          customerName || 'Customer',
+          customerName || "Customer",
           reviewData.quote_number,
           rejectQuoteReason,
         );
@@ -2556,7 +2557,12 @@ const HITLReviewDetail: React.FC = () => {
               </label>
               {sendEmailToCustomer && (
                 <p className="ml-7 mt-1 text-xs text-gray-500">
-                  Email will be sent to: <span className="font-medium">{reviewData?.customer_email || reviewData?.customer?.email || 'Unknown'}</span>
+                  Email will be sent to:{" "}
+                  <span className="font-medium">
+                    {reviewData?.customer_email ||
+                      reviewData?.customer?.email ||
+                      "Unknown"}
+                  </span>
                 </p>
               )}
             </div>
