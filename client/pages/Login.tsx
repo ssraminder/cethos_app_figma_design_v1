@@ -106,31 +106,29 @@ export default function Login() {
         throw new Error(data.error || "Invalid code");
       }
 
-      // OTP verified! Now sign in with Supabase
-      if (data.verified && data.email) {
-        // Send Supabase OTP for actual login
-        const { error: signInError } = await supabase.auth.signInWithOtp({
+      // OTP verified! Sign in with temporary password
+      if (data.email && data.temp_password) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
           email: data.email,
-          options: {
-            shouldCreateUser: false, // User already exists
-          },
+          password: data.temp_password,
         });
 
         if (signInError) {
-          throw new Error(signInError.message);
+          console.error("Sign in error:", signInError);
+          throw new Error("Failed to sign in");
         }
 
         toast({
-          title: "Verified!",
-          description: "Check your email for the final login link",
+          title: "Success!",
+          description: "Logging you in...",
         });
 
-        // Show message to check email for magic link
-        setStep("email");
-        setEmail("");
-        setOtp("");
+        // Navigate to dashboard
+        setTimeout(() => {
+          navigate("/dashboard");
+        }, 500);
       } else {
-        throw new Error("Verification failed");
+        throw new Error("Invalid response from server");
       }
     } catch (error: any) {
       console.error("Verify OTP error:", error);
