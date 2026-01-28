@@ -141,7 +141,9 @@ export default function MessageCustomerModal({
       return data.data?.temp_path || null;
     } catch (err) {
       console.error("File upload failed:", err);
-      alert(`Failed to upload file: ${err instanceof Error ? err.message : "Unknown error"}`);
+      alert(
+        `Failed to upload file: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
       return null;
     } finally {
       setUploading(false);
