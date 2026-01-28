@@ -44,9 +44,9 @@ export default function StaffPricingForm({
       taxRate: 0.05,
       taxAmount: 0,
       total: 0,
-    }
+    },
   );
-  
+
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [showAddAdjustment, setShowAddAdjustment] = useState(false);
   const [newAdjustment, setNewAdjustment] = useState<Partial<Adjustment>>({
@@ -71,30 +71,33 @@ export default function StaffPricingForm({
 
   const calculatePricing = () => {
     // Start with base amounts
-    let subtotal = manualInputs.translationTotal + manualInputs.certificationTotal;
-    
+    let subtotal =
+      manualInputs.translationTotal + manualInputs.certificationTotal;
+
     // Apply adjustments
     let totalDiscount = 0;
     let totalSurcharge = 0;
-    
+
     adjustments.forEach((adj) => {
-      const amount = adj.valueType === "percentage" 
-        ? (subtotal * adj.value) / 100
-        : adj.value;
-      
+      const amount =
+        adj.valueType === "percentage"
+          ? (subtotal * adj.value) / 100
+          : adj.value;
+
       if (adj.type === "discount") {
         totalDiscount += amount;
       } else {
         totalSurcharge += amount;
       }
     });
-    
+
     // Calculate final amounts
     const adjustedSubtotal = subtotal - totalDiscount + totalSurcharge;
-    const withRushAndDelivery = adjustedSubtotal + manualInputs.rushFee + manualInputs.deliveryFee;
+    const withRushAndDelivery =
+      adjustedSubtotal + manualInputs.rushFee + manualInputs.deliveryFee;
     const taxAmount = withRushAndDelivery * manualInputs.taxRate;
     const total = withRushAndDelivery + taxAmount;
-    
+
     const newPricing = {
       translationTotal: manualInputs.translationTotal,
       certificationTotal: manualInputs.certificationTotal,
@@ -107,7 +110,7 @@ export default function StaffPricingForm({
       discount: totalDiscount,
       surcharge: totalSurcharge,
     };
-    
+
     setPricing(newPricing);
     onPricingChange(newPricing);
   };
@@ -121,7 +124,7 @@ export default function StaffPricingForm({
         value: newAdjustment.value!,
         reason: newAdjustment.reason!,
       };
-      
+
       setAdjustments([...adjustments, adjustment]);
       setNewAdjustment({
         type: "discount",
@@ -148,8 +151,10 @@ export default function StaffPricingForm({
     <div className="space-y-6">
       {/* Manual Pricing Inputs */}
       <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">Base Pricing</h3>
-        
+        <h3 className="text-sm font-semibold text-gray-900 mb-4">
+          Base Pricing
+        </h3>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Translation Total */}
           <div>
@@ -164,7 +169,12 @@ export default function StaffPricingForm({
                 type="number"
                 step="0.01"
                 value={manualInputs.translationTotal}
-                onChange={(e) => handleManualInputChange("translationTotal", parseFloat(e.target.value) || 0)}
+                onChange={(e) =>
+                  handleManualInputChange(
+                    "translationTotal",
+                    parseFloat(e.target.value) || 0,
+                  )
+                }
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
@@ -183,7 +193,12 @@ export default function StaffPricingForm({
                 type="number"
                 step="0.01"
                 value={manualInputs.certificationTotal}
-                onChange={(e) => handleManualInputChange("certificationTotal", parseFloat(e.target.value) || 0)}
+                onChange={(e) =>
+                  handleManualInputChange(
+                    "certificationTotal",
+                    parseFloat(e.target.value) || 0,
+                  )
+                }
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
@@ -202,7 +217,12 @@ export default function StaffPricingForm({
                 type="number"
                 step="0.01"
                 value={manualInputs.rushFee}
-                onChange={(e) => handleManualInputChange("rushFee", parseFloat(e.target.value) || 0)}
+                onChange={(e) =>
+                  handleManualInputChange(
+                    "rushFee",
+                    parseFloat(e.target.value) || 0,
+                  )
+                }
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
@@ -221,7 +241,12 @@ export default function StaffPricingForm({
                 type="number"
                 step="0.01"
                 value={manualInputs.deliveryFee}
-                onChange={(e) => handleManualInputChange("deliveryFee", parseFloat(e.target.value) || 0)}
+                onChange={(e) =>
+                  handleManualInputChange(
+                    "deliveryFee",
+                    parseFloat(e.target.value) || 0,
+                  )
+                }
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
@@ -240,7 +265,12 @@ export default function StaffPricingForm({
                 type="number"
                 step="0.01"
                 value={manualInputs.taxRate * 100}
-                onChange={(e) => handleManualInputChange("taxRate", (parseFloat(e.target.value) || 0) / 100)}
+                onChange={(e) =>
+                  handleManualInputChange(
+                    "taxRate",
+                    (parseFloat(e.target.value) || 0) / 100,
+                  )
+                }
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
@@ -274,21 +304,31 @@ export default function StaffPricingForm({
                 </label>
                 <select
                   value={newAdjustment.type}
-                  onChange={(e) => setNewAdjustment({ ...newAdjustment, type: e.target.value as "discount" | "surcharge" })}
+                  onChange={(e) =>
+                    setNewAdjustment({
+                      ...newAdjustment,
+                      type: e.target.value as "discount" | "surcharge",
+                    })
+                  }
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
                 >
                   <option value="discount">Discount</option>
                   <option value="surcharge">Surcharge</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
                   Value Type
                 </label>
                 <select
                   value={newAdjustment.valueType}
-                  onChange={(e) => setNewAdjustment({ ...newAdjustment, valueType: e.target.value as "percentage" | "fixed" })}
+                  onChange={(e) =>
+                    setNewAdjustment({
+                      ...newAdjustment,
+                      valueType: e.target.value as "percentage" | "fixed",
+                    })
+                  }
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
                 >
                   <option value="percentage">Percentage (%)</option>
@@ -305,7 +345,12 @@ export default function StaffPricingForm({
                 type="number"
                 step="0.01"
                 value={newAdjustment.value || ""}
-                onChange={(e) => setNewAdjustment({ ...newAdjustment, value: parseFloat(e.target.value) })}
+                onChange={(e) =>
+                  setNewAdjustment({
+                    ...newAdjustment,
+                    value: parseFloat(e.target.value),
+                  })
+                }
                 placeholder="Enter amount"
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
               />
@@ -318,7 +363,9 @@ export default function StaffPricingForm({
               <input
                 type="text"
                 value={newAdjustment.reason || ""}
-                onChange={(e) => setNewAdjustment({ ...newAdjustment, reason: e.target.value })}
+                onChange={(e) =>
+                  setNewAdjustment({ ...newAdjustment, reason: e.target.value })
+                }
                 placeholder="e.g., Returning customer, Bulk discount"
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
               />
@@ -336,7 +383,12 @@ export default function StaffPricingForm({
                 type="button"
                 onClick={() => {
                   setShowAddAdjustment(false);
-                  setNewAdjustment({ type: "discount", valueType: "percentage", value: 0, reason: "" });
+                  setNewAdjustment({
+                    type: "discount",
+                    valueType: "percentage",
+                    value: 0,
+                    reason: "",
+                  });
                 }}
                 className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50"
               >
@@ -350,18 +402,25 @@ export default function StaffPricingForm({
         {adjustments.length > 0 && (
           <div className="space-y-2">
             {adjustments.map((adj) => (
-              <div key={adj.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+              <div
+                key={adj.id}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
+              >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded ${
-                      adj.type === "discount" 
-                        ? "bg-green-100 text-green-800" 
-                        : "bg-red-100 text-red-800"
-                    }`}>
+                    <span
+                      className={`inline-flex px-2 py-0.5 text-xs font-medium rounded ${
+                        adj.type === "discount"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
                       {adj.type === "discount" ? "Discount" : "Surcharge"}
                     </span>
                     <span className="text-sm font-semibold text-gray-900">
-                      {adj.valueType === "percentage" ? `${adj.value}%` : `$${adj.value.toFixed(2)}`}
+                      {adj.valueType === "percentage"
+                        ? `${adj.value}%`
+                        : `$${adj.value.toFixed(2)}`}
                     </span>
                   </div>
                   <p className="text-xs text-gray-600 mt-1">{adj.reason}</p>
@@ -398,57 +457,71 @@ export default function StaffPricingForm({
 
       {/* Pricing Summary */}
       <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">Price Summary</h3>
-        
+        <h3 className="text-sm font-semibold text-gray-900 mb-4">
+          Price Summary
+        </h3>
+
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-600">Translation</span>
-            <span className="font-medium">${pricing.translationTotal.toFixed(2)}</span>
+            <span className="font-medium">
+              ${pricing.translationTotal.toFixed(2)}
+            </span>
           </div>
-          
+
           <div className="flex justify-between">
             <span className="text-gray-600">Certification</span>
-            <span className="font-medium">${pricing.certificationTotal.toFixed(2)}</span>
+            <span className="font-medium">
+              ${pricing.certificationTotal.toFixed(2)}
+            </span>
           </div>
-          
+
           {pricing.discount && pricing.discount > 0 && (
             <div className="flex justify-between text-green-600">
               <span>Discount</span>
-              <span className="font-medium">-${pricing.discount.toFixed(2)}</span>
+              <span className="font-medium">
+                -${pricing.discount.toFixed(2)}
+              </span>
             </div>
           )}
-          
+
           {pricing.surcharge && pricing.surcharge > 0 && (
             <div className="flex justify-between text-red-600">
               <span>Surcharge</span>
-              <span className="font-medium">+${pricing.surcharge.toFixed(2)}</span>
+              <span className="font-medium">
+                +${pricing.surcharge.toFixed(2)}
+              </span>
             </div>
           )}
-          
+
           <div className="flex justify-between pt-2 border-t border-gray-300">
             <span className="text-gray-600">Subtotal</span>
             <span className="font-medium">${pricing.subtotal.toFixed(2)}</span>
           </div>
-          
+
           {pricing.rushFee > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">Rush Fee</span>
               <span className="font-medium">${pricing.rushFee.toFixed(2)}</span>
             </div>
           )}
-          
+
           {pricing.deliveryFee > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">Delivery</span>
-              <span className="font-medium">${pricing.deliveryFee.toFixed(2)}</span>
+              <span className="font-medium">
+                ${pricing.deliveryFee.toFixed(2)}
+              </span>
             </div>
           )}
-          
+
           <div className="flex justify-between">
-            <span className="text-gray-600">Tax ({(pricing.taxRate * 100).toFixed(2)}%)</span>
+            <span className="text-gray-600">
+              Tax ({(pricing.taxRate * 100).toFixed(2)}%)
+            </span>
             <span className="font-medium">${pricing.taxAmount.toFixed(2)}</span>
           </div>
-          
+
           <div className="flex justify-between pt-3 border-t-2 border-gray-900 text-lg font-bold">
             <span>Total</span>
             <span className="text-indigo-600">${pricing.total.toFixed(2)}</span>
