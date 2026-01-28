@@ -461,6 +461,23 @@ export default function AdminQuotesList() {
                       key={quote.id}
                       className="hover:bg-gray-50 transition-colors"
                     >
+                      <td className="px-4 py-4">
+                        {canDeleteQuote(quote) ? (
+                          <input
+                            type="checkbox"
+                            checked={selectedQuotes.includes(quote.id)}
+                            onChange={() => toggleQuoteSelection(quote.id)}
+                            className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                          />
+                        ) : (
+                          <input
+                            type="checkbox"
+                            disabled
+                            className="rounded border-gray-200 bg-gray-100 cursor-not-allowed"
+                            title="Cannot delete - converted to order"
+                          />
+                        )}
+                      </td>
                       <td className="px-6 py-4">
                         <Link
                           to={`/admin/quotes/${quote.id}`}
@@ -514,6 +531,28 @@ export default function AdminQuotesList() {
                         <p className="text-xs text-gray-500">
                           {format(new Date(quote.created_at), "h:mm a")}
                         </p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/admin/quotes/${quote.id}`}
+                            className="text-teal-600 hover:text-teal-800 text-sm"
+                          >
+                            View
+                          </Link>
+                          {canDeleteQuote(quote) && (
+                            <button
+                              onClick={() => {
+                                setSelectedQuotes([quote.id]);
+                                setShowBulkDeleteModal(true);
+                              }}
+                              className="text-red-600 hover:text-red-800"
+                              title="Delete quote"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
