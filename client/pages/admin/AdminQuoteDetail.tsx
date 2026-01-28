@@ -178,7 +178,7 @@ export default function AdminQuoteDetail() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const { session: currentStaff} = useAdminAuthContext();
+  const { session: currentStaff } = useAdminAuthContext();
 
   useEffect(() => {
     if (id) {
@@ -509,49 +509,48 @@ export default function AdminQuoteDetail() {
 
       // Soft delete quote
       const { error: quoteError } = await supabase
-        .from('quotes')
+        .from("quotes")
         .update({
           deleted_at: deletedAt,
-          status: 'deleted'
+          status: "deleted",
         })
-        .eq('id', id);
+        .eq("id", id);
 
       if (quoteError) throw quoteError;
 
       // Log to audit
-      await supabase.from('staff_activity_log').insert({
+      await supabase.from("staff_activity_log").insert({
         staff_id: currentStaff.staffId,
-        action: 'delete_quote',
-        entity_type: 'quote',
+        action: "delete_quote",
+        entity_type: "quote",
         entity_id: id,
         details: {
           quote_number: quote?.quote_number,
-          previous_status: quote?.status
-        }
+          previous_status: quote?.status,
+        },
       });
 
       // Cascade soft delete to related tables
       await Promise.all([
         supabase
-          .from('quote_files')
+          .from("quote_files")
           .update({ deleted_at: deletedAt })
-          .eq('quote_id', id),
+          .eq("quote_id", id),
         supabase
-          .from('ai_analysis_results')
+          .from("ai_analysis_results")
           .update({ deleted_at: deletedAt })
-          .eq('quote_id', id),
+          .eq("quote_id", id),
         supabase
-          .from('hitl_reviews')
+          .from("hitl_reviews")
           .update({ deleted_at: deletedAt })
-          .eq('quote_id', id)
+          .eq("quote_id", id),
       ]);
 
       // Navigate back to quotes list
-      navigate('/admin/quotes');
-
+      navigate("/admin/quotes");
     } catch (error) {
-      console.error('Failed to delete quote:', error);
-      alert('Failed to delete quote. Please try again.');
+      console.error("Failed to delete quote:", error);
+      alert("Failed to delete quote. Please try again.");
     } finally {
       setIsDeleting(false);
       setShowDeleteModal(false);
@@ -650,7 +649,7 @@ export default function AdminQuoteDetail() {
             )}
 
             {/* Delete Quote Button */}
-            {!orderId && !['paid', 'converted'].includes(quote.status) ? (
+            {!orderId && !["paid", "converted"].includes(quote.status) ? (
               <button
                 onClick={() => setShowDeleteModal(true)}
                 className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
@@ -658,15 +657,17 @@ export default function AdminQuoteDetail() {
                 <Trash2 className="w-4 h-4" />
                 Delete Quote
               </button>
-            ) : orderId && (
-              <button
-                disabled
-                className="flex items-center gap-2 px-4 py-2 text-gray-400 border border-gray-200 rounded-lg cursor-not-allowed"
-                title="Cannot delete - converted to order"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete Quote
-              </button>
+            ) : (
+              orderId && (
+                <button
+                  disabled
+                  className="flex items-center gap-2 px-4 py-2 text-gray-400 border border-gray-200 rounded-lg cursor-not-allowed"
+                  title="Cannot delete - converted to order"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Quote
+                </button>
+              )
             )}
           </div>
         </div>
@@ -1379,7 +1380,9 @@ function EditFieldModal({
               <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
                 <Trash2 className="w-5 h-5 text-red-600" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">Delete Quote</h3>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Delete Quote
+              </h3>
             </div>
 
             <p className="text-gray-600 mb-2">
@@ -1387,13 +1390,15 @@ function EditFieldModal({
             </p>
 
             <div className="bg-gray-50 rounded-lg p-3 mb-4">
-              <p className="text-sm font-medium text-gray-900">{quote?.quote_number}</p>
+              <p className="text-sm font-medium text-gray-900">
+                {quote?.quote_number}
+              </p>
               <p className="text-sm text-gray-500">{quote?.customer?.email}</p>
             </div>
 
             <p className="text-sm text-gray-500 mb-6">
-              This action will soft-delete the quote and all related data.
-              The data will be permanently removed after 30 days.
+              This action will soft-delete the quote and all related data. The
+              data will be permanently removed after 30 days.
             </p>
 
             <div className="flex justify-end gap-3">
@@ -1409,7 +1414,7 @@ function EditFieldModal({
                 disabled={isDeleting}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {isDeleting ? 'Deleting...' : 'Delete Quote'}
+                {isDeleting ? "Deleting..." : "Delete Quote"}
               </button>
             </div>
           </div>

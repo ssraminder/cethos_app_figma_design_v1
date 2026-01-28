@@ -76,8 +76,10 @@ export default function AdminQuotesList() {
   const fetchQuotes = async () => {
     setLoading(true);
     try {
-      let query = supabase.from("quotes").select(
-        `
+      let query = supabase
+        .from("quotes")
+        .select(
+          `
           id,
           quote_number,
           status,
@@ -91,8 +93,9 @@ export default function AdminQuotesList() {
           target_language:languages!target_language_id(id, name, code),
           quote_files(count)
         `,
-        { count: "exact" },
-      ).is('deleted_at', null);
+          { count: "exact" },
+        )
+        .is("deleted_at", null);
 
       // Apply filters
       if (search) {
@@ -176,15 +179,18 @@ export default function AdminQuotesList() {
 
   // Check if quote can be deleted
   const canDeleteQuote = (quote: Quote) => {
-    return !quote.converted_to_order_id && !['paid', 'converted'].includes(quote.status);
+    return (
+      !quote.converted_to_order_id &&
+      !["paid", "converted"].includes(quote.status)
+    );
   };
 
   // Toggle single selection
   const toggleQuoteSelection = (quoteId: string) => {
-    setSelectedQuotes(prev =>
+    setSelectedQuotes((prev) =>
       prev.includes(quoteId)
-        ? prev.filter(id => id !== quoteId)
-        : [...prev, quoteId]
+        ? prev.filter((id) => id !== quoteId)
+        : [...prev, quoteId],
     );
   };
 
@@ -195,7 +201,7 @@ export default function AdminQuotesList() {
     if (selectedQuotes.length === deletableQuotes.length) {
       setSelectedQuotes([]);
     } else {
-      setSelectedQuotes(deletableQuotes.map(q => q.id));
+      setSelectedQuotes(deletableQuotes.map((q) => q.id));
     }
   };
 
@@ -208,47 +214,46 @@ export default function AdminQuotesList() {
     try {
       // Soft delete all selected quotes
       const { error: quotesError } = await supabase
-        .from('quotes')
-        .update({ deleted_at: deletedAt, status: 'deleted' })
-        .in('id', selectedQuotes);
+        .from("quotes")
+        .update({ deleted_at: deletedAt, status: "deleted" })
+        .in("id", selectedQuotes);
 
       if (quotesError) throw quotesError;
 
       // Cascade to related tables
       await Promise.all([
         supabase
-          .from('quote_files')
+          .from("quote_files")
           .update({ deleted_at: deletedAt })
-          .in('quote_id', selectedQuotes),
+          .in("quote_id", selectedQuotes),
         supabase
-          .from('ai_analysis_results')
+          .from("ai_analysis_results")
           .update({ deleted_at: deletedAt })
-          .in('quote_id', selectedQuotes),
+          .in("quote_id", selectedQuotes),
         supabase
-          .from('hitl_reviews')
+          .from("hitl_reviews")
           .update({ deleted_at: deletedAt })
-          .in('quote_id', selectedQuotes)
+          .in("quote_id", selectedQuotes),
       ]);
 
       // Log to audit (one entry for bulk action)
-      await supabase.from('staff_activity_log').insert({
+      await supabase.from("staff_activity_log").insert({
         staff_id: currentStaff.staffId,
-        action: 'bulk_delete_quotes',
-        entity_type: 'quote',
+        action: "bulk_delete_quotes",
+        entity_type: "quote",
         entity_id: null,
         details: {
           quote_ids: selectedQuotes,
-          count: selectedQuotes.length
-        }
+          count: selectedQuotes.length,
+        },
       });
 
       // Refresh list
       await fetchQuotes();
       setSelectedQuotes([]);
-
     } catch (error) {
-      console.error('Failed to delete quotes:', error);
-      alert('Failed to delete quotes. Please try again.');
+      console.error("Failed to delete quotes:", error);
+      alert("Failed to delete quotes. Please try again.");
     } finally {
       setIsBulkDeleting(false);
       setShowBulkDeleteModal(false);
@@ -407,7 +412,8 @@ export default function AdminQuotesList() {
         {selectedQuotes.length > 0 && (
           <div className="bg-gray-50 border rounded-lg p-3 mb-4 flex items-center justify-between">
             <span className="text-sm text-gray-600">
-              {selectedQuotes.length} quote{selectedQuotes.length > 1 ? 's' : ''} selected
+              {selectedQuotes.length} quote
+              {selectedQuotes.length > 1 ? "s" : ""} selected
             </span>
             <div className="flex items-center gap-3">
               <button
@@ -436,7 +442,11 @@ export default function AdminQuotesList() {
                   <th className="px-4 py-3 text-left w-10">
                     <input
                       type="checkbox"
-                      checked={selectedQuotes.length > 0 && selectedQuotes.length === quotes.filter(canDeleteQuote).length}
+                      checked={
+                        selectedQuotes.length > 0 &&
+                        selectedQuotes.length ===
+                          quotes.filter(canDeleteQuote).length
+                      }
                       onChange={toggleSelectAll}
                       className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                     />
@@ -627,17 +637,19 @@ export default function AdminQuotesList() {
                 <Trash2 className="w-5 h-5 text-red-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900">
-                Delete {selectedQuotes.length} Quote{selectedQuotes.length > 1 ? 's' : ''}
+                Delete {selectedQuotes.length} Quote
+                {selectedQuotes.length > 1 ? "s" : ""}
               </h3>
             </div>
 
             <p className="text-gray-600 mb-4">
-              Are you sure you want to delete {selectedQuotes.length} quote{selectedQuotes.length > 1 ? 's' : ''}?
+              Are you sure you want to delete {selectedQuotes.length} quote
+              {selectedQuotes.length > 1 ? "s" : ""}?
             </p>
 
             <p className="text-sm text-gray-500 mb-6">
-              This action will soft-delete the selected quotes and all related data.
-              The data will be permanently removed after 30 days.
+              This action will soft-delete the selected quotes and all related
+              data. The data will be permanently removed after 30 days.
             </p>
 
             <div className="flex justify-end gap-3">
@@ -656,7 +668,9 @@ export default function AdminQuotesList() {
                 disabled={isBulkDeleting}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {isBulkDeleting ? 'Deleting...' : `Delete ${selectedQuotes.length} Quote${selectedQuotes.length > 1 ? 's' : ''}`}
+                {isBulkDeleting
+                  ? "Deleting..."
+                  : `Delete ${selectedQuotes.length} Quote${selectedQuotes.length > 1 ? "s" : ""}`}
               </button>
             </div>
           </div>
