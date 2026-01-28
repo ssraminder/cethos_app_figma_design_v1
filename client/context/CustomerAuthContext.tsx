@@ -5,7 +5,6 @@ import {
   useEffect,
   ReactNode,
 } from "react";
-import { supabase } from "@/lib/supabase";
 
 interface Customer {
   id: string;
@@ -13,109 +12,82 @@ interface Customer {
   full_name: string;
   phone?: string;
   company_name?: string;
-  created_at: string;
+}
+
+interface Session {
+  token: string;
+  expires_at: string;
 }
 
 interface CustomerAuthContextType {
-  session: any | null;
+  session: Session | null;
   customer: Customer | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(
-  undefined,
+  undefined
 );
 
+const SESSION_KEY = "cethos_customer_session";
+const CUSTOMER_KEY = "cethos_customer_data";
+
 export function CustomerAuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<any | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load session and customer data
+  // Load session from localStorage on mount
   useEffect(() => {
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user) {
-        loadCustomer(session.user.id);
-      } else {
+    const loadSession = () => {
+      try {
+        const storedSession = localStorage.getItem(SESSION_KEY);
+        const storedCustomer = localStorage.getItem(CUSTOMER_KEY);
+
+        if (storedSession && storedCustomer) {
+          const sessionData: Session = JSON.parse(storedSession);
+          const customerData: Customer = JSON.parse(storedCustomer);
+
+          // Check if session is expired
+          const expiresAt = new Date(sessionData.expires_at);
+          if (expiresAt > new Date()) {
+            setSession(sessionData);
+            setCustomer(customerData);
+          } else {
+            // Session expired, clear it
+            localStorage.removeItem(SESSION_KEY);
+            localStorage.removeItem(CUSTOMER_KEY);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load session:", error);
+        localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(CUSTOMER_KEY);
+      } finally {
         setLoading(false);
       }
-    });
+    };
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session?.user) {
-        loadCustomer(session.user.id);
-      } else {
-        setCustomer(null);
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    loadSession();
   }, []);
-
-  // Load customer profile
-  const loadCustomer = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("auth_user_id", userId)
-        .single();
-
-      if (error) throw error;
-      setCustomer(data);
-    } catch (error) {
-      console.error("Failed to load customer:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Sign in
-  const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) throw error;
-  };
-
-  // Sign up
-  const signUp = async (email: string, password: string, fullName: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (error) throw error;
-
-    // Create customer record
-    if (data.user) {
-      const { error: customerError } = await supabase.from("customers").insert({
-        auth_user_id: data.user.id,
-        email,
-        full_name: fullName,
-      });
-
-      if (customerError) throw customerError;
-    }
-  };
 
   // Sign out
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    setCustomer(null);
+    try {
+      // Clear localStorage
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(CUSTOMER_KEY);
+
+      // Clear state
+      setSession(null);
+      setCustomer(null);
+
+      // Could also call an Edge Function to invalidate session in DB
+      // But for now, just clear client-side
+    } catch (error) {
+      console.error("Failed to sign out:", error);
+    }
   };
 
   return (
@@ -124,8 +96,6 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         session,
         customer,
         loading,
-        signIn,
-        signUp,
         signOut,
       }}
     >
@@ -140,4 +110,31 @@ export function useAuth() {
     throw new Error("useAuth must be used within a CustomerAuthProvider");
   }
   return context;
+}
+
+// Helper function to set session (called from Login page)
+export function setCustomerSession(session: Session, customer: Customer) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  localStorage.setItem(CUSTOMER_KEY, JSON.stringify(customer));
+  
+  // Trigger a storage event to update other tabs/windows
+  window.dispatchEvent(new Event('storage'));
+}
+
+// Helper function to get session token for API calls
+export function getSessionToken(): string | null {
+  try {
+    const storedSession = localStorage.getItem(SESSION_KEY);
+    if (storedSession) {
+      const session: Session = JSON.parse(storedSession);
+      // Check if expired
+      const expiresAt = new Date(session.expires_at);
+      if (expiresAt > new Date()) {
+        return session.token;
+      }
+    }
+  } catch (error) {
+    console.error("Failed to get session token:", error);
+  }
+  return null;
 }
