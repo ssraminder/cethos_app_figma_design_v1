@@ -108,10 +108,10 @@ export default function NotificationProvider({
           // Auto-dismiss after 10 seconds
           setTimeout(() => {
             setNotifications((prev) =>
-              prev.filter((n) => n.id !== newNotification.id)
+              prev.filter((n) => n.id !== newNotification.id),
             );
           }, 10000);
-        }
+        },
       )
       .subscribe((status) => {
         console.log("🔔 Global notification subscription status:", status);
