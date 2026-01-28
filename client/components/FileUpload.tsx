@@ -15,20 +15,20 @@ export default function FileUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
 
-  // Try to use UploadContext first, fall back to QuoteContext
+  // Try to use QuoteContext first (for /quote route), fall back to UploadContext (for /upload route)
   let state: any, addFile: any, removeFile: any;
 
   try {
-    const uploadContext = useUpload();
-    state = uploadContext.state;
-    addFile = uploadContext.addFile;
-    removeFile = uploadContext.removeFile;
-  } catch {
-    // Fall back to QuoteContext
     const quoteContext = useQuote();
     state = quoteContext.state;
     addFile = quoteContext.addFile;
     removeFile = quoteContext.removeFile;
+  } catch {
+    // Fall back to UploadContext
+    const uploadContext = useUpload();
+    state = uploadContext.state;
+    addFile = uploadContext.addFile;
+    removeFile = uploadContext.removeFile;
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null);
