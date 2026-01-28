@@ -312,7 +312,7 @@ export default function MessageCustomerModal({
     file: File;
     onRemove: () => void;
   }) => {
-    const isImage = file.type.startsWith("image/");
+    const isImage = file.type?.startsWith("image/") || false;
     const fileSize = (file.size / 1024).toFixed(1) + " KB";
 
     return (
