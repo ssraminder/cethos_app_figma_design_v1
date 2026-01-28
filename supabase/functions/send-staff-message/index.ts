@@ -248,7 +248,7 @@ serve(async (req) => {
     }
 
     // 6. Send email to customer if they have an email
-    if (quote.customers?.email) {
+    if (customerInfo?.email) {
       try {
         await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-email`, {
           method: "POST",
@@ -258,14 +258,16 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             templateId: 20, // New message notification template
-            to: quote.customers.email,
+            to: customerInfo.email,
             replyTo: staff.email || "support@cethos.com",
             params: {
-              CUSTOMER_NAME: quote.customers.full_name || "Customer",
+              CUSTOMER_NAME: customerInfo.full_name || "Customer",
               STAFF_NAME: staff.full_name || "Cethos Team",
               MESSAGE_TEXT: message_text,
-              QUOTE_NUMBER: quote.quote_number,
-              QUOTE_URL: `${Deno.env.get("FRONTEND_URL")}/dashboard/quotes/${quote_id}`,
+              QUOTE_NUMBER: quote_id || "",
+              QUOTE_URL: quote_id
+                ? `${Deno.env.get("FRONTEND_URL")}/dashboard/quotes/${quote_id}`
+                : `${Deno.env.get("FRONTEND_URL")}/dashboard`,
             },
           }),
         });
