@@ -61,7 +61,10 @@ export default function MessagePanel({
       }
 
       const result = await response.json();
-      console.log("✅ Messages marked as read. Unread count:", result.data?.unread_count);
+      console.log(
+        "✅ Messages marked as read. Unread count:",
+        result.data?.unread_count,
+      );
     } catch (err) {
       console.error("❌ Failed to mark messages as read:", err);
     }
@@ -100,11 +103,14 @@ export default function MessagePanel({
 
         // Mark unread customer messages as read by staff
         const unreadCustomerMessages = result.messages.filter(
-          (msg: Message) => msg.sender_type === "customer" && !msg.read_by_staff_at
+          (msg: Message) =>
+            msg.sender_type === "customer" && !msg.read_by_staff_at,
         );
 
         if (unreadCustomerMessages.length > 0) {
-          console.log(`📨 Found ${unreadCustomerMessages.length} unread customer messages`);
+          console.log(
+            `📨 Found ${unreadCustomerMessages.length} unread customer messages`,
+          );
           markMessagesAsRead();
         }
       } else {
