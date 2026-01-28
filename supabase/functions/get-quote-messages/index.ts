@@ -15,9 +15,10 @@ serve(async (req) => {
   }
 
   try {
-    const payload = req.method === "GET"
-      ? Object.fromEntries(new URL(req.url).searchParams)
-      : await req.json();
+    const payload =
+      req.method === "GET"
+        ? Object.fromEntries(new URL(req.url).searchParams)
+        : await req.json();
 
     const quote_id = payload.quote_id || null;
     const customer_id = payload.customer_id || null;
@@ -123,9 +124,11 @@ serve(async (req) => {
       let sender_name = "Unknown";
 
       if (msg.sender_type === "customer" && msg.customers) {
-        sender_name = msg.customers.full_name || msg.customers.email || "Customer";
+        sender_name =
+          msg.customers.full_name || msg.customers.email || "Customer";
       } else if (msg.sender_type === "staff" && msg.staff_users) {
-        sender_name = msg.staff_users.full_name || msg.staff_users.email || "Staff";
+        sender_name =
+          msg.staff_users.full_name || msg.staff_users.email || "Staff";
       } else if (msg.sender_type === "system") {
         sender_name = "System";
       }
