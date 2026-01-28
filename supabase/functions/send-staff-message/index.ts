@@ -56,12 +56,14 @@ serve(async (req) => {
     // 1. Get customer info (from quote or directly)
     let customerId: string;
     let customerInfo: any;
+    let quoteNumber: string | null = null;
+    let orderNumber: string | null = null;
 
     if (quote_id) {
       console.log("📋 Fetching quote:", quote_id);
       const { data: quote, error: quoteError } = await supabaseAdmin
         .from("quotes")
-        .select("*, customers(id, email, full_name)")
+        .select("*, customers(id, email, full_name), orders(order_number)")
         .eq("id", quote_id)
         .single();
 
@@ -72,6 +74,9 @@ serve(async (req) => {
       console.log("✅ Quote found, customer:", quote.customer_id);
       customerId = quote.customer_id;
       customerInfo = quote.customers;
+      quoteNumber = quote.quote_number;
+      orderNumber = quote.orders?.[0]?.order_number || null;
+      console.log("📝 Quote #", quoteNumber, orderNumber ? `(Order #${orderNumber})` : "");
     } else if (customer_id) {
       console.log("👤 Fetching customer directly:", customer_id);
       const { data: customer, error: customerError } = await supabaseAdmin
@@ -127,8 +132,8 @@ serve(async (req) => {
           .from("customer_conversations")
           .insert({
             customer_id: customerId,
-            subject: quote_id
-              ? `Quote #${quote_id} - Translation Services`
+            subject: quoteNumber
+              ? `Quote #${quoteNumber} - Translation Services`
               : `Customer Support - ${customerInfo?.full_name || "Customer"}`,
             status: "active",
           })
@@ -158,6 +163,10 @@ serve(async (req) => {
         message_text,
         message_type: "text",
         source: "app",
+        metadata: {
+          quote_number: quoteNumber,
+          order_number: orderNumber,
+        },
       })
       .select()
       .single();
@@ -264,7 +273,8 @@ serve(async (req) => {
               CUSTOMER_NAME: customerInfo.full_name || "Customer",
               STAFF_NAME: staff.full_name || "Cethos Team",
               MESSAGE_TEXT: message_text,
-              QUOTE_NUMBER: quote_id || "",
+              QUOTE_NUMBER: quoteNumber || quote_id || "",
+              ORDER_NUMBER: orderNumber || "",
               QUOTE_URL: quote_id
                 ? `${Deno.env.get("FRONTEND_URL")}/dashboard/quotes/${quote_id}`
                 : `${Deno.env.get("FRONTEND_URL")}/dashboard`,
