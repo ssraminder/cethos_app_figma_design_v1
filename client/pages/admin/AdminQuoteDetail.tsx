@@ -517,9 +517,9 @@ export default function AdminQuoteDetail() {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
-            quoteId: id,
-            staffId: currentStaff.staffId,
-            messageText: `We need a clearer scan to proceed. ${reason}`,
+            quote_id: id,
+            staff_id: currentStaff.staffId,
+            message_text: `We need a clearer scan to proceed. ${reason}`,
           }),
         },
       );
