@@ -24,6 +24,8 @@ export default function FileAttachment({
   isOwn,
 }: FileAttachmentProps) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Handle different field name conventions
   const fileName =
@@ -37,9 +39,12 @@ export default function FileAttachment({
   const fileIcon = getFileIcon(mimeType);
   const fileSize = formatFileSize(attachment.file_size);
 
-  // Get signed URL for download
+  // Get signed URL for download (bucket is private, so signed URL is required)
   useEffect(() => {
     if (attachment.storage_path) {
+      setIsLoading(true);
+      setError(null);
+
       supabase.storage
         .from("message-attachments")
         .createSignedUrl(attachment.storage_path, 3600) // 1 hour expiry
@@ -47,16 +52,28 @@ export default function FileAttachment({
           if (data?.signedUrl) {
             setSignedUrl(data.signedUrl);
           } else {
-            console.error("Failed to get signed URL:", error);
+            console.error("Failed to get signed URL for:", attachment.storage_path, error);
+            setError(error?.message || "Failed to load file");
           }
+        })
+        .catch((err) => {
+          console.error("Error creating signed URL:", err);
+          setError("Failed to load file");
+        })
+        .finally(() => {
+          setIsLoading(false);
         });
+    } else if (attachment.download_url) {
+      // Use pre-existing download URL if available
+      setSignedUrl(attachment.download_url);
+      setIsLoading(false);
+    } else {
+      setError("No file path available");
+      setIsLoading(false);
     }
-  }, [attachment.storage_path]);
+  }, [attachment.storage_path, attachment.download_url]);
 
-  const downloadUrl =
-    signedUrl ||
-    attachment.download_url ||
-    `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/message-attachments/${attachment.storage_path}`;
+  const downloadUrl = signedUrl;
 
   return (
     <div
