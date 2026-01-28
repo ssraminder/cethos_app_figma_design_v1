@@ -323,24 +323,98 @@ export default function CustomerQuoteDetail() {
         </div>
 
         {/* Actions */}
+        {quote.status === "quote_ready" && (
+          <div className="bg-teal-50 border border-teal-200 rounded-lg p-6">
+            <div className="flex flex-col gap-4">
+              <div>
+                <h3 className="font-semibold text-teal-900 mb-1">
+                  Quote Ready
+                </h3>
+                <p className="text-sm text-teal-700">
+                  Your quote is ready. Choose to proceed with payment or decline
+                  if you're no longer interested.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={handlePayment}
+                  disabled={isUpdating}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <CreditCard className="w-5 h-5" />
+                  Pay Now
+                </button>
+                <button
+                  onClick={handleDecline}
+                  disabled={isUpdating}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 border-2 border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <XCircle className="w-5 h-5" />
+                  Decline Quote
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {quote.status === "pending_payment" && (
           <div className="bg-teal-50 border border-teal-200 rounded-lg p-6">
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col gap-4">
               <div>
                 <h3 className="font-semibold text-teal-900 mb-1">
                   Ready for Payment
                 </h3>
                 <p className="text-sm text-teal-700">
                   This quote is ready for payment. Click the button to proceed
-                  to checkout.
+                  to select delivery options and checkout.
                 </p>
               </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={handlePayment}
+                  disabled={isUpdating}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <CreditCard className="w-5 h-5" />
+                  Pay Now
+                </button>
+                <button
+                  onClick={handleDecline}
+                  disabled={isUpdating}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 border-2 border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <XCircle className="w-5 h-5" />
+                  Decline Quote
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {quote.status === "declined" && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <XCircle className="w-5 h-5 text-orange-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-orange-900 mb-1">
+                    Quote Declined
+                  </h3>
+                  <p className="text-sm text-orange-700">
+                    You have declined this quote. If you change your mind, you can
+                    reopen it below.
+                  </p>
+                </div>
+              </div>
               <button
-                onClick={handlePayment}
-                className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+                onClick={handleReopen}
+                disabled={isUpdating}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <CreditCard className="w-5 h-5" />
-                Pay Now
+                <RotateCcw className="w-5 h-5" />
+                {isUpdating ? "Reopening..." : "Reopen Quote"}
               </button>
             </div>
           </div>
