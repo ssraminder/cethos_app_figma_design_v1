@@ -149,6 +149,13 @@ export default function AdminQuotesList() {
         query = query.eq("is_rush", true);
       }
 
+      // Filter expired quotes (unless showExpired is true)
+      if (!showExpired) {
+        query = query.or(
+          `expires_at.is.null,expires_at.gt.${new Date().toISOString()}`
+        );
+      }
+
       // Pagination
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
@@ -187,7 +194,7 @@ export default function AdminQuotesList() {
 
   useEffect(() => {
     fetchQuotes();
-  }, [search, status, dateFrom, dateTo, rushOnly, page]);
+  }, [search, status, dateFrom, dateTo, rushOnly, showExpired, page]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -428,7 +435,7 @@ export default function AdminQuotesList() {
               </div>
 
               {/* Rush Only */}
-              <div className="flex items-end">
+              <div className="flex flex-col gap-2 items-start">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -440,6 +447,17 @@ export default function AdminQuotesList() {
                   />
                   <span className="text-sm text-gray-700">
                     Rush orders only
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showExpired}
+                    onChange={(e) => setShowExpired(e.target.checked)}
+                    className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                  />
+                  <span className="text-sm text-gray-700">
+                    Show expired quotes
                   </span>
                 </label>
               </div>
