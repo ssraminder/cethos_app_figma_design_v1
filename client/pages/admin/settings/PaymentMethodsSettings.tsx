@@ -1,6 +1,16 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Edit2, Save, X, Trash2, ChevronUp, ChevronDown, CreditCard, Check } from "lucide-react";
+import {
+  Plus,
+  Edit2,
+  Save,
+  X,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  CreditCard,
+  Check,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface PaymentMethod {
@@ -309,7 +319,9 @@ export default function PaymentMethodsSettings() {
         {paymentMethods.length === 0 ? (
           <div className="p-8 text-center">
             <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-600">No payment methods configured</p>
+            <p className="text-sm text-gray-600">
+              No payment methods configured
+            </p>
             <button
               onClick={() => setShowAddModal(true)}
               className="mt-3 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
@@ -364,7 +376,10 @@ export default function PaymentMethodsSettings() {
                     <textarea
                       value={formData.description}
                       onChange={(e) =>
-                        setFormData({ ...formData, description: e.target.value })
+                        setFormData({
+                          ...formData,
+                          description: e.target.value,
+                        })
                       }
                       rows={2}
                       className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
@@ -378,11 +393,16 @@ export default function PaymentMethodsSettings() {
                         type="checkbox"
                         checked={formData.is_online}
                         onChange={(e) =>
-                          setFormData({ ...formData, is_online: e.target.checked })
+                          setFormData({
+                            ...formData,
+                            is_online: e.target.checked,
+                          })
                         }
                         className="rounded"
                       />
-                      <span className="text-sm text-gray-700">Online Payment</span>
+                      <span className="text-sm text-gray-700">
+                        Online Payment
+                      </span>
                     </label>
 
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -407,7 +427,10 @@ export default function PaymentMethodsSettings() {
                         type="checkbox"
                         checked={formData.is_active}
                         onChange={(e) =>
-                          setFormData({ ...formData, is_active: e.target.checked })
+                          setFormData({
+                            ...formData,
+                            is_active: e.target.checked,
+                          })
                         }
                         className="rounded"
                       />
@@ -459,7 +482,9 @@ export default function PaymentMethodsSettings() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600">{method.description}</p>
+                    <p className="text-sm text-gray-600">
+                      {method.description}
+                    </p>
                   </div>
 
                   <div className="flex items-center gap-2 ml-4">
