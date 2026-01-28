@@ -76,7 +76,11 @@ serve(async (req) => {
       customerInfo = quote.customers;
       quoteNumber = quote.quote_number;
       orderNumber = quote.orders?.[0]?.order_number || null;
-      console.log("📝 Quote #", quoteNumber, orderNumber ? `(Order #${orderNumber})` : "");
+      console.log(
+        "📝 Quote #",
+        quoteNumber,
+        orderNumber ? `(Order #${orderNumber})` : "",
+      );
     } else if (customer_id) {
       console.log("👤 Fetching customer directly:", customer_id);
       const { data: customer, error: customerError } = await supabaseAdmin
