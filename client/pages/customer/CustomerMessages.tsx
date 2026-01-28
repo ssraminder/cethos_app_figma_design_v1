@@ -106,6 +106,76 @@ export default function CustomerMessages() {
     loadMessages();
   }, [customer?.id]);
 
+  // Realtime subscription for new messages
+  useEffect(() => {
+    if (!conversation?.id) return;
+
+    console.log(
+      "🔔 Setting up realtime subscription for conversation:",
+      conversation.id,
+    );
+
+    const channel = supabase
+      .channel(`customer-messages:${conversation.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_messages",
+          filter: `conversation_id=eq.${conversation.id}`,
+        },
+        (payload) => {
+          console.log("📩 New message received in customer portal:", payload.new);
+
+          // Fetch messages again to get full message details with sender info
+          fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-quote-messages?customer_id=${customer?.id}`,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+            },
+          )
+            .then((res) => res.json())
+            .then((data) => {
+              if (data.success) {
+                setMessages(data.messages || []);
+
+                // Mark new messages as read automatically
+                fetch(
+                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-messages-read`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                    },
+                    body: JSON.stringify({
+                      conversation_id: conversation.id,
+                      reader_type: "customer",
+                      reader_id: customer?.id,
+                    }),
+                  },
+                ).catch((err) =>
+                  console.error("Failed to mark messages as read:", err),
+                );
+              }
+            })
+            .catch((err) => console.error("Failed to fetch new messages:", err));
+        },
+      )
+      .subscribe((status) => {
+        console.log("🔔 Realtime subscription status:", status);
+      });
+
+    return () => {
+      console.log("🔕 Unsubscribing from customer realtime");
+      supabase.removeChannel(channel);
+    };
+  }, [conversation?.id, customer?.id]);
+
   // Handle message sent
   const handleMessageSent = (message: Message) => {
     setMessages((prev) => [...prev, message]);
