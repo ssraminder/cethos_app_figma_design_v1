@@ -305,18 +305,6 @@ export default function StaffFileUploadForm({
                     </p>
                     <div className="flex items-center gap-3 text-xs text-gray-500">
                       <span>{formatFileSize(file.size)}</span>
-                      {uploadStatus[file.id] === "pending" && (
-                        <span className="text-amber-600">• Pending</span>
-                      )}
-                      {uploadStatus[file.id] === "uploading" && (
-                        <span className="text-blue-600">• Uploading...</span>
-                      )}
-                      {uploadStatus[file.id] === "success" && (
-                        <span className="text-green-600">• Uploaded</span>
-                      )}
-                      {uploadStatus[file.id] === "failed" && (
-                        <span className="text-red-600">• Failed</span>
-                      )}
                       {processWithAI && getAnalysisStatusBadge(file.id)}
                     </div>
                   </div>
