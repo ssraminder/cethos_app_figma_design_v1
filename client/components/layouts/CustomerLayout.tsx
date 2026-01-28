@@ -103,31 +103,96 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
         </div>
       </header>
 
-      {/* Mobile Navigation */}
-      <nav className="md:hidden bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex overflow-x-auto gap-2 py-2">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                    isActive
-                      ? "bg-teal-50 text-teal-700"
-                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                  }`}
+      {/* Mobile Navigation Drawer */}
+      {mobileMenuOpen && (
+        <>
+          {/* Overlay */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+
+          {/* Drawer */}
+          <div className="fixed top-0 left-0 h-full w-64 bg-white shadow-xl z-50 md:hidden">
+            <div className="p-4">
+              {/* Close Button */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt={companyName} className="h-8 w-auto" />
+                  ) : (
+                    <>
+                      <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg flex items-center justify-center">
+                        <span className="text-white font-bold text-lg">C</span>
+                      </div>
+                      <span className="text-xl font-bold text-teal-600">
+                        {companyName || "CETHOS"}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg"
                 >
-                  <Icon className="w-4 h-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* User Info */}
+              <div className="pb-4 mb-4 border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-teal-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {customer?.full_name}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {customer?.email}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Navigation Items */}
+              <nav className="space-y-1">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                        isActive
+                          ? "bg-teal-50 text-teal-700"
+                          : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </nav>
+
+              {/* Logout Button */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <button
+                  onClick={handleSignOut}
+                  className="flex items-center gap-3 px-4 py-3 w-full text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <LogOut className="w-5 h-5" />
+                  Sign Out
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </nav>
+        </>
+      )}
 
       {/* Main Content */}
       <main className="flex-1">{children}</main>
