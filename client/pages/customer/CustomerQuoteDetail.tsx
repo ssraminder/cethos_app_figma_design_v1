@@ -32,6 +32,7 @@ interface Quote {
 
 const STATUS_COLORS: Record<string, string> = {
   pending_payment: "bg-yellow-100 text-yellow-800",
+  awaiting_payment: "bg-yellow-100 text-yellow-800",
   quote_ready: "bg-green-100 text-green-800",
   hitl_pending: "bg-blue-100 text-blue-800",
   ai_processing: "bg-purple-100 text-purple-800",
@@ -43,6 +44,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   pending_payment: "Pending Payment",
+  awaiting_payment: "Awaiting Payment",
   quote_ready: "Ready",
   hitl_pending: "Under Review",
   ai_processing: "Processing",
@@ -109,7 +111,7 @@ export default function CustomerQuoteDetail() {
     if (!quote?.id || !customer?.id) return;
 
     const confirmed = window.confirm(
-      "Are you sure you want to decline this quote? You can reopen it later if needed.",
+      "Are you sure you want to decline this quote? You can reopen it later if needed."
     );
 
     if (!confirmed) return;
@@ -123,7 +125,7 @@ export default function CustomerQuoteDetail() {
           headers: {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-        },
+        }
       );
 
       const result = await response.json();
@@ -163,7 +165,7 @@ export default function CustomerQuoteDetail() {
           headers: {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-        },
+        }
       );
 
       const result = await response.json();
@@ -323,7 +325,7 @@ export default function CustomerQuoteDetail() {
         </div>
 
         {/* Actions */}
-        {quote.status === "quote_ready" && (
+        {(quote.status === "quote_ready" || quote.status === "awaiting_payment") && (
           <div className="bg-teal-50 border border-teal-200 rounded-lg p-6">
             <div className="flex flex-col gap-4">
               <div>
@@ -362,7 +364,7 @@ export default function CustomerQuoteDetail() {
             <div className="flex flex-col gap-4">
               <div>
                 <h3 className="font-semibold text-teal-900 mb-1">
-                  Ready for Payment
+                  Pending Payment
                 </h3>
                 <p className="text-sm text-teal-700">
                   This quote is ready for payment. Click the button to proceed
@@ -403,8 +405,8 @@ export default function CustomerQuoteDetail() {
                     Quote Declined
                   </h3>
                   <p className="text-sm text-orange-700">
-                    You have declined this quote. If you change your mind, you
-                    can reopen it below.
+                    You have declined this quote. If you change your mind, you can
+                    reopen it below.
                   </p>
                 </div>
               </div>
