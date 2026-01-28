@@ -64,15 +64,27 @@ export default function CustomerQuoteDetail() {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
-        .from("quotes")
-        .select("*")
-        .eq("id", id)
-        .eq("customer_id", customer?.id)
-        .single();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/get-customer-quote-detail?quote_id=${id}&customer_id=${customer?.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
 
-      if (error) throw error;
-      setQuote(data);
+      if (!response.ok) {
+        throw new Error("Failed to load quote");
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to load quote");
+      }
+
+      setQuote(result.data);
     } catch (err) {
       console.error("Failed to load quote:", err);
     } finally {
@@ -208,7 +220,7 @@ export default function CustomerQuoteDetail() {
             <div className="flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-teal-600" />
               <span className="text-2xl font-bold text-gray-900">
-                ${quote.total_amount.toFixed(2)}
+                ${(quote.total_amount ?? 0).toFixed(2)}
               </span>
             </div>
           </div>
