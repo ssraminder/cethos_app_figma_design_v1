@@ -43,7 +43,11 @@ export default function StaffPaymentReviewForm({
   }, []);
 
   const fetchPaymentMethods = async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      console.error("Supabase client not initialized");
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data, error } = await supabase
