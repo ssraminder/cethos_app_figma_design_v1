@@ -248,6 +248,16 @@ export default function MessageCustomerModal({
 
     setSending(true);
     try {
+      // Upload file first if selected
+      let attachmentPath = null;
+      if (selectedFile) {
+        attachmentPath = await uploadFile();
+        if (!attachmentPath) {
+          throw new Error("Failed to upload file");
+        }
+      }
+
+      // Send message with attachment path
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-staff-message`,
         {
@@ -263,7 +273,7 @@ export default function MessageCustomerModal({
               newMessage.trim() ||
               (selectedFile ? `Sent a file: ${selectedFile.name}` : ""),
             staff_id: staffId,
-            has_attachment: !!selectedFile,
+            attachments: attachmentPath ? [attachmentPath] : [],
           }),
         },
       );
@@ -274,11 +284,6 @@ export default function MessageCustomerModal({
 
       const data = await response.json();
       console.log("✅ Message sent");
-
-      // Upload file if selected
-      if (selectedFile && data.data?.message?.id) {
-        await uploadFile(data.data.message.id);
-      }
 
       setNewMessage("");
       clearSelectedFile();
