@@ -25,7 +25,7 @@ const STATUS_COLORS: Record<string, string> = {
   ai_processing: "bg-purple-100 text-purple-800",
   quote_expired: "bg-gray-100 text-gray-800",
   quote_cancelled: "bg-red-100 text-red-800",
-  declined: "bg-orange-100 text-orange-800",
+  cancelled: "bg-orange-100 text-orange-800",
   paid: "bg-teal-100 text-teal-800",
 };
 
@@ -37,7 +37,7 @@ const STATUS_LABELS: Record<string, string> = {
   ai_processing: "Processing",
   quote_expired: "Expired",
   quote_cancelled: "Cancelled",
-  declined: "Declined",
+  cancelled: "Cancelled",
   paid: "Paid",
 };
 
@@ -134,7 +134,7 @@ export default function CustomerQuotes() {
               <option value="hitl_pending">Under Review</option>
               <option value="ai_processing">Processing</option>
               <option value="paid">Paid</option>
-              <option value="declined">Declined</option>
+              <option value="cancelled">Cancelled</option>
               <option value="quote_expired">Expired</option>
             </select>
           </div>
