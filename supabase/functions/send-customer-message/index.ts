@@ -15,7 +15,8 @@ serve(async (req) => {
 
   try {
     console.log("📨 Received customer message request");
-    const { customer_id, quote_id, message_text, attachments } = await req.json();
+    const { customer_id, quote_id, message_text, attachments } =
+      await req.json();
     console.log("📝 Parameters:", {
       customer_id,
       quote_id,
@@ -144,7 +145,7 @@ serve(async (req) => {
     // 5. Process attachments if provided
     if (attachments && attachments.length > 0) {
       console.log("📎 Processing attachments:", attachments.length);
-      
+
       for (const tempPath of attachments) {
         try {
           // Move file from temp to permanent location
@@ -175,14 +176,15 @@ serve(async (req) => {
           await supabaseAdmin.from("message_attachments").insert({
             message_id: message.id,
             file_name: fileName,
-            file_type: fileInfo?.metadata?.mimetype || "application/octet-stream",
+            file_type:
+              fileInfo?.metadata?.mimetype || "application/octet-stream",
             file_size: fileInfo?.metadata?.size || 0,
             storage_path: permanentPath,
           });
 
           // Delete temp file
           await supabaseAdmin.storage.from(tempBucket).remove([tempPath]);
-          
+
           console.log("✅ Attachment processed:", fileName);
         } catch (attachmentError) {
           console.error("Failed to process attachment:", attachmentError);
