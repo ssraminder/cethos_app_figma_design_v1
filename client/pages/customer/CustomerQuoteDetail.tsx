@@ -38,7 +38,7 @@ const STATUS_COLORS: Record<string, string> = {
   ai_processing: "bg-purple-100 text-purple-800",
   quote_expired: "bg-gray-100 text-gray-800",
   quote_cancelled: "bg-red-100 text-red-800",
-  declined: "bg-orange-100 text-orange-800",
+  cancelled: "bg-orange-100 text-orange-800",
   paid: "bg-teal-100 text-teal-800",
 };
 
@@ -50,7 +50,7 @@ const STATUS_LABELS: Record<string, string> = {
   ai_processing: "Processing",
   quote_expired: "Expired",
   quote_cancelled: "Cancelled",
-  declined: "Declined",
+  cancelled: "Cancelled",
   paid: "Paid",
 };
 
@@ -111,7 +111,7 @@ export default function CustomerQuoteDetail() {
     if (!quote?.id || !customer?.id) return;
 
     const confirmed = window.confirm(
-      "Are you sure you want to decline this quote? You can reopen it later if needed.",
+      "Are you sure you want to decline this quote? You can reopen it later if needed."
     );
 
     if (!confirmed) return;
@@ -120,12 +120,12 @@ export default function CustomerQuoteDetail() {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const response = await fetch(
-        `${supabaseUrl}/functions/v1/update-quote-status?quote_id=${quote.id}&customer_id=${customer.id}&status=declined`,
+        `${supabaseUrl}/functions/v1/update-quote-status?quote_id=${quote.id}&customer_id=${customer.id}&status=cancelled`,
         {
           headers: {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-        },
+        }
       );
 
       const result = await response.json();
@@ -135,8 +135,8 @@ export default function CustomerQuoteDetail() {
       }
 
       toast({
-        title: "Quote Declined",
-        description: "The quote has been declined successfully.",
+        title: "Quote Cancelled",
+        description: "The quote has been cancelled successfully.",
       });
 
       // Reload quote to show updated status
@@ -165,7 +165,7 @@ export default function CustomerQuoteDetail() {
           headers: {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-        },
+        }
       );
 
       const result = await response.json();
@@ -325,8 +325,7 @@ export default function CustomerQuoteDetail() {
         </div>
 
         {/* Actions */}
-        {(quote.status === "quote_ready" ||
-          quote.status === "awaiting_payment") && (
+        {(quote.status === "quote_ready" || quote.status === "awaiting_payment") && (
           <div className="bg-teal-50 border border-teal-200 rounded-lg p-6">
             <div className="flex flex-col gap-4">
               <div>
@@ -394,7 +393,7 @@ export default function CustomerQuoteDetail() {
           </div>
         )}
 
-        {quote.status === "declined" && (
+        {quote.status === "cancelled" && (
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
             <div className="flex flex-col gap-4">
               <div className="flex items-start gap-3">
@@ -406,8 +405,8 @@ export default function CustomerQuoteDetail() {
                     Quote Declined
                   </h3>
                   <p className="text-sm text-orange-700">
-                    You have declined this quote. If you change your mind, you
-                    can reopen it below.
+                    You have declined this quote. If you change your mind, you can
+                    reopen it below.
                   </p>
                 </div>
               </div>
