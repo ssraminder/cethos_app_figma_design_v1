@@ -34,21 +34,73 @@ export default function MessageComposer({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Upload file and get temp path
+  const uploadFile = async (file: File): Promise<string | null> => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("conversation_id", conversationId || `temp_${customerId}`);
+      formData.append("uploader_type", customerId ? "customer" : "staff");
+      formData.append("uploader_id", customerId || staffId || "");
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-message-attachment`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: formData,
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Upload failed");
+      }
+
+      const data = await response.json();
+      return data.data?.temp_path || null;
+    } catch (err) {
+      console.error("File upload failed:", err);
+      alert(
+        `Failed to upload file: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
+      return null;
+    }
+  };
+
   const handleSend = async () => {
-    // For now, only allow text messages (attachments disabled temporarily)
-    if (!message.trim()) return;
+    if (!message.trim() && attachments.length === 0) return;
     if (externalIsSending || isUploading) return;
 
     try {
       setIsUploading(true);
 
-      // Build JSON payload
+      // Upload files first if any
+      const attachmentPaths: string[] = [];
+      if (attachments.length > 0) {
+        for (const file of attachments) {
+          const tempPath = await uploadFile(file);
+          if (tempPath) {
+            attachmentPaths.push(tempPath);
+          }
+        }
+      }
+
+      // Build JSON payload (matching admin staff pattern)
       const payload: any = {};
 
       if (customerId) payload.customer_id = customerId;
       if (staffId) payload.staff_id = staffId;
       if (quoteId) payload.quote_id = quoteId;
-      if (message.trim()) payload.message_text = message.trim();
+      if (message.trim()) {
+        payload.message_text = message.trim();
+      } else if (attachments.length > 0) {
+        // If only sending files, create a message text
+        payload.message_text = `Sent ${attachments.length} file${attachments.length > 1 ? "s" : ""}`;
+      }
+      if (attachmentPaths.length > 0) payload.attachments = attachmentPaths;
 
       // Send message
       const response = await fetch(
@@ -79,7 +131,7 @@ export default function MessageComposer({
       }
     } catch (error) {
       console.error("Failed to send message:", error);
-      alert(`Failed to send message: ${error.message}`);
+      alert(`Failed to send message: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setIsUploading(false);
     }
