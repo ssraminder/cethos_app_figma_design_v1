@@ -441,29 +441,70 @@ export default function MessageCustomerModal({
 
         {/* Compose Area */}
         <div className="p-3 border-t border-gray-200 bg-gray-50">
-          <div className="flex gap-2">
+          {/* File Preview */}
+          {selectedFile && <FilePreview file={selectedFile} onRemove={clearSelectedFile} />}
+
+          {/* Upload Progress */}
+          {uploading && (
+            <div className="mb-2">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Uploading... {uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                <div
+                  className="bg-blue-600 h-1.5 rounded-full transition-all"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 items-end">
+            {/* File Upload Button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading || sending}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+              title="Attach file"
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={handleFileSelect}
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.txt"
+            />
+
+            {/* Message Input */}
             <textarea
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
               rows={2}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={uploading}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
             />
+
+            {/* Send Button */}
             <button
               onClick={handleSend}
-              disabled={!newMessage.trim() || sending}
+              disabled={(!newMessage.trim() && !selectedFile) || sending || uploading}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 self-end"
             >
-              {sending ? (
+              {sending || uploading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <Send className="w-4 h-4" />
               )}
             </button>
           </div>
+
           <p className="text-xs text-gray-400 mt-1">
-            Press Enter to send • Customer will receive an email
+            Press Enter to send • Max 10MB • PDF, images, Word, text
           </p>
         </div>
       </div>
