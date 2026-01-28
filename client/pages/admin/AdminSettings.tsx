@@ -194,6 +194,18 @@ export default function AdminSettings() {
             </button>
 
             <button
+              onClick={() => navigate("/admin/settings/purge-quotes")}
+              className="text-left p-4 bg-white border border-red-200 rounded-lg hover:border-red-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Purge Draft Quotes
+              </h3>
+              <p className="text-sm text-gray-600">
+                Auto-delete old draft quotes (14+ days)
+              </p>
+            </button>
+
+            <button
               onClick={() => navigate("/admin/settings/complexity")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
