@@ -131,6 +131,7 @@ export default function AdminQuotesList() {
           is_rush: quote.is_rush,
           created_at: quote.created_at,
           expires_at: quote.expires_at,
+          converted_to_order_id: quote.converted_to_order_id,
           customer_email: quote.customer?.email || "",
           customer_name: quote.customer?.full_name || "",
           source_language_name: quote.source_language?.name || "",
