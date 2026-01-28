@@ -86,6 +86,7 @@ Uses **service role key** to bypass RLS for:
 ## Email Template
 
 Uses template ID **19** with parameters:
+
 - `CUSTOMER_NAME` - Customer's full name
 - `QUOTE_NUMBER` - Quote reference number
 - `REJECTION_REASON` - Staff-provided reason
