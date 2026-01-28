@@ -271,6 +271,24 @@ export default function Step6Payment() {
         </p>
       </div>
 
+      {/* Expiry Warning Banner */}
+      {expiresAt && (() => {
+        const daysUntilExpiry = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        return daysUntilExpiry > 0 && daysUntilExpiry <= 7 ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 flex items-start gap-3">
+            <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-amber-800 font-medium">
+                Quote expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
+              </p>
+              <p className="text-amber-700 text-sm">
+                Complete your payment before {new Date(expiresAt).toLocaleDateString()} to secure this price.
+              </p>
+            </div>
+          </div>
+        ) : null;
+      })()}
+
       {/* Order Summary Card */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
