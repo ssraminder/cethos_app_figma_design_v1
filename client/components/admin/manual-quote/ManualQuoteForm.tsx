@@ -175,7 +175,7 @@ export default function ManualQuoteForm({
     paymentMethodId: string,
     sendPaymentLink: boolean,
   ) => {
-    if (!staffUser?.id || !customer) {
+    if (!staffUser?.id || !customer || !quoteId) {
       toast.error("Missing required information");
       return;
     }
@@ -183,74 +183,7 @@ export default function ManualQuoteForm({
     setIsSubmitting(true);
 
     try {
-      // Step 1: Create or find customer and create quote
-      const createQuoteResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-staff-quote`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            staffId: staffUser.id,
-            customerData: {
-              email: customer.email,
-              phone: customer.phone,
-              fullName: customer.fullName,
-              customerType: customer.customerType,
-              companyName: customer.companyName,
-            },
-            quoteData: {
-              sourceLanguageId: quote.sourceLanguageId,
-              targetLanguageId: quote.targetLanguageId,
-              intendedUseId: quote.intendedUseId,
-              countryOfIssue: quote.countryOfIssue,
-              specialInstructions: quote.specialInstructions,
-            },
-            entryPoint,
-            notes,
-          }),
-        },
-      );
-
-      if (!createQuoteResponse.ok) {
-        const error = await createQuoteResponse.json();
-        throw new Error(error.message || "Failed to create quote");
-      }
-
-      const quoteResult = await createQuoteResponse.json();
-      const newQuoteId = quoteResult.quoteId;
-      setQuoteId(newQuoteId);
-
-      // Step 2: Upload files if any
-      if (files.length > 0) {
-        for (const fileData of files) {
-          const formData = new FormData();
-          formData.append("file", fileData.file);
-          formData.append("quoteId", newQuoteId);
-          formData.append("staffId", staffUser.id);
-          formData.append("processWithAI", processWithAI.toString());
-
-          const uploadResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              },
-              body: formData,
-            },
-          );
-
-          if (!uploadResponse.ok) {
-            console.error("Failed to upload file:", fileData.name);
-            // Continue with other files
-          }
-        }
-      }
-
-      // Step 3: Calculate and save pricing
+      // Step 1: Calculate and save pricing
       if (pricing) {
         const pricingResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/calculate-manual-quote-pricing`,
@@ -261,7 +194,7 @@ export default function ManualQuoteForm({
               Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             },
             body: JSON.stringify({
-              quoteId: newQuoteId,
+              quoteId: quoteId,
               staffId: staffUser.id,
               pricingData: pricing,
               manualOverride: true,
@@ -275,7 +208,7 @@ export default function ManualQuoteForm({
         }
       }
 
-      // Step 4: Update payment method
+      // Step 2: Update payment method and mark as ready
       if (supabase) {
         const { error: updateError } = await supabase
           .from("quotes")
@@ -283,33 +216,32 @@ export default function ManualQuoteForm({
             payment_method_id: paymentMethodId,
             status: "quote_ready",
           })
-          .eq("id", newQuoteId);
+          .eq("id", quoteId);
 
         if (updateError) {
           console.error("Error updating payment method:", updateError);
+          throw updateError;
         }
       } else {
-        console.error(
-          "Supabase client not available for payment method update",
-        );
+        throw new Error("Supabase client not available");
       }
 
-      // Step 5: Send payment link if needed
+      // Step 3: Send payment link if needed
       if (sendPaymentLink && customer.email) {
         // TODO: Implement payment link generation via Stripe
         // This would call another edge function to create a Stripe payment link
         console.log("Payment link generation not implemented yet");
       }
 
-      toast.success("Quote created successfully!");
+      toast.success("Quote completed successfully!");
 
       if (onComplete) {
-        onComplete(newQuoteId);
+        onComplete(quoteId);
       }
     } catch (error) {
-      console.error("Error creating quote:", error);
+      console.error("Error finalizing quote:", error);
       toast.error(
-        error instanceof Error ? error.message : "Failed to create quote",
+        error instanceof Error ? error.message : "Failed to finalize quote",
       );
     } finally {
       setIsSubmitting(false);
