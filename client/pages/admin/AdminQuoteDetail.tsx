@@ -150,6 +150,38 @@ const STATUS_LABELS: Record<string, string> = {
   converted: "Converted",
 };
 
+// Helper function for expiry badge
+const getExpiryBadge = (expiresAt: string | null) => {
+  if (!expiresAt) return null;
+
+  const expiry = new Date(expiresAt);
+  const now = new Date();
+  const daysUntil = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (daysUntil < 0) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">
+        <Clock className="w-3 h-3" />
+        Expired
+      </span>
+    );
+  } else if (daysUntil <= 7) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">
+        <Clock className="w-3 h-3" />
+        {daysUntil}d left
+      </span>
+    );
+  } else {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+        <Clock className="w-3 h-3" />
+        {daysUntil}d left
+      </span>
+    );
+  }
+};
+
 export default function AdminQuoteDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -1135,13 +1167,16 @@ export default function AdminQuoteDetail() {
                   {format(new Date(quote.updated_at), "MMM d, yyyy h:mm a")}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-gray-500">Expires</span>
-                <span>
-                  {quote.expires_at
-                    ? format(new Date(quote.expires_at), "MMM d, yyyy")
-                    : "—"}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span>
+                    {quote.expires_at
+                      ? format(new Date(quote.expires_at), "MMM d, yyyy")
+                      : "—"}
+                  </span>
+                  {getExpiryBadge(quote.expires_at)}
+                </div>
               </div>
             </div>
           </div>
