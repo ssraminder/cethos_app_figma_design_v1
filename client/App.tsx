@@ -12,6 +12,7 @@ import { QuoteProvider } from "./context/QuoteContext";
 import { UploadProvider } from "./context/UploadContext";
 import { StaffAuthProvider } from "./context/StaffAuthContext";
 import { AdminAuthProvider } from "./context/AdminAuthContext";
+import { CustomerAuthProvider } from "./context/CustomerAuthContext";
 import { BrandingProvider } from "./context/BrandingContext";
 import AppLayout from "./components/layouts/AppLayout";
 import Login from "./pages/Login";
@@ -29,6 +30,9 @@ import QuoteSavedPage from "./pages/quote/QuoteSavedPage";
 import QuoteExpiredPage from "./pages/quote/QuoteExpiredPage";
 import UploadPage from "./pages/upload/UploadPage";
 import UploadConfirmationPage from "./pages/upload/UploadConfirmationPage";
+
+// Customer Dashboard pages
+import CustomerMessages from "./pages/customer/CustomerMessages";
 
 // Admin pages
 import AdminLogin from "./pages/admin/Login";
@@ -122,14 +126,24 @@ const App = () => (
                     <Route path="/payment/cancel" element={<PaymentCancel />} />
 
                     {/* Upload Form Routes */}
-                    <Route path="/upload" element={<UploadPage />} />
-                    <Route
-                      path="/upload/confirmation"
-                      element={<UploadConfirmationPage />}
-                    />
-                  </Route>
+                  <Route path="/upload" element={<UploadPage />} />
+                  <Route
+                    path="/upload/confirmation"
+                    element={<UploadConfirmationPage />}
+                  />
+                </Route>
 
-                  {/* Admin login (not protected) */}
+                {/* Customer Dashboard Routes */}
+                <Route
+                  path="/dashboard/messages"
+                  element={
+                    <CustomerAuthProvider>
+                      <CustomerMessages />
+                    </CustomerAuthProvider>
+                  }
+                />
+
+                {/* Admin login (not protected) */}
                   <Route path="/admin/login" element={<AdminLogin />} />
                   <Route
                     path="/admin/reset-password"
