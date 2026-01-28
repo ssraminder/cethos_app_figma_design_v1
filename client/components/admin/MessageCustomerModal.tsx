@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { X, Send, Loader2, MessageSquare, Mail, Paperclip, FileText, Download } from "lucide-react";
+import {
+  X,
+  Send,
+  Loader2,
+  MessageSquare,
+  Mail,
+  Paperclip,
+  FileText,
+  Download,
+} from "lucide-react";
 import { format } from "date-fns";
 
 interface Attachment {
@@ -79,7 +88,9 @@ export default function MessageCustomerModal({
     ];
 
     if (!allowedTypes.includes(file.type)) {
-      alert("File type not supported. Please upload PDF, images, Word docs, or text files.");
+      alert(
+        "File type not supported. Please upload PDF, images, Word docs, or text files.",
+      );
       return;
     }
 
@@ -115,7 +126,7 @@ export default function MessageCustomerModal({
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: formData,
-        }
+        },
       );
 
       if (!response.ok) {
@@ -156,14 +167,14 @@ export default function MessageCustomerModal({
           body: JSON.stringify({
             quote_id: quoteId,
           }),
-        }
+        },
       );
 
       if (response.ok) {
         const data = await response.json();
         console.log("📨 Messages loaded:", data.messages?.length);
         setMessages(data.messages || []);
-        
+
         // Extract conversation ID from first message if available
         if (data.messages?.[0]?.conversation_id) {
           setConversationId(data.messages[0].conversation_id);
@@ -188,7 +199,10 @@ export default function MessageCustomerModal({
   useEffect(() => {
     if (!conversationId) return;
 
-    console.log("🔔 Setting up realtime subscription for conversation:", conversationId);
+    console.log(
+      "🔔 Setting up realtime subscription for conversation:",
+      conversationId,
+    );
 
     const channel = supabase
       .channel(`modal-messages:${conversationId}`)
@@ -203,7 +217,7 @@ export default function MessageCustomerModal({
         (payload) => {
           console.log("📩 New message in modal:", payload.new);
           fetchMessages();
-        }
+        },
       )
       .subscribe((status) => {
         console.log("🔔 Realtime subscription status:", status);
@@ -237,11 +251,13 @@ export default function MessageCustomerModal({
           body: JSON.stringify({
             customer_id: customerId,
             quote_id: quoteId || null,
-            message_text: newMessage.trim() || (selectedFile ? `Sent a file: ${selectedFile.name}` : ""),
+            message_text:
+              newMessage.trim() ||
+              (selectedFile ? `Sent a file: ${selectedFile.name}` : ""),
             staff_id: staffId,
             has_attachment: !!selectedFile,
           }),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -276,7 +292,13 @@ export default function MessageCustomerModal({
   };
 
   // File preview component
-  const FilePreview = ({ file, onRemove }: { file: File; onRemove: () => void }) => {
+  const FilePreview = ({
+    file,
+    onRemove,
+  }: {
+    file: File;
+    onRemove: () => void;
+  }) => {
     const isImage = file.type.startsWith("image/");
     const fileSize = (file.size / 1024).toFixed(1) + " KB";
 
@@ -294,7 +316,9 @@ export default function MessageCustomerModal({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-700 truncate">{file.name}</p>
+          <p className="text-sm font-medium text-gray-700 truncate">
+            {file.name}
+          </p>
           <p className="text-xs text-gray-500">{fileSize}</p>
         </div>
         <button
@@ -381,7 +405,9 @@ export default function MessageCustomerModal({
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <MessageSquare className="w-8 h-8 mb-2 opacity-50" />
               <p className="text-sm">No messages yet</p>
-              <p className="text-xs mt-1">Send a message to start the conversation</p>
+              <p className="text-xs mt-1">
+                Send a message to start the conversation
+              </p>
             </div>
           ) : (
             messages.map((msg) => (
@@ -391,8 +417,8 @@ export default function MessageCustomerModal({
                   msg.sender_type === "staff"
                     ? "bg-blue-600 text-white ml-auto"
                     : msg.sender_type === "system"
-                    ? "bg-gray-100 text-gray-600 text-center text-sm italic mx-auto"
-                    : "bg-gray-100 text-gray-800"
+                      ? "bg-gray-100 text-gray-600 text-center text-sm italic mx-auto"
+                      : "bg-gray-100 text-gray-800"
                 }`}
               >
                 {msg.sender_type !== "system" && (
@@ -423,13 +449,18 @@ export default function MessageCustomerModal({
                     </span>
                   </div>
                 )}
-                <p className="text-sm whitespace-pre-wrap">{msg.message_text}</p>
+                <p className="text-sm whitespace-pre-wrap">
+                  {msg.message_text}
+                </p>
 
                 {/* Attachments */}
                 {msg.attachments && msg.attachments.length > 0 && (
                   <div className="mt-2 space-y-2">
                     {msg.attachments.map((attachment) => (
-                      <AttachmentDisplay key={attachment.id} attachment={attachment} />
+                      <AttachmentDisplay
+                        key={attachment.id}
+                        attachment={attachment}
+                      />
                     ))}
                   </div>
                 )}
@@ -442,7 +473,9 @@ export default function MessageCustomerModal({
         {/* Compose Area */}
         <div className="p-3 border-t border-gray-200 bg-gray-50">
           {/* File Preview */}
-          {selectedFile && <FilePreview file={selectedFile} onRemove={clearSelectedFile} />}
+          {selectedFile && (
+            <FilePreview file={selectedFile} onRemove={clearSelectedFile} />
+          )}
 
           {/* Upload Progress */}
           {uploading && (
@@ -492,7 +525,9 @@ export default function MessageCustomerModal({
             {/* Send Button */}
             <button
               onClick={handleSend}
-              disabled={(!newMessage.trim() && !selectedFile) || sending || uploading}
+              disabled={
+                (!newMessage.trim() && !selectedFile) || sending || uploading
+              }
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 self-end"
             >
               {sending || uploading ? (
