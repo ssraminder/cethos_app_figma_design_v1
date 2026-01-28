@@ -48,7 +48,7 @@ export default function CustomerMessages() {
 
       try {
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-customer-messages?customer_id=${customer.id}&mark_read=true`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-quote-messages?customer_id=${customer.id}`,
           {
             headers: {
               "Content-Type": "application/json",
@@ -64,8 +64,9 @@ export default function CustomerMessages() {
         const data = await response.json();
 
         if (data.success) {
-          setConversation(data.data.conversation);
-          setMessages(data.data.messages || []);
+          // Note: get-quote-messages returns conversation_id directly, not in a data object
+          setConversation(data.conversation_id ? { id: data.conversation_id } as Conversation : null);
+          setMessages(data.messages || []);
         } else {
           setError(data.error || "Failed to load messages");
         }
