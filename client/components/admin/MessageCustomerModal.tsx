@@ -106,7 +106,7 @@ export default function MessageCustomerModal({
   };
 
   // Upload file and get attachment ID
-  const uploadFile = async (messageId: string): Promise<string | null> => {
+  const uploadFile = async (): Promise<string | null> => {
     if (!selectedFile) return null;
 
     setUploading(true);
@@ -115,7 +115,6 @@ export default function MessageCustomerModal({
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
-      formData.append("message_id", messageId);
       formData.append("conversation_id", conversationId || "");
       formData.append("uploader_type", "staff");
       formData.append("uploader_id", staffId);
@@ -132,24 +131,20 @@ export default function MessageCustomerModal({
       );
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Upload failed");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Upload failed");
       }
 
       const data = await response.json();
       setUploadProgress(100);
       console.log("✅ File uploaded successfully");
-      return data.attachment_id;
+      return data.data?.temp_path || null;
     } catch (err) {
       console.error("File upload failed:", err);
-      alert("Failed to upload file. Please try again.");
+      alert(`Failed to upload file: ${err instanceof Error ? err.message : "Unknown error"}`);
       return null;
     } finally {
       setUploading(false);
-      setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
     }
   };
 
