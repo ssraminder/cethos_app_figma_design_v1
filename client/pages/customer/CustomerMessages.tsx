@@ -65,8 +65,27 @@ export default function CustomerMessages() {
 
         if (data.success) {
           // Note: get-quote-messages returns conversation_id directly, not in a data object
-          setConversation(data.conversation_id ? { id: data.conversation_id } as Conversation : null);
+          const conversationId = data.conversation_id;
+          setConversation(conversationId ? { id: conversationId } as Conversation : null);
           setMessages(data.messages || []);
+
+          // Mark messages as read
+          if (conversationId) {
+            fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-messages-read`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({
+                  conversation_id: conversationId,
+                  reader_type: "customer",
+                }),
+              }
+            ).catch((err) => console.error("Failed to mark messages as read:", err));
+          }
         } else {
           setError(data.error || "Failed to load messages");
         }
