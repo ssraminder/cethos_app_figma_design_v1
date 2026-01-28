@@ -1368,6 +1368,51 @@ function EditFieldModal({
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Delete Quote</h3>
+            </div>
+
+            <p className="text-gray-600 mb-2">
+              Are you sure you want to delete this quote?
+            </p>
+
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <p className="text-sm font-medium text-gray-900">{quote?.quote_number}</p>
+              <p className="text-sm text-gray-500">{quote?.customer?.email}</p>
+            </div>
+
+            <p className="text-sm text-gray-500 mb-6">
+              This action will soft-delete the quote and all related data.
+              The data will be permanently removed after 30 days.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteQuote}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Quote'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
