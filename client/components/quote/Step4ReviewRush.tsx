@@ -331,31 +331,31 @@ export default function Step4ReviewRush() {
   // Handler: Return to Quote Form (clears storage, navigates to clean URL)
   const handleReturnToQuoteForm = () => {
     // Get entry point BEFORE clearing storage
-    let entryPoint = "upload_form";
+    let entryPoint = 'upload_form';
 
     try {
-      const uploadDraft = localStorage.getItem("cethos_upload_draft");
-      const quoteDraft = localStorage.getItem("cethos_quote_draft");
+      const uploadDraft = localStorage.getItem('cethos_upload_draft');
+      const quoteDraft = localStorage.getItem('cethos_quote_draft');
 
       if (uploadDraft) {
-        entryPoint = JSON.parse(uploadDraft)?.entryPoint || "upload_form";
+        entryPoint = JSON.parse(uploadDraft)?.entryPoint || 'upload_form';
       } else if (quoteDraft) {
-        entryPoint = JSON.parse(quoteDraft)?.entryPoint || "upload_form";
+        entryPoint = JSON.parse(quoteDraft)?.entryPoint || 'upload_form';
       }
     } catch (e) {
-      console.error("Error reading entryPoint:", e);
+      console.error('Error reading entryPoint:', e);
     }
 
     // Clear storage - IMPORTANT: must happen AFTER reading entryPoint
-    localStorage.removeItem("cethos_upload_draft");
-    localStorage.removeItem("cethos_quote_draft");
+    localStorage.removeItem('cethos_upload_draft');
+    localStorage.removeItem('cethos_quote_draft');
 
-    // Navigate to CLEAN URL (NO quote_id parameter!)
-    // Using replace: true to prevent back-button loop
-    if (entryPoint === "order_form") {
-      navigate("/quote?step=1", { replace: true });
+    // Use window.location.href to force full page reload
+    // This prevents React context from persisting old state
+    if (entryPoint === 'order_form') {
+      window.location.href = '/quote?step=1';
     } else {
-      navigate("/upload?step=1", { replace: true });
+      window.location.href = '/upload?step=1';
     }
   };
 
