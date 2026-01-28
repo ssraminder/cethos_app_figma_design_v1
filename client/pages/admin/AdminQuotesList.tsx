@@ -408,6 +408,14 @@ export default function AdminQuotesList() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-4 py-3 text-left w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedQuotes.length > 0 && selectedQuotes.length === quotes.filter(canDeleteQuote).length}
+                      onChange={toggleSelectAll}
+                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Quote
                   </th>
@@ -425,6 +433,9 @@ export default function AdminQuotesList() {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Created
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
                   </th>
                 </tr>
               </thead>
