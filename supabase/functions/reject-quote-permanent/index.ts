@@ -69,10 +69,29 @@ serve(async (req) => {
       throw new Error("Failed to update review: " + reviewUpdateError.message);
     }
 
-    // 3. Note: We do NOT update the quote status
-    // The quote remains in its current state (e.g., "draft", "details_pending")
-    // Permanent rejection is tracked via the HITL review status only
-    // This prevents constraint violations since "rejected" is not a valid quote status
+    // 3. Soft delete the quote (set deleted_at timestamp)
+    const { error: quoteDeleteError } = await supabaseAdmin
+      .from("quotes")
+      .update({
+        deleted_at: now,
+      })
+      .eq("id", review.quote_id);
+
+    if (quoteDeleteError) {
+      throw new Error("Failed to soft delete quote: " + quoteDeleteError.message);
+    }
+
+    // Cascade soft delete to related records
+    await Promise.all([
+      supabaseAdmin
+        .from("quote_files")
+        .update({ deleted_at: now })
+        .eq("quote_id", review.quote_id),
+      supabaseAdmin
+        .from("ai_analysis_results")
+        .update({ deleted_at: now })
+        .eq("quote_id", review.quote_id),
+    ]);
 
     // 4. Log staff activity
     const { error: logError } = await supabaseAdmin
