@@ -76,6 +76,36 @@ export default function MessageBubble({
           </span>
         </div>
 
+        {/* Quote/Order badges */}
+        {(message.metadata?.quote_number || message.metadata?.order_number) && (
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            {message.metadata?.quote_number && (
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                  isOwn
+                    ? "bg-teal-500 text-white"
+                    : "bg-blue-100 text-blue-800"
+                }`}
+                title="Quote Number"
+              >
+                Quote #{message.metadata.quote_number}
+              </span>
+            )}
+            {message.metadata?.order_number && (
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                  isOwn
+                    ? "bg-teal-500 text-white"
+                    : "bg-green-100 text-green-800"
+                }`}
+                title="Order Number"
+              >
+                Order #{message.metadata.order_number}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Message text */}
         {message.message_text && (
           <p className="text-sm whitespace-pre-wrap">{message.message_text}</p>
