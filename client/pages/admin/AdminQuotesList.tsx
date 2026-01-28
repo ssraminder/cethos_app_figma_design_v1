@@ -214,10 +214,10 @@ export default function AdminQuotesList() {
     try {
       // Process each quote individually to respect RLS policies
       for (const quoteId of selectedQuotes) {
-        // Soft delete quote
+        // Soft delete quote (only set deleted_at, don't change status)
         const { error: quoteError } = await supabase
           .from("quotes")
-          .update({ deleted_at: deletedAt, status: "deleted" })
+          .update({ deleted_at: deletedAt })
           .eq("id", quoteId);
 
         if (quoteError) {
