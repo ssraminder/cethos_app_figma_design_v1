@@ -14,6 +14,8 @@ import {
   Package,
   Truck,
   CheckCircle,
+  MoreVertical,
+  Eye,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -70,6 +72,9 @@ export default function AdminOrdersList() {
 
   const [searchInput, setSearchInput] = useState(search);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Actions menu state
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -242,17 +247,17 @@ export default function AdminOrdersList() {
 
         {/* Search & Filters Bar */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col md:flex-row gap-3">
             {/* Search */}
-            <form onSubmit={handleSearch} className="flex-1">
+            <form onSubmit={handleSearch} className="flex-1 md:max-w-md">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search by order number, email, or name..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Search orders..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
               </div>
             </form>
@@ -386,26 +391,26 @@ export default function AdminOrdersList() {
         {/* Table */}
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+            <table className="w-full min-w-[640px]">
+              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Order
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Order Details
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Customer
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Work Status
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Total
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Delivery
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+                    <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
@@ -431,61 +436,84 @@ export default function AdminOrdersList() {
                       key={order.id}
                       className="hover:bg-gray-50 transition-colors"
                     >
-                      <td className="px-6 py-4">
+                      {/* Combined Order Details */}
+                      <td className="px-4 py-3">
                         <Link
                           to={`/admin/orders/${order.id}`}
-                          className="flex items-center gap-3"
+                          className="block group"
                         >
-                          <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-                            <ShoppingCart className="w-5 h-5 text-green-600" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              {order.order_number}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {format(
-                                new Date(order.created_at),
-                                "MMM d, yyyy",
-                              )}
-                              {order.is_rush && (
-                                <span className="ml-2 text-amber-600">
-                                  ⚡ Rush
-                                </span>
-                              )}
-                            </p>
-                          </div>
+                          <p className="text-sm font-semibold text-gray-900 font-mono group-hover:text-teal-600">
+                            {order.order_number}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {format(new Date(order.created_at), "MMM d, yyyy")}
+                            {order.is_rush && (
+                              <span className="ml-1.5 text-amber-600 font-medium">
+                                ⚡ Rush
+                              </span>
+                            )}
+                          </p>
                         </Link>
                       </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-gray-900">
+                      {/* Customer */}
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-medium text-gray-900">
                           {order.customer_name || "—"}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 mt-0.5">
                           {order.customer_email || "—"}
                         </p>
                       </td>
-                      <td className="px-6 py-4">
-                        <OrderStatusBadge status={order.status} />
+                      {/* Combined Status Column */}
+                      <td className="px-4 py-3">
+                        <div className="space-y-1">
+                          <OrderStatusBadge status={order.status} />
+                          <div>
+                            <WorkStatusBadge status={order.work_status} />
+                          </div>
+                        </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <WorkStatusBadge status={order.work_status} />
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-medium text-gray-900 tabular-nums">
+                      <td className="px-4 py-3 text-right">
+                        <p className="text-sm font-semibold text-gray-900 tabular-nums">
                           ${(order.total_amount || 0).toFixed(2)}
                         </p>
                       </td>
-                      <td className="px-6 py-4">
+                      {/* Delivery Date */}
+                      <td className="px-4 py-3">
                         {order.estimated_delivery_date ? (
                           <p className="text-sm text-gray-700">
-                            {format(
-                              new Date(order.estimated_delivery_date),
-                              "MMM d, yyyy",
-                            )}
+                            {format(new Date(order.estimated_delivery_date), "MMM d, yyyy")}
                           </p>
                         ) : (
                           <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      {/* Actions Meatball Menu */}
+                      <td className="px-4 py-3 text-center relative">
+                        <button
+                          onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)}
+                          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                          aria-label="Actions"
+                        >
+                          <MoreVertical className="w-4 h-4 text-gray-600" />
+                        </button>
+                        {openMenuId === order.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-10"
+                              onClick={() => setOpenMenuId(null)}
+                            />
+                            <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                              <Link
+                                to={`/admin/orders/${order.id}`}
+                                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={() => setOpenMenuId(null)}
+                              >
+                                <Eye className="w-4 h-4" />
+                                View Details
+                              </Link>
+                            </div>
+                          </>
                         )}
                       </td>
                     </tr>
