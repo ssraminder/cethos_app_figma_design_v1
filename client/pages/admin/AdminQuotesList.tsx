@@ -84,13 +84,14 @@ export default function AdminQuotesList() {
           is_rush,
           created_at,
           expires_at,
+          converted_to_order_id,
           customer:customers(id, full_name, email),
           source_language:languages!source_language_id(id, name, code),
           target_language:languages!target_language_id(id, name, code),
           quote_files(count)
         `,
         { count: "exact" },
-      );
+      ).is('deleted_at', null);
 
       // Apply filters
       if (search) {
