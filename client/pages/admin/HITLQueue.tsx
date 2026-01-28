@@ -7,7 +7,7 @@ interface HITLReview {
   quote_number: string;
   customer_name: string;
   customer_email: string;
-  status: string;
+  review_status: string;
   priority: number;
   sla_status: string;
   minutes_to_sla: number;
@@ -108,9 +108,9 @@ export default function HITLQueue() {
 
   // Calculate stats from reviews
   const stats = {
-    pending: reviews.filter((r) => r.status === "pending").length,
-    inProgress: reviews.filter((r) => r.status === "in_review").length,
-    completed: reviews.filter((r) => r.status === "completed").length,
+    pending: reviews.filter((r) => r.review_status === "pending").length,
+    inProgress: reviews.filter((r) => r.review_status === "in_review").length,
+    completed: reviews.filter((r) => r.review_status === "completed").length,
     slaBreached: reviews.filter((r) => r.sla_status === "breached").length,
   };
 
@@ -255,18 +255,18 @@ export default function HITLQueue() {
                       <td className="px-4 py-3">
                         <span
                           className={`px-2 py-1 text-xs font-medium rounded-full ${
-                            review.status === "pending"
+                            review.review_status === "pending"
                               ? "bg-yellow-100 text-yellow-800"
-                              : review.status === "in_review"
+                              : review.review_status === "in_review"
                                 ? "bg-blue-100 text-blue-800"
-                                : review.status === "approved"
+                                : review.review_status === "approved"
                                   ? "bg-green-100 text-green-800"
-                                  : review.status === "rejected"
+                                  : review.review_status === "rejected"
                                     ? "bg-red-100 text-red-800"
                                     : "bg-gray-100 text-gray-800"
                           }`}
                         >
-                          {review.status.replace(/_/g, " ").toUpperCase()}
+                          {review.review_status?.replace(/_/g, " ").toUpperCase() || "UNKNOWN"}
                         </span>
                       </td>
                       <td className="px-4 py-3">
