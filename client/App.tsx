@@ -49,6 +49,7 @@ import AdminLayout from "./components/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminQuotesList from "./pages/admin/AdminQuotesList";
 import AdminQuoteDetail from "./pages/admin/AdminQuoteDetail";
+import ManualQuoteCreate from "./pages/admin/ManualQuoteCreate";
 import AdminOrderDetail from "./pages/admin/AdminOrderDetail";
 import AdminOrdersList from "./pages/admin/AdminOrdersList";
 import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
