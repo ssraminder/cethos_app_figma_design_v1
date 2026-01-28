@@ -63,26 +63,26 @@ serve(async (req) => {
       throw new Error("Staff not found: " + staffError?.message);
     }
 
-    // 3. Get or create conversation for this quote
+    // 3. Get or create conversation for this customer
     let conversationId: string;
 
-    // Try to find existing conversation for this quote
+    // Try to find existing conversation for this customer
     const { data: existingConversation } = await supabaseAdmin
-      .from("conversations")
+      .from("customer_conversations")
       .select("id")
-      .eq("quote_id", quote_id)
+      .eq("customer_id", quote.customer_id)
       .maybeSingle();
 
     if (existingConversation) {
       conversationId = existingConversation.id;
     } else {
-      // Create new conversation
+      // Create new conversation for customer
       const { data: newConversation, error: conversationError } =
         await supabaseAdmin
-          .from("conversations")
+          .from("customer_conversations")
           .insert({
             customer_id: quote.customer_id,
-            quote_id: quote_id,
+            subject: `Quote #${quote.quote_number} - Translation Services`,
             status: "active",
           })
           .select("id")
@@ -119,25 +119,28 @@ serve(async (req) => {
     // 5. Send email to customer if they have an email
     if (quote.customers?.email) {
       try {
-        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-email`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
-          },
-          body: JSON.stringify({
-            templateId: 20, // New message notification template
-            to: quote.customers.email,
-            replyTo: staff.email || "support@cethos.com",
-            params: {
-              CUSTOMER_NAME: quote.customers.full_name || "Customer",
-              STAFF_NAME: staff.full_name || "Cethos Team",
-              MESSAGE_TEXT: message_text,
-              QUOTE_NUMBER: quote.quote_number,
-              QUOTE_URL: `${Deno.env.get("FRONTEND_URL")}/dashboard/quotes/${quote_id}`,
+        await fetch(
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-email`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
             },
-          }),
-        });
+            body: JSON.stringify({
+              templateId: 20, // New message notification template
+              to: quote.customers.email,
+              replyTo: staff.email || "support@cethos.com",
+              params: {
+                CUSTOMER_NAME: quote.customers.full_name || "Customer",
+                STAFF_NAME: staff.full_name || "Cethos Team",
+                MESSAGE_TEXT: message_text,
+                QUOTE_NUMBER: quote.quote_number,
+                QUOTE_URL: `${Deno.env.get("FRONTEND_URL")}/dashboard/quotes/${quote_id}`,
+              },
+            }),
+          },
+        );
       } catch (emailError) {
         console.error("Failed to send email notification:", emailError);
         // Don't fail the operation if email fails
