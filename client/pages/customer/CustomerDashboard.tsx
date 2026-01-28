@@ -171,37 +171,37 @@ export default function CustomerDashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">
             Quick Actions
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex flex-col sm:grid sm:grid-cols-2 gap-3 sm:gap-4">
             <Link
               to="/quote"
-              className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors group"
+              className="flex items-center justify-between p-3 sm:p-4 border-2 border-gray-200 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors group active:scale-95"
             >
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 bg-teal-100 rounded-lg flex items-center justify-center group-hover:bg-teal-200">
+                <div className="h-10 w-10 bg-teal-100 rounded-lg flex items-center justify-center group-hover:bg-teal-200 flex-shrink-0">
                   <FileText className="w-5 h-5 text-teal-600" />
                 </div>
-                <span className="font-medium text-gray-900">
+                <span className="text-sm sm:text-base font-medium text-gray-900">
                   Start New Quote
                 </span>
               </div>
-              <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-teal-600" />
+              <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-teal-600 flex-shrink-0" />
             </Link>
 
             <Link
               to="/dashboard/orders"
-              className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors group"
+              className="flex items-center justify-between p-3 sm:p-4 border-2 border-gray-200 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors group active:scale-95"
             >
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 bg-teal-100 rounded-lg flex items-center justify-center group-hover:bg-teal-200">
+                <div className="h-10 w-10 bg-teal-100 rounded-lg flex items-center justify-center group-hover:bg-teal-200 flex-shrink-0">
                   <Receipt className="w-5 h-5 text-teal-600" />
                 </div>
-                <span className="font-medium text-gray-900">View Invoices</span>
+                <span className="text-sm sm:text-base font-medium text-gray-900">View Invoices</span>
               </div>
-              <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-teal-600" />
+              <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-teal-600 flex-shrink-0" />
             </Link>
           </div>
         </div>
