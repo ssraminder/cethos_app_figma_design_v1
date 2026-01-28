@@ -31,6 +31,40 @@ export default function MessagePanel({
   const [conversationId, setConversationId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Mark customer messages as read by staff
+  const markMessagesAsRead = async (messageIds: string[]) => {
+    if (messageIds.length === 0) return;
+
+    try {
+      console.log("📝 Marking messages as read:", messageIds);
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-messages-read`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            message_ids: messageIds,
+            read_by: "staff",
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Failed to mark as read:", errorData);
+        return;
+      }
+
+      console.log("✅ Messages marked as read");
+    } catch (err) {
+      console.error("❌ Failed to mark messages as read:", err);
+    }
+  };
+
   // Fetch messages using Edge Function (bypasses RLS)
   const fetchMessages = async () => {
     try {
@@ -61,6 +95,16 @@ export default function MessagePanel({
       if (result.success && result.messages) {
         console.log("✅ Found messages:", result.messages.length);
         setMessages(result.messages);
+
+        // Mark unread customer messages as read by staff
+        const unreadCustomerMessages = result.messages.filter(
+          (msg: Message) => msg.sender_type === "customer" && !msg.read_by_staff_at
+        );
+
+        if (unreadCustomerMessages.length > 0) {
+          const messageIds = unreadCustomerMessages.map((msg: Message) => msg.id);
+          markMessagesAsRead(messageIds);
+        }
       } else {
         console.log("⚠️ No messages found");
         setMessages([]);
