@@ -25,7 +25,7 @@ serve(async (req) => {
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -38,7 +38,7 @@ serve(async (req) => {
           autoRefreshToken: false,
           persistSession: false,
         },
-      }
+      },
     );
 
     const now = new Date().toISOString();
@@ -132,7 +132,7 @@ serve(async (req) => {
                 SUPPORT_EMAIL: "support@cethos.com",
               },
             }),
-          }
+          },
         );
 
         if (!emailResponse.ok) {
@@ -150,7 +150,7 @@ serve(async (req) => {
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error) {
     console.error("Error in reject-quote-permanent:", error);
@@ -163,7 +163,7 @@ serve(async (req) => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });
