@@ -14,6 +14,8 @@ import {
   Trash2,
   X,
   Clock,
+  MoreVertical,
+  Eye,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -58,6 +60,9 @@ export default function AdminQuotesList() {
   const [selectedQuotes, setSelectedQuotes] = useState<string[]>([]);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  // Actions menu state
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const { session: currentStaff } = useAdminAuthContext();
 
@@ -338,17 +343,17 @@ export default function AdminQuotesList() {
       <div>
         {/* Search & Filters Bar */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col md:flex-row gap-3">
             {/* Search */}
-            <form onSubmit={handleSearch} className="flex-1">
+            <form onSubmit={handleSearch} className="flex-1 md:max-w-md">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search by quote number, email, or name..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Search quotes..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
               </div>
             </form>
@@ -495,10 +500,10 @@ export default function AdminQuotesList() {
         {/* Table */}
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+            <table className="w-full min-w-[640px]">
+              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-3 text-left w-10">
+                  <th className="px-3 py-3 text-left w-10">
                     <input
                       type="checkbox"
                       checked={
@@ -510,40 +515,37 @@ export default function AdminQuotesList() {
                       className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                     />
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Quote
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Quote Details
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Customer
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Languages
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Total
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Created
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Date / Expiry
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+                    <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
+                    <td colSpan={7} className="px-6 py-12 text-center">
                       <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ) : quotes.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={7}
                       className="px-6 py-12 text-center text-gray-500"
                     >
                       No quotes found
@@ -555,7 +557,7 @@ export default function AdminQuotesList() {
                       key={quote.id}
                       className="hover:bg-gray-50 transition-colors"
                     >
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-3">
                         {canDeleteQuote(quote) ? (
                           <input
                             type="checkbox"
@@ -572,89 +574,91 @@ export default function AdminQuotesList() {
                           />
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                      {/* Combined Quote Details Column */}
+                      <td className="px-4 py-3">
                         <Link
                           to={`/admin/quotes/${quote.id}`}
-                          className="flex items-center gap-3"
+                          className="block group"
                         >
-                          <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                            <FileText className="w-5 h-5 text-blue-600" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              {quote.quote_number}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {quote.file_count} file
-                              {quote.file_count !== 1 ? "s" : ""}
-                              {quote.is_rush && (
-                                <span className="ml-2 text-amber-600">
-                                  ⚡ Rush
-                                </span>
-                              )}
-                            </p>
-                          </div>
+                          <p className="text-sm font-semibold text-gray-900 font-mono group-hover:text-teal-600">
+                            {quote.quote_number}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {quote.file_count} file{quote.file_count !== 1 ? "s" : ""} • {quote.source_language_name || "—"} → {quote.target_language_name || "English"}
+                            {quote.is_rush && (
+                              <span className="ml-1.5 text-amber-600 font-medium">
+                                ⚡ Rush
+                              </span>
+                            )}
+                          </p>
                         </Link>
                       </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-gray-900">
+                      {/* Combined Customer Column */}
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-medium text-gray-900">
                           {quote.customer_name || "—"}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 mt-0.5">
                           {quote.customer_email || "—"}
                         </p>
                       </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-gray-700">
-                          {quote.source_language_name || "—"} →{" "}
-                          {quote.target_language_name || "English"}
-                        </p>
-                      </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3">
                         <StatusBadge status={quote.status} />
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-medium text-gray-900 tabular-nums">
+                      <td className="px-4 py-3 text-right">
+                        <p className="text-sm font-semibold text-gray-900 tabular-nums">
                           ${(quote.total || 0).toFixed(2)}
                         </p>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <div>
-                            <p className="text-sm text-gray-700">
-                              {format(
-                                new Date(quote.created_at),
-                                "MMM d, yyyy",
-                              )}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {format(new Date(quote.created_at), "h:mm a")}
-                            </p>
-                          </div>
+                      {/* Combined Date & Expiry Column */}
+                      <td className="px-4 py-3">
+                        <p className="text-sm text-gray-700">
+                          {format(new Date(quote.created_at), "MMM d, yyyy")}
+                        </p>
+                        <div className="mt-1">
                           {getExpiryBadge(quote.expires_at)}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            to={`/admin/quotes/${quote.id}`}
-                            className="text-teal-600 hover:text-teal-800 text-sm"
-                          >
-                            View
-                          </Link>
-                          {canDeleteQuote(quote) && (
-                            <button
-                              onClick={() => {
-                                setSelectedQuotes([quote.id]);
-                                setShowBulkDeleteModal(true);
-                              }}
-                              className="text-red-600 hover:text-red-800"
-                              title="Delete quote"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
+                      {/* Actions Meatball Menu */}
+                      <td className="px-4 py-3 text-center relative">
+                        <button
+                          onClick={() => setOpenMenuId(openMenuId === quote.id ? null : quote.id)}
+                          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                          aria-label="Actions"
+                        >
+                          <MoreVertical className="w-4 h-4 text-gray-600" />
+                        </button>
+                        {openMenuId === quote.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-10"
+                              onClick={() => setOpenMenuId(null)}
+                            />
+                            <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                              <Link
+                                to={`/admin/quotes/${quote.id}`}
+                                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={() => setOpenMenuId(null)}
+                              >
+                                <Eye className="w-4 h-4" />
+                                View Details
+                              </Link>
+                              {canDeleteQuote(quote) && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedQuotes([quote.id]);
+                                    setShowBulkDeleteModal(true);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))
