@@ -14,8 +14,8 @@ import { format } from "date-fns";
 
 interface Attachment {
   id: string;
-  file_name: string;
-  file_type: string;
+  filename: string;
+  mime_type: string;
   file_size: number;
   storage_path: string;
   url?: string;
