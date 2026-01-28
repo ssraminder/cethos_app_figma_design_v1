@@ -113,58 +113,58 @@ export default function CustomerDashboard() {
 
         {/* Stats Cards - 2x2 on mobile, 4 columns on desktop */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Active Quotes</p>
-                <p className="text-3xl font-bold text-gray-900">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Active Quotes</p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
                   {stats?.activeQuotes || 0}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <FileText className="w-6 h-6 text-blue-600" />
+              <div className="h-10 w-10 sm:h-12 sm:w-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">In Progress</p>
-                <p className="text-3xl font-bold text-gray-900">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">In Progress</p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
                   {stats?.inProgressOrders || 0}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-yellow-100 rounded-full flex items-center justify-center">
-                <Package className="w-6 h-6 text-yellow-600" />
+              <div className="h-10 w-10 sm:h-12 sm:w-12 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Completed</p>
-                <p className="text-3xl font-bold text-gray-900">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Completed</p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
                   {stats?.completedOrders || 0}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-green-600" />
+              <div className="h-10 w-10 sm:h-12 sm:w-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Total Spent</p>
-                <p className="text-3xl font-bold text-gray-900">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Total Spent</p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 truncate">
                   ${(stats?.totalSpent ?? 0).toFixed(2)}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-teal-100 rounded-full flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-teal-600" />
+              <div className="h-10 w-10 sm:h-12 sm:w-12 bg-teal-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-teal-600" />
               </div>
             </div>
           </div>
