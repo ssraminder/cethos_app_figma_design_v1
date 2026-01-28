@@ -12,15 +12,18 @@ interface StaffFileUploadFormProps {
   quoteId: string | null;
   staffId: string;
   onFilesChange: (files: FileData[]) => void;
+  processWithAI: boolean;
+  onProcessWithAIChange: (value: boolean) => void;
 }
 
 export default function StaffFileUploadForm({
   quoteId,
   staffId,
   onFilesChange,
+  processWithAI,
+  onProcessWithAIChange,
 }: StaffFileUploadFormProps) {
   const [files, setFiles] = useState<FileData[]>([]);
-  const [processWithAI, setProcessWithAI] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<
     Record<string, "pending" | "uploading" | "success" | "failed">
@@ -84,7 +87,7 @@ export default function StaffFileUploadForm({
           type="checkbox"
           id="processWithAI"
           checked={processWithAI}
-          onChange={(e) => setProcessWithAI(e.target.checked)}
+          onChange={(e) => onProcessWithAIChange(e.target.checked)}
           className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
         />
         <label htmlFor="processWithAI" className="flex-1 cursor-pointer">
