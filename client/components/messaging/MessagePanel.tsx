@@ -33,51 +33,62 @@ export default function MessagePanel({
   // Fetch messages
   const fetchMessages = async () => {
     try {
+      console.log("🔍 Fetching messages for quote:", quoteId);
+
       const { data, error } = await supabase
         .from("conversation_messages")
-        .select(
-          `
-          id,
-          conversation_id,
-          quote_id,
-          order_id,
-          sender_type,
-          sender_customer_id,
-          sender_staff_id,
-          message_type,
-          message_text,
-          read_by_customer_at,
-          read_by_staff_at,
-          source,
-          created_at,
-          staff_users!sender_staff_id(full_name),
-          customers!sender_customer_id(full_name)
-        `,
-        )
+        .select("*")
         .eq("quote_id", quoteId)
         .order("created_at", { ascending: true });
 
-      if (error) throw error;
+      console.log("📨 Query result:", { data, error });
 
-      const formattedMessages =
-        data?.map((msg: any) => ({
-          id: msg.id,
-          sender_type: msg.sender_type,
-          sender_name:
-            msg.sender_type === "staff"
-              ? msg.staff_users?.full_name || "Staff"
-              : msg.sender_type === "customer"
-                ? msg.customers?.full_name || "Customer"
-                : "System",
-          message_text: msg.message_text,
-          created_at: msg.created_at,
-          read_by_customer_at: msg.read_by_customer_at,
-          read_by_staff_at: msg.read_by_staff_at,
-        })) || [];
+      if (error) {
+        console.error("❌ Query error:", error);
+        throw error;
+      }
 
+      console.log("✅ Found messages:", data?.length || 0);
+
+      // Now fetch staff and customer names separately for each message
+      const formattedMessages = await Promise.all(
+        (data || []).map(async (msg: any) => {
+          let sender_name = "Unknown";
+
+          if (msg.sender_type === "staff" && msg.sender_staff_id) {
+            const { data: staffData } = await supabase
+              .from("staff_users")
+              .select("full_name")
+              .eq("id", msg.sender_staff_id)
+              .single();
+            sender_name = staffData?.full_name || "Staff";
+          } else if (msg.sender_type === "customer" && msg.sender_customer_id) {
+            const { data: customerData } = await supabase
+              .from("customers")
+              .select("full_name")
+              .eq("id", msg.sender_customer_id)
+              .single();
+            sender_name = customerData?.full_name || "Customer";
+          } else if (msg.sender_type === "system") {
+            sender_name = "System";
+          }
+
+          return {
+            id: msg.id,
+            sender_type: msg.sender_type,
+            sender_name,
+            message_text: msg.message_text,
+            created_at: msg.created_at,
+            read_by_customer_at: msg.read_by_customer_at,
+            read_by_staff_at: msg.read_by_staff_at,
+          };
+        })
+      );
+
+      console.log("✅ Formatted messages:", formattedMessages);
       setMessages(formattedMessages);
     } catch (err) {
-      console.error("Failed to fetch messages:", err);
+      console.error("❌ Failed to fetch messages:", err);
     } finally {
       setLoading(false);
     }
