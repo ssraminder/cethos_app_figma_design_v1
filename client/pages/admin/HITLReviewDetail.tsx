@@ -634,11 +634,15 @@ const HITLReviewDetail: React.FC = () => {
       return;
     }
 
+    if (!staffSession?.staffId) {
+      alert("Not authenticated. Please log in again.");
+      return;
+    }
+
     setIsRejecting(true);
+    const now = new Date().toISOString();
 
     try {
-      const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
-      const now = new Date().toISOString();
 
       // 1. Update HITL review status
       await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
@@ -652,7 +656,7 @@ const HITLReviewDetail: React.FC = () => {
         body: JSON.stringify({
           status: "rejected",
           completed_at: now,
-          completed_by: session.staffId,
+          completed_by: staffSession.staffId,
           resolution_notes: rejectQuoteReason,
         }),
       });
@@ -670,7 +674,6 @@ const HITLReviewDetail: React.FC = () => {
           },
           body: JSON.stringify({
             status: "rejected",
-            processing_status: "rejected",
             updated_at: now,
           }),
         },
@@ -686,8 +689,8 @@ const HITLReviewDetail: React.FC = () => {
           Prefer: "return=minimal",
         },
         body: JSON.stringify({
-          staff_id: session.staffId,
-          action: "reject_hitl",
+          staff_id: staffSession.staffId,
+          action_type: "reject_hitl",
           entity_type: "hitl_review",
           entity_id: reviewId,
           details: {
@@ -700,10 +703,13 @@ const HITLReviewDetail: React.FC = () => {
       });
 
       // 4. Send email if opted in
-      if (sendEmailToCustomer && reviewData.customer?.email) {
+      const customerEmail = reviewData?.customer_email || reviewData?.customer?.email;
+      const customerName = reviewData?.customer_name || reviewData?.customer?.full_name;
+
+      if (sendEmailToCustomer && customerEmail) {
         await sendRejectionEmail(
-          reviewData.customer.email,
-          reviewData.customer.full_name,
+          customerEmail,
+          customerName || 'Customer',
           reviewData.quote_number,
           rejectQuoteReason,
         );
@@ -2550,7 +2556,7 @@ const HITLReviewDetail: React.FC = () => {
               </label>
               {sendEmailToCustomer && (
                 <p className="ml-7 mt-1 text-xs text-gray-500">
-                  Email will be sent to: {reviewData?.customer?.email}
+                  Email will be sent to: <span className="font-medium">{reviewData?.customer_email || reviewData?.customer?.email || 'Unknown'}</span>
                 </p>
               )}
             </div>
