@@ -338,18 +338,28 @@ const HITLReviewDetail: React.FC = () => {
 
       // Only update claim status if we have definitive information
       // If assigned_to is null, it might mean the view/RLS blocked access
-      // In that case, preserve the existing claimedByMe state
       if (assignedTo !== null) {
         setClaimedByMe(isClaimed);
         setClaimedByOther(isClaimedByOther);
         setAssignedStaffName(null); // Will be set if we fetch from base table with staff join
+        console.log(
+          `🔐 Claim status updated - Claimed by me: ${isClaimed}, by other: ${isClaimedByOther} (assigned_to: ${assignedTo}, staffId: ${currentStaffId})`,
+        );
       } else {
-        console.warn("⚠️ assigned_to is null - preserving existing claim status to avoid false negatives");
-      }
+        // Fallback: If status is "in_review", it must be claimed by someone
+        // We'll assume it's claimed by current user if we can't determine otherwise
+        console.warn(
+          `⚠️ assigned_to is null - Cannot determine claim status from database. Status: ${reviewStatus}`,
+        );
 
-      console.log(
-        `🔐 Claimed by me: ${isClaimed}, by other: ${isClaimedByOther} (assigned_to: ${assignedTo}, staffId: ${currentStaffId})`,
-      );
+        // If review is in_review status, assume it's claimed (showing action buttons is safer than hiding them)
+        if (reviewStatus === "in_review") {
+          console.log("🔐 Review is 'in_review' - assuming claimed by current user");
+          setClaimedByMe(true);
+          setClaimedByOther(false);
+        }
+        // Otherwise preserve existing state (don't override)
+      }
 
       if (quote?.id) {
         console.log("🔍 Fetching quote files for quote:", quote.id);
