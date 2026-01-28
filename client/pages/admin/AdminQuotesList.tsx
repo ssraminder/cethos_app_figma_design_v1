@@ -173,6 +173,87 @@ export default function AdminQuotesList() {
     setSearchInput("");
   };
 
+  // Check if quote can be deleted
+  const canDeleteQuote = (quote: Quote) => {
+    return !quote.converted_to_order_id && !['paid', 'converted'].includes(quote.status);
+  };
+
+  // Toggle single selection
+  const toggleQuoteSelection = (quoteId: string) => {
+    setSelectedQuotes(prev =>
+      prev.includes(quoteId)
+        ? prev.filter(id => id !== quoteId)
+        : [...prev, quoteId]
+    );
+  };
+
+  // Toggle all (only deletable quotes)
+  const toggleSelectAll = () => {
+    const deletableQuotes = quotes.filter(canDeleteQuote);
+
+    if (selectedQuotes.length === deletableQuotes.length) {
+      setSelectedQuotes([]);
+    } else {
+      setSelectedQuotes(deletableQuotes.map(q => q.id));
+    }
+  };
+
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    if (!currentStaff?.staffId) return;
+    setIsBulkDeleting(true);
+    const deletedAt = new Date().toISOString();
+
+    try {
+      // Soft delete all selected quotes
+      const { error: quotesError } = await supabase
+        .from('quotes')
+        .update({ deleted_at: deletedAt, status: 'deleted' })
+        .in('id', selectedQuotes);
+
+      if (quotesError) throw quotesError;
+
+      // Cascade to related tables
+      await Promise.all([
+        supabase
+          .from('quote_files')
+          .update({ deleted_at: deletedAt })
+          .in('quote_id', selectedQuotes),
+        supabase
+          .from('ai_analysis_results')
+          .update({ deleted_at: deletedAt })
+          .in('quote_id', selectedQuotes),
+        supabase
+          .from('hitl_reviews')
+          .update({ deleted_at: deletedAt })
+          .in('quote_id', selectedQuotes)
+      ]);
+
+      // Log to audit (one entry for bulk action)
+      await supabase.from('staff_activity_log').insert({
+        staff_id: currentStaff.staffId,
+        action: 'bulk_delete_quotes',
+        entity_type: 'quote',
+        entity_id: null,
+        details: {
+          quote_ids: selectedQuotes,
+          count: selectedQuotes.length
+        }
+      });
+
+      // Refresh list
+      await fetchQuotes();
+      setSelectedQuotes([]);
+
+    } catch (error) {
+      console.error('Failed to delete quotes:', error);
+      alert('Failed to delete quotes. Please try again.');
+    } finally {
+      setIsBulkDeleting(false);
+      setShowBulkDeleteModal(false);
+    }
+  };
+
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const hasActiveFilters = search || status || dateFrom || dateTo || rushOnly;
 
