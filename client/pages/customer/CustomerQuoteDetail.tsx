@@ -37,6 +37,7 @@ const STATUS_COLORS: Record<string, string> = {
   ai_processing: "bg-purple-100 text-purple-800",
   quote_expired: "bg-gray-100 text-gray-800",
   quote_cancelled: "bg-red-100 text-red-800",
+  declined: "bg-orange-100 text-orange-800",
   paid: "bg-teal-100 text-teal-800",
 };
 
@@ -47,6 +48,7 @@ const STATUS_LABELS: Record<string, string> = {
   ai_processing: "Processing",
   quote_expired: "Expired",
   quote_cancelled: "Cancelled",
+  declined: "Declined",
   paid: "Paid",
 };
 
@@ -56,6 +58,7 @@ export default function CustomerQuoteDetail() {
   const navigate = useNavigate();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     if (id && customer?.id) {
@@ -97,7 +100,94 @@ export default function CustomerQuoteDetail() {
 
   const handlePayment = () => {
     if (quote?.id) {
-      navigate(`/quote/${quote.id}/checkout`);
+      // Navigate to quote flow step 5 (delivery options)
+      navigate(`/quote?quote_id=${quote.id}&step=5`);
+    }
+  };
+
+  const handleDecline = async () => {
+    if (!quote?.id || !customer?.id) return;
+
+    const confirmed = window.confirm(
+      "Are you sure you want to decline this quote? You can reopen it later if needed."
+    );
+
+    if (!confirmed) return;
+
+    setIsUpdating(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/update-quote-status?quote_id=${quote.id}&customer_id=${customer.id}&status=declined`,
+        {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to decline quote");
+      }
+
+      toast({
+        title: "Quote Declined",
+        description: "The quote has been declined successfully.",
+      });
+
+      // Reload quote to show updated status
+      loadQuote();
+    } catch (error) {
+      console.error("Failed to decline quote:", error);
+      toast({
+        title: "Error",
+        description: "Failed to decline quote. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleReopen = async () => {
+    if (!quote?.id || !customer?.id) return;
+
+    setIsUpdating(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/update-quote-status?quote_id=${quote.id}&customer_id=${customer.id}&status=quote_ready`,
+        {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to reopen quote");
+      }
+
+      toast({
+        title: "Quote Reopened",
+        description: "The quote has been reopened and is now ready.",
+      });
+
+      // Reload quote to show updated status
+      loadQuote();
+    } catch (error) {
+      console.error("Failed to reopen quote:", error);
+      toast({
+        title: "Error",
+        description: "Failed to reopen quote. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
     }
   };
 
