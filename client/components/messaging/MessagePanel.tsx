@@ -73,30 +73,88 @@ export default function MessagePanel({
     }
   };
 
+  // Get conversation ID from quote
+  useEffect(() => {
+    const getConversationId = async () => {
+      if (!quoteId) return;
+
+      try {
+        // Get customer_id from quote
+        const { data: quote, error: quoteError } = await supabase
+          .from("quotes")
+          .select("customer_id")
+          .eq("id", quoteId)
+          .single();
+
+        if (quoteError) {
+          console.error("Error fetching quote:", quoteError);
+          return;
+        }
+
+        if (quote?.customer_id) {
+          // Get conversation for this customer
+          const { data: conversation, error: convError } = await supabase
+            .from("customer_conversations")
+            .select("id")
+            .eq("customer_id", quote.customer_id)
+            .maybeSingle();
+
+          if (convError) {
+            console.error("Error fetching conversation:", convError);
+            return;
+          }
+
+          if (conversation) {
+            console.log("💬 Found conversation ID:", conversation.id);
+            setConversationId(conversation.id);
+          } else {
+            console.log("⚠️ No conversation found for customer");
+          }
+        }
+      } catch (err) {
+        console.error("Error getting conversation ID:", err);
+      }
+    };
+
+    getConversationId();
+  }, [quoteId]);
+
+  // Fetch messages on mount
   useEffect(() => {
     fetchMessages();
+  }, [quoteId]);
+
+  // Set up realtime subscription using conversationId
+  useEffect(() => {
+    if (!conversationId) return;
+
+    console.log("🔔 Setting up realtime subscription for conversation:", conversationId);
 
     // Set up realtime subscription
     const channel = supabase
-      .channel(`messages-${quoteId}`)
+      .channel(`messages:${conversationId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "conversation_messages",
-          filter: `quote_id=eq.${quoteId}`,
+          filter: `conversation_id=eq.${conversationId}`,
         },
-        () => {
+        (payload) => {
+          console.log("📩 New message received:", payload.new);
           fetchMessages();
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("🔔 Realtime subscription status:", status);
+      });
 
     return () => {
+      console.log("🔕 Unsubscribing from realtime");
       supabase.removeChannel(channel);
     };
-  }, [quoteId]);
+  }, [conversationId]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
