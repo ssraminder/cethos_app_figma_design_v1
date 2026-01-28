@@ -104,8 +104,8 @@ export default function MessagePanel({
         );
 
         if (unreadCustomerMessages.length > 0) {
-          const messageIds = unreadCustomerMessages.map((msg: Message) => msg.id);
-          markMessagesAsRead(messageIds);
+          console.log(`📨 Found ${unreadCustomerMessages.length} unread customer messages`);
+          markMessagesAsRead();
         }
       } else {
         console.log("⚠️ No messages found");
