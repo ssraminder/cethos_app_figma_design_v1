@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { Send, Loader2, MessageSquare } from "lucide-react";
+import { Send, Loader2, MessageSquare, Paperclip } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 
 interface Message {
@@ -9,6 +9,8 @@ interface Message {
   sender_name: string;
   message_text: string;
   created_at: string;
+  read_by_customer_at?: string | null;
+  read_by_staff_at?: string | null;
 }
 
 interface MessagePanelProps {
