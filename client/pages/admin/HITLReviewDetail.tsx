@@ -630,7 +630,7 @@ const HITLReviewDetail: React.FC = () => {
 
   const handleRejectQuote = async () => {
     if (!rejectQuoteReason.trim()) {
-      alert('Please provide a reason for rejection.');
+      alert("Please provide a reason for rejection.");
       return;
     }
 
@@ -650,28 +650,31 @@ const HITLReviewDetail: React.FC = () => {
           Prefer: "return=minimal",
         },
         body: JSON.stringify({
-          status: 'rejected',
+          status: "rejected",
           completed_at: now,
           completed_by: session.staffId,
-          resolution_notes: rejectQuoteReason
+          resolution_notes: rejectQuoteReason,
         }),
       });
 
       // 2. Update quote status
-      await fetch(`${SUPABASE_URL}/rest/v1/quotes?id=eq.${reviewData.quote_id}`, {
-        method: "PATCH",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/quotes?id=eq.${reviewData.quote_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            status: "rejected",
+            processing_status: "rejected",
+            updated_at: now,
+          }),
         },
-        body: JSON.stringify({
-          status: 'rejected',
-          processing_status: 'rejected',
-          updated_at: now
-        }),
-      });
+      );
 
       // 3. Log staff activity
       await fetch(`${SUPABASE_URL}/rest/v1/staff_activity_log`, {
@@ -684,15 +687,15 @@ const HITLReviewDetail: React.FC = () => {
         },
         body: JSON.stringify({
           staff_id: session.staffId,
-          action: 'reject_hitl',
-          entity_type: 'hitl_review',
+          action: "reject_hitl",
+          entity_type: "hitl_review",
           entity_id: reviewId,
           details: {
             quote_id: reviewData.quote_id,
             quote_number: reviewData.quote_number,
             reason: rejectQuoteReason,
-            email_sent: sendEmailToCustomer
-          }
+            email_sent: sendEmailToCustomer,
+          },
         }),
       });
 
@@ -702,16 +705,15 @@ const HITLReviewDetail: React.FC = () => {
           reviewData.customer.email,
           reviewData.customer.full_name,
           reviewData.quote_number,
-          rejectQuoteReason
+          rejectQuoteReason,
         );
       }
 
       alert("❌ Quote rejected successfully.");
-      navigate('/admin/hitl');
-
+      navigate("/admin/hitl");
     } catch (error) {
-      console.error('Failed to reject quote:', error);
-      alert('Failed to reject quote. Please try again.');
+      console.error("Failed to reject quote:", error);
+      alert("Failed to reject quote. Please try again.");
     } finally {
       setIsRejecting(false);
       setShowRejectQuoteModal(false);
@@ -722,35 +724,32 @@ const HITLReviewDetail: React.FC = () => {
     email: string,
     name: string,
     quoteNumber: string,
-    reason: string
+    reason: string,
   ) => {
     try {
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/send-email`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          templateId: 19,
+          to: email,
+          params: {
+            CUSTOMER_NAME: name || "Customer",
+            QUOTE_NUMBER: quoteNumber,
+            REJECTION_REASON: reason,
+            SUPPORT_EMAIL: "support@cethos.com",
           },
-          body: JSON.stringify({
-            templateId: 19,
-            to: email,
-            params: {
-              CUSTOMER_NAME: name || 'Customer',
-              QUOTE_NUMBER: quoteNumber,
-              REJECTION_REASON: reason,
-              SUPPORT_EMAIL: 'support@cethos.com'
-            }
-          })
-        }
-      );
+        }),
+      });
 
       if (!response.ok) {
-        throw new Error('Failed to send email');
+        throw new Error("Failed to send email");
       }
     } catch (error) {
-      console.error('Failed to send rejection email:', error);
+      console.error("Failed to send rejection email:", error);
       // Don't throw - email failure shouldn't block rejection
     }
   };
@@ -2469,8 +2468,12 @@ const HITLReviewDetail: React.FC = () => {
                 <XCircle className="w-5 h-5 text-red-600" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Reject Quote</h3>
-                <p className="text-sm text-gray-500">{reviewData?.quote_number}</p>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Reject Quote
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {reviewData?.quote_number}
+                </p>
               </div>
             </div>
 
@@ -2478,7 +2481,8 @@ const HITLReviewDetail: React.FC = () => {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-amber-800">
-                Rejecting this quote will permanently close it. The customer will not be able to proceed with this quote.
+                Rejecting this quote will permanently close it. The customer
+                will not be able to proceed with this quote.
               </p>
             </div>
 
@@ -2488,16 +2492,18 @@ const HITLReviewDetail: React.FC = () => {
                 Rejection Reason
               </label>
               <select
-                value={rejectQuoteReason.split(':')[0]}
+                value={rejectQuoteReason.split(":")[0]}
                 onChange={(e) => {
                   const reasons = {
-                    'spam': 'Spam or invalid submission',
-                    'inappropriate': 'Inappropriate content',
-                    'duplicate': 'Duplicate submission',
-                    'unreadable': 'Documents completely unreadable',
-                    'other': ''
+                    spam: "Spam or invalid submission",
+                    inappropriate: "Inappropriate content",
+                    duplicate: "Duplicate submission",
+                    unreadable: "Documents completely unreadable",
+                    other: "",
                   };
-                  setRejectQuoteReason(reasons[e.target.value as keyof typeof reasons] || '');
+                  setRejectQuoteReason(
+                    reasons[e.target.value as keyof typeof reasons] || "",
+                  );
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
               >
@@ -2505,7 +2511,9 @@ const HITLReviewDetail: React.FC = () => {
                 <option value="spam">Spam or invalid submission</option>
                 <option value="inappropriate">Inappropriate content</option>
                 <option value="duplicate">Duplicate submission</option>
-                <option value="unreadable">Documents completely unreadable</option>
+                <option value="unreadable">
+                  Documents completely unreadable
+                </option>
                 <option value="other">Other (specify below)</option>
               </select>
             </div>
@@ -2552,7 +2560,7 @@ const HITLReviewDetail: React.FC = () => {
               <button
                 onClick={() => {
                   setShowRejectQuoteModal(false);
-                  setRejectQuoteReason('');
+                  setRejectQuoteReason("");
                   setSendEmailToCustomer(false);
                 }}
                 disabled={isRejecting}
@@ -2565,7 +2573,7 @@ const HITLReviewDetail: React.FC = () => {
                 disabled={isRejecting || !rejectQuoteReason.trim()}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isRejecting ? 'Rejecting...' : 'Reject Quote'}
+                {isRejecting ? "Rejecting..." : "Reject Quote"}
               </button>
             </div>
           </div>
