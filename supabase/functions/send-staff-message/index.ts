@@ -281,12 +281,12 @@ serve(async (req) => {
     await supabaseAdmin.from("staff_activity_log").insert({
       staff_id,
       action_type: "send_message",
-      entity_type: "quote",
-      entity_id: quote_id,
+      entity_type: quote_id ? "quote" : "customer",
+      entity_id: quote_id || customerId,
       details: {
-        quote_number: quote.quote_number,
+        quote_id: quote_id || null,
         message_preview: message_text.substring(0, 100),
-        customer_id: quote.customer_id,
+        customer_id: customerId,
       },
     });
 
