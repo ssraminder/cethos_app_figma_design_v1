@@ -219,13 +219,19 @@ export default function ManualQuoteForm({
 
       // Step 4: Update payment method
       if (supabase) {
-        await supabase
+        const { error: updateError } = await supabase
           .from("quotes")
           .update({
             payment_method_id: paymentMethodId,
             status: "quote_ready",
           })
           .eq("id", newQuoteId);
+
+        if (updateError) {
+          console.error("Error updating payment method:", updateError);
+        }
+      } else {
+        console.error("Supabase client not available for payment method update");
       }
 
       // Step 5: Send payment link if needed
