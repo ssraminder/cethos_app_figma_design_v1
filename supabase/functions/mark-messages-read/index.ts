@@ -73,7 +73,9 @@ serve(async (req) => {
       throw new Error("Failed to mark messages as read: " + rpcError.message);
     }
 
-    console.log(`✅ Messages marked as read. Unread count: ${result[0].unread_count}`);
+    console.log(
+      `✅ Messages marked as read. Unread count: ${result[0].unread_count}`,
+    );
 
     return new Response(
       JSON.stringify({
