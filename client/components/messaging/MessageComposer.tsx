@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { Send, Paperclip, Loader2, X } from 'lucide-react';
+import { useState, useRef } from "react";
+import { Send, Paperclip, Loader2, X } from "lucide-react";
 
 interface MessageComposerProps {
   conversationId?: string;
@@ -18,20 +18,20 @@ export default function MessageComposer({
   quoteId,
   onMessageSent,
   isSending: externalIsSending,
-  placeholder = "Type your message..."
+  placeholder = "Type your message...",
 }: MessageComposerProps) {
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setAttachments(prev => [...prev, ...files]);
+    setAttachments((prev) => [...prev, ...files]);
   };
 
   const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSend = async () => {
@@ -42,13 +42,13 @@ export default function MessageComposer({
       setIsUploading(true);
 
       const formData = new FormData();
-      
+
       // Add message data
-      if (conversationId) formData.append('conversation_id', conversationId);
-      if (customerId) formData.append('customer_id', customerId);
-      if (staffId) formData.append('staff_id', staffId);
-      if (quoteId) formData.append('quote_id', quoteId);
-      if (message.trim()) formData.append('message_text', message.trim());
+      if (conversationId) formData.append("conversation_id", conversationId);
+      if (customerId) formData.append("customer_id", customerId);
+      if (staffId) formData.append("staff_id", staffId);
+      if (quoteId) formData.append("quote_id", quoteId);
+      if (message.trim()) formData.append("message_text", message.trim());
 
       // Add attachments
       attachments.forEach((file, index) => {
@@ -59,37 +59,37 @@ export default function MessageComposer({
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-message`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: formData,
-        }
+        },
       );
 
       if (!response.ok) {
-        throw new Error('Failed to send message');
+        throw new Error("Failed to send message");
       }
 
       const result = await response.json();
 
       if (result.success) {
         onMessageSent(result.message);
-        setMessage('');
+        setMessage("");
         setAttachments([]);
       } else {
-        throw new Error(result.error || 'Failed to send message');
+        throw new Error(result.error || "Failed to send message");
       }
     } catch (error) {
-      console.error('Failed to send message:', error);
-      alert('Failed to send message. Please try again.');
+      console.error("Failed to send message:", error);
+      alert("Failed to send message. Please try again.");
     } finally {
       setIsUploading(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -151,10 +151,10 @@ export default function MessageComposer({
           placeholder={placeholder}
           rows={1}
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 min-h-[42px] max-h-[120px]"
-          style={{ height: 'auto' }}
+          style={{ height: "auto" }}
           onInput={(e) => {
             const target = e.target as HTMLTextAreaElement;
-            target.style.height = 'auto';
+            target.style.height = "auto";
             target.style.height = `${target.scrollHeight}px`;
           }}
         />
@@ -176,7 +176,7 @@ export default function MessageComposer({
           )}
         </button>
       </div>
-      
+
       <p className="text-xs text-gray-400">
         Enter to send, Shift+Enter for new line
       </p>

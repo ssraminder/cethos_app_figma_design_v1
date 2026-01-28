@@ -1,5 +1,5 @@
-import { format } from 'date-fns';
-import { Link } from 'react-router-dom';
+import { format } from "date-fns";
+import { Link } from "react-router-dom";
 
 interface Message {
   id: string;
@@ -23,49 +23,54 @@ interface SystemMessageCardProps {
 export default function SystemMessageCard({ message }: SystemMessageCardProps) {
   const { message_type, metadata } = message;
 
-  const cardConfig: Record<string, { icon: string; title: string; bgColor: string; borderColor: string }> = {
+  const cardConfig: Record<
+    string,
+    { icon: string; title: string; bgColor: string; borderColor: string }
+  > = {
     quote_created: {
-      icon: '📋',
-      title: 'Quote Created',
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200'
+      icon: "📋",
+      title: "Quote Created",
+      bgColor: "bg-blue-50",
+      borderColor: "border-blue-200",
     },
     quote_ready: {
-      icon: '✅',
-      title: 'Quote Ready',
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200'
+      icon: "✅",
+      title: "Quote Ready",
+      bgColor: "bg-green-50",
+      borderColor: "border-green-200",
     },
     payment_received: {
-      icon: '💳',
-      title: 'Payment Received',
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200'
+      icon: "💳",
+      title: "Payment Received",
+      bgColor: "bg-green-50",
+      borderColor: "border-green-200",
     },
     order_status: {
-      icon: '📦',
-      title: 'Order Update',
-      bgColor: 'bg-amber-50',
-      borderColor: 'border-amber-200'
+      icon: "📦",
+      title: "Order Update",
+      bgColor: "bg-amber-50",
+      borderColor: "border-amber-200",
     },
     delivery_complete: {
-      icon: '🎉',
-      title: 'Delivered!',
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200'
-    }
+      icon: "🎉",
+      title: "Delivered!",
+      bgColor: "bg-green-50",
+      borderColor: "border-green-200",
+    },
   };
 
-  const config = cardConfig[message_type || ''] || {
-    icon: 'ℹ️',
-    title: 'Update',
-    bgColor: 'bg-gray-50',
-    borderColor: 'border-gray-200'
+  const config = cardConfig[message_type || ""] || {
+    icon: "ℹ️",
+    title: "Update",
+    bgColor: "bg-gray-50",
+    borderColor: "border-gray-200",
   };
 
   return (
     <div className="flex justify-center my-4">
-      <div className={`max-w-sm w-full ${config.bgColor} ${config.borderColor} border rounded-xl p-4`}>
+      <div
+        className={`max-w-sm w-full ${config.bgColor} ${config.borderColor} border rounded-xl p-4`}
+      >
         <div className="flex items-start gap-3">
           <span className="text-2xl">{config.icon}</span>
           <div className="flex-1">
@@ -117,7 +122,7 @@ export default function SystemMessageCard({ message }: SystemMessageCardProps) {
         </div>
 
         <p className="text-xs text-gray-500 text-center mt-3">
-          {format(new Date(message.created_at), 'h:mm a')}
+          {format(new Date(message.created_at), "h:mm a")}
         </p>
       </div>
     </div>

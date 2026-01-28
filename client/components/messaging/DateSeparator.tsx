@@ -1,11 +1,11 @@
-import { format } from 'date-fns';
+import { format } from "date-fns";
 
 interface DateSeparatorProps {
   date: string; // YYYY-MM-DD
 }
 
 export default function DateSeparator({ date }: DateSeparatorProps) {
-  const displayDate = format(new Date(date), 'MMMM d, yyyy');
+  const displayDate = format(new Date(date), "MMMM d, yyyy");
 
   return (
     <div className="flex items-center justify-center my-4">

@@ -1,4 +1,4 @@
-import { Download } from 'lucide-react';
+import { Download } from "lucide-react";
 
 interface Attachment {
   id: string;
@@ -14,26 +14,34 @@ interface FileAttachmentProps {
   isOwn: boolean;
 }
 
-export default function FileAttachment({ attachment, isOwn }: FileAttachmentProps) {
+export default function FileAttachment({
+  attachment,
+  isOwn,
+}: FileAttachmentProps) {
   const fileIcon = getFileIcon(attachment.mime_type);
   const fileSize = formatFileSize(attachment.file_size);
-  
+
   // Construct download URL if not provided
-  const downloadUrl = attachment.download_url || 
+  const downloadUrl =
+    attachment.download_url ||
     `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/${attachment.storage_path}`;
 
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-lg ${
-      isOwn ? 'bg-teal-700' : 'bg-gray-50'
-    }`}>
+    <div
+      className={`flex items-center gap-3 p-3 rounded-lg ${
+        isOwn ? "bg-teal-700" : "bg-gray-50"
+      }`}
+    >
       <span className="text-2xl">{fileIcon}</span>
       <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${
-          isOwn ? 'text-white' : 'text-gray-900'
-        }`}>
+        <p
+          className={`text-sm font-medium truncate ${
+            isOwn ? "text-white" : "text-gray-900"
+          }`}
+        >
           {attachment.original_filename}
         </p>
-        <p className={`text-xs ${isOwn ? 'text-teal-200' : 'text-gray-500'}`}>
+        <p className={`text-xs ${isOwn ? "text-teal-200" : "text-gray-500"}`}>
           {fileSize}
         </p>
       </div>
@@ -42,7 +50,7 @@ export default function FileAttachment({ attachment, isOwn }: FileAttachmentProp
         target="_blank"
         rel="noopener noreferrer"
         className={`p-2 rounded-full hover:bg-opacity-20 hover:bg-black transition-colors ${
-          isOwn ? 'text-white' : 'text-gray-600'
+          isOwn ? "text-white" : "text-gray-600"
         }`}
         title="Download"
       >
@@ -53,11 +61,12 @@ export default function FileAttachment({ attachment, isOwn }: FileAttachmentProp
 }
 
 function getFileIcon(mimeType: string): string {
-  if (mimeType === 'application/pdf') return '📄';
-  if (mimeType.startsWith('image/')) return '🖼️';
-  if (mimeType.includes('word')) return '📝';
-  if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊';
-  return '📎';
+  if (mimeType === "application/pdf") return "📄";
+  if (mimeType.startsWith("image/")) return "🖼️";
+  if (mimeType.includes("word")) return "📝";
+  if (mimeType.includes("excel") || mimeType.includes("spreadsheet"))
+    return "📊";
+  return "📎";
 }
 
 function formatFileSize(bytes: number): string {

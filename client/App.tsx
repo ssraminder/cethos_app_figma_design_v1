@@ -126,24 +126,24 @@ const App = () => (
                     <Route path="/payment/cancel" element={<PaymentCancel />} />
 
                     {/* Upload Form Routes */}
-                  <Route path="/upload" element={<UploadPage />} />
+                    <Route path="/upload" element={<UploadPage />} />
+                    <Route
+                      path="/upload/confirmation"
+                      element={<UploadConfirmationPage />}
+                    />
+                  </Route>
+
+                  {/* Customer Dashboard Routes */}
                   <Route
-                    path="/upload/confirmation"
-                    element={<UploadConfirmationPage />}
+                    path="/dashboard/messages"
+                    element={
+                      <CustomerAuthProvider>
+                        <CustomerMessages />
+                      </CustomerAuthProvider>
+                    }
                   />
-                </Route>
 
-                {/* Customer Dashboard Routes */}
-                <Route
-                  path="/dashboard/messages"
-                  element={
-                    <CustomerAuthProvider>
-                      <CustomerMessages />
-                    </CustomerAuthProvider>
-                  }
-                />
-
-                {/* Admin login (not protected) */}
+                  {/* Admin login (not protected) */}
                   <Route path="/admin/login" element={<AdminLogin />} />
                   <Route
                     path="/admin/reset-password"

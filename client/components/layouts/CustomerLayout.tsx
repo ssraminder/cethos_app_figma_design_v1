@@ -1,7 +1,7 @@
-import { ReactNode } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MessageSquare, FileText, Package, User, LogOut } from 'lucide-react';
-import { useAuth } from '../../context/CustomerAuthContext';
+import { ReactNode } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { MessageSquare, FileText, Package, User, LogOut } from "lucide-react";
+import { useAuth } from "../../context/CustomerAuthContext";
 
 interface CustomerLayoutProps {
   children: ReactNode;
@@ -15,18 +15,18 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
   const handleSignOut = async () => {
     try {
       await signOut();
-      navigate('/');
+      navigate("/");
     } catch (error) {
-      console.error('Failed to sign out:', error);
+      console.error("Failed to sign out:", error);
     }
   };
 
   const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: FileText },
-    { path: '/dashboard/quotes', label: 'Quotes', icon: FileText },
-    { path: '/dashboard/orders', label: 'Orders', icon: Package },
-    { path: '/dashboard/messages', label: 'Messages', icon: MessageSquare },
-    { path: '/dashboard/profile', label: 'Profile', icon: User },
+    { path: "/dashboard", label: "Dashboard", icon: FileText },
+    { path: "/dashboard/quotes", label: "Quotes", icon: FileText },
+    { path: "/dashboard/orders", label: "Orders", icon: Package },
+    { path: "/dashboard/messages", label: "Messages", icon: MessageSquare },
+    { path: "/dashboard/profile", label: "Profile", icon: User },
   ];
 
   return (
@@ -51,8 +51,8 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
                     to={item.path}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-teal-50 text-teal-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                        ? "bg-teal-50 text-teal-700"
+                        : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                     }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -93,8 +93,8 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
                   to={item.path}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                     isActive
-                      ? 'bg-teal-50 text-teal-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      ? "bg-teal-50 text-teal-700"
+                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -107,15 +107,16 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1">
-        {children}
-      </main>
+      <main className="flex-1">{children}</main>
 
       {/* Footer */}
       <footer className="bg-white border-t border-gray-200 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="text-center text-sm text-gray-500">
-            <p>&copy; {new Date().getFullYear()} CETHOS Translation Services. All rights reserved.</p>
+            <p>
+              &copy; {new Date().getFullYear()} CETHOS Translation Services. All
+              rights reserved.
+            </p>
           </div>
         </div>
       </footer>

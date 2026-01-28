@@ -1,11 +1,11 @@
-import { useEffect, useRef, useMemo } from 'react';
-import { format } from 'date-fns';
-import MessageBubble from './MessageBubble';
-import DateSeparator from './DateSeparator';
+import { useEffect, useRef, useMemo } from "react";
+import { format } from "date-fns";
+import MessageBubble from "./MessageBubble";
+import DateSeparator from "./DateSeparator";
 
 interface Message {
   id: string;
-  sender_type: 'staff' | 'customer' | 'system';
+  sender_type: "staff" | "customer" | "system";
   sender_name?: string;
   sender_customer_id?: string;
   sender_staff_id?: string;
@@ -24,20 +24,20 @@ interface MessageThreadProps {
   isStaffView?: boolean;
 }
 
-export default function MessageThread({ 
-  messages, 
+export default function MessageThread({
+  messages,
   currentUserId,
-  isStaffView = false 
+  isStaffView = false,
 }: MessageThreadProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Group messages by date
   const groupedMessages = useMemo(() => {
     const groups: { date: string; messages: Message[] }[] = [];
-    let currentDate = '';
+    let currentDate = "";
 
-    messages.forEach(msg => {
-      const msgDate = format(new Date(msg.created_at), 'yyyy-MM-dd');
+    messages.forEach((msg) => {
+      const msgDate = format(new Date(msg.created_at), "yyyy-MM-dd");
       if (msgDate !== currentDate) {
         currentDate = msgDate;
         groups.push({ date: msgDate, messages: [] });
@@ -50,21 +50,21 @@ export default function MessageThread({
 
   // Scroll to bottom on mount and new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   return (
     <div className="space-y-4">
-      {groupedMessages.map(group => (
+      {groupedMessages.map((group) => (
         <div key={group.date}>
           <DateSeparator date={group.date} />
           <div className="space-y-3 mt-3">
-            {group.messages.map(message => (
+            {group.messages.map((message) => (
               <MessageBubble
                 key={message.id}
                 message={message}
                 isOwn={
-                  isStaffView 
+                  isStaffView
                     ? message.sender_staff_id === currentUserId
                     : message.sender_customer_id === currentUserId
                 }

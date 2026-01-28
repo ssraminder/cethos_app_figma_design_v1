@@ -1,5 +1,11 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { supabase } from '@/lib/supabase';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
+import { supabase } from "@/lib/supabase";
 
 interface Customer {
   id: string;
@@ -19,7 +25,9 @@ interface CustomerAuthContextType {
   signOut: () => Promise<void>;
 }
 
-const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(undefined);
+const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(
+  undefined,
+);
 
 export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<any | null>(null);
@@ -39,7 +47,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.user) {
         loadCustomer(session.user.id);
@@ -56,15 +66,15 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const loadCustomer = async (userId: string) => {
     try {
       const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('auth_user_id', userId)
+        .from("customers")
+        .select("*")
+        .eq("auth_user_id", userId)
         .single();
 
       if (error) throw error;
       setCustomer(data);
     } catch (error) {
-      console.error('Failed to load customer:', error);
+      console.error("Failed to load customer:", error);
     } finally {
       setLoading(false);
     }
@@ -91,13 +101,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
     // Create customer record
     if (data.user) {
-      const { error: customerError } = await supabase
-        .from('customers')
-        .insert({
-          auth_user_id: data.user.id,
-          email,
-          full_name: fullName,
-        });
+      const { error: customerError } = await supabase.from("customers").insert({
+        auth_user_id: data.user.id,
+        email,
+        full_name: fullName,
+      });
 
       if (customerError) throw customerError;
     }
@@ -129,7 +137,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(CustomerAuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within a CustomerAuthProvider');
+    throw new Error("useAuth must be used within a CustomerAuthProvider");
   }
   return context;
 }

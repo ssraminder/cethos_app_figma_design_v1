@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import { MessageSquare, Loader2 } from 'lucide-react';
-import { useAuth } from '../../context/CustomerAuthContext';
-import CustomerLayout from '../../components/layouts/CustomerLayout';
-import MessageThread from '../../components/messaging/MessageThread';
-import MessageComposer from '../../components/messaging/MessageComposer';
+import { useState, useEffect } from "react";
+import { MessageSquare, Loader2 } from "lucide-react";
+import { useAuth } from "../../context/CustomerAuthContext";
+import CustomerLayout from "../../components/layouts/CustomerLayout";
+import MessageThread from "../../components/messaging/MessageThread";
+import MessageComposer from "../../components/messaging/MessageComposer";
 
 interface Conversation {
   id: string;
@@ -17,7 +17,7 @@ interface Conversation {
 interface Message {
   id: string;
   conversation_id: string;
-  sender_type: 'staff' | 'customer' | 'system';
+  sender_type: "staff" | "customer" | "system";
   sender_name?: string;
   sender_customer_id?: string;
   sender_staff_id?: string;
@@ -51,14 +51,14 @@ export default function CustomerMessages() {
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-customer-messages?customer_id=${customer.id}&mark_read=true`,
           {
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             },
-          }
+          },
         );
 
         if (!response.ok) {
-          throw new Error('Failed to load messages');
+          throw new Error("Failed to load messages");
         }
 
         const data = await response.json();
@@ -67,11 +67,11 @@ export default function CustomerMessages() {
           setConversation(data.data.conversation);
           setMessages(data.data.messages || []);
         } else {
-          setError(data.error || 'Failed to load messages');
+          setError(data.error || "Failed to load messages");
         }
       } catch (err) {
-        console.error('Failed to load messages:', err);
-        setError('Failed to load messages. Please try again.');
+        console.error("Failed to load messages:", err);
+        setError("Failed to load messages. Please try again.");
       } finally {
         setIsLoading(false);
       }
@@ -82,7 +82,7 @@ export default function CustomerMessages() {
 
   // Handle message sent
   const handleMessageSent = (message: Message) => {
-    setMessages(prev => [...prev, message]);
+    setMessages((prev) => [...prev, message]);
   };
 
   if (!session || !customer) {
@@ -131,8 +131,8 @@ export default function CustomerMessages() {
                 </p>
               </div>
             ) : (
-              <MessageThread 
-                messages={messages} 
+              <MessageThread
+                messages={messages}
                 currentUserId={customer.id}
                 isStaffView={false}
               />
