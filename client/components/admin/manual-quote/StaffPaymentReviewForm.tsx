@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { CreditCard, Check, Mail, Loader2 } from "lucide-react";
+import { 
+  CreditCard, Check, Mail, Loader2, User, Building2, 
+  Globe, FileText, DollarSign, Languages, MapPin, AlertCircle 
+} from "lucide-react";
+import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 
 interface PaymentMethod {
   id: string;
@@ -33,10 +37,11 @@ export default function StaffPaymentReviewForm({
   isSubmitting,
 }: StaffPaymentReviewFormProps) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] =
-    useState<string>("");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("");
   const [sendPaymentLink, setSendPaymentLink] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const { sourceLanguages, targetLanguages, intendedUses } = useDropdownOptions();
 
   useEffect(() => {
     fetchPaymentMethods();
@@ -84,179 +89,386 @@ export default function StaffPaymentReviewForm({
     onSubmit(selectedPaymentMethod, sendPaymentLink);
   };
 
+  // Get language names
+  const getSourceLanguageName = () => {
+    if (!reviewData.quote?.sourceLanguageId) return "Not specified";
+    const lang = sourceLanguages.find(l => l.id === reviewData.quote.sourceLanguageId);
+    return lang?.name || "Unknown";
+  };
+
+  const getTargetLanguageName = () => {
+    if (!reviewData.quote?.targetLanguageId) return "Not specified";
+    const lang = targetLanguages.find(l => l.id === reviewData.quote.targetLanguageId);
+    return lang?.name || "Unknown";
+  };
+
+  const getIntendedUseName = () => {
+    if (!reviewData.quote?.intendedUseId) return "Not specified";
+    const use = intendedUses.find(u => u.id === reviewData.quote.intendedUseId);
+    return use?.name || "Unknown";
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+  };
+
+  const getEntryPointLabel = () => {
+    const entryPointLabels: Record<string, string> = {
+      staff_manual: "Manual Entry",
+      staff_phone: "Phone Call",
+      staff_walkin: "Walk-in",
+      staff_email: "Email",
+    };
+    return entryPointLabels[reviewData.entryPoint] || reviewData.entryPoint;
+  };
+
   return (
     <div className="space-y-6">
-      {/* Review Summary */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">
-          Quote Summary
-        </h3>
+      {/* Customer Information */}
+      <div className="bg-white border border-gray-200 rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <User className="w-5 h-5 text-indigo-600" />
+            Customer Information
+          </h3>
+        </div>
+        <div className="px-6 py-4 space-y-3">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                Full Name
+              </p>
+              <p className="text-sm font-semibold text-gray-900">
+                {reviewData.customer?.fullName || "N/A"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                Customer Type
+              </p>
+              <div className="flex items-center gap-2">
+                {reviewData.customer?.customerType === "business" ? (
+                  <Building2 className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <User className="w-4 h-4 text-gray-400" />
+                )}
+                <p className="text-sm text-gray-900 capitalize">
+                  {reviewData.customer?.customerType || "Individual"}
+                </p>
+              </div>
+            </div>
+          </div>
 
-        <div className="space-y-4">
-          {/* Customer Info */}
-          <div>
-            <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
-              Customer
-            </h4>
-            <p className="text-sm font-medium text-gray-900">
-              {reviewData.customer?.fullName}
-            </p>
-            {reviewData.customer?.companyName && (
-              <p className="text-xs text-gray-600">
+          {reviewData.customer?.companyName && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                Company Name
+              </p>
+              <p className="text-sm text-gray-900">
                 {reviewData.customer.companyName}
               </p>
-            )}
-            <p className="text-xs text-gray-600">
-              {reviewData.customer?.email}
-            </p>
-            <p className="text-xs text-gray-600">
-              {reviewData.customer?.phone}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Entry Point:{" "}
-              {reviewData.entryPoint
-                ?.replace("staff_", "")
-                .replace("_", " ")
-                .toUpperCase()}
-            </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                Email
+              </p>
+              <p className="text-sm text-gray-900">
+                {reviewData.customer?.email || "N/A"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                Phone
+              </p>
+              <p className="text-sm text-gray-900">
+                {reviewData.customer?.phone || "N/A"}
+              </p>
+            </div>
           </div>
 
-          {/* Translation Details */}
-          {reviewData.quote?.targetLanguageId && (
+          <div className="pt-3 border-t border-gray-100">
+            <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+              Entry Point
+            </p>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+              {getEntryPointLabel()}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Translation Details */}
+      <div className="bg-white border border-gray-200 rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <Languages className="w-5 h-5 text-indigo-600" />
+            Translation Details
+          </h3>
+        </div>
+        <div className="px-6 py-4 space-y-3">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
-                Translation
-              </h4>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                Source Language
+              </p>
               <p className="text-sm text-gray-900">
-                {reviewData.quote.sourceLanguageId
-                  ? "Language pair selected"
-                  : "Target language selected"}
+                {getSourceLanguageName()}
               </p>
             </div>
-          )}
-
-          {/* Files */}
-          {reviewData.files && reviewData.files.length > 0 && (
             <div>
-              <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
-                Documents
-              </h4>
-              <p className="text-sm text-gray-900">
-                {reviewData.files.length} file
-                {reviewData.files.length > 1 ? "s" : ""} attached
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                Target Language *
+              </p>
+              <p className="text-sm font-semibold text-gray-900">
+                {getTargetLanguageName()}
               </p>
             </div>
-          )}
+          </div>
 
-          {/* Pricing */}
-          <div>
-            <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
-              Pricing
-            </h4>
-            <div className="bg-gray-50 rounded-md p-3">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600">Subtotal</span>
-                <span className="font-medium">
-                  ${reviewData.pricing?.subtotal?.toFixed(2) || "0.00"}
-                </span>
-              </div>
-              {reviewData.pricing?.rushFee > 0 && (
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-600">Rush Fee</span>
-                  <span className="font-medium">
-                    ${reviewData.pricing.rushFee.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              {reviewData.pricing?.deliveryFee > 0 && (
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-600">Delivery</span>
-                  <span className="font-medium">
-                    ${reviewData.pricing.deliveryFee.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600">Tax</span>
-                <span className="font-medium">
-                  ${reviewData.pricing?.taxAmount?.toFixed(2) || "0.00"}
-                </span>
-              </div>
-              <div className="flex justify-between text-base font-bold pt-2 border-t border-gray-300 mt-2">
-                <span>Total</span>
-                <span className="text-indigo-600">
-                  ${reviewData.pricing?.total?.toFixed(2) || "0.00"}
-                </span>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                Intended Use
+              </p>
+              <p className="text-sm text-gray-900">
+                {getIntendedUseName()}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                Country of Issue
+              </p>
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-gray-400" />
+                <p className="text-sm text-gray-900">
+                  {reviewData.quote?.countryOfIssue || "Not specified"}
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Notes */}
-          {reviewData.notes && (
-            <div>
-              <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
-                Internal Notes
-              </h4>
-              <p className="text-sm text-gray-700 bg-gray-50 p-2 rounded-md">
-                {reviewData.notes}
+          {reviewData.quote?.specialInstructions && (
+            <div className="pt-3 border-t border-gray-100">
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                Special Instructions
+              </p>
+              <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
+                {reviewData.quote.specialInstructions}
               </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Payment Method Selection */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">
-          Payment Method
-        </h3>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      {/* Documents */}
+      {reviewData.files && reviewData.files.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-lg">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-indigo-600" />
+              Documents ({reviewData.files.length})
+            </h3>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {paymentMethods.map((method) => (
-              <label
-                key={method.id}
-                className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                  selectedPaymentMethod === method.id
-                    ? "border-indigo-600 bg-indigo-50"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value={method.id}
-                  checked={selectedPaymentMethod === method.id}
-                  onChange={(e) => {
-                    setSelectedPaymentMethod(e.target.value);
-                    setSendPaymentLink(method.is_online);
-                  }}
-                  className="mt-1 w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
-                />
-                <div className="ml-3 flex-1">
-                  <div className="flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium text-gray-900">
-                      {method.name}
-                    </span>
-                    {method.is_online && (
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                        Online
-                      </span>
-                    )}
+          <div className="px-6 py-4">
+            <div className="space-y-2">
+              {reviewData.files.map((file, index) => (
+                <div
+                  key={file.id || index}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
+                >
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-5 h-5 text-gray-400" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {file.name}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {formatFileSize(file.size)}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-600 mt-1">
-                    {method.description}
-                  </p>
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                    Ready
+                  </span>
                 </div>
-              </label>
-            ))}
+              ))}
+            </div>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Pricing Summary */}
+      <div className="bg-white border border-gray-200 rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-indigo-600" />
+            Pricing Summary
+          </h3>
+        </div>
+        <div className="px-6 py-4">
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Translation Total</span>
+              <span className="font-medium text-gray-900">
+                ${reviewData.pricing?.translationTotal?.toFixed(2) || "0.00"}
+              </span>
+            </div>
+
+            {reviewData.pricing?.certificationTotal > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Certification</span>
+                <span className="font-medium text-gray-900">
+                  ${reviewData.pricing.certificationTotal.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {reviewData.pricing?.discount > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Discount</span>
+                <span className="font-medium">
+                  -${reviewData.pricing.discount.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {reviewData.pricing?.surcharge > 0 && (
+              <div className="flex justify-between text-sm text-red-600">
+                <span>Surcharge</span>
+                <span className="font-medium">
+                  +${reviewData.pricing.surcharge.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            <div className="flex justify-between text-sm pt-2 border-t border-gray-200">
+              <span className="text-gray-600">Subtotal</span>
+              <span className="font-medium text-gray-900">
+                ${reviewData.pricing?.subtotal?.toFixed(2) || "0.00"}
+              </span>
+            </div>
+
+            {reviewData.pricing?.rushFee > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Rush Fee</span>
+                <span className="font-medium text-gray-900">
+                  ${reviewData.pricing.rushFee.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {reviewData.pricing?.deliveryFee > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Delivery Fee</span>
+                <span className="font-medium text-gray-900">
+                  ${reviewData.pricing.deliveryFee.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">
+                Tax ({((reviewData.pricing?.taxRate || 0) * 100).toFixed(1)}%)
+              </span>
+              <span className="font-medium text-gray-900">
+                ${reviewData.pricing?.taxAmount?.toFixed(2) || "0.00"}
+              </span>
+            </div>
+
+            <div className="flex justify-between text-lg font-bold pt-3 border-t-2 border-gray-900 mt-3">
+              <span className="text-gray-900">Total</span>
+              <span className="text-indigo-600">
+                ${reviewData.pricing?.total?.toFixed(2) || "0.00"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Internal Notes */}
+      {reviewData.notes && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900 mb-1">
+                Internal Notes
+              </p>
+              <p className="text-sm text-amber-800">
+                {reviewData.notes}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Method Selection */}
+      <div className="bg-white border border-gray-200 rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-indigo-600" />
+            Payment Method
+          </h3>
+        </div>
+        <div className="px-6 py-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {paymentMethods.map((method) => (
+                <label
+                  key={method.id}
+                  className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                    selectedPaymentMethod === method.id
+                      ? "border-indigo-600 bg-indigo-50"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value={method.id}
+                    checked={selectedPaymentMethod === method.id}
+                    onChange={(e) => {
+                      setSelectedPaymentMethod(e.target.value);
+                      setSendPaymentLink(method.is_online);
+                    }}
+                    className="mt-1 w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
+                  />
+                  <div className="ml-3 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">
+                        {method.name}
+                      </span>
+                      {method.is_online && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                          Online
+                        </span>
+                      )}
+                      {method.requires_staff_confirmation && (
+                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
+                          Needs Confirmation
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {method.description}
+                    </p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Send Payment Link Option */}
@@ -291,19 +503,7 @@ export default function StaffPaymentReviewForm({
         selectedMethod.requires_staff_confirmation && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 mt-0.5">
-                <svg
-                  className="w-5 h-5 text-amber-600"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </div>
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-medium text-amber-900">
                   Payment Confirmation Required
@@ -319,7 +519,10 @@ export default function StaffPaymentReviewForm({
         )}
 
       {/* Submit Button */}
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+        <p className="text-sm text-gray-600">
+          Review all details before creating the quote
+        </p>
         <button
           type="button"
           onClick={handleSubmit}
