@@ -14,9 +14,12 @@ serve(async (req) => {
   }
 
   try {
+    console.log("📨 Received request");
     const { quote_id, staff_id, message_text, attachments } = await req.json();
+    console.log("📝 Parameters:", { quote_id, staff_id, message_text: message_text?.substring(0, 50) });
 
     if (!quote_id || !staff_id || !message_text) {
+      console.log("❌ Missing required fields");
       return new Response(
         JSON.stringify({
           success: false,
@@ -30,6 +33,7 @@ serve(async (req) => {
     }
 
     // Create Supabase client with service role key (bypasses RLS)
+    console.log("🔑 Creating Supabase admin client");
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -42,6 +46,7 @@ serve(async (req) => {
     );
 
     // 1. Get quote and customer info
+    console.log("📋 Fetching quote:", quote_id);
     const { data: quote, error: quoteError } = await supabaseAdmin
       .from("quotes")
       .select("*, customers(id, email, full_name)")
@@ -49,8 +54,10 @@ serve(async (req) => {
       .single();
 
     if (quoteError || !quote) {
+      console.log("❌ Quote error:", quoteError);
       throw new Error("Quote not found: " + quoteError?.message);
     }
+    console.log("✅ Quote found, customer:", quote.customer_id);
 
     // 2. Get staff info
     const { data: staff, error: staffError } = await supabaseAdmin
