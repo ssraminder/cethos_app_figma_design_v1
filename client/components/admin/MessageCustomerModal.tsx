@@ -281,7 +281,10 @@ export default function MessageCustomerModal({
       console.log("✅ Message sent");
 
       setNewMessage("");
-      clearSelectedFile();
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       await fetchMessages();
     } catch (err) {
       console.error("Failed to send message:", err);
