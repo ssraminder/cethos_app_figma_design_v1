@@ -75,11 +75,19 @@ export default function FileAttachment({
 
   const downloadUrl = signedUrl;
 
+  const handleDownload = (e: React.MouseEvent) => {
+    if (!downloadUrl) {
+      e.preventDefault();
+      alert(error || "File is not available for download");
+      return;
+    }
+  };
+
   return (
     <div
       className={`flex items-center gap-3 p-3 rounded-lg ${
         isOwn ? "bg-teal-700" : "bg-gray-50"
-      }`}
+      } ${error ? "opacity-60" : ""}`}
     >
       <span className="text-2xl">{fileIcon}</span>
       <div className="flex-1 min-w-0">
@@ -91,21 +99,33 @@ export default function FileAttachment({
           {fileName}
         </p>
         <p className={`text-xs ${isOwn ? "text-teal-200" : "text-gray-500"}`}>
-          {fileSize}
+          {error ? error : isLoading ? "Loading..." : fileSize}
         </p>
       </div>
-      <a
-        href={downloadUrl}
-        download={fileName}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`p-2 rounded-full hover:bg-opacity-20 hover:bg-black transition-colors ${
-          isOwn ? "text-white" : "text-gray-600"
-        }`}
-        title="Download"
-      >
-        <Download className="w-5 h-5" />
-      </a>
+      {downloadUrl ? (
+        <a
+          href={downloadUrl}
+          download={fileName}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={handleDownload}
+          className={`p-2 rounded-full hover:bg-opacity-20 hover:bg-black transition-colors ${
+            isOwn ? "text-white" : "text-gray-600"
+          }`}
+          title="Download"
+        >
+          <Download className="w-5 h-5" />
+        </a>
+      ) : (
+        <div
+          className={`p-2 rounded-full ${
+            isOwn ? "text-white opacity-50" : "text-gray-400"
+          }`}
+          title={error || "Loading..."}
+        >
+          <Download className="w-5 h-5" />
+        </div>
+      )}
     </div>
   );
 }
