@@ -1,7 +1,8 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { MessageSquare, FileText, Package, User, LogOut } from "lucide-react";
+import { MessageSquare, FileText, Package, User, LogOut, Menu, X } from "lucide-react";
 import { useAuth } from "../../context/CustomerAuthContext";
+import { useBranding } from "../../context/BrandingContext";
 
 interface CustomerLayoutProps {
   children: ReactNode;
@@ -9,8 +10,10 @@ interface CustomerLayoutProps {
 
 export default function CustomerLayout({ children }: CustomerLayoutProps) {
   const { customer, signOut } = useAuth();
+  const { companyName, logoUrl, loading } = useBranding();
   const navigate = useNavigate();
   const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleSignOut = async () => {
     try {
