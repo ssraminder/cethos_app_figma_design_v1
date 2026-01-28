@@ -779,6 +779,7 @@ export default function AdminQuotesList() {
 // Status Badge - Normalized to Title Case
 function StatusBadge({ status }: { status?: string }) {
   const styles: Record<string, string> = {
+    details_pending: "bg-amber-100 text-amber-700",
     draft: "bg-gray-100 text-gray-700",
     processing: "bg-blue-100 text-blue-700",
     quote_ready: "bg-green-100 text-green-700",
@@ -791,6 +792,7 @@ function StatusBadge({ status }: { status?: string }) {
   };
 
   const labels: Record<string, string> = {
+    details_pending: "Incomplete",
     draft: "Draft",
     processing: "Processing",
     quote_ready: "Quote Ready",
