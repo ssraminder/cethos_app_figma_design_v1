@@ -117,6 +117,8 @@ export default function MessageCustomerModal({
       formData.append("file", selectedFile);
       formData.append("message_id", messageId);
       formData.append("conversation_id", conversationId || "");
+      formData.append("uploader_type", "staff");
+      formData.append("uploader_id", staffId);
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-message-attachment`,
