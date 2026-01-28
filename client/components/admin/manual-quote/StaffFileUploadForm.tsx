@@ -4,7 +4,6 @@ import {
   X,
   FileText,
   AlertCircle,
-  Brain,
   CheckCircle,
   Loader2,
 } from "lucide-react";
@@ -39,7 +38,6 @@ export default function StaffFileUploadForm({
   const [analysisStatus, setAnalysisStatus] = useState<
     Record<string, "idle" | "analyzing" | "completed" | "failed" | "timeout">
   >({});
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
