@@ -170,6 +170,11 @@ export default function FileUpload() {
     return (bytes / 1048576).toFixed(1) + " MB";
   };
 
+  // ✅ FIX: Calculate actively uploading files (exclude success status to prevent duplication)
+  const activelyUploading = uploadingFiles.filter(
+    (f) => f.status === "uploading" || f.status === "error"
+  );
+
   return (
     <div className="space-y-4">
       {/* Upload Area */}
@@ -263,13 +268,13 @@ export default function FileUpload() {
         </div>
       </div>
 
-      {/* Uploading Files List */}
-      {uploadingFiles.length > 0 && (
+      {/* Uploading Files List - ✅ FIXED: Only show actively uploading or errored files */}
+      {activelyUploading.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-cethos-navy">
-            Uploading Files ({uploadingFiles.length})
+            Uploading Files ({activelyUploading.length})
           </h3>
-          {uploadingFiles.map((item, index) => (
+          {activelyUploading.map((item, index) => (
             <div
               key={index}
               className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
