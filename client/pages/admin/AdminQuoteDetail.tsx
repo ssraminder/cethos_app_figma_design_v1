@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Phone,
   RefreshCw,
+  Trash2,
   Truck,
   User,
   Zap,
