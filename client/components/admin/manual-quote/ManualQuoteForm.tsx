@@ -373,6 +373,8 @@ export default function ManualQuoteForm({
             quoteId={quoteId}
             staffId={staffUser?.id || ""}
             onFilesChange={setFiles}
+            processWithAI={processWithAI}
+            onProcessWithAIChange={setProcessWithAI}
           />
         )}
 
