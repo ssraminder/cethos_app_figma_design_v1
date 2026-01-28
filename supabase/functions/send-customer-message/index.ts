@@ -150,10 +150,16 @@ serve(async (req) => {
         try {
           // Move file from temp to permanent location
           const tempBucket = "message-attachments";
-          const fileName = tempPath.split("/").pop() || "file";
-          const permanentPath = `conversations/${conversationId}/messages/${message.id}/${fileName}`;
+          const tempFileName = tempPath.split("/").pop() || "file";
+
+          // Extract original filename (without timestamp prefix)
+          const originalFileName = tempFileName.replace(/^\d+-[a-z0-9]+-/, "");
+
+          // Use original filename for permanent path (message folder provides uniqueness)
+          const permanentPath = `conversations/${conversationId}/messages/${message.id}/${originalFileName}`;
 
           console.log(`📦 Moving file from ${tempPath} to ${permanentPath}`);
+          console.log(`📄 Restoring original filename: ${originalFileName}`);
 
           // Copy file from temp to permanent location
           const { error: copyError } = await supabaseAdmin.storage
@@ -170,7 +176,7 @@ serve(async (req) => {
             await supabaseAdmin.storage
               .from(tempBucket)
               .list(permanentPath.split("/").slice(0, -1).join("/"), {
-                search: fileName,
+                search: originalFileName,
               });
 
           if (listError) {
@@ -179,15 +185,12 @@ serve(async (req) => {
 
           const fileInfo = fileData?.[0];
 
-          // Extract original filename (without timestamp prefix if it exists)
-          const originalFileName = fileName.replace(/^\d+-[a-z0-9]+-/, "");
-
           // Insert attachment record with correct field names
           const { error: insertError } = await supabaseAdmin
             .from("message_attachments")
             .insert({
               message_id: message.id,
-              filename: fileName,
+              filename: originalFileName,
               original_filename: originalFileName,
               mime_type:
                 fileInfo?.metadata?.mimetype || "application/octet-stream",
