@@ -53,7 +53,7 @@ export default function StaffFileUploadForm({
     addFiles(droppedFiles);
   };
 
-  const addFiles = (newFiles: File[]) => {
+  const addFiles = async (newFiles: File[]) => {
     const fileData: FileData[] = newFiles.map((file) => ({
       id: `${Date.now()}-${Math.random()}`,
       name: file.name,
@@ -65,11 +65,57 @@ export default function StaffFileUploadForm({
     setFiles(updated);
     onFilesChange(updated);
 
-    // Set initial status
-    fileData.forEach((f) => {
-      setUploadStatus((prev) => ({ ...prev, [f.id]: "pending" }));
-      setAnalysisStatus((prev) => ({ ...prev, [f.id]: "idle" }));
-    });
+    // Upload each file immediately if we have a quoteId
+    if (quoteId) {
+      for (const file of fileData) {
+        setUploadStatus((prev) => ({ ...prev, [file.id]: "uploading" }));
+        setAnalysisStatus((prev) => ({ ...prev, [file.id]: processWithAI ? "analyzing" : "idle" }));
+
+        try {
+          const formData = new FormData();
+          formData.append("file", file.file);
+          formData.append("quoteId", quoteId);
+          formData.append("staffId", staffId);
+          formData.append("processWithAI", processWithAI.toString());
+
+          const uploadResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: formData,
+            },
+          );
+
+          if (!uploadResponse.ok) {
+            throw new Error("Upload failed");
+          }
+
+          const result = await uploadResponse.json();
+
+          setUploadStatus((prev) => ({ ...prev, [file.id]: "success" }));
+
+          // If AI processing was enabled, mark as completed
+          if (processWithAI && result.analysisComplete) {
+            setAnalysisStatus((prev) => ({ ...prev, [file.id]: "completed" }));
+          } else if (processWithAI) {
+            setAnalysisStatus((prev) => ({ ...prev, [file.id]: "failed" }));
+          }
+        } catch (error) {
+          console.error(`Failed to upload ${file.name}:`, error);
+          setUploadStatus((prev) => ({ ...prev, [file.id]: "failed" }));
+          setAnalysisStatus((prev) => ({ ...prev, [file.id]: "failed" }));
+        }
+      }
+    } else {
+      // Set initial status if no quoteId yet
+      fileData.forEach((f) => {
+        setUploadStatus((prev) => ({ ...prev, [f.id]: "pending" }));
+        setAnalysisStatus((prev) => ({ ...prev, [f.id]: "idle" }));
+      });
+    }
   };
 
   const removeFile = (id: string) => {
