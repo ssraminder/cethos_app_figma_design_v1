@@ -5,9 +5,11 @@
 This Edge Function handles permanent quote rejection in the HITL review workflow. It:
 
 1. Updates the HITL review status to "rejected"
-2. Updates the quote status to "rejected"
+2. **Does NOT update quote status** (quote remains in current state - "rejected" is not a valid quote status)
 3. Logs the staff activity
 4. Optionally sends a rejection email to the customer (Template #19)
+
+**Note**: The quote status constraint only allows: `draft`, `details_pending`, `quote_ready`, `awaiting_payment`, `paid`, `in_progress`, `completed`. Rejection is tracked via the HITL review status only.
 
 ## Deployment
 
@@ -84,7 +86,6 @@ Uses **service role key** to bypass RLS for:
 ## Email Template
 
 Uses template ID **19** with parameters:
-
 - `CUSTOMER_NAME` - Customer's full name
 - `QUOTE_NUMBER` - Quote reference number
 - `REJECTION_REASON` - Staff-provided reason
