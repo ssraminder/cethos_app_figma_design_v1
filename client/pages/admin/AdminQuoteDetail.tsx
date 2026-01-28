@@ -722,7 +722,7 @@ export default function AdminQuoteDetail() {
           <div>
             <p className="text-sm font-medium text-amber-800">
               {hitlReview.assigned_to_id
-                ? `In HITL Review - Assigned to ${hitlReview.assigned_to_name}`
+                ? `In Review with: ${hitlReview.assigned_to_name}`
                 : "HITL Pending - Unassigned"}
             </p>
             <div className="text-xs text-amber-700 mt-1">
@@ -730,20 +730,29 @@ export default function AdminQuoteDetail() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link
-              to={`/admin/hitl/${hitlReview.id}`}
-              className="text-sm text-amber-700 hover:underline"
-            >
-              View review
-            </Link>
-            {!hitlReview.assigned_to_id && (
-              <button
-                onClick={claimReview}
-                disabled={actionLoading || !currentStaff}
-                className="bg-amber-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-amber-700 disabled:opacity-50"
+            {hitlReview.assigned_to_id ? (
+              <Link
+                to={`/admin/hitl/${hitlReview.id}`}
+                className="bg-amber-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-amber-700"
               >
-                Claim
-              </button>
+                View Review
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to={`/admin/hitl/${hitlReview.id}`}
+                  className="text-sm text-amber-700 hover:underline"
+                >
+                  View review
+                </Link>
+                <button
+                  onClick={claimReview}
+                  disabled={actionLoading || !currentStaff}
+                  className="bg-amber-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-amber-700 disabled:opacity-50"
+                >
+                  Claim
+                </button>
+              </>
             )}
           </div>
         </div>
