@@ -39,7 +39,7 @@ serve(async (req) => {
     }
 
     // Valid status values for customer actions
-    const validStatuses = ["declined", "quote_ready", "pending_payment"];
+    const validStatuses = ["cancelled", "quote_ready", "pending_payment", "awaiting_payment"];
     if (!validStatuses.includes(newStatus)) {
       return new Response(
         JSON.stringify({
