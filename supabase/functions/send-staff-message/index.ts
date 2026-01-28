@@ -116,7 +116,7 @@ serve(async (req) => {
       throw new Error("Failed to insert message: " + messageError.message);
     }
 
-    // 4. Send email to customer if they have an email
+    // 5. Send email to customer if they have an email
     if (quote.customers?.email) {
       try {
         await fetch(
