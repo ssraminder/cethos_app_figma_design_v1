@@ -34,15 +34,22 @@ export default function MessagePanel({
   const fetchMessages = async () => {
     try {
       const { data, error } = await supabase
-        .from("quote_messages")
+        .from("conversation_messages")
         .select(
           `
           id,
+          conversation_id,
+          quote_id,
+          order_id,
           sender_type,
+          sender_customer_id,
+          sender_staff_id,
+          message_type,
           message_text,
-          created_at,
           read_by_customer_at,
           read_by_staff_at,
+          source,
+          created_at,
           staff_users!sender_staff_id(full_name),
           customers!sender_customer_id(full_name)
         `,
@@ -87,7 +94,7 @@ export default function MessagePanel({
         {
           event: "INSERT",
           schema: "public",
-          table: "quote_messages",
+          table: "conversation_messages",
           filter: `quote_id=eq.${quoteId}`,
         },
         () => {
@@ -130,12 +137,14 @@ export default function MessagePanel({
       );
 
       if (!response.ok) {
-        // Fallback: Direct insert
-        const { error } = await supabase.from("quote_messages").insert({
+        // Fallback: Direct insert (using new table)
+        const { error } = await supabase.from("conversation_messages").insert({
           quote_id: quoteId,
           sender_type: "staff",
           sender_staff_id: staffId,
           message_text: newMessage.trim(),
+          message_type: "text",
+          source: "web",
         });
         if (error) throw error;
       } else {
