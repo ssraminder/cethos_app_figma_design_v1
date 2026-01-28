@@ -9,8 +9,11 @@ import {
   ArrowLeft,
   CreditCard,
   Download,
+  XCircle,
+  RotateCcw,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { toast } from "@/hooks/use-toast";
 
 interface Quote {
   id: string;
