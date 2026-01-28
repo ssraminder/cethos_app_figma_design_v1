@@ -135,6 +135,7 @@ const STATUS_STYLES: Record<string, string> = {
   awaiting_payment: "bg-teal-100 text-teal-700",
   expired: "bg-red-100 text-red-700",
   converted: "bg-purple-100 text-purple-700",
+  deleted: "bg-red-100 text-red-700",
 };
 
 const STATUS_LABELS: Record<string, string> = {
