@@ -9,6 +9,8 @@ import {
   Paperclip,
   FileText,
   Download,
+  Check,
+  CheckCheck,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -28,6 +30,7 @@ interface Message {
   message_text: string;
   source: "app" | "email";
   created_at: string;
+  read_by_customer_at?: string;
   attachments?: Attachment[];
 }
 
@@ -424,16 +427,16 @@ export default function MessageCustomerModal({
             </div>
           ) : (
             messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`max-w-[80%] rounded-xl px-4 py-3 ${
-                  msg.sender_type === "staff"
-                    ? "bg-blue-600 text-white ml-auto"
-                    : msg.sender_type === "system"
-                      ? "bg-gray-100 text-gray-600 text-center text-sm italic mx-auto"
-                      : "bg-gray-100 text-gray-800"
-                }`}
-              >
+              <div key={msg.id} className="flex">
+                <div
+                  className={`max-w-[80%] rounded-xl px-4 py-3 ${
+                    msg.sender_type === "staff"
+                      ? "bg-blue-600 text-white ml-auto"
+                      : msg.sender_type === "system"
+                        ? "bg-gray-100 text-gray-600 text-center text-sm italic mx-auto"
+                        : "bg-gray-100 text-gray-800"
+                  }`}
+                >
                 {msg.sender_type !== "system" && (
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span
@@ -452,13 +455,20 @@ export default function MessageCustomerModal({
                       </span>
                     )}
                     <span
-                      className={`text-xs ${
+                      className={`text-xs flex items-center gap-1 ${
                         msg.sender_type === "staff"
                           ? "text-blue-200"
                           : "text-gray-400"
                       }`}
                     >
                       {format(new Date(msg.created_at), "MMM d, h:mm a")}
+                      {msg.sender_type === "staff" && (
+                        msg.read_by_customer_at ? (
+                          <CheckCheck className="w-3 h-3" />
+                        ) : (
+                          <Check className="w-3 h-3" />
+                        )
+                      )}
                     </span>
                   </div>
                 )}
@@ -477,6 +487,7 @@ export default function MessageCustomerModal({
                     ))}
                   </div>
                 )}
+                </div>
               </div>
             ))
           )}
