@@ -287,7 +287,8 @@ const HITLReviewDetail: React.FC = () => {
 
       // Step 3: Get assigned_to from view if available, or try to fetch from base table
       let assignedTo = viewReview.assigned_to || null;
-      let reviewStatus = viewReview.review_status || viewReview.status || "pending";
+      let reviewStatus =
+        viewReview.review_status || viewReview.status || "pending";
 
       // If view doesn't have assigned_to, fetch directly from hitl_reviews base table
       if (!assignedTo) {
@@ -298,13 +299,15 @@ const HITLReviewDetail: React.FC = () => {
           if (baseReviews && baseReviews[0]) {
             assignedTo = baseReviews[0].assigned_to;
             reviewStatus = baseReviews[0].status;
-            console.log("✅ Fetched from base table - assigned_to:", assignedTo, "status:", reviewStatus);
+            console.log(
+              "✅ Fetched from base table - assigned_to:",
+              assignedTo,
+              "status:",
+              reviewStatus,
+            );
           }
         } catch (error) {
-          console.warn(
-            "⚠️ Could not fetch from base table (RLS):",
-            error,
-          );
+          console.warn("⚠️ Could not fetch from base table (RLS):", error);
         }
       }
 
@@ -354,7 +357,9 @@ const HITLReviewDetail: React.FC = () => {
 
         // If review is in_review status, assume it's claimed (showing action buttons is safer than hiding them)
         if (reviewStatus === "in_review") {
-          console.log("🔐 Review is 'in_review' - assuming claimed by current user");
+          console.log(
+            "🔐 Review is 'in_review' - assuming claimed by current user",
+          );
           setClaimedByMe(true);
           setClaimedByOther(false);
         }
