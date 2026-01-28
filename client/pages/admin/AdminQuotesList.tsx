@@ -28,6 +28,7 @@ interface Quote {
   source_language_name: string;
   target_language_name: string;
   file_count: number;
+  converted_to_order_id?: string | null;
 }
 
 const STATUS_OPTIONS = [
