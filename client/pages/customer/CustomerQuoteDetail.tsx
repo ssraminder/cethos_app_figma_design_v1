@@ -109,7 +109,7 @@ export default function CustomerQuoteDetail() {
     if (!quote?.id || !customer?.id) return;
 
     const confirmed = window.confirm(
-      "Are you sure you want to decline this quote? You can reopen it later if needed."
+      "Are you sure you want to decline this quote? You can reopen it later if needed.",
     );
 
     if (!confirmed) return;
@@ -123,7 +123,7 @@ export default function CustomerQuoteDetail() {
           headers: {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-        }
+        },
       );
 
       const result = await response.json();
@@ -163,7 +163,7 @@ export default function CustomerQuoteDetail() {
           headers: {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-        }
+        },
       );
 
       const result = await response.json();
@@ -403,8 +403,8 @@ export default function CustomerQuoteDetail() {
                     Quote Declined
                   </h3>
                   <p className="text-sm text-orange-700">
-                    You have declined this quote. If you change your mind, you can
-                    reopen it below.
+                    You have declined this quote. If you change your mind, you
+                    can reopen it below.
                   </p>
                 </div>
               </div>
