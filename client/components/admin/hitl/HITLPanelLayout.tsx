@@ -75,7 +75,8 @@ interface HITLPanelLayoutProps {
   staffName?: string;
   loading?: boolean;
   onSaveInternalNotes?: (notes: string) => Promise<void>;
-  children?: React.ReactNode; // Center panel content
+  onRefreshFiles?: () => void;
+  children?: React.ReactNode; // Document analysis content
 }
 
 export default function HITLPanelLayout({
