@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import {
   CheckCircle,
   Circle,
@@ -52,7 +52,8 @@ export default function ManualQuoteForm({
   onComplete,
   onCancel,
 }: ManualQuoteFormProps) {
-  const { user, staffUser } = useAuth();
+  const { session } = useAdminAuthContext();
+  const staffUser = session?.user;
   const [currentStep, setCurrentStep] = useState(1);
   const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [quote, setQuote] = useState<QuoteData>({});
