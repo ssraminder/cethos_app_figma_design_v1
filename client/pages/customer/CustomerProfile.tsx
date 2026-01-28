@@ -54,16 +54,19 @@ export default function CustomerProfile() {
       setLoading(true);
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(`${supabaseUrl}/functions/v1/update-customer-profile`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/update-customer-profile`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            customer_id: customer?.id,
+            ...formData,
+          }),
         },
-        body: JSON.stringify({
-          customer_id: customer?.id,
-          ...formData,
-        }),
-      });
+      );
 
       const data = await response.json();
 
