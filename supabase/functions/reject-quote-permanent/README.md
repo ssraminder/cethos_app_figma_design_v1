@@ -75,7 +75,7 @@ Uses **service role key** to bypass RLS for:
    - Updates `status`, `completed_at`, `completed_by`, `resolution_notes`
 
 2. **quotes** table:
-   - Updates `status`, `updated_at`
+   - **No updates** - quote status remains unchanged
 
 3. **staff_activity_log** table:
    - Inserts activity record with action_type: "reject_quote_permanent"
