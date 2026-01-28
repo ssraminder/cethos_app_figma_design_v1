@@ -1403,10 +1403,12 @@ const HITLReviewDetail: React.FC = () => {
               Review Not Found in Queue
             </p>
             <p className="text-blue-700 mb-4">
-              This review may have already been completed, rejected, or removed from the queue.
+              This review may have already been completed, rejected, or removed
+              from the queue.
             </p>
             <p className="text-blue-600 text-sm mb-6">
-              Review ID: <code className="bg-blue-100 px-2 py-1 rounded">{reviewId}</code>
+              Review ID:{" "}
+              <code className="bg-blue-100 px-2 py-1 rounded">{reviewId}</code>
             </p>
             <button
               onClick={() => navigate("/admin/hitl")}
