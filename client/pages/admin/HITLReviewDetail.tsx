@@ -2459,6 +2459,119 @@ const HITLReviewDetail: React.FC = () => {
         </div>
       )}
 
+      {/* Reject Quote Modal */}
+      {showRejectQuoteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <XCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Reject Quote</h3>
+                <p className="text-sm text-gray-500">{reviewData?.quote_number}</p>
+              </div>
+            </div>
+
+            {/* Warning */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-800">
+                Rejecting this quote will permanently close it. The customer will not be able to proceed with this quote.
+              </p>
+            </div>
+
+            {/* Reason Dropdown */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Rejection Reason
+              </label>
+              <select
+                value={rejectQuoteReason.split(':')[0]}
+                onChange={(e) => {
+                  const reasons = {
+                    'spam': 'Spam or invalid submission',
+                    'inappropriate': 'Inappropriate content',
+                    'duplicate': 'Duplicate submission',
+                    'unreadable': 'Documents completely unreadable',
+                    'other': ''
+                  };
+                  setRejectQuoteReason(reasons[e.target.value as keyof typeof reasons] || '');
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+              >
+                <option value="">Select a reason...</option>
+                <option value="spam">Spam or invalid submission</option>
+                <option value="inappropriate">Inappropriate content</option>
+                <option value="duplicate">Duplicate submission</option>
+                <option value="unreadable">Documents completely unreadable</option>
+                <option value="other">Other (specify below)</option>
+              </select>
+            </div>
+
+            {/* Custom Reason Text */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Additional Details (required)
+              </label>
+              <textarea
+                value={rejectQuoteReason}
+                onChange={(e) => setRejectQuoteReason(e.target.value)}
+                placeholder="Provide details about why this quote is being rejected..."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
+              />
+            </div>
+
+            {/* Email Option */}
+            <div className="mb-6">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sendEmailToCustomer}
+                  onChange={(e) => setSendEmailToCustomer(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                />
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm text-gray-700">
+                    Send rejection notification to customer
+                  </span>
+                </div>
+              </label>
+              {sendEmailToCustomer && (
+                <p className="ml-7 mt-1 text-xs text-gray-500">
+                  Email will be sent to: {reviewData?.customer?.email}
+                </p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowRejectQuoteModal(false);
+                  setRejectQuoteReason('');
+                  setSendEmailToCustomer(false);
+                }}
+                disabled={isRejecting}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectQuote}
+                disabled={isRejecting || !rejectQuoteReason.trim()}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isRejecting ? 'Rejecting...' : 'Reject Quote'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Split Modal */}
       {showSplitModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
