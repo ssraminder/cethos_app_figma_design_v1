@@ -126,7 +126,10 @@ export default function CustomerMessages() {
           filter: `conversation_id=eq.${conversation.id}`,
         },
         (payload) => {
-          console.log("📩 New message received in customer portal:", payload.new);
+          console.log(
+            "📩 New message received in customer portal:",
+            payload.new,
+          );
 
           // Fetch messages again to get full message details with sender info
           fetch(
@@ -163,7 +166,9 @@ export default function CustomerMessages() {
                 );
               }
             })
-            .catch((err) => console.error("Failed to fetch new messages:", err));
+            .catch((err) =>
+              console.error("Failed to fetch new messages:", err),
+            );
         },
       )
       .subscribe((status) => {
