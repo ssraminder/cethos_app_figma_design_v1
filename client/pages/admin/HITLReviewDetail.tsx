@@ -720,40 +720,6 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
-  const sendRejectionEmail = async (
-    email: string,
-    name: string,
-    quoteNumber: string,
-    reason: string,
-  ) => {
-    try {
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          templateId: 19,
-          to: email,
-          params: {
-            CUSTOMER_NAME: name || "Customer",
-            QUOTE_NUMBER: quoteNumber,
-            REJECTION_REASON: reason,
-            SUPPORT_EMAIL: "support@cethos.com",
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to send email");
-      }
-    } catch (error) {
-      console.error("Failed to send rejection email:", error);
-      // Don't throw - email failure shouldn't block rejection
-    }
-  };
-
   // ============================================
   // EDIT HELPERS
   // ============================================
