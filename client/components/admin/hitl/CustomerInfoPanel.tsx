@@ -1,5 +1,5 @@
 import React from "react";
-import { Mail, Phone, User, Calendar, DollarSign } from "lucide-react";
+import { Mail, Phone, User, Calendar, DollarSign, Clock } from "lucide-react";
 
 interface CustomerData {
   customer_id: string;
@@ -10,6 +10,7 @@ interface CustomerData {
   total: number;
   status: string;
   created_at: string;
+  expires_at?: string;
 }
 
 interface CustomerInfoPanelProps {
@@ -70,6 +71,38 @@ export default function CustomerInfoPanel({
       : customerData.status === "awaiting_payment"
         ? "bg-yellow-100 text-yellow-800"
         : "bg-blue-100 text-blue-800";
+
+  // Helper function for expiry badge
+  const getExpiryBadge = (expiresAt: string | null | undefined) => {
+    if (!expiresAt) return null;
+
+    const expiry = new Date(expiresAt);
+    const now = new Date();
+    const daysUntil = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysUntil < 0) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">
+          <Clock className="w-3 h-3" />
+          Expired
+        </span>
+      );
+    } else if (daysUntil <= 7) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">
+          <Clock className="w-3 h-3" />
+          {daysUntil}d left
+        </span>
+      );
+    } else {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+          <Clock className="w-3 h-3" />
+          {daysUntil}d left
+        </span>
+      );
+    }
+  };
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
@@ -137,6 +170,22 @@ export default function CustomerInfoPanel({
             <span className="text-sm text-gray-600">Created:</span>
             <span className="text-sm text-gray-500">{createdDate}</span>
           </div>
+
+          {customerData.expires_at && (
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">Expires:</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">
+                  {new Date(customerData.expires_at).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </span>
+                {getExpiryBadge(customerData.expires_at)}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
