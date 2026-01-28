@@ -139,6 +139,8 @@ serve(async (req) => {
         quote_id: msg.quote_id,
         sender_type: msg.sender_type,
         sender_name,
+        sender_customer_id: msg.sender_customer_id,
+        sender_staff_id: msg.sender_staff_id,
         message_text: msg.message_text,
         source: msg.source,
         created_at: msg.created_at,
