@@ -10,6 +10,7 @@ import {
   FileText,
   Download,
   RefreshCw,
+  Trash2,
   X,
 } from "lucide-react";
 import { format } from "date-fns";
