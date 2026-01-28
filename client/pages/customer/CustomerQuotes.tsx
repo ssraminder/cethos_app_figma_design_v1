@@ -54,32 +54,27 @@ export default function CustomerQuotes() {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
-        .from("quotes")
-        .select(
-          `
-          id,
-          quote_number,
-          status,
-          total_amount,
-          created_at,
-          valid_until,
-          source_language,
-          target_language,
-          quote_files(count)
-        `,
-        )
-        .eq("customer_id", customer?.id)
-        .order("created_at", { ascending: false });
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/get-customer-quotes?customer_id=${customer?.id}&status=${statusFilter}&search=${searchTerm}`,
+        {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error("Failed to load quotes");
+      }
 
-      const quotesWithCounts = data.map((q: any) => ({
-        ...q,
-        document_count: q.quote_files?.[0]?.count || 0,
-      }));
+      const result = await response.json();
 
-      setQuotes(quotesWithCounts);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to load quotes");
+      }
+
+      setQuotes(result.data || []);
     } catch (err) {
       console.error("Failed to load quotes:", err);
     } finally {
