@@ -66,9 +66,7 @@ export default function CustomerMessages() {
         if (data.success) {
           // Note: get-quote-messages returns conversation_id directly, not in a data object
           const conversationId = data.conversation_id;
-          setConversation(
-            conversationId ? ({ id: conversationId } as Conversation) : null,
-          );
+          setConversation(conversationId ? { id: conversationId } as Conversation : null);
           setMessages(data.messages || []);
 
           // Mark messages as read
@@ -84,11 +82,10 @@ export default function CustomerMessages() {
                 body: JSON.stringify({
                   conversation_id: conversationId,
                   reader_type: "customer",
+                  reader_id: customer.id,
                 }),
-              },
-            ).catch((err) =>
-              console.error("Failed to mark messages as read:", err),
-            );
+              }
+            ).catch((err) => console.error("Failed to mark messages as read:", err));
           }
         } else {
           setError(data.error || "Failed to load messages");
