@@ -27,7 +27,7 @@ interface CustomerAuthContextType {
 }
 
 const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(
-  undefined
+  undefined,
 );
 
 const SESSION_KEY = "cethos_customer_session";
@@ -116,9 +116,9 @@ export function useAuth() {
 export function setCustomerSession(session: Session, customer: Customer) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   localStorage.setItem(CUSTOMER_KEY, JSON.stringify(customer));
-  
+
   // Trigger a storage event to update other tabs/windows
-  window.dispatchEvent(new Event('storage'));
+  window.dispatchEvent(new Event("storage"));
 }
 
 // Helper function to get session token for API calls
