@@ -147,6 +147,7 @@ serve(async (req) => {
         created_at: msg.created_at,
         read_by_customer_at: msg.read_by_customer_at,
         read_by_staff_at: msg.read_by_staff_at,
+        metadata: msg.metadata || {},
         attachments: msg.message_attachments || [],
       };
     });
