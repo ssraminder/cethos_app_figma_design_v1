@@ -60,6 +60,7 @@ serve(async (req) => {
     console.log("✅ Quote found, customer:", quote.customer_id);
 
     // 2. Get staff info
+    console.log("👤 Fetching staff:", staff_id);
     const { data: staff, error: staffError } = await supabaseAdmin
       .from("staff_users")
       .select("full_name, email")
@@ -67,10 +68,13 @@ serve(async (req) => {
       .single();
 
     if (staffError || !staff) {
+      console.log("❌ Staff error:", staffError);
       throw new Error("Staff not found: " + staffError?.message);
     }
+    console.log("✅ Staff found:", staff.full_name);
 
     // 3. Get or create conversation for this customer
+    console.log("💬 Looking for conversation for customer:", quote.customer_id);
     let conversationId: string;
 
     // Try to find existing conversation for this customer
@@ -82,7 +86,9 @@ serve(async (req) => {
 
     if (existingConversation) {
       conversationId = existingConversation.id;
+      console.log("✅ Found existing conversation:", conversationId);
     } else {
+      console.log("📝 Creating new conversation");
       // Create new conversation for customer
       const { data: newConversation, error: conversationError } =
         await supabaseAdmin
@@ -96,15 +102,18 @@ serve(async (req) => {
           .single();
 
       if (conversationError || !newConversation) {
+        console.log("❌ Conversation creation error:", conversationError);
         throw new Error(
           "Failed to create conversation: " + conversationError?.message,
         );
       }
 
       conversationId = newConversation.id;
+      console.log("✅ Created conversation:", conversationId);
     }
 
     // 4. Insert message into conversation_messages
+    console.log("💬 Inserting message into conversation:", conversationId);
     const { data: message, error: messageError } = await supabaseAdmin
       .from("conversation_messages")
       .insert({
@@ -120,8 +129,10 @@ serve(async (req) => {
       .single();
 
     if (messageError) {
+      console.log("❌ Message insert error:", messageError);
       throw new Error("Failed to insert message: " + messageError.message);
     }
+    console.log("✅ Message inserted:", message.id);
 
     // 5. Send email to customer if they have an email
     if (quote.customers?.email) {
