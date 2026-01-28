@@ -193,12 +193,20 @@ serve(async (req) => {
       }
     }
 
-    // 6. Update conversation timestamp
+    // 6. Update conversation timestamp and increment unread count
+    // First get current unread count
+    const { data: currentConv } = await supabaseAdmin
+      .from("customer_conversations")
+      .select("unread_count_staff")
+      .eq("id", conversationId)
+      .single();
+
+    // Then update with incremented value
     await supabaseAdmin
       .from("customer_conversations")
       .update({
         last_message_at: new Date().toISOString(),
-        unread_count_staff: supabaseAdmin.raw("unread_count_staff + 1"),
+        unread_count_staff: (currentConv?.unread_count_staff || 0) + 1,
       })
       .eq("id", conversationId);
 
