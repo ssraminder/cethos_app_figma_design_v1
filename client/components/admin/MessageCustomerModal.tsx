@@ -275,6 +275,83 @@ export default function MessageCustomerModal({
     }
   };
 
+  // File preview component
+  const FilePreview = ({ file, onRemove }: { file: File; onRemove: () => void }) => {
+    const isImage = file.type.startsWith("image/");
+    const fileSize = (file.size / 1024).toFixed(1) + " KB";
+
+    return (
+      <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-2 mt-2">
+        {isImage ? (
+          <img
+            src={URL.createObjectURL(file)}
+            alt="Preview"
+            className="w-10 h-10 object-cover rounded"
+          />
+        ) : (
+          <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center">
+            <Paperclip className="w-5 h-5 text-gray-500" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-700 truncate">{file.name}</p>
+          <p className="text-xs text-gray-500">{fileSize}</p>
+        </div>
+        <button
+          onClick={onRemove}
+          className="p-1 hover:bg-gray-200 rounded"
+          title="Remove file"
+        >
+          <X className="w-4 h-4 text-gray-500" />
+        </button>
+      </div>
+    );
+  };
+
+  // Attachment display component
+  const AttachmentDisplay = ({ attachment }: { attachment: Attachment }) => {
+    const isImage = attachment.file_type.startsWith("image/");
+    const fileSize = (attachment.file_size / 1024).toFixed(1) + " KB";
+
+    const handleDownload = async () => {
+      try {
+        const { data } = await supabase.storage
+          .from("message-attachments")
+          .createSignedUrl(attachment.storage_path, 60);
+
+        if (data?.signedUrl) {
+          window.open(data.signedUrl, "_blank");
+        }
+      } catch (err) {
+        console.error("Failed to get download URL:", err);
+      }
+    };
+
+    return (
+      <div
+        onClick={handleDownload}
+        className="mt-2 flex items-center gap-2 bg-white/20 rounded-lg p-2 cursor-pointer hover:bg-white/30 transition-colors"
+      >
+        {isImage ? (
+          <img
+            src={attachment.url}
+            alt={attachment.file_name}
+            className="w-16 h-16 object-cover rounded"
+          />
+        ) : (
+          <div className="w-10 h-10 bg-white/30 rounded flex items-center justify-center">
+            <FileText className="w-5 h-5" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{attachment.file_name}</p>
+          <p className="text-xs opacity-75">{fileSize}</p>
+        </div>
+        <Download className="w-4 h-4 opacity-75 flex-shrink-0" />
+      </div>
+    );
+  };
+
   if (!isOpen) return null;
 
   return (
