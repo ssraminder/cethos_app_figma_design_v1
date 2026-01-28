@@ -344,6 +344,13 @@ export default function AdminQuotesList() {
             <Download className="w-4 h-4" />
             Export
           </button>
+          <Link
+            to="/admin/quotes/create"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+          >
+            <FileText className="w-4 h-4" />
+            Create Manual Quote
+          </Link>
         </div>
       </div>
 
