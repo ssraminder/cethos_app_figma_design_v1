@@ -159,7 +159,7 @@ export default function MessageComposer({
         {/* Send button */}
         <button
           onClick={handleSend}
-          disabled={(!message.trim() && attachments.length === 0) || isSending}
+          disabled={!message.trim() || isSending}
           className="flex-shrink-0 px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:bg-gray-400 flex items-center gap-2"
           title="Send message"
         >
