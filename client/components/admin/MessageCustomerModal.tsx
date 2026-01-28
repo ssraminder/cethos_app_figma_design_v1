@@ -203,7 +203,7 @@ export default function MessageCustomerModal({
     }
   }, [isOpen, customerId, quoteId]);
 
-  // Realtime subscription
+  // Realtime subscription with polling fallback
   useEffect(() => {
     if (!conversationId) return;
 
@@ -223,7 +223,7 @@ export default function MessageCustomerModal({
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          console.log("📩 New message in modal:", payload.new);
+          console.log("📩 New message in modal via realtime:", payload.new);
           fetchMessages();
         },
       )
@@ -231,11 +231,20 @@ export default function MessageCustomerModal({
         console.log("🔔 Realtime subscription status:", status);
       });
 
+    // Polling fallback (every 10 seconds)
+    const pollingInterval = setInterval(() => {
+      if (isOpen && document.visibilityState === "visible") {
+        console.log("🔄 Polling for new messages in modal");
+        fetchMessages();
+      }
+    }, 10000);
+
     return () => {
-      console.log("🔕 Unsubscribing from modal realtime");
+      console.log("🔕 Unsubscribing from modal realtime and stopping polling");
       supabase.removeChannel(channel);
+      clearInterval(pollingInterval);
     };
-  }, [conversationId]);
+  }, [conversationId, isOpen]);
 
   // Scroll to bottom
   useEffect(() => {
