@@ -53,19 +53,43 @@ serve(async (req) => {
       },
     );
 
-    // 1. Get quote and customer info
-    console.log("📋 Fetching quote:", quote_id);
-    const { data: quote, error: quoteError } = await supabaseAdmin
-      .from("quotes")
-      .select("*, customers(id, email, full_name)")
-      .eq("id", quote_id)
-      .single();
+    // 1. Get customer info (from quote or directly)
+    let customerId: string;
+    let customerInfo: any;
 
-    if (quoteError || !quote) {
-      console.log("❌ Quote error:", quoteError);
-      throw new Error("Quote not found: " + quoteError?.message);
+    if (quote_id) {
+      console.log("📋 Fetching quote:", quote_id);
+      const { data: quote, error: quoteError } = await supabaseAdmin
+        .from("quotes")
+        .select("*, customers(id, email, full_name)")
+        .eq("id", quote_id)
+        .single();
+
+      if (quoteError || !quote) {
+        console.log("❌ Quote error:", quoteError);
+        throw new Error("Quote not found: " + quoteError?.message);
+      }
+      console.log("✅ Quote found, customer:", quote.customer_id);
+      customerId = quote.customer_id;
+      customerInfo = quote.customers;
+    } else if (customer_id) {
+      console.log("👤 Fetching customer directly:", customer_id);
+      const { data: customer, error: customerError } = await supabaseAdmin
+        .from("customers")
+        .select("id, email, full_name")
+        .eq("id", customer_id)
+        .single();
+
+      if (customerError || !customer) {
+        console.log("❌ Customer error:", customerError);
+        throw new Error("Customer not found: " + customerError?.message);
+      }
+      console.log("✅ Customer found:", customer.full_name);
+      customerId = customer.id;
+      customerInfo = customer;
+    } else {
+      throw new Error("Either quote_id or customer_id must be provided");
     }
-    console.log("✅ Quote found, customer:", quote.customer_id);
 
     // 2. Get staff info
     console.log("👤 Fetching staff:", staff_id);
