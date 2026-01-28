@@ -518,7 +518,7 @@ export default function AdminQuoteDetail() {
       // Log to audit
       await supabase.from("staff_activity_log").insert({
         staff_id: currentStaff.staffId,
-        action: "delete_quote",
+        action_type: "delete_quote",
         entity_type: "quote",
         entity_id: id,
         details: {
