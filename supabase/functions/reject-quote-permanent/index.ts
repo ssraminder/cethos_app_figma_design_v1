@@ -25,7 +25,7 @@ serve(async (req) => {
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
+        }
       );
     }
 
@@ -38,7 +38,7 @@ serve(async (req) => {
           autoRefreshToken: false,
           persistSession: false,
         },
-      },
+      }
     );
 
     const now = new Date().toISOString();
@@ -69,18 +69,10 @@ serve(async (req) => {
       throw new Error("Failed to update review: " + reviewUpdateError.message);
     }
 
-    // 3. Update quote status to rejected
-    const { error: quoteUpdateError } = await supabaseAdmin
-      .from("quotes")
-      .update({
-        status: "rejected",
-        updated_at: now,
-      })
-      .eq("id", review.quote_id);
-
-    if (quoteUpdateError) {
-      throw new Error("Failed to update quote: " + quoteUpdateError.message);
-    }
+    // 3. Note: We do NOT update the quote status
+    // The quote remains in its current state (e.g., "draft", "details_pending")
+    // Permanent rejection is tracked via the HITL review status only
+    // This prevents constraint violations since "rejected" is not a valid quote status
 
     // 4. Log staff activity
     const { error: logError } = await supabaseAdmin
@@ -132,7 +124,7 @@ serve(async (req) => {
                 SUPPORT_EMAIL: "support@cethos.com",
               },
             }),
-          },
+          }
         );
 
         if (!emailResponse.ok) {
@@ -150,7 +142,7 @@ serve(async (req) => {
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      }
     );
   } catch (error) {
     console.error("Error in reject-quote-permanent:", error);
@@ -163,7 +155,7 @@ serve(async (req) => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      }
     );
   }
 });
