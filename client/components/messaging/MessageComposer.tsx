@@ -41,29 +41,63 @@ export default function MessageComposer({
     try {
       setIsUploading(true);
 
-      const formData = new FormData();
+      // Step 1: Upload attachments first (if any) to get temp paths
+      const tempPaths: string[] = [];
 
-      // Add message data
-      if (conversationId) formData.append("conversation_id", conversationId);
-      if (customerId) formData.append("customer_id", customerId);
-      if (staffId) formData.append("staff_id", staffId);
-      if (quoteId) formData.append("quote_id", quoteId);
-      if (message.trim()) formData.append("message_text", message.trim());
+      if (attachments.length > 0) {
+        // Need conversation ID to upload - if we don't have one, we'll create it in the message send
+        // For now, upload each file one by one
+        for (const file of attachments) {
+          const uploadFormData = new FormData();
+          uploadFormData.append("file", file);
 
-      // Add attachments
-      attachments.forEach((file, index) => {
-        formData.append(`attachments`, file);
-      });
+          // Use temp conversation ID if we don't have a real one yet
+          const tempConversationId = conversationId || `temp_${customerId}`;
+          uploadFormData.append("conversation_id", tempConversationId);
+          uploadFormData.append("uploader_type", customerId ? "customer" : "staff");
+          uploadFormData.append("uploader_id", customerId || staffId || "");
 
-      // Send to Edge Function
+          const uploadResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-message-attachment`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: uploadFormData,
+            },
+          );
+
+          if (uploadResponse.ok) {
+            const uploadResult = await uploadResponse.json();
+            if (uploadResult.success && uploadResult.data.temp_path) {
+              tempPaths.push(uploadResult.data.temp_path);
+            }
+          } else {
+            console.error("Failed to upload file:", file.name);
+            // Continue with other files
+          }
+        }
+      }
+
+      // Step 2: Send message with JSON payload including temp paths
+      const payload: any = {};
+
+      if (customerId) payload.customer_id = customerId;
+      if (staffId) payload.staff_id = staffId;
+      if (quoteId) payload.quote_id = quoteId;
+      if (message.trim()) payload.message_text = message.trim();
+      if (tempPaths.length > 0) payload.attachments = tempPaths;
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-message`,
         {
           method: "POST",
           headers: {
+            "Content-Type": "application/json",
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-          body: formData,
+          body: JSON.stringify(payload),
         },
       );
 
@@ -74,7 +108,7 @@ export default function MessageComposer({
       const result = await response.json();
 
       if (result.success) {
-        onMessageSent(result.message);
+        onMessageSent(result.data.message);
         setMessage("");
         setAttachments([]);
       } else {
