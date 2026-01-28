@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Trash2, RefreshCw, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import {
+  Trash2,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+} from "lucide-react";
 import { format } from "date-fns";
 
 interface PurgeLog {
@@ -70,7 +76,11 @@ export default function PurgeDraftQuotes() {
   const handlePurge = async () => {
     if (!supabase) return;
 
-    if (!confirm(`Are you sure you want to purge draft quotes older than 2 weeks?\n\nThis will permanently delete ${oldQuotesCount} quotes and their related data.\n\nThis action cannot be undone.`)) {
+    if (
+      !confirm(
+        `Are you sure you want to purge draft quotes older than 2 weeks?\n\nThis will permanently delete ${oldQuotesCount} quotes and their related data.\n\nThis action cannot be undone.`,
+      )
+    ) {
       return;
     }
 
@@ -90,7 +100,7 @@ export default function PurgeDraftQuotes() {
       };
 
       setPurgeResult(result);
-      
+
       // Refresh counts and history
       await fetchOldQuotesCount();
       await fetchPurgeHistory();
@@ -108,7 +118,8 @@ export default function PurgeDraftQuotes() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Purge Draft Quotes</h1>
         <p className="text-sm text-gray-600 mt-1">
-          Automatically delete old draft and incomplete quotes to keep the database clean
+          Automatically delete old draft and incomplete quotes to keep the
+          database clean
         </p>
       </div>
 
@@ -163,11 +174,13 @@ export default function PurgeDraftQuotes() {
 
       {/* Result Alert */}
       {purgeResult && (
-        <div className={`rounded-lg border p-4 mb-6 ${
-          purgeResult.deleted_count > 0 
-            ? "bg-green-50 border-green-200" 
-            : "bg-blue-50 border-blue-200"
-        }`}>
+        <div
+          className={`rounded-lg border p-4 mb-6 ${
+            purgeResult.deleted_count > 0
+              ? "bg-green-50 border-green-200"
+              : "bg-blue-50 border-blue-200"
+          }`}
+        >
           <div className="flex items-start gap-3">
             {purgeResult.deleted_count > 0 ? (
               <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
@@ -175,20 +188,34 @@ export default function PurgeDraftQuotes() {
               <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
             )}
             <div className="flex-1">
-              <p className={`font-semibold ${
-                purgeResult.deleted_count > 0 ? "text-green-900" : "text-blue-900"
-              }`}>
-                {purgeResult.deleted_count > 0 
+              <p
+                className={`font-semibold ${
+                  purgeResult.deleted_count > 0
+                    ? "text-green-900"
+                    : "text-blue-900"
+                }`}
+              >
+                {purgeResult.deleted_count > 0
                   ? `Successfully purged ${purgeResult.deleted_count} quotes`
-                  : "No quotes found to purge"
-                }
+                  : "No quotes found to purge"}
               </p>
               <div className="mt-2 text-sm text-gray-700 space-y-1">
-                <p>• Quotes deleted: {purgeResult.details.quotes_deleted || 0}</p>
+                <p>
+                  • Quotes deleted: {purgeResult.details.quotes_deleted || 0}
+                </p>
                 <p>• Files deleted: {purgeResult.details.files_deleted || 0}</p>
-                <p>• Analysis records deleted: {purgeResult.details.analysis_deleted || 0}</p>
+                <p>
+                  • Analysis records deleted:{" "}
+                  {purgeResult.details.analysis_deleted || 0}
+                </p>
                 <p className="text-xs text-gray-500 mt-2">
-                  Cutoff date: {purgeResult.details.cutoff_date ? format(new Date(purgeResult.details.cutoff_date), "MMM d, yyyy h:mm a") : "N/A"}
+                  Cutoff date:{" "}
+                  {purgeResult.details.cutoff_date
+                    ? format(
+                        new Date(purgeResult.details.cutoff_date),
+                        "MMM d, yyyy h:mm a",
+                      )
+                    : "N/A"}
                 </p>
               </div>
             </div>
@@ -202,7 +229,9 @@ export default function PurgeDraftQuotes() {
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-blue-900 mb-1">What Gets Purged?</h3>
+              <h3 className="font-semibold text-blue-900 mb-1">
+                What Gets Purged?
+              </h3>
               <ul className="text-sm text-blue-800 space-y-1">
                 <li>• Draft quotes older than 14 days</li>
                 <li>• Incomplete quotes (no customer info)</li>
@@ -216,9 +245,12 @@ export default function PurgeDraftQuotes() {
           <div className="flex items-start gap-3">
             <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-amber-900 mb-1">Automatic Schedule</h3>
+              <h3 className="font-semibold text-amber-900 mb-1">
+                Automatic Schedule
+              </h3>
               <p className="text-sm text-amber-800">
-                Purge runs automatically every day at 2:00 AM UTC via GitHub Actions workflow.
+                Purge runs automatically every day at 2:00 AM UTC via GitHub
+                Actions workflow.
               </p>
               <p className="text-xs text-amber-700 mt-2">
                 See code/.github/workflows/purge-draft-quotes.yml
@@ -255,8 +287,19 @@ export default function PurgeDraftQuotes() {
                       Purged {log.details.quotes_deleted || 0} quotes
                     </p>
                     <div className="mt-1 text-xs text-gray-500 space-y-0.5">
-                      <p>Files: {log.details.files_deleted || 0} • Analysis: {log.details.analysis_deleted || 0}</p>
-                      <p>Cutoff: {log.details.cutoff_date ? format(new Date(log.details.cutoff_date), "MMM d, yyyy") : "N/A"}</p>
+                      <p>
+                        Files: {log.details.files_deleted || 0} • Analysis:{" "}
+                        {log.details.analysis_deleted || 0}
+                      </p>
+                      <p>
+                        Cutoff:{" "}
+                        {log.details.cutoff_date
+                          ? format(
+                              new Date(log.details.cutoff_date),
+                              "MMM d, yyyy",
+                            )
+                          : "N/A"}
+                      </p>
                     </div>
                   </div>
                   <div className="text-right ml-4">

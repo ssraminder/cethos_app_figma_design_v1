@@ -238,13 +238,19 @@ const App = () => (
                       element={<HITLReviewDetail />}
                     />
                     <Route path="quotes" element={<AdminQuotesList />} />
-                    <Route path="quotes/create" element={<ManualQuoteCreate />} />
+                    <Route
+                      path="quotes/create"
+                      element={<ManualQuoteCreate />}
+                    />
                     <Route path="quotes/:id" element={<AdminQuoteDetail />} />
                     <Route path="orders" element={<AdminOrdersList />} />
                     <Route path="orders/:id" element={<AdminOrderDetail />} />
                     <Route path="settings" element={<AdminSettings />} />
                     <Route path="settings/*" element={<AdminSettings />} />
-                    <Route path="settings/purge-quotes" element={<PurgeDraftQuotes />} />
+                    <Route
+                      path="settings/purge-quotes"
+                      element={<PurgeDraftQuotes />}
+                    />
                     <Route path="analytics" element={<AdminAIAnalytics />} />
                     <Route path="ai/analytics" element={<AdminAIAnalytics />} />
                     <Route path="patterns" element={<Patterns />} />
