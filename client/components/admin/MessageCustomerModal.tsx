@@ -222,7 +222,7 @@ export default function MessageCustomerModal({
 
   // Send message
   const handleSend = async () => {
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() && !selectedFile) return;
 
     setSending(true);
     try {
@@ -237,8 +237,9 @@ export default function MessageCustomerModal({
           body: JSON.stringify({
             customer_id: customerId,
             quote_id: quoteId || null,
-            message_text: newMessage.trim(),
+            message_text: newMessage.trim() || (selectedFile ? `Sent a file: ${selectedFile.name}` : ""),
             staff_id: staffId,
+            has_attachment: !!selectedFile,
           }),
         }
       );
@@ -247,8 +248,16 @@ export default function MessageCustomerModal({
         throw new Error("Failed to send message");
       }
 
+      const data = await response.json();
       console.log("✅ Message sent");
+
+      // Upload file if selected
+      if (selectedFile && data.data?.message?.id) {
+        await uploadFile(data.data.message.id);
+      }
+
       setNewMessage("");
+      clearSelectedFile();
       await fetchMessages();
     } catch (err) {
       console.error("Failed to send message:", err);
