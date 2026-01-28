@@ -104,7 +104,7 @@ serve(async (req) => {
     const { data: messages, error: messagesError } = await supabaseAdmin
       .from("conversation_messages")
       .select(
-        `id, conversation_id, quote_id, sender_type, sender_customer_id, sender_staff_id, message_text, message_type, source, read_by_customer_at, read_by_staff_at, created_at, message_attachments(id, filename, original_filename, mime_type, file_size, storage_path), customers:sender_customer_id(full_name, email), staff_users:sender_staff_id(full_name, email)`,
+        `id, conversation_id, quote_id, sender_type, sender_customer_id, sender_staff_id, message_text, message_type, source, read_by_customer_at, read_by_staff_at, created_at, metadata, message_attachments(id, filename, original_filename, mime_type, file_size, storage_path), customers:sender_customer_id(full_name, email), staff_users:sender_staff_id(full_name, email)`,
       )
       .eq("conversation_id", resolvedConversationId)
       .order("created_at", { ascending: true });
