@@ -112,7 +112,7 @@ export default function MessagePanel({
 
     setSending(true);
     try {
-      // Try Edge Function first, fallback to direct insert
+      // Call Edge Function with correct parameter names
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-staff-message`,
         {
@@ -122,9 +122,9 @@ export default function MessagePanel({
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
-            quoteId,
-            staffId,
-            messageText: newMessage.trim(),
+            quote_id: quoteId,
+            staff_id: staffId,
+            message_text: newMessage.trim(),
           }),
         },
       );
