@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import CustomerInfoPanel from "./CustomerInfoPanel";
 import DocumentFilesPanel from "./DocumentFilesPanel";
 import QuoteDetailsPanel from "./QuoteDetailsPanel";
@@ -7,6 +8,7 @@ import ContactInfoPanel from "./ContactInfoPanel";
 import PricingSummaryPanel from "./PricingSummaryPanel";
 import InternalNotesPanel from "./InternalNotesPanel";
 import MessagePanel from "../../messaging/MessagePanel";
+import DocumentManagementPanel from "./DocumentManagementPanel";
 
 interface QuoteFile {
   id: string;
