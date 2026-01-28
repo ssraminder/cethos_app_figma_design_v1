@@ -295,12 +295,24 @@ export default function AdminQuoteDetail() {
       );
 
       const { data: messagesData } = await supabase
-        .from("quote_messages")
+        .from("conversation_messages")
         .select(
           `
-          *,
-          sender_staff:staff_users!quote_messages_sender_staff_id_fkey(full_name),
-          sender_customer:customers!quote_messages_sender_customer_id_fkey(full_name)
+          id,
+          conversation_id,
+          quote_id,
+          order_id,
+          sender_type,
+          sender_customer_id,
+          sender_staff_id,
+          message_type,
+          message_text,
+          read_by_customer_at,
+          read_by_staff_at,
+          source,
+          created_at,
+          sender_staff:staff_users!conversation_messages_sender_staff_id_fkey(full_name),
+          sender_customer:customers!conversation_messages_sender_customer_id_fkey(full_name)
         `,
         )
         .eq("quote_id", id)
