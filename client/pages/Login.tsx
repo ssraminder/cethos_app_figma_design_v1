@@ -106,17 +106,10 @@ export default function Login() {
         throw new Error(data.error || "Invalid code");
       }
 
-      // OTP verified! Sign in with temporary password
-      if (data.email && data.temp_password) {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: data.email,
-          password: data.temp_password,
-        });
-
-        if (signInError) {
-          console.error("Sign in error:", signInError);
-          throw new Error("Failed to sign in");
-        }
+      // OTP verified! Save session and customer data
+      if (data.session && data.customer) {
+        // Store session in localStorage
+        setCustomerSession(data.session, data.customer);
 
         toast({
           title: "Success!",
@@ -126,6 +119,8 @@ export default function Login() {
         // Navigate to dashboard
         setTimeout(() => {
           navigate("/dashboard");
+          // Reload to trigger auth context update
+          window.location.reload();
         }, 500);
       } else {
         throw new Error("Invalid response from server");
