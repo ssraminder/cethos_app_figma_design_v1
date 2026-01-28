@@ -78,6 +78,7 @@ import OCRSettings from "./pages/admin/settings/OCRSettings";
 import HITLThresholdsSettings from "./pages/admin/settings/HITLThresholdsSettings";
 import IntendedUsesSettings from "./pages/admin/settings/IntendedUsesSettings";
 import PickupLocationsSettings from "./pages/admin/settings/PickupLocationsSettings";
+import PaymentMethodsSettings from "./pages/admin/settings/PaymentMethodsSettings";
 import SameDaySettings from "./pages/admin/settings/SameDaySettings";
 import LanguageTiersSettings from "./pages/admin/settings/LanguageTiersSettings";
 import LanguagesSettings from "./pages/admin/settings/LanguagesSettings";
@@ -309,6 +310,10 @@ const App = () => (
                     <Route
                       path="settings/pickup-locations"
                       element={<PickupLocationsSettings />}
+                    />
+                    <Route
+                      path="settings/payment-methods"
+                      element={<PaymentMethodsSettings />}
                     />
                     <Route
                       path="settings/same-day"
