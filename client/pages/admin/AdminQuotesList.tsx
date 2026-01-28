@@ -212,29 +212,35 @@ export default function AdminQuotesList() {
     const deletedAt = new Date().toISOString();
 
     try {
-      // Soft delete all selected quotes
-      const { error: quotesError } = await supabase
-        .from("quotes")
-        .update({ deleted_at: deletedAt, status: "deleted" })
-        .in("id", selectedQuotes);
+      // Process each quote individually to respect RLS policies
+      for (const quoteId of selectedQuotes) {
+        // Soft delete quote
+        const { error: quoteError } = await supabase
+          .from("quotes")
+          .update({ deleted_at: deletedAt, status: "deleted" })
+          .eq("id", quoteId);
 
-      if (quotesError) throw quotesError;
+        if (quoteError) {
+          console.error(`Failed to delete quote ${quoteId}:`, quoteError);
+          continue; // Continue with other quotes even if one fails
+        }
 
-      // Cascade to related tables
-      await Promise.all([
-        supabase
-          .from("quote_files")
-          .update({ deleted_at: deletedAt })
-          .in("quote_id", selectedQuotes),
-        supabase
-          .from("ai_analysis_results")
-          .update({ deleted_at: deletedAt })
-          .in("quote_id", selectedQuotes),
-        supabase
-          .from("hitl_reviews")
-          .update({ deleted_at: deletedAt })
-          .in("quote_id", selectedQuotes),
-      ]);
+        // Cascade to related tables for this quote
+        await Promise.all([
+          supabase
+            .from("quote_files")
+            .update({ deleted_at: deletedAt })
+            .eq("quote_id", quoteId),
+          supabase
+            .from("ai_analysis_results")
+            .update({ deleted_at: deletedAt })
+            .eq("quote_id", quoteId),
+          supabase
+            .from("hitl_reviews")
+            .update({ deleted_at: deletedAt })
+            .eq("quote_id", quoteId),
+        ]);
+      }
 
       // Log to audit (one entry for bulk action)
       await supabase.from("staff_activity_log").insert({
