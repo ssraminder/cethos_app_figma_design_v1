@@ -108,13 +108,55 @@ export default function CustomerMessages() {
 
   // Realtime subscription for new messages
   useEffect(() => {
-    if (!conversation?.id) return;
+    if (!conversation?.id || !customer?.id) return;
 
     console.log(
       "🔔 Setting up realtime subscription for conversation:",
       conversation.id,
     );
 
+    // Function to refresh messages
+    const refreshMessages = () => {
+      fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-quote-messages?customer_id=${customer.id}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        },
+      )
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setMessages(data.messages || []);
+
+            // Mark new messages as read automatically
+            if (document.visibilityState === "visible") {
+              fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-messages-read`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                  },
+                  body: JSON.stringify({
+                    conversation_id: conversation.id,
+                    reader_type: "customer",
+                    reader_id: customer.id,
+                  }),
+                },
+              ).catch((err) =>
+                console.error("Failed to mark messages as read:", err),
+              );
+            }
+          }
+        })
+        .catch((err) => console.error("Failed to fetch messages:", err));
+    };
+
+    // Realtime subscription
     const channel = supabase
       .channel(`customer-messages:${conversation.id}`)
       .on(
@@ -126,58 +168,26 @@ export default function CustomerMessages() {
           filter: `conversation_id=eq.${conversation.id}`,
         },
         (payload) => {
-          console.log(
-            "📩 New message received in customer portal:",
-            payload.new,
-          );
-
-          // Fetch messages again to get full message details with sender info
-          fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-quote-messages?customer_id=${customer?.id}`,
-            {
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              },
-            },
-          )
-            .then((res) => res.json())
-            .then((data) => {
-              if (data.success) {
-                setMessages(data.messages || []);
-
-                // Mark new messages as read automatically
-                fetch(
-                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-messages-read`,
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                    },
-                    body: JSON.stringify({
-                      conversation_id: conversation.id,
-                      reader_type: "customer",
-                      reader_id: customer?.id,
-                    }),
-                  },
-                ).catch((err) =>
-                  console.error("Failed to mark messages as read:", err),
-                );
-              }
-            })
-            .catch((err) =>
-              console.error("Failed to fetch new messages:", err),
-            );
+          console.log("📩 New message received via realtime:", payload.new);
+          refreshMessages();
         },
       )
       .subscribe((status) => {
         console.log("🔔 Realtime subscription status:", status);
       });
 
+    // Polling fallback (every 10 seconds) in case realtime fails
+    const pollingInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        console.log("🔄 Polling for new messages");
+        refreshMessages();
+      }
+    }, 10000);
+
     return () => {
-      console.log("🔕 Unsubscribing from customer realtime");
+      console.log("🔕 Unsubscribing from customer realtime and stopping polling");
       supabase.removeChannel(channel);
+      clearInterval(pollingInterval);
     };
   }, [conversation?.id, customer?.id]);
 
