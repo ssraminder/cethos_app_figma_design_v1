@@ -41,6 +41,8 @@ export default function MessagePanel({
           sender_type,
           message_text,
           created_at,
+          read_by_customer_at,
+          read_by_staff_at,
           staff_users!sender_staff_id(full_name),
           customers!sender_customer_id(full_name)
         `,
@@ -62,6 +64,8 @@ export default function MessagePanel({
                 : "System",
           message_text: msg.message_text,
           created_at: msg.created_at,
+          read_by_customer_at: msg.read_by_customer_at,
+          read_by_staff_at: msg.read_by_staff_at,
         })) || [];
 
       setMessages(formattedMessages);
