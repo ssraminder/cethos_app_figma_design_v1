@@ -213,7 +213,7 @@ serve(async (req) => {
             // Not critical, continue
           }
 
-          console.log("✅ Attachment processed:", fileName);
+          console.log("✅ Attachment processed:", originalFileName);
         } catch (attachmentError) {
           console.error("Failed to process attachment:", attachmentError);
           // Continue with other attachments
