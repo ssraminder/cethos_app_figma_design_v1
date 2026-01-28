@@ -139,9 +139,7 @@ serve(async (req) => {
       console.error("❌ Database error:", dbError);
       // Try to delete the uploaded file since we couldn't record it
       try {
-        await supabaseAdmin.storage
-          .from("quote-files")
-          .remove([storagePath]);
+        await supabaseAdmin.storage.from("quote-files").remove([storagePath]);
       } catch (deleteError) {
         console.error("Failed to cleanup uploaded file:", deleteError);
       }

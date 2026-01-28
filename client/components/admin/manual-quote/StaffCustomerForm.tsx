@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Search, User, Building2, Mail, Phone, AlertCircle } from "lucide-react";
+import {
+  Search,
+  User,
+  Building2,
+  Mail,
+  Phone,
+  AlertCircle,
+} from "lucide-react";
 
 interface CustomerData {
   id?: string;
@@ -15,7 +22,9 @@ interface StaffCustomerFormProps {
   value: CustomerData | null;
   onChange: (customer: CustomerData) => void;
   entryPoint: "staff_manual" | "staff_phone" | "staff_walkin" | "staff_email";
-  onEntryPointChange: (entryPoint: "staff_manual" | "staff_phone" | "staff_walkin" | "staff_email") => void;
+  onEntryPointChange: (
+    entryPoint: "staff_manual" | "staff_phone" | "staff_walkin" | "staff_email",
+  ) => void;
 }
 
 export default function StaffCustomerForm({
@@ -32,7 +41,7 @@ export default function StaffCustomerForm({
     value || {
       fullName: "",
       customerType: "individual",
-    }
+    },
   );
 
   // Search for existing customers
@@ -45,7 +54,7 @@ export default function StaffCustomerForm({
         .from("customers")
         .select("*")
         .or(
-          `email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`
+          `email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`,
         )
         .limit(5);
 

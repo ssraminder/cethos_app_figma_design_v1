@@ -34,7 +34,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Main",
   },
   { label: "Quotes", path: "/admin/quotes", icon: FileText, section: "Main" },
-  { label: "Create Manual Quote", path: "/admin/quotes/create", icon: Plus, section: "Main" },
+  {
+    label: "Create Manual Quote",
+    path: "/admin/quotes/create",
+    icon: Plus,
+    section: "Main",
+  },
   {
     label: "Orders",
     path: "/admin/orders",

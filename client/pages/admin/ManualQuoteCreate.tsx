@@ -14,5 +14,7 @@ export default function ManualQuoteCreate() {
     navigate("/admin/quotes");
   };
 
-  return <ManualQuoteForm onComplete={handleComplete} onCancel={handleCancel} />;
+  return (
+    <ManualQuoteForm onComplete={handleComplete} onCancel={handleCancel} />
+  );
 }

@@ -1,11 +1,6 @@
 import { useState } from "react";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
-import {
-  CheckCircle,
-  Circle,
-  ChevronRight,
-  ChevronLeft,
-} from "lucide-react";
+import { CheckCircle, Circle, ChevronRight, ChevronLeft } from "lucide-react";
 
 interface CustomerData {
   id?: string;
@@ -93,9 +88,7 @@ export default function ManualQuoteForm({
     switch (currentStep) {
       case 1: // Customer Info
         return (
-          customer &&
-          customer.fullName &&
-          (customer.email || customer.phone)
+          customer && customer.fullName && (customer.email || customer.phone)
         );
       case 2: // Translation Details
         return true; // Optional fields
