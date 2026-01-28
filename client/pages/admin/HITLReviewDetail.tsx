@@ -2348,6 +2348,15 @@ const HITLReviewDetail: React.FC = () => {
             <div className="flex items-center justify-end gap-3">
               {/* Action Buttons */}
               <button
+                onClick={() => setShowRejectQuoteModal(true)}
+                disabled={isSubmitting}
+                className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                <XCircle className="w-4 h-4" />
+                Reject Quote
+              </button>
+
+              <button
                 onClick={() => setShowRejectModal(true)}
                 disabled={isSubmitting}
                 className="px-4 py-2 bg-red-100 text-red-700 border border-red-300 rounded-lg hover:bg-red-200 font-medium disabled:opacity-50"
