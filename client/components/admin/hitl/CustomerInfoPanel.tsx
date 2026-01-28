@@ -78,7 +78,9 @@ export default function CustomerInfoPanel({
 
     const expiry = new Date(expiresAt);
     const now = new Date();
-    const daysUntil = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const daysUntil = Math.ceil(
+      (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    );
 
     if (daysUntil < 0) {
       return (
@@ -176,11 +178,14 @@ export default function CustomerInfoPanel({
               <span className="text-sm text-gray-600">Expires:</span>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-500">
-                  {new Date(customerData.expires_at).toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                  })}
+                  {new Date(customerData.expires_at).toLocaleDateString(
+                    "en-US",
+                    {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    },
+                  )}
                 </span>
                 {getExpiryBadge(customerData.expires_at)}
               </div>

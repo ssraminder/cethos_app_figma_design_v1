@@ -156,7 +156,9 @@ const getExpiryBadge = (expiresAt: string | null) => {
 
   const expiry = new Date(expiresAt);
   const now = new Date();
-  const daysUntil = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const daysUntil = Math.ceil(
+    (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+  );
 
   if (daysUntil < 0) {
     return (

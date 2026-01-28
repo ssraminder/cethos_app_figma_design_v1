@@ -177,12 +177,12 @@ export default function QuoteRecoverPage() {
     // Check if quote is expired
     if (isQuoteExpired(quote)) {
       // Get file count - default to 0 since we don't have it in recovered quotes
-      navigate('/quote/expired', {
+      navigate("/quote/expired", {
         replace: true,
         state: {
           quoteNumber: quote.quote_number || quote.id,
-          documentsCount: 0
-        }
+          documentsCount: 0,
+        },
       });
       return;
     }

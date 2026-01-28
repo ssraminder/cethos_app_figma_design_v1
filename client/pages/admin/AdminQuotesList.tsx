@@ -80,7 +80,9 @@ export default function AdminQuotesList() {
 
     const expiry = new Date(expiresAt);
     const now = new Date();
-    const daysUntil = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const daysUntil = Math.ceil(
+      (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    );
 
     if (daysUntil < 0) {
       return (
@@ -152,7 +154,7 @@ export default function AdminQuotesList() {
       // Filter expired quotes (unless showExpired is true)
       if (!showExpired) {
         query = query.or(
-          `expires_at.is.null,expires_at.gt.${new Date().toISOString()}`
+          `expires_at.is.null,expires_at.gt.${new Date().toISOString()}`,
         );
       }
 
@@ -620,7 +622,10 @@ export default function AdminQuotesList() {
                         <div className="flex items-center gap-2">
                           <div>
                             <p className="text-sm text-gray-700">
-                              {format(new Date(quote.created_at), "MMM d, yyyy")}
+                              {format(
+                                new Date(quote.created_at),
+                                "MMM d, yyyy",
+                              )}
                             </p>
                             <p className="text-xs text-gray-500">
                               {format(new Date(quote.created_at), "h:mm a")}

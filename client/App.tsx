@@ -114,7 +114,10 @@ const App = () => (
                       element={<QuoteConfirmationPage />}
                     />
                     <Route path="/quote/saved" element={<QuoteSavedPage />} />
-                    <Route path="/quote/expired" element={<QuoteExpiredPage />} />
+                    <Route
+                      path="/quote/expired"
+                      element={<QuoteExpiredPage />}
+                    />
                     <Route path="/order/success" element={<OrderSuccess />} />
                     <Route path="/payment/cancel" element={<PaymentCancel />} />
 
