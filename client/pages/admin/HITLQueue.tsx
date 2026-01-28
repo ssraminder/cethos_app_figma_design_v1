@@ -85,7 +85,8 @@ export default function HITLQueue() {
     return "bg-gray-100 text-gray-700";
   };
 
-  const getSLAColor = (status: string) => {
+  const getSLAColor = (status: string | null | undefined) => {
+    if (!status) return "text-gray-600";
     switch (status) {
       case "breached":
         return "text-red-600 font-semibold";
