@@ -1,6 +1,14 @@
 import { ReactNode, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { MessageSquare, FileText, Package, User, LogOut, Menu, X } from "lucide-react";
+import {
+  MessageSquare,
+  FileText,
+  Package,
+  User,
+  LogOut,
+  Menu,
+  X,
+} from "lucide-react";
 import { useAuth } from "../../context/CustomerAuthContext";
 import { useBranding } from "../../context/BrandingContext";
 
@@ -44,7 +52,11 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
               className="md:hidden p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg"
               aria-label="Toggle menu"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileMenuOpen ? (
+                <X className="w-6 h-6" />
+              ) : (
+                <Menu className="w-6 h-6" />
+              )}
             </button>
 
             {/* Logo - Desktop Only */}
@@ -122,7 +134,11 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
                   {logoUrl ? (
-                    <img src={logoUrl} alt={companyName} className="h-8 w-auto" />
+                    <img
+                      src={logoUrl}
+                      alt={companyName}
+                      className="h-8 w-auto"
+                    />
                   ) : (
                     <>
                       <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg flex items-center justify-center">
