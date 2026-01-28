@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Mail, ArrowRight, Check } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
+import { setCustomerSession } from "@/context/CustomerAuthContext";
 
 type LoginMethod = "otp" | "magic_link";
 type LoginStep = "email" | "verify";
@@ -31,20 +31,17 @@ export default function Login() {
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/send-customer-login-otp`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Origin: window.location.origin,
-          },
-          body: JSON.stringify({
-            email: email.toLowerCase(),
-            method,
-          }),
+      const response = await fetch(`${supabaseUrl}/functions/v1/send-customer-login-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Origin": window.location.origin,
         },
-      );
+        body: JSON.stringify({
+          email: email.toLowerCase(),
+          method,
+        }),
+      });
 
       const data = await response.json();
 
@@ -92,19 +89,16 @@ export default function Login() {
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/verify-customer-login-otp`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: email.toLowerCase(),
-            otp,
-          }),
+      const response = await fetch(`${supabaseUrl}/functions/v1/verify-customer-login-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          email: email.toLowerCase(),
+          otp,
+        }),
+      });
 
       const data = await response.json();
 
