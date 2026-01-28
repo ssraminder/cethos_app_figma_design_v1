@@ -751,7 +751,7 @@ export default function AdminQuotesList() {
   );
 }
 
-// Status Badge (same as dashboard)
+// Status Badge - Normalized to Title Case
 function StatusBadge({ status }: { status?: string }) {
   const styles: Record<string, string> = {
     draft: "bg-gray-100 text-gray-700",
@@ -760,6 +760,7 @@ function StatusBadge({ status }: { status?: string }) {
     hitl_pending: "bg-amber-100 text-amber-700",
     approved: "bg-green-100 text-green-700",
     paid: "bg-green-100 text-green-700",
+    pending_payment: "bg-amber-100 text-amber-700",
     expired: "bg-red-100 text-red-700",
     cancelled: "bg-gray-100 text-gray-700",
   };
@@ -771,15 +772,24 @@ function StatusBadge({ status }: { status?: string }) {
     hitl_pending: "HITL Pending",
     approved: "Approved",
     paid: "Paid",
+    pending_payment: "Pending Payment",
     expired: "Expired",
     cancelled: "Cancelled",
+  };
+
+  // Fallback: convert snake_case to Title Case
+  const formatStatus = (s: string) => {
+    return s
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
   };
 
   return (
     <span
       className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${styles[status || ""] || "bg-gray-100 text-gray-700"}`}
     >
-      {labels[status || ""] || status || "Unknown"}
+      {labels[status || ""] || (status ? formatStatus(status) : "Unknown")}
     </span>
   );
 }
