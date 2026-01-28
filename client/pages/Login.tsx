@@ -31,20 +31,17 @@ export default function Login() {
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/send-customer-login-otp`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Origin: window.location.origin,
-          },
-          body: JSON.stringify({
-            email: email.toLowerCase(),
-            method,
-          }),
+      const response = await fetch(`${supabaseUrl}/functions/v1/send-customer-login-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Origin": window.location.origin,
         },
-      );
+        body: JSON.stringify({
+          email: email.toLowerCase(),
+          method,
+        }),
+      });
 
       const data = await response.json();
 
@@ -92,19 +89,16 @@ export default function Login() {
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/verify-customer-login-otp`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: email.toLowerCase(),
-            otp,
-          }),
+      const response = await fetch(`${supabaseUrl}/functions/v1/verify-customer-login-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          email: email.toLowerCase(),
+          otp,
+        }),
+      });
 
       const data = await response.json();
 
@@ -112,22 +106,40 @@ export default function Login() {
         throw new Error(data.error || "Invalid code");
       }
 
-      // Set session in Supabase client
+      // Use the magic link session
       if (data.session) {
-        await supabase.auth.setSession({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        });
+        // The session object contains the action_link with tokens
+        const actionLink = data.session.action_link;
 
-        toast({
-          title: "Success!",
-          description: "Logging you in...",
-        });
+        if (actionLink) {
+          // Extract tokens from the action link
+          const url = new URL(actionLink);
+          const accessToken = url.searchParams.get('access_token');
+          const refreshToken = url.searchParams.get('refresh_token');
 
-        // Navigate to dashboard
-        setTimeout(() => {
-          navigate("/dashboard");
-        }, 500);
+          if (accessToken && refreshToken) {
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+
+            toast({
+              title: "Success!",
+              description: "Logging you in...",
+            });
+
+            // Navigate to dashboard
+            setTimeout(() => {
+              navigate("/dashboard");
+            }, 500);
+          } else {
+            throw new Error("Invalid session data");
+          }
+        } else {
+          throw new Error("No session tokens received");
+        }
+      } else {
+        throw new Error("No session data received");
       }
     } catch (error: any) {
       console.error("Verify OTP error:", error);
