@@ -106,14 +106,14 @@ serve(async (req) => {
     console.log("✅ Staff found:", staff.full_name);
 
     // 3. Get or create conversation for this customer
-    console.log("💬 Looking for conversation for customer:", quote.customer_id);
+    console.log("💬 Looking for conversation for customer:", customerId);
     let conversationId: string;
 
     // Try to find existing conversation for this customer
     const { data: existingConversation } = await supabaseAdmin
       .from("customer_conversations")
       .select("id")
-      .eq("customer_id", quote.customer_id)
+      .eq("customer_id", customerId)
       .maybeSingle();
 
     if (existingConversation) {
@@ -126,8 +126,10 @@ serve(async (req) => {
         await supabaseAdmin
           .from("customer_conversations")
           .insert({
-            customer_id: quote.customer_id,
-            subject: `Quote #${quote.quote_number} - Translation Services`,
+            customer_id: customerId,
+            subject: quote_id
+              ? `Quote #${quote_id} - Translation Services`
+              : `Customer Support - ${customerInfo?.full_name || "Customer"}`,
             status: "active",
           })
           .select("id")
