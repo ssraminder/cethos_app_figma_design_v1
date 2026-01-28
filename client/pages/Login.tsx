@@ -31,20 +31,17 @@ export default function Login() {
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/send-customer-login-otp`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Origin: window.location.origin,
-          },
-          body: JSON.stringify({
-            email: email.toLowerCase(),
-            method,
-          }),
+      const response = await fetch(`${supabaseUrl}/functions/v1/send-customer-login-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Origin": window.location.origin,
         },
-      );
+        body: JSON.stringify({
+          email: email.toLowerCase(),
+          method,
+        }),
+      });
 
       const data = await response.json();
 
@@ -92,19 +89,16 @@ export default function Login() {
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/verify-customer-login-otp`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: email.toLowerCase(),
-            otp,
-          }),
+      const response = await fetch(`${supabaseUrl}/functions/v1/verify-customer-login-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          email: email.toLowerCase(),
+          otp,
+        }),
+      });
 
       const data = await response.json();
 
@@ -112,34 +106,31 @@ export default function Login() {
         throw new Error(data.error || "Invalid code");
       }
 
-      // Use the hashed token to verify and get session
-      if (data.session && data.session.hashed_token) {
-        const { data: verifyData, error: verifyError } =
-          await supabase.auth.verifyOtp({
-            email: email.toLowerCase(),
-            token: data.session.hashed_token,
-            type: "magiclink",
-          });
+      // OTP verified! Now sign in with Supabase
+      if (data.verified && data.email) {
+        // Send Supabase OTP for actual login
+        const { error: signInError } = await supabase.auth.signInWithOtp({
+          email: data.email,
+          options: {
+            shouldCreateUser: false, // User already exists
+          },
+        });
 
-        if (verifyError) {
-          throw new Error(verifyError.message);
+        if (signInError) {
+          throw new Error(signInError.message);
         }
 
-        if (verifyData.session) {
-          toast({
-            title: "Success!",
-            description: "Logging you in...",
-          });
+        toast({
+          title: "Verified!",
+          description: "Check your email for the final login link",
+        });
 
-          // Navigate to dashboard
-          setTimeout(() => {
-            navigate("/dashboard");
-          }, 500);
-        } else {
-          throw new Error("Failed to create session");
-        }
+        // Show message to check email for magic link
+        setStep("email");
+        setEmail("");
+        setOtp("");
       } else {
-        throw new Error("No session data received");
+        throw new Error("Verification failed");
       }
     } catch (error: any) {
       console.error("Verify OTP error:", error);
