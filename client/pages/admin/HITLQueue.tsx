@@ -266,7 +266,9 @@ export default function HITLQueue() {
                                     : "bg-gray-100 text-gray-800"
                           }`}
                         >
-                          {review.review_status?.replace(/_/g, " ").toUpperCase() || "UNKNOWN"}
+                          {review.review_status
+                            ?.replace(/_/g, " ")
+                            .toUpperCase() || "UNKNOWN"}
                         </span>
                       </td>
                       <td className="px-4 py-3">
