@@ -159,7 +159,10 @@ const COUNTRIES = [
   { value: "Rwanda", label: "Rwanda" },
   { value: "Saint Kitts and Nevis", label: "Saint Kitts and Nevis" },
   { value: "Saint Lucia", label: "Saint Lucia" },
-  { value: "Saint Vincent and the Grenadines", label: "Saint Vincent and the Grenadines" },
+  {
+    value: "Saint Vincent and the Grenadines",
+    label: "Saint Vincent and the Grenadines",
+  },
   { value: "Samoa", label: "Samoa" },
   { value: "San Marino", label: "San Marino" },
   { value: "Sao Tome and Principe", label: "Sao Tome and Principe" },
@@ -249,23 +252,23 @@ export default function StaffTranslationDetailsForm({
   const customSelectStyles = {
     control: (base: any, state: any) => ({
       ...base,
-      minHeight: '42px',
-      borderColor: state.isFocused ? '#6366f1' : '#d1d5db',
-      boxShadow: state.isFocused ? '0 0 0 2px rgba(99, 102, 241, 0.2)' : 'none',
-      '&:hover': {
-        borderColor: '#6366f1',
+      minHeight: "42px",
+      borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+      boxShadow: state.isFocused ? "0 0 0 2px rgba(99, 102, 241, 0.2)" : "none",
+      "&:hover": {
+        borderColor: "#6366f1",
       },
     }),
     option: (base: any, state: any) => ({
       ...base,
       backgroundColor: state.isSelected
-        ? '#6366f1'
+        ? "#6366f1"
         : state.isFocused
-          ? '#eef2ff'
-          : 'white',
-      color: state.isSelected ? 'white' : '#1f2937',
-      '&:active': {
-        backgroundColor: '#6366f1',
+          ? "#eef2ff"
+          : "white",
+      color: state.isSelected ? "white" : "#1f2937",
+      "&:active": {
+        backgroundColor: "#6366f1",
       },
     }),
   };
