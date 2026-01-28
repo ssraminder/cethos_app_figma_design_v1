@@ -44,8 +44,9 @@ export default function CustomerDashboard() {
       setLoading(true);
       setError(null);
 
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const response = await fetch(
-        `/functions/v1/get-customer-dashboard?customer_id=${customer?.id}`,
+        `${supabaseUrl}/functions/v1/get-customer-dashboard?customer_id=${customer?.id}`,
         {
           headers: {
             "Content-Type": "application/json",
