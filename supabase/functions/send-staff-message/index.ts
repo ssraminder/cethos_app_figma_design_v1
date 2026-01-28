@@ -123,7 +123,7 @@ serve(async (req) => {
         sender_staff_id: staff_id,
         message_text,
         message_type: "text",
-        source: "web",
+        source: "app",
       })
       .select()
       .single();
