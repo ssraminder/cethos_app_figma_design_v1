@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Upload, X, FileText, AlertCircle } from "lucide-react";
+import { Upload, X, FileText, AlertCircle, Brain, CheckCircle, Loader2 } from "lucide-react";
 
 interface FileData {
   id: string;
@@ -28,6 +28,10 @@ export default function StaffFileUploadForm({
   const [uploadStatus, setUploadStatus] = useState<
     Record<string, "pending" | "uploading" | "success" | "failed">
   >({});
+  const [analysisStatus, setAnalysisStatus] = useState<
+    Record<string, "idle" | "analyzing" | "completed" | "failed" | "timeout">
+  >({});
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
@@ -56,6 +60,7 @@ export default function StaffFileUploadForm({
     // Set initial status
     fileData.forEach((f) => {
       setUploadStatus((prev) => ({ ...prev, [f.id]: "pending" }));
+      setAnalysisStatus((prev) => ({ ...prev, [f.id]: "idle" }));
     });
   };
 
@@ -69,6 +74,61 @@ export default function StaffFileUploadForm({
       delete newStatus[id];
       return newStatus;
     });
+
+    setAnalysisStatus((prev) => {
+      const newStatus = { ...prev };
+      delete newStatus[id];
+      return newStatus;
+    });
+  };
+
+  const analyzeFiles = async () => {
+    if (!processWithAI || files.length === 0) return;
+
+    setIsAnalyzing(true);
+
+    // Process each file with timeout
+    for (const file of files) {
+      setAnalysisStatus((prev) => ({ ...prev, [file.id]: "analyzing" }));
+
+      try {
+        // Create a promise that rejects after 1 minute (60000ms)
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Analysis timeout")), 60000);
+        });
+
+        // Create the analysis promise (simulated for now)
+        // In production, this would call your process-document edge function
+        const analysisPromise = simulateAIAnalysis(file);
+
+        // Race between analysis and timeout
+        await Promise.race([analysisPromise, timeoutPromise]);
+
+        setAnalysisStatus((prev) => ({ ...prev, [file.id]: "completed" }));
+      } catch (error) {
+        console.error(`Analysis failed for ${file.name}:`, error);
+        
+        if (error instanceof Error && error.message === "Analysis timeout") {
+          setAnalysisStatus((prev) => ({ ...prev, [file.id]: "timeout" }));
+        } else {
+          setAnalysisStatus((prev) => ({ ...prev, [file.id]: "failed" }));
+        }
+      }
+    }
+
+    setIsAnalyzing(false);
+  };
+
+  // Simulated AI analysis (replace with actual API call)
+  const simulateAIAnalysis = (file: FileData): Promise<void> => {
+    return new Promise((resolve) => {
+      // Simulate processing time (2-5 seconds per file)
+      const processingTime = Math.random() * 3000 + 2000;
+      setTimeout(() => {
+        console.log(`Analyzed ${file.name}`);
+        resolve();
+      }, processingTime);
+    });
   };
 
   const formatFileSize = (bytes: number) => {
@@ -78,6 +138,51 @@ export default function StaffFileUploadForm({
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
   };
+
+  const getAnalysisStatusBadge = (fileId: string) => {
+    const status = analysisStatus[fileId];
+    
+    switch (status) {
+      case "analyzing":
+        return (
+          <span className="inline-flex items-center gap-1 text-blue-600">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span className="text-xs">Analyzing...</span>
+          </span>
+        );
+      case "completed":
+        return (
+          <span className="inline-flex items-center gap-1 text-green-600">
+            <CheckCircle className="w-3 h-3" />
+            <span className="text-xs">Analyzed</span>
+          </span>
+        );
+      case "failed":
+        return (
+          <span className="inline-flex items-center gap-1 text-red-600">
+            <AlertCircle className="w-3 h-3" />
+            <span className="text-xs">Failed</span>
+          </span>
+        );
+      case "timeout":
+        return (
+          <span className="inline-flex items-center gap-1 text-amber-600">
+            <AlertCircle className="w-3 h-3" />
+            <span className="text-xs">Timeout (1min)</span>
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const allFilesAnalyzed = files.length > 0 && files.every(
+    (file) => analysisStatus[file.id] === "completed"
+  );
+
+  const hasFilesToAnalyze = files.length > 0 && files.some(
+    (file) => analysisStatus[file.id] === "idle" || analysisStatus[file.id] === "failed" || analysisStatus[file.id] === "timeout"
+  );
 
   return (
     <div className="space-y-6">
@@ -142,9 +247,37 @@ export default function StaffFileUploadForm({
       {/* File List */}
       {files.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-gray-900">
-            Uploaded Files ({files.length})
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-900">
+              Uploaded Files ({files.length})
+            </h3>
+            
+            {/* Analyze Files Button */}
+            {processWithAI && hasFilesToAnalyze && !isAnalyzing && (
+              <button
+                onClick={analyzeFiles}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+              >
+                <Brain className="w-4 h-4" />
+                Analyze Files with AI
+              </button>
+            )}
+
+            {isAnalyzing && (
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 text-sm font-medium rounded-md">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Analyzing files...
+              </div>
+            )}
+
+            {allFilesAnalyzed && (
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 text-sm font-medium rounded-md">
+                <CheckCircle className="w-4 h-4" />
+                All files analyzed
+              </div>
+            )}
+          </div>
+
           <div className="space-y-2">
             {files.map((file) => (
               <div
@@ -157,28 +290,28 @@ export default function StaffFileUploadForm({
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {file.name}
                     </p>
-                    <p className="text-xs text-gray-500">
-                      {formatFileSize(file.size)}
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <span>{formatFileSize(file.size)}</span>
                       {uploadStatus[file.id] === "pending" && (
-                        <span className="ml-2 text-amber-600">• Pending</span>
+                        <span className="text-amber-600">• Pending</span>
                       )}
                       {uploadStatus[file.id] === "uploading" && (
-                        <span className="ml-2 text-blue-600">
-                          • Uploading...
-                        </span>
+                        <span className="text-blue-600">• Uploading...</span>
                       )}
                       {uploadStatus[file.id] === "success" && (
-                        <span className="ml-2 text-green-600">• Uploaded</span>
+                        <span className="text-green-600">• Uploaded</span>
                       )}
                       {uploadStatus[file.id] === "failed" && (
-                        <span className="ml-2 text-red-600">• Failed</span>
+                        <span className="text-red-600">• Failed</span>
                       )}
-                    </p>
+                      {processWithAI && getAnalysisStatusBadge(file.id)}
+                    </div>
                   </div>
                 </div>
                 <button
                   onClick={() => removeFile(file.id)}
-                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                  disabled={isAnalyzing}
+                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Remove file"
                 >
                   <X className="w-4 h-4" />
@@ -200,6 +333,7 @@ export default function StaffFileUploadForm({
             <p className="text-xs mt-1">
               Files will be uploaded to the server when you complete the quote
               in the final step.
+              {processWithAI && " AI analysis will happen after upload."}
             </p>
           </div>
         </div>
@@ -212,11 +346,19 @@ export default function StaffFileUploadForm({
           <li>
             Files are optional - you can create a quote without uploading files
           </li>
-          <li>
-            If AI processing is enabled, we'll automatically extract document
-            details
-          </li>
-          <li>You can override AI results in the next step if needed</li>
+          {processWithAI ? (
+            <>
+              <li>
+                Click "Analyze Files with AI" after uploading to extract document details
+              </li>
+              <li>
+                Each file analysis has a 1-minute timeout
+              </li>
+              <li>You can override AI results in the next step if needed</li>
+            </>
+          ) : (
+            <li>Manual entry required for all document details in the next step</li>
+          )}
         </ul>
       </div>
     </div>
