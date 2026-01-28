@@ -628,6 +628,133 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
+  const handleRejectQuote = async () => {
+    if (!rejectQuoteReason.trim()) {
+      alert('Please provide a reason for rejection.');
+      return;
+    }
+
+    setIsRejecting(true);
+
+    try {
+      const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
+      const now = new Date().toISOString();
+
+      // 1. Update HITL review status
+      await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          status: 'rejected',
+          completed_at: now,
+          completed_by: session.staffId,
+          resolution_notes: rejectQuoteReason
+        }),
+      });
+
+      // 2. Update quote status
+      await fetch(`${SUPABASE_URL}/rest/v1/quotes?id=eq.${reviewData.quote_id}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          status: 'rejected',
+          processing_status: 'rejected',
+          updated_at: now
+        }),
+      });
+
+      // 3. Log staff activity
+      await fetch(`${SUPABASE_URL}/rest/v1/staff_activity_log`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          staff_id: session.staffId,
+          action: 'reject_hitl',
+          entity_type: 'hitl_review',
+          entity_id: reviewId,
+          details: {
+            quote_id: reviewData.quote_id,
+            quote_number: reviewData.quote_number,
+            reason: rejectQuoteReason,
+            email_sent: sendEmailToCustomer
+          }
+        }),
+      });
+
+      // 4. Send email if opted in
+      if (sendEmailToCustomer && reviewData.customer?.email) {
+        await sendRejectionEmail(
+          reviewData.customer.email,
+          reviewData.customer.full_name,
+          reviewData.quote_number,
+          rejectQuoteReason
+        );
+      }
+
+      alert("❌ Quote rejected successfully.");
+      navigate('/admin/hitl');
+
+    } catch (error) {
+      console.error('Failed to reject quote:', error);
+      alert('Failed to reject quote. Please try again.');
+    } finally {
+      setIsRejecting(false);
+      setShowRejectQuoteModal(false);
+    }
+  };
+
+  const sendRejectionEmail = async (
+    email: string,
+    name: string,
+    quoteNumber: string,
+    reason: string
+  ) => {
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/send-email`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            templateId: 18,
+            to: email,
+            params: {
+              CUSTOMER_NAME: name || 'Customer',
+              QUOTE_NUMBER: quoteNumber,
+              REJECTION_REASON: reason,
+              SUPPORT_EMAIL: 'support@cethos.com'
+            }
+          })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to send email');
+      }
+    } catch (error) {
+      console.error('Failed to send rejection email:', error);
+      // Don't throw - email failure shouldn't block rejection
+    }
+  };
+
   // ============================================
   // EDIT HELPERS
   // ============================================
