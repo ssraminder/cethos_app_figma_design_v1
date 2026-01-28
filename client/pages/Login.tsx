@@ -87,7 +87,8 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const response = await fetch("/functions/v1/verify-customer-login-otp", {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(`${supabaseUrl}/functions/v1/verify-customer-login-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
