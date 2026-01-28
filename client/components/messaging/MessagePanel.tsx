@@ -208,12 +208,9 @@ export default function MessagePanel({
           messages.map((msg) => (
             <MessageBubble
               key={msg.id}
-              id={msg.id}
-              senderType={msg.sender_type}
-              senderName={msg.sender_name}
-              messageText={msg.message_text}
-              createdAt={msg.created_at}
+              message={msg}
               isOwn={msg.sender_type === "staff"}
+              isStaffView={true}
             />
           ))
         )}
