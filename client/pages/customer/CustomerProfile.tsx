@@ -53,7 +53,8 @@ export default function CustomerProfile() {
     try {
       setLoading(true);
 
-      const response = await fetch("/functions/v1/update-customer-profile", {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(`${supabaseUrl}/functions/v1/update-customer-profile`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
