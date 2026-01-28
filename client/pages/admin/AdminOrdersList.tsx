@@ -482,7 +482,10 @@ export default function AdminOrdersList() {
                       <td className="px-4 py-3">
                         {order.estimated_delivery_date ? (
                           <p className="text-sm text-gray-700">
-                            {format(new Date(order.estimated_delivery_date), "MMM d, yyyy")}
+                            {format(
+                              new Date(order.estimated_delivery_date),
+                              "MMM d, yyyy",
+                            )}
                           </p>
                         ) : (
                           <span className="text-sm text-gray-400">—</span>
@@ -491,7 +494,11 @@ export default function AdminOrdersList() {
                       {/* Actions Meatball Menu */}
                       <td className="px-4 py-3 text-center relative">
                         <button
-                          onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)}
+                          onClick={() =>
+                            setOpenMenuId(
+                              openMenuId === order.id ? null : order.id,
+                            )
+                          }
                           className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                           aria-label="Actions"
                         >
@@ -585,9 +592,9 @@ function OrderStatusBadge({ status }: { status?: string }) {
   // Fallback: convert snake_case to Title Case
   const formatStatus = (s: string) => {
     return s
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
   };
 
   return (
@@ -630,9 +637,9 @@ function WorkStatusBadge({ status }: { status?: string }) {
   // Fallback: convert snake_case to Title Case
   const formatStatus = (s: string) => {
     return s
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
   };
 
   const { style, icon, label } = config[status || ""] || {

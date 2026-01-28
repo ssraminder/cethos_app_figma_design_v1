@@ -584,7 +584,10 @@ export default function AdminQuotesList() {
                             {quote.quote_number}
                           </p>
                           <p className="text-xs text-gray-500 mt-0.5">
-                            {quote.file_count} file{quote.file_count !== 1 ? "s" : ""} • {quote.source_language_name || "—"} → {quote.target_language_name || "English"}
+                            {quote.file_count} file
+                            {quote.file_count !== 1 ? "s" : ""} •{" "}
+                            {quote.source_language_name || "—"} →{" "}
+                            {quote.target_language_name || "English"}
                             {quote.is_rush && (
                               <span className="ml-1.5 text-amber-600 font-medium">
                                 ⚡ Rush
@@ -622,7 +625,11 @@ export default function AdminQuotesList() {
                       {/* Actions Meatball Menu */}
                       <td className="px-4 py-3 text-center relative">
                         <button
-                          onClick={() => setOpenMenuId(openMenuId === quote.id ? null : quote.id)}
+                          onClick={() =>
+                            setOpenMenuId(
+                              openMenuId === quote.id ? null : quote.id,
+                            )
+                          }
                           className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                           aria-label="Actions"
                         >
@@ -780,9 +787,9 @@ function StatusBadge({ status }: { status?: string }) {
   // Fallback: convert snake_case to Title Case
   const formatStatus = (s: string) => {
     return s
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
   };
 
   return (
