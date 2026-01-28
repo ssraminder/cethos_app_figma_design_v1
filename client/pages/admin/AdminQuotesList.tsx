@@ -402,6 +402,30 @@ export default function AdminQuotesList() {
           )}
         </div>
 
+        {/* Bulk Action Bar */}
+        {selectedQuotes.length > 0 && (
+          <div className="bg-gray-50 border rounded-lg p-3 mb-4 flex items-center justify-between">
+            <span className="text-sm text-gray-600">
+              {selectedQuotes.length} quote{selectedQuotes.length > 1 ? 's' : ''} selected
+            </span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSelectedQuotes([])}
+                className="text-sm text-gray-600 hover:text-gray-800"
+              >
+                Clear selection
+              </button>
+              <button
+                onClick={() => setShowBulkDeleteModal(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Selected
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
