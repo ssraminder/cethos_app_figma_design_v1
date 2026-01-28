@@ -86,27 +86,57 @@ export default function HITLPanelLayout({
   staffName,
   loading = false,
   onSaveInternalNotes,
+  onRefreshFiles,
   children,
 }: HITLPanelLayoutProps) {
-  // Debug: Log the actual data structure
-  React.useEffect(() => {
-    if (reviewData) {
-      console.log("📊 HITLPanelLayout reviewData:", reviewData);
-      console.log("📊 Customer:", (reviewData as any).customer);
-      console.log("📊 Source language:", (reviewData as any).source_language);
-      console.log("📊 Target language:", (reviewData as any).target_language);
-      console.log("📊 Intended use:", (reviewData as any).intended_use);
-      console.log("📊 Country of issue:", (reviewData as any).country_of_issue);
-      console.log("📊 Subtotal:", (reviewData as any).subtotal);
-      console.log("📊 Total:", (reviewData as any).total);
+  // Collapsible sections state - default expand important sections
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    new Set(["customer", "documents", "analysis"])
+  );
+
+  const toggleSection = (section: string) => {
+    const newSections = new Set(expandedSections);
+    if (newSections.has(section)) {
+      newSections.delete(section);
+    } else {
+      newSections.add(section);
     }
-  }, [reviewData]);
+    setExpandedSections(newSections);
+  };
+
+  const CollapsibleSection = ({
+    id,
+    title,
+    children: sectionChildren,
+  }: {
+    id: string;
+    title: string;
+    children: React.ReactNode;
+  }) => {
+    const isExpanded = expandedSections.has(id);
+
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
+        <button
+          onClick={() => toggleSection(id)}
+          className="w-full flex items-center justify-between p-4 hover:bg-gray-100 transition-colors"
+        >
+          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+          {isExpanded ? (
+            <ChevronUp className="w-5 h-5 text-gray-600" />
+          ) : (
+            <ChevronDown className="w-5 h-5 text-gray-600" />
+          )}
+        </button>
+        {isExpanded && <div className="p-4 pt-0">{sectionChildren}</div>}
+      </div>
+    );
+  };
 
   return (
-    <div className="grid grid-cols-12 gap-4 h-[calc(100vh-300px)]">
-      {/* LEFT PANEL: Customer Info + Document Files + Translation + Contact + Pricing (3 columns) */}
-      <aside className="col-span-3 space-y-4 overflow-y-auto">
-        {/* Customer Info */}
+    <div className="space-y-4 pb-6 max-w-6xl mx-auto">
+      {/* Customer & Quote Information */}
+      <CollapsibleSection id="customer" title="Customer & Quote Information">
         <CustomerInfoPanel
           customerData={
             reviewData
@@ -131,11 +161,29 @@ export default function HITLPanelLayout({
           }
           loading={loading}
         />
+      </CollapsibleSection>
 
-        {/* Document Files */}
-        <DocumentFilesPanel files={quoteFiles} loading={loading} />
+      {/* Document Management */}
+      {reviewData?.quote_id && onRefreshFiles && (
+        <CollapsibleSection id="documents" title="Document Management">
+          <div className="space-y-4">
+            <DocumentManagementPanel
+              quoteId={reviewData.quote_id}
+              files={quoteFiles}
+              onFilesUploaded={onRefreshFiles}
+            />
+            <DocumentFilesPanel files={quoteFiles} loading={loading} />
+          </div>
+        </CollapsibleSection>
+      )}
 
-        {/* Translation Details */}
+      {/* Document Analysis & Pricing */}
+      <CollapsibleSection id="analysis" title="Document Analysis & Pricing">
+        {children}
+      </CollapsibleSection>
+
+      {/* Translation Details */}
+      <CollapsibleSection id="translation" title="Translation Details">
         <TranslationDetailsPanel
           translationData={
             reviewData
@@ -159,33 +207,10 @@ export default function HITLPanelLayout({
           }
           loading={loading}
         />
+      </CollapsibleSection>
 
-        {/* Contact Information */}
-        <ContactInfoPanel
-          contactData={
-            reviewData
-              ? {
-                  contact_name:
-                    (reviewData as any).customer?.full_name ||
-                    reviewData.customer_name,
-                  contact_email:
-                    (reviewData as any).customer?.email ||
-                    reviewData.customer_email,
-                  contact_phone: (reviewData as any).customer?.phone || "",
-                  customer_name:
-                    (reviewData as any).customer?.full_name ||
-                    reviewData.customer_name,
-                  customer_email:
-                    (reviewData as any).customer?.email ||
-                    reviewData.customer_email,
-                  customer_phone: (reviewData as any).customer?.phone || "",
-                }
-              : null
-          }
-          loading={loading}
-        />
-
-        {/* Pricing Summary */}
+      {/* Pricing Summary */}
+      <CollapsibleSection id="pricing" title="Pricing Summary">
         <PricingSummaryPanel
           pricingData={
             reviewData
@@ -206,31 +231,27 @@ export default function HITLPanelLayout({
           }
           loading={loading}
         />
-      </aside>
+      </CollapsibleSection>
 
-      {/* CENTER PANEL: Document Analysis (6 columns) */}
-      <main className="col-span-6 space-y-4 overflow-y-auto">{children}</main>
+      {/* Internal Notes */}
+      <CollapsibleSection id="notes" title="Internal Notes">
+        <InternalNotesPanel
+          initialNotes={reviewData?.internal_notes || ""}
+          onSave={onSaveInternalNotes}
+          loading={loading}
+        />
+      </CollapsibleSection>
 
-      {/* RIGHT PANEL: Messaging + Internal Notes (3 columns) */}
-      <aside className="col-span-3 space-y-4 overflow-y-auto flex flex-col">
-        {/* Messaging Panel */}
-        {reviewData?.quote_id && staffId && (
+      {/* Messaging */}
+      {reviewData?.quote_id && staffId && (
+        <CollapsibleSection id="messaging" title="Customer Messaging">
           <MessagePanel
             quoteId={reviewData.quote_id}
             staffId={staffId}
             staffName={staffName || "Staff"}
           />
-        )}
-
-        {/* Internal Notes Panel */}
-        <div className="flex-1 overflow-y-auto">
-          <InternalNotesPanel
-            initialNotes={reviewData?.internal_notes || ""}
-            onSave={onSaveInternalNotes}
-            loading={loading}
-          />
-        </div>
-      </aside>
+        </CollapsibleSection>
+      )}
     </div>
   );
 }
