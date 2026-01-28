@@ -347,7 +347,7 @@ export default function MessageCustomerModal({
 
   // Attachment display component
   const AttachmentDisplay = ({ attachment }: { attachment: Attachment }) => {
-    const isImage = attachment.file_type.startsWith("image/");
+    const isImage = attachment.mime_type?.startsWith("image/") || false;
     const fileSize = (attachment.file_size / 1024).toFixed(1) + " KB";
 
     const handleDownload = async () => {
