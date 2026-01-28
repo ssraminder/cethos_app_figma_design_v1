@@ -116,7 +116,9 @@ export default function CustomerDashboard() {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
-                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Active Quotes</p>
+                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">
+                  Active Quotes
+                </p>
                 <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
                   {stats?.activeQuotes || 0}
                 </p>
@@ -130,7 +132,9 @@ export default function CustomerDashboard() {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
-                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">In Progress</p>
+                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">
+                  In Progress
+                </p>
                 <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
                   {stats?.inProgressOrders || 0}
                 </p>
@@ -144,7 +148,9 @@ export default function CustomerDashboard() {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
-                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Completed</p>
+                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">
+                  Completed
+                </p>
                 <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
                   {stats?.completedOrders || 0}
                 </p>
@@ -158,7 +164,9 @@ export default function CustomerDashboard() {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
-                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Total Spent</p>
+                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">
+                  Total Spent
+                </p>
                 <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 truncate">
                   ${(stats?.totalSpent ?? 0).toFixed(2)}
                 </p>
@@ -199,7 +207,9 @@ export default function CustomerDashboard() {
                 <div className="h-10 w-10 bg-teal-100 rounded-lg flex items-center justify-center group-hover:bg-teal-200 flex-shrink-0">
                   <Receipt className="w-5 h-5 text-teal-600" />
                 </div>
-                <span className="text-sm sm:text-base font-medium text-gray-900">View Invoices</span>
+                <span className="text-sm sm:text-base font-medium text-gray-900">
+                  View Invoices
+                </span>
               </div>
               <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-teal-600 flex-shrink-0" />
             </Link>
@@ -257,15 +267,20 @@ export default function CustomerDashboard() {
                         {activity.type === "quote" ? "Quote" : "Order"}{" "}
                         {activity.number}
                       </p>
-                      <p className="text-xs sm:text-sm text-gray-600 truncate">{activity.action}</p>
+                      <p className="text-xs sm:text-sm text-gray-600 truncate">
+                        {activity.action}
+                      </p>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
                     <p className="text-xs sm:text-sm text-gray-500 whitespace-nowrap">
-                      {new Date(activity.timestamp).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric'
-                      })}
+                      {new Date(activity.timestamp).toLocaleDateString(
+                        undefined,
+                        {
+                          month: "short",
+                          day: "numeric",
+                        },
+                      )}
                     </p>
                     <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-teal-600" />
                   </div>
@@ -275,7 +290,9 @@ export default function CustomerDashboard() {
           ) : (
             <div className="text-center py-6 sm:py-8">
               <FileText className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 mx-auto mb-2 sm:mb-3" />
-              <p className="text-sm sm:text-base text-gray-500">No recent activity</p>
+              <p className="text-sm sm:text-base text-gray-500">
+                No recent activity
+              </p>
               <Link
                 to="/quote"
                 className="text-teal-600 hover:text-teal-700 text-xs sm:text-sm mt-2 inline-block active:scale-95"
