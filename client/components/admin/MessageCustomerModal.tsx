@@ -154,7 +154,12 @@ export default function MessageCustomerModal({
   // Fetch messages via Edge Function
   const fetchMessages = async () => {
     try {
-      console.log("🔍 Fetching messages for customer:", customerId, "quote:", quoteId);
+      console.log(
+        "🔍 Fetching messages for customer:",
+        customerId,
+        "quote:",
+        quoteId,
+      );
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-quote-messages`,
