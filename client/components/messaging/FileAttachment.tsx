@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import { Download } from "lucide-react";
+import { supabase } from "../../lib/supabase";
 
 interface Attachment {
   id: string;
@@ -21,6 +23,8 @@ export default function FileAttachment({
   attachment,
   isOwn,
 }: FileAttachmentProps) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+
   // Handle different field name conventions
   const fileName =
     attachment.original_filename ||
@@ -33,8 +37,24 @@ export default function FileAttachment({
   const fileIcon = getFileIcon(mimeType);
   const fileSize = formatFileSize(attachment.file_size);
 
-  // Construct download URL if not provided
+  // Get signed URL for download
+  useEffect(() => {
+    if (attachment.storage_path) {
+      supabase.storage
+        .from("message-attachments")
+        .createSignedUrl(attachment.storage_path, 3600) // 1 hour expiry
+        .then(({ data, error }) => {
+          if (data?.signedUrl) {
+            setSignedUrl(data.signedUrl);
+          } else {
+            console.error("Failed to get signed URL:", error);
+          }
+        });
+    }
+  }, [attachment.storage_path]);
+
   const downloadUrl =
+    signedUrl ||
     attachment.download_url ||
     `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/message-attachments/${attachment.storage_path}`;
 
@@ -59,6 +79,7 @@ export default function FileAttachment({
       </div>
       <a
         href={downloadUrl}
+        download={fileName}
         target="_blank"
         rel="noopener noreferrer"
         className={`p-2 rounded-full hover:bg-opacity-20 hover:bg-black transition-colors ${
