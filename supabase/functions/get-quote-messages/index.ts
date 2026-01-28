@@ -44,7 +44,8 @@ serve(async (req) => {
     // Fetch messages
     const { data: messages, error: messagesError } = await supabaseAdmin
       .from("conversation_messages")
-      .select(`
+      .select(
+        `
         id,
         conversation_id,
         quote_id,
@@ -57,7 +58,8 @@ serve(async (req) => {
         read_by_customer_at,
         read_by_staff_at,
         created_at
-      `)
+      `,
+      )
       .eq("quote_id", quote_id)
       .order("created_at", { ascending: true });
 
@@ -97,7 +99,7 @@ serve(async (req) => {
           read_by_customer_at: msg.read_by_customer_at,
           read_by_staff_at: msg.read_by_staff_at,
         };
-      })
+      }),
     );
 
     return new Response(
