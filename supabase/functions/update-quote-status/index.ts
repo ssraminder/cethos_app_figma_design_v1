@@ -85,10 +85,12 @@ serve(async (req) => {
       .single();
 
     if (updateError) {
+      console.error("Update error details:", updateError);
       return new Response(
         JSON.stringify({
           success: false,
           error: "Failed to update quote status",
+          details: updateError.message,
         }),
         {
           status: 500,
