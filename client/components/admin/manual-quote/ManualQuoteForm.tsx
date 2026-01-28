@@ -231,7 +231,9 @@ export default function ManualQuoteForm({
           console.error("Error updating payment method:", updateError);
         }
       } else {
-        console.error("Supabase client not available for payment method update");
+        console.error(
+          "Supabase client not available for payment method update",
+        );
       }
 
       // Step 5: Send payment link if needed

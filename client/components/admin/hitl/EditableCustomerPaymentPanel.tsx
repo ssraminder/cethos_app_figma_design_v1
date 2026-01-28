@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { Mail, Phone, User, Edit2, Save, X, CreditCard, MapPin } from "lucide-react";
+import {
+  Mail,
+  Phone,
+  User,
+  Edit2,
+  Save,
+  X,
+  CreditCard,
+  MapPin,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
@@ -243,15 +252,16 @@ export default function EditableCustomerPaymentPanel({
           </div>
 
           <div>
-            <label className="block text-xs text-gray-600 mb-1">
-              Email *
-            </label>
+            <label className="block text-xs text-gray-600 mb-1">Email *</label>
             {isEditing ? (
               <input
                 type="email"
                 value={editValues.customerEmail}
                 onChange={(e) =>
-                  setEditValues({ ...editValues, customerEmail: e.target.value })
+                  setEditValues({
+                    ...editValues,
+                    customerEmail: e.target.value,
+                  })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
                 placeholder="john@example.com"
@@ -273,7 +283,10 @@ export default function EditableCustomerPaymentPanel({
                 type="tel"
                 value={editValues.customerPhone}
                 onChange={(e) =>
-                  setEditValues({ ...editValues, customerPhone: e.target.value })
+                  setEditValues({
+                    ...editValues,
+                    customerPhone: e.target.value,
+                  })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
                 placeholder="+1 (555) 123-4567"

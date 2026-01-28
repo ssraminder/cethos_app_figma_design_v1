@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { ChevronDown, ChevronUp, FileText, Edit2, Save, X, AlertCircle } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Edit2,
+  Save,
+  X,
+  AlertCircle,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
@@ -472,7 +480,11 @@ export default function EditableDocumentAnalysisPanel({
                           <span
                             className={`text-xs ${getConfidenceColor(currentAnalysis.language_confidence)}`}
                           >
-                            ({(currentAnalysis.language_confidence * 100).toFixed(0)}%)
+                            (
+                            {(
+                              currentAnalysis.language_confidence * 100
+                            ).toFixed(0)}
+                            %)
                           </span>
                         )}
                       </p>
@@ -509,7 +521,11 @@ export default function EditableDocumentAnalysisPanel({
                           <span
                             className={`text-xs ${getConfidenceColor(currentAnalysis.document_type_confidence)}`}
                           >
-                            ({(currentAnalysis.document_type_confidence * 100).toFixed(0)}%)
+                            (
+                            {(
+                              currentAnalysis.document_type_confidence * 100
+                            ).toFixed(0)}
+                            %)
                           </span>
                         )}
                       </p>
@@ -546,7 +562,11 @@ export default function EditableDocumentAnalysisPanel({
                           <span
                             className={`text-xs ${getConfidenceColor(currentAnalysis.complexity_confidence)}`}
                           >
-                            ({(currentAnalysis.complexity_confidence * 100).toFixed(0)}%)
+                            (
+                            {(
+                              currentAnalysis.complexity_confidence * 100
+                            ).toFixed(0)}
+                            %)
                           </span>
                         )}
                       </p>

@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { DollarSign, ChevronDown, ChevronUp, Edit2, Save, X, Plus, Trash2 } from "lucide-react";
+import {
+  DollarSign,
+  ChevronDown,
+  ChevronUp,
+  Edit2,
+  Save,
+  X,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
@@ -62,7 +71,9 @@ export default function EditablePricingSummaryPanel({
   // Adjustments
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [showAddAdjustment, setShowAddAdjustment] = useState(false);
-  const [newAdjustment, setNewAdjustment] = useState<Omit<Adjustment, "id" | "calculated_amount">>({
+  const [newAdjustment, setNewAdjustment] = useState<
+    Omit<Adjustment, "id" | "calculated_amount">
+  >({
     type: "discount",
     value_type: "percentage",
     value: 0,
@@ -150,7 +161,8 @@ export default function EditablePricingSummaryPanel({
     });
 
     const finalSubtotal = baseSubtotal + adjustmentsTotal;
-    const withFees = finalSubtotal + editValues.rushFee + editValues.deliveryFee;
+    const withFees =
+      finalSubtotal + editValues.rushFee + editValues.deliveryFee;
     const newTaxAmount = withFees * editValues.taxRate;
     const newTotal = withFees + newTaxAmount;
 
@@ -177,7 +189,7 @@ export default function EditablePricingSummaryPanel({
           ? (baseSubtotal * newAdjustment.value) / 100
           : newAdjustment.value;
 
-      const { data, error} = await supabase
+      const { data, error } = await supabase
         .from("quote_adjustments")
         .insert({
           quote_id: quoteId,
@@ -318,7 +330,9 @@ export default function EditablePricingSummaryPanel({
           className="flex items-center gap-2 hover:bg-gray-50 transition-colors flex-1"
         >
           <DollarSign className="w-4 h-4 text-green-600" />
-          <h3 className="text-sm font-semibold text-gray-900">Pricing & Adjustments</h3>
+          <h3 className="text-sm font-semibold text-gray-900">
+            Pricing & Adjustments
+          </h3>
           {isExpanded ? (
             <ChevronUp className="w-4 h-4 text-gray-400 ml-auto" />
           ) : (
@@ -481,7 +495,10 @@ export default function EditablePricingSummaryPanel({
                   type="text"
                   value={newAdjustment.reason}
                   onChange={(e) =>
-                    setNewAdjustment({ ...newAdjustment, reason: e.target.value })
+                    setNewAdjustment({
+                      ...newAdjustment,
+                      reason: e.target.value,
+                    })
                   }
                   placeholder="Reason (e.g., Returning customer)"
                   className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded"
@@ -589,7 +606,9 @@ export default function EditablePricingSummaryPanel({
 
               {isEditing && (
                 <div className="space-y-1.5">
-                  <label className="block text-gray-600">Delivery Option:</label>
+                  <label className="block text-gray-600">
+                    Delivery Option:
+                  </label>
                   <select
                     value={selectedDeliveryOptionId || ""}
                     onChange={(e) => handleDeliveryOptionChange(e.target.value)}
@@ -598,7 +617,8 @@ export default function EditablePricingSummaryPanel({
                     <option value="">None</option>
                     {deliveryOptions.map((option) => (
                       <option key={option.id} value={option.id}>
-                        {option.name} - ${option.price.toFixed(2)} ({option.delivery_days} days)
+                        {option.name} - ${option.price.toFixed(2)} (
+                        {option.delivery_days} days)
                       </option>
                     ))}
                   </select>
@@ -608,7 +628,10 @@ export default function EditablePricingSummaryPanel({
               <div className="flex justify-between">
                 <span className="text-gray-600">Delivery Fee:</span>
                 <span className="font-medium text-gray-900">
-                  ${Number(isEditing ? editValues.deliveryFee : deliveryFee).toFixed(2)}
+                  $
+                  {Number(
+                    isEditing ? editValues.deliveryFee : deliveryFee,
+                  ).toFixed(2)}
                 </span>
               </div>
             </div>
@@ -648,7 +671,10 @@ export default function EditablePricingSummaryPanel({
             <div className="flex justify-between">
               <span className="text-gray-600">Tax Amount:</span>
               <span className="font-medium text-gray-900">
-                ${(isEditing ? calculatedTotals.taxAmount : taxAmount).toFixed(2)}
+                $
+                {(isEditing ? calculatedTotals.taxAmount : taxAmount).toFixed(
+                  2,
+                )}
               </span>
             </div>
           </div>
