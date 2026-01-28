@@ -6,9 +6,19 @@ interface ManualDocumentEntryProps {
   filename: string;
   onSave: (data: ManualEntryData) => Promise<void>;
   onCancel: () => void;
-  languages: Array<{ id: string; code: string; name: string; price_multiplier: number }>;
+  languages: Array<{
+    id: string;
+    code: string;
+    name: string;
+    price_multiplier: number;
+  }>;
   documentTypes: Array<{ id: string; code: string; name: string }>;
-  certificationTypes: Array<{ id: string; code: string; name: string; price: number }>;
+  certificationTypes: Array<{
+    id: string;
+    code: string;
+    name: string;
+    price: number;
+  }>;
   settings: {
     base_rate: number;
     words_per_page: number;
@@ -64,7 +74,9 @@ export default function ManualDocumentEntry({
   // Auto-calculate when relevant fields change
   useEffect(() => {
     if (formData.word_count && formData.word_count > 0) {
-      const billablePages = Math.ceil(formData.word_count / settings.words_per_page);
+      const billablePages = Math.ceil(
+        formData.word_count / settings.words_per_page,
+      );
       setFormData((prev) => ({ ...prev, billable_pages: billablePages }));
     }
   }, [formData.word_count, settings.words_per_page]);
@@ -85,7 +97,7 @@ export default function ManualDocumentEntry({
     setCalculating(true);
 
     const selectedLanguage = languages.find(
-      (l) => l.id === formData.detected_language
+      (l) => l.id === formData.detected_language,
     );
     const languageMultiplier = selectedLanguage?.price_multiplier || 1.0;
 
@@ -95,7 +107,8 @@ export default function ManualDocumentEntry({
       languageMultiplier *
       (formData.complexity_multiplier || 1.0);
 
-    const certificationCost = (formData.certification_price || 0) * (formData.page_count || 1);
+    const certificationCost =
+      (formData.certification_price || 0) * (formData.page_count || 1);
 
     const lineTotal = translationCost + certificationCost;
 
@@ -181,7 +194,10 @@ export default function ManualDocumentEntry({
           <select
             value={formData.detected_language}
             onChange={(e) =>
-              setFormData((prev) => ({ ...prev, detected_language: e.target.value }))
+              setFormData((prev) => ({
+                ...prev,
+                detected_language: e.target.value,
+              }))
             }
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
             required
@@ -203,7 +219,10 @@ export default function ManualDocumentEntry({
           <select
             value={formData.detected_document_type}
             onChange={(e) =>
-              setFormData((prev) => ({ ...prev, detected_document_type: e.target.value }))
+              setFormData((prev) => ({
+                ...prev,
+                detected_document_type: e.target.value,
+              }))
             }
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
             required
@@ -279,7 +298,9 @@ export default function ManualDocumentEntry({
         {/* Billable Pages (Auto-calculated) */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-blue-900">Billable Pages (auto-calculated):</span>
+            <span className="text-sm text-blue-900">
+              Billable Pages (auto-calculated):
+            </span>
             <span className="text-sm font-semibold text-blue-900">
               {formData.billable_pages || 0}
             </span>
@@ -312,7 +333,9 @@ export default function ManualDocumentEntry({
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
             <Calculator className="w-4 h-4 text-gray-600" />
-            <h4 className="text-sm font-semibold text-gray-900">Pricing Summary</h4>
+            <h4 className="text-sm font-semibold text-gray-900">
+              Pricing Summary
+            </h4>
           </div>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
@@ -321,23 +344,31 @@ export default function ManualDocumentEntry({
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Billable Pages:</span>
-              <span className="text-gray-900">{formData.billable_pages || 0}</span>
+              <span className="text-gray-900">
+                {formData.billable_pages || 0}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Complexity:</span>
-              <span className="text-gray-900">{formData.complexity_multiplier}x</span>
+              <span className="text-gray-900">
+                {formData.complexity_multiplier}x
+              </span>
             </div>
-            {formData.certification_price && formData.certification_price > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Certification:</span>
-                <span className="text-gray-900">
-                  ${formData.certification_price} × {formData.page_count} pages
-                </span>
-              </div>
-            )}
+            {formData.certification_price &&
+              formData.certification_price > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Certification:</span>
+                  <span className="text-gray-900">
+                    ${formData.certification_price} × {formData.page_count}{" "}
+                    pages
+                  </span>
+                </div>
+              )}
             <div className="border-t border-gray-300 pt-2 mt-2 flex justify-between font-semibold">
               <span className="text-gray-900">Line Total:</span>
-              <span className={`text-gray-900 ${calculating ? "animate-pulse" : ""}`}>
+              <span
+                className={`text-gray-900 ${calculating ? "animate-pulse" : ""}`}
+              >
                 ${formData.line_total?.toFixed(2) || "0.00"}
               </span>
             </div>
@@ -356,7 +387,11 @@ export default function ManualDocumentEntry({
           </button>
           <button
             type="submit"
-            disabled={saving || !formData.detected_language || !formData.detected_document_type}
+            disabled={
+              saving ||
+              !formData.detected_language ||
+              !formData.detected_document_type
+            }
             className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {saving ? (

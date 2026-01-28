@@ -1,5 +1,11 @@
 import React, { useState } from "react";
-import { Upload, RefreshCw, AlertCircle, CheckCircle, XCircle } from "lucide-react";
+import {
+  Upload,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+} from "lucide-react";
 
 interface QuoteFile {
   id: string;
@@ -24,7 +30,9 @@ export default function DocumentManagementPanel({
 }: DocumentManagementPanelProps) {
   const [uploading, setUploading] = useState(false);
   const [processWithAI, setProcessWithAI] = useState(true);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>(
+    {},
+  );
   const [retryingFiles, setRetryingFiles] = useState<Set<string>>(new Set());
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,7 +62,7 @@ export default function DocumentManagementPanel({
               Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
             },
             body: formData,
-          }
+          },
         );
 
         if (!uploadResponse.ok) {
@@ -69,7 +77,7 @@ export default function DocumentManagementPanel({
 
       // Refresh files list
       onFilesUploaded();
-      
+
       // Reset file input
       e.target.value = "";
     } catch (error) {
@@ -99,7 +107,7 @@ export default function DocumentManagementPanel({
             quote_file_id: fileId,
             force_reprocess: true,
           }),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -150,7 +158,8 @@ export default function DocumentManagementPanel({
 
   const failedFiles = files.filter((f) => f.processing_status === "failed");
   const processingFiles = files.filter(
-    (f) => f.processing_status === "pending" || f.processing_status === "processing"
+    (f) =>
+      f.processing_status === "pending" || f.processing_status === "processing",
   );
 
   return (
@@ -197,9 +206,7 @@ export default function DocumentManagementPanel({
               onChange={(e) => setProcessWithAI(e.target.checked)}
               className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
             />
-            <span className="text-gray-700">
-              Automatically process with AI
-            </span>
+            <span className="text-gray-700">Automatically process with AI</span>
           </label>
           {!processWithAI && (
             <p className="text-xs text-amber-600 mt-1 ml-6">
@@ -237,8 +244,8 @@ export default function DocumentManagementPanel({
             <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="text-sm font-medium text-red-800">
-                {failedFiles.length} file{failedFiles.length > 1 ? "s" : ""} failed
-                processing
+                {failedFiles.length} file{failedFiles.length > 1 ? "s" : ""}{" "}
+                failed processing
               </p>
               <p className="text-xs text-red-700 mt-0.5">
                 You can retry AI processing or enter details manually
