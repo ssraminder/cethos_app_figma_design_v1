@@ -19,6 +19,7 @@ interface Quote {
 
 const STATUS_COLORS: Record<string, string> = {
   pending_payment: "bg-yellow-100 text-yellow-800",
+  awaiting_payment: "bg-yellow-100 text-yellow-800",
   quote_ready: "bg-green-100 text-green-800",
   hitl_pending: "bg-blue-100 text-blue-800",
   ai_processing: "bg-purple-100 text-purple-800",
@@ -30,6 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   pending_payment: "Pending Payment",
+  awaiting_payment: "Awaiting Payment",
   quote_ready: "Ready",
   hitl_pending: "Under Review",
   ai_processing: "Processing",
@@ -127,6 +129,7 @@ export default function CustomerQuotes() {
             >
               <option value="all">All Statuses</option>
               <option value="quote_ready">Ready</option>
+              <option value="awaiting_payment">Awaiting Payment</option>
               <option value="pending_payment">Pending Payment</option>
               <option value="hitl_pending">Under Review</option>
               <option value="ai_processing">Processing</option>
