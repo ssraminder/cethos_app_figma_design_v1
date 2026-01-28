@@ -37,6 +37,7 @@ interface Quote {
 
 const STATUS_OPTIONS = [
   { value: "", label: "All Statuses" },
+  { value: "details_pending", label: "Incomplete (No Customer Info)" },
   { value: "draft", label: "Draft" },
   { value: "processing", label: "Processing" },
   { value: "quote_ready", label: "Quote Ready" },
