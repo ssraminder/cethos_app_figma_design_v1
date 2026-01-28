@@ -244,7 +244,7 @@ export default function AdminQuotesList() {
       // Log to audit (one entry for bulk action)
       await supabase.from("staff_activity_log").insert({
         staff_id: currentStaff.staffId,
-        action: "bulk_delete_quotes",
+        action_type: "bulk_delete_quotes",
         entity_type: "quote",
         entity_id: null,
         details: {
