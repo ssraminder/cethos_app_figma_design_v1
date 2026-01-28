@@ -1,0 +1,42 @@
+name: Purge Old Draft Quotes
+
+on:
+  # Run every day at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * *'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Purge old draft quotes
+        run: |
+          echo "Starting purge of draft quotes older than 2 weeks..."
+          
+          # Call the Supabase edge function
+          response=$(curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/purge-draft-quotes" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -w "\n%{http_code}" \
+            -s)
+          
+          # Extract HTTP status code
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+          
+          # Check if request was successful
+          if [ "$http_code" -eq 200 ]; then
+            echo "✅ Purge completed successfully"
+            echo "$body" | jq '.deleted_count' | xargs -I {} echo "Deleted {} draft quotes"
+          else
+            echo "❌ Purge failed with status code: $http_code"
+            exit 1
+          fi
