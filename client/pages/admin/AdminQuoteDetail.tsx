@@ -1255,30 +1255,16 @@ export default function AdminQuoteDetail() {
         />
       )}
 
-      {showMessageModal && currentStaff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
-            <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Message Customer
-              </h3>
-              <button
-                onClick={() => setShowMessageModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                Close
-              </button>
-            </div>
-            <div className="p-4">
-              <MessagePanel
-                quoteId={quote.id}
-                staffId={currentStaff.staffId}
-                staffName={currentStaff.staffName}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <MessageCustomerModal
+        isOpen={showMessageModal}
+        onClose={() => setShowMessageModal(false)}
+        customerId={quote.customer_id}
+        customerName={quote.customer?.full_name || "Customer"}
+        customerEmail={quote.customer?.email || ""}
+        quoteId={quote.id}
+        staffId={currentStaff?.staffId || ""}
+        staffName={currentStaff?.staffName || "Staff"}
+      />
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
