@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
+import { supabase } from "@/lib/supabase";
 import { CheckCircle, Circle, ChevronRight, ChevronLeft } from "lucide-react";
+import { toast } from "sonner";
+import StaffCustomerForm from "./StaffCustomerForm";
+import StaffTranslationDetailsForm from "./StaffTranslationDetailsForm";
+import StaffFileUploadForm from "./StaffFileUploadForm";
+import StaffPricingForm from "./StaffPricingForm";
+import StaffPaymentReviewForm from "./StaffPaymentReviewForm";
 
 interface CustomerData {
   id?: string;
@@ -23,8 +30,7 @@ interface FileData {
   id: string;
   name: string;
   size: number;
-  uploadStatus: "pending" | "uploading" | "success" | "failed";
-  aiStatus?: "pending" | "processing" | "completed" | "failed" | "skipped";
+  file: File;
 }
 
 interface PricingData {
@@ -36,6 +42,8 @@ interface PricingData {
   taxRate: number;
   taxAmount: number;
   total: number;
+  discount?: number;
+  surcharge?: number;
 }
 
 interface ManualQuoteFormProps {
@@ -59,6 +67,8 @@ export default function ManualQuoteForm({
   >("staff_manual");
   const [notes, setNotes] = useState("");
   const [quoteId, setQuoteId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [processWithAI, setProcessWithAI] = useState(true);
 
   const steps = [
     { id: 1, name: "Customer Info", description: "Enter customer details" },
@@ -100,6 +110,143 @@ export default function ManualQuoteForm({
         return true;
       default:
         return false;
+    }
+  };
+
+  const handleSubmit = async (
+    paymentMethodId: string,
+    sendPaymentLink: boolean,
+  ) => {
+    if (!staffUser?.id || !customer) {
+      toast.error("Missing required information");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Step 1: Create or find customer and create quote
+      const createQuoteResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-staff-quote`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            staffId: staffUser.id,
+            customerData: {
+              email: customer.email,
+              phone: customer.phone,
+              fullName: customer.fullName,
+              customerType: customer.customerType,
+              companyName: customer.companyName,
+            },
+            quoteData: {
+              sourceLanguageId: quote.sourceLanguageId,
+              targetLanguageId: quote.targetLanguageId,
+              intendedUseId: quote.intendedUseId,
+              countryOfIssue: quote.countryOfIssue,
+              specialInstructions: quote.specialInstructions,
+            },
+            entryPoint,
+            notes,
+          }),
+        },
+      );
+
+      if (!createQuoteResponse.ok) {
+        const error = await createQuoteResponse.json();
+        throw new Error(error.message || "Failed to create quote");
+      }
+
+      const quoteResult = await createQuoteResponse.json();
+      const newQuoteId = quoteResult.quoteId;
+      setQuoteId(newQuoteId);
+
+      // Step 2: Upload files if any
+      if (files.length > 0) {
+        for (const fileData of files) {
+          const formData = new FormData();
+          formData.append("file", fileData.file);
+          formData.append("quoteId", newQuoteId);
+          formData.append("staffId", staffUser.id);
+          formData.append("processWithAI", processWithAI.toString());
+
+          const uploadResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: formData,
+            },
+          );
+
+          if (!uploadResponse.ok) {
+            console.error("Failed to upload file:", fileData.name);
+            // Continue with other files
+          }
+        }
+      }
+
+      // Step 3: Calculate and save pricing
+      if (pricing) {
+        const pricingResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/calculate-manual-quote-pricing`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              quoteId: newQuoteId,
+              staffId: staffUser.id,
+              pricingData: pricing,
+              manualOverride: true,
+              useAutoCalculation: false,
+            }),
+          },
+        );
+
+        if (!pricingResponse.ok) {
+          console.error("Failed to save pricing");
+        }
+      }
+
+      // Step 4: Update payment method
+      if (supabase) {
+        await supabase
+          .from("quotes")
+          .update({
+            payment_method_id: paymentMethodId,
+            status: "quote_ready",
+          })
+          .eq("id", newQuoteId);
+      }
+
+      // Step 5: Send payment link if needed
+      if (sendPaymentLink && customer.email) {
+        // TODO: Implement payment link generation via Stripe
+        // This would call another edge function to create a Stripe payment link
+        console.log("Payment link generation not implemented yet");
+      }
+
+      toast.success("Quote created successfully!");
+
+      if (onComplete) {
+        onComplete(newQuoteId);
+      }
+    } catch (error) {
+      console.error("Error creating quote:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create quote",
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -195,7 +342,7 @@ export default function ManualQuoteForm({
 
       {/* Form Content */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 min-h-[400px]">
-        {/* Step Content - Placeholder for now */}
+        {/* Step Content */}
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-2">
             {steps[currentStep - 1].name}
@@ -205,17 +352,54 @@ export default function ManualQuoteForm({
           </p>
         </div>
 
-        {/* Placeholder Content */}
-        <div className="text-center text-gray-500 py-12">
-          Step {currentStep} content will go here
-          <div className="mt-4 text-xs text-gray-400">
-            {currentStep === 1 && "StaffCustomerForm component"}
-            {currentStep === 2 && "Translation details form"}
-            {currentStep === 3 && "DocumentManagementPanel component"}
-            {currentStep === 4 && "StaffPricingForm component"}
-            {currentStep === 5 && "StaffQuoteReview component"}
-          </div>
-        </div>
+        {/* Step 1: Customer Info */}
+        {currentStep === 1 && (
+          <StaffCustomerForm
+            value={customer}
+            onChange={setCustomer}
+            entryPoint={entryPoint}
+            onEntryPointChange={setEntryPoint}
+          />
+        )}
+
+        {/* Step 2: Translation Details */}
+        {currentStep === 2 && (
+          <StaffTranslationDetailsForm value={quote} onChange={setQuote} />
+        )}
+
+        {/* Step 3: Upload Files */}
+        {currentStep === 3 && (
+          <StaffFileUploadForm
+            quoteId={quoteId}
+            staffId={staffUser?.id || ""}
+            onFilesChange={setFiles}
+          />
+        )}
+
+        {/* Step 4: Pricing */}
+        {currentStep === 4 && (
+          <StaffPricingForm
+            quoteId={quoteId}
+            onPricingChange={setPricing}
+            initialPricing={pricing}
+          />
+        )}
+
+        {/* Step 5: Review */}
+        {currentStep === 5 && (
+          <StaffPaymentReviewForm
+            reviewData={{
+              customer,
+              quote,
+              pricing,
+              files,
+              entryPoint,
+              notes,
+            }}
+            onSubmit={handleSubmit}
+            isSubmitting={isSubmitting}
+          />
+        )}
 
         {/* Navigation Buttons */}
         <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
@@ -224,7 +408,8 @@ export default function ManualQuoteForm({
               <button
                 type="button"
                 onClick={handleBack}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                disabled={isSubmitting}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronLeft className="h-4 w-4 mr-1" />
                 Back
@@ -233,43 +418,30 @@ export default function ManualQuoteForm({
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-            >
-              Cancel
-            </button>
+            {currentStep < 5 && (
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isSubmitting}
+                className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+            )}
 
-            {currentStep < steps.length ? (
+            {currentStep < steps.length && (
               <button
                 type="button"
                 onClick={handleNext}
-                disabled={!canProceed()}
+                disabled={!canProceed() || isSubmitting}
                 className={`inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${
-                  canProceed()
+                  canProceed() && !isSubmitting
                     ? "bg-indigo-600 hover:bg-indigo-700"
                     : "bg-gray-300 cursor-not-allowed"
                 }`}
               >
                 Next
                 <ChevronRight className="h-4 w-4 ml-1" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  // Final submission logic
-                  console.log("Creating quote...");
-                }}
-                disabled={!canProceed()}
-                className={`px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${
-                  canProceed()
-                    ? "bg-green-600 hover:bg-green-700"
-                    : "bg-gray-300 cursor-not-allowed"
-                }`}
-              >
-                Create Quote
               </button>
             )}
           </div>
@@ -287,6 +459,9 @@ export default function ManualQuoteForm({
           </p>
           <p>
             <strong>Can Proceed:</strong> {canProceed() ? "Yes" : "No"}
+          </p>
+          <p>
+            <strong>Quote ID:</strong> {quoteId || "Not created yet"}
           </p>
         </div>
       )}
