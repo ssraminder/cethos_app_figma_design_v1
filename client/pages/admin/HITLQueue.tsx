@@ -99,6 +99,7 @@ export default function HITLQueue() {
   };
 
   const formatSLA = (minutes: number) => {
+    if (minutes == null || isNaN(minutes)) return "N/A";
     if (minutes < 0) return "OVERDUE";
     const hours = Math.floor(minutes / 60);
     const mins = Math.round(minutes % 60);
