@@ -220,6 +220,14 @@ export default function MessagePanel({
       {/* Compose Area */}
       <div className="p-3 border-t border-gray-200 bg-gray-50 flex-shrink-0">
         <div className="flex gap-2 items-start">
+          <button
+            type="button"
+            className="flex-shrink-0 p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+            title="Attach file (coming soon)"
+            onClick={() => alert("File attachments coming soon!")}
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
           <textarea
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
