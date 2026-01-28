@@ -138,7 +138,86 @@ serve(async (req) => {
     }
     console.log("✅ Message inserted:", message.id);
 
-    // 5. Send email to customer if they have an email
+    // 5. Process attachments if provided
+    if (attachments && attachments.length > 0) {
+      console.log("📎 Processing attachments:", attachments.length);
+
+      for (const tempPath of attachments) {
+        try {
+          // Move file from temp to permanent location
+          const tempBucket = "message-attachments";
+          const tempFileName = tempPath.split("/").pop() || "file";
+
+          // Extract original filename (without timestamp prefix)
+          const originalFileName = tempFileName.replace(/^\d+-[a-z0-9]+-/, "");
+
+          // Use original filename for permanent path (message folder provides uniqueness)
+          const permanentPath = `conversations/${conversationId}/messages/${message.id}/${originalFileName}`;
+
+          console.log(`📦 Moving file from ${tempPath} to ${permanentPath}`);
+          console.log(`📄 Restoring original filename: ${originalFileName}`);
+
+          // Copy file from temp to permanent location
+          const { error: copyError } = await supabaseAdmin.storage
+            .from(tempBucket)
+            .copy(tempPath, permanentPath);
+
+          if (copyError) {
+            console.error("Failed to copy attachment:", copyError);
+            continue;
+          }
+
+          // Get file metadata from the permanent location
+          const { data: fileData, error: listError } =
+            await supabaseAdmin.storage
+              .from(tempBucket)
+              .list(permanentPath.split("/").slice(0, -1).join("/"), {
+                search: originalFileName,
+              });
+
+          if (listError) {
+            console.error("Failed to get file metadata:", listError);
+          }
+
+          const fileInfo = fileData?.[0];
+
+          // Insert attachment record with correct field names
+          const { error: insertError } = await supabaseAdmin
+            .from("message_attachments")
+            .insert({
+              message_id: message.id,
+              filename: originalFileName,
+              original_filename: originalFileName,
+              mime_type:
+                fileInfo?.metadata?.mimetype || "application/octet-stream",
+              file_size: fileInfo?.metadata?.size || 0,
+              storage_path: permanentPath,
+            });
+
+          if (insertError) {
+            console.error("Failed to insert attachment record:", insertError);
+            continue;
+          }
+
+          // Delete temp file
+          const { error: deleteError } = await supabaseAdmin.storage
+            .from(tempBucket)
+            .remove([tempPath]);
+
+          if (deleteError) {
+            console.error("Failed to delete temp file:", deleteError);
+            // Not critical, continue
+          }
+
+          console.log("✅ Attachment processed:", originalFileName);
+        } catch (attachmentError) {
+          console.error("Failed to process attachment:", attachmentError);
+          // Continue with other attachments
+        }
+      }
+    }
+
+    // 6. Send email to customer if they have an email
     if (quote.customers?.email) {
       try {
         await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-email`, {
