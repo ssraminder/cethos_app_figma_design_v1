@@ -140,10 +140,52 @@ const App = () => (
 
                   {/* Customer Dashboard Routes */}
                   <Route
+                    path="/dashboard"
+                    element={
+                      <CustomerAuthProvider>
+                        <ProtectedCustomerRoute>
+                          <CustomerDashboard />
+                        </ProtectedCustomerRoute>
+                      </CustomerAuthProvider>
+                    }
+                  />
+                  <Route
+                    path="/dashboard/quotes"
+                    element={
+                      <CustomerAuthProvider>
+                        <ProtectedCustomerRoute>
+                          <CustomerQuotes />
+                        </ProtectedCustomerRoute>
+                      </CustomerAuthProvider>
+                    }
+                  />
+                  <Route
+                    path="/dashboard/orders"
+                    element={
+                      <CustomerAuthProvider>
+                        <ProtectedCustomerRoute>
+                          <CustomerOrders />
+                        </ProtectedCustomerRoute>
+                      </CustomerAuthProvider>
+                    }
+                  />
+                  <Route
                     path="/dashboard/messages"
                     element={
                       <CustomerAuthProvider>
-                        <CustomerMessages />
+                        <ProtectedCustomerRoute>
+                          <CustomerMessages />
+                        </ProtectedCustomerRoute>
+                      </CustomerAuthProvider>
+                    }
+                  />
+                  <Route
+                    path="/dashboard/profile"
+                    element={
+                      <CustomerAuthProvider>
+                        <ProtectedCustomerRoute>
+                          <CustomerProfile />
+                        </ProtectedCustomerRoute>
                       </CustomerAuthProvider>
                     }
                   />
