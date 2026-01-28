@@ -437,56 +437,55 @@ export default function MessageCustomerModal({
                         : "bg-gray-100 text-gray-800"
                   }`}
                 >
-                {msg.sender_type !== "system" && (
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span
-                      className={`text-xs font-medium ${
-                        msg.sender_type === "staff"
-                          ? "text-blue-100"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      {msg.sender_name}
-                    </span>
-                    {msg.source === "email" && (
-                      <span className="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">
-                        <Mail className="w-3 h-3" />
-                        via Email
+                  {msg.sender_type !== "system" && (
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span
+                        className={`text-xs font-medium ${
+                          msg.sender_type === "staff"
+                            ? "text-blue-100"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {msg.sender_name}
                       </span>
-                    )}
-                    <span
-                      className={`text-xs flex items-center gap-1 ${
-                        msg.sender_type === "staff"
-                          ? "text-blue-200"
-                          : "text-gray-400"
-                      }`}
-                    >
-                      {format(new Date(msg.created_at), "MMM d, h:mm a")}
-                      {msg.sender_type === "staff" && (
-                        msg.read_by_customer_at ? (
-                          <CheckCheck className="w-3 h-3" />
-                        ) : (
-                          <Check className="w-3 h-3" />
-                        )
+                      {msg.source === "email" && (
+                        <span className="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">
+                          <Mail className="w-3 h-3" />
+                          via Email
+                        </span>
                       )}
-                    </span>
-                  </div>
-                )}
-                <p className="text-sm whitespace-pre-wrap">
-                  {msg.message_text}
-                </p>
+                      <span
+                        className={`text-xs flex items-center gap-1 ${
+                          msg.sender_type === "staff"
+                            ? "text-blue-200"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {format(new Date(msg.created_at), "MMM d, h:mm a")}
+                        {msg.sender_type === "staff" &&
+                          (msg.read_by_customer_at ? (
+                            <CheckCheck className="w-3 h-3" />
+                          ) : (
+                            <Check className="w-3 h-3" />
+                          ))}
+                      </span>
+                    </div>
+                  )}
+                  <p className="text-sm whitespace-pre-wrap">
+                    {msg.message_text}
+                  </p>
 
-                {/* Attachments */}
-                {msg.attachments && msg.attachments.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    {msg.attachments.map((attachment) => (
-                      <AttachmentDisplay
-                        key={attachment.id}
-                        attachment={attachment}
-                      />
-                    ))}
-                  </div>
-                )}
+                  {/* Attachments */}
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                      {msg.attachments.map((attachment) => (
+                        <AttachmentDisplay
+                          key={attachment.id}
+                          attachment={attachment}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))
