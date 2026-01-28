@@ -19,6 +19,7 @@ interface RecoveredQuote {
   status: string;
   created_at?: string;
   total?: number;
+  expires_at?: string;
 }
 
 interface VerifyResponse {
@@ -165,6 +166,32 @@ export default function QuoteRecoverPage() {
     setError(null);
     setQuotes([]);
     setVerifiedEmail(null);
+  };
+
+  const isQuoteExpired = (quote: RecoveredQuote) => {
+    if (!quote.expires_at) return false;
+    return new Date(quote.expires_at) < new Date();
+  };
+
+  const handleQuoteClick = (quote: RecoveredQuote) => {
+    // Check if quote is expired
+    if (isQuoteExpired(quote)) {
+      // Get file count - default to 0 since we don't have it in recovered quotes
+      navigate('/quote/expired', {
+        replace: true,
+        state: {
+          quoteNumber: quote.quote_number || quote.id,
+          documentsCount: 0
+        }
+      });
+      return;
+    }
+
+    // Navigate to appropriate page based on status
+    const redirectPath = getRedirectPath(quote);
+    if (redirectPath) {
+      navigate(redirectPath);
+    }
   };
 
   const getRedirectPath = (quote: RecoveredQuote) => {
@@ -382,10 +409,19 @@ export default function QuoteRecoverPage() {
                             Status: {quote.status.replace(/_/g, " ")}
                           </p>
                         </div>
-                        {redirectPath ? (
+                        {isQuoteExpired(quote) ? (
                           <button
                             type="button"
-                            onClick={() => navigate(redirectPath)}
+                            onClick={() => handleQuoteClick(quote)}
+                            className="inline-flex items-center gap-2 text-red-600 hover:text-red-700 text-sm font-medium"
+                          >
+                            Expired
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
+                        ) : redirectPath ? (
+                          <button
+                            type="button"
+                            onClick={() => handleQuoteClick(quote)}
                             className="inline-flex items-center gap-2 text-teal-600 hover:text-teal-700 text-sm font-medium"
                           >
                             Open quote
@@ -393,7 +429,7 @@ export default function QuoteRecoverPage() {
                           </button>
                         ) : (
                           <span className="text-xs text-gray-500">
-                            Quote expired
+                            Cannot open
                           </span>
                         )}
                       </div>
