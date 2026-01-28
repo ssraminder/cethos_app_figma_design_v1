@@ -149,6 +149,7 @@ const STATUS_LABELS: Record<string, string> = {
   awaiting_payment: "Awaiting Payment",
   expired: "Expired",
   converted: "Converted",
+  deleted: "Deleted",
 };
 
 export default function AdminQuoteDetail() {
