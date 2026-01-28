@@ -350,9 +350,9 @@ export default function ManualQuoteForm({
 
       {/* Form Content */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 min-h-[400px]">
-        {/* Step Content */}
-        <div className="mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">
+        {/* Step Header */}
+        <div className="mb-6 pb-4 border-b border-gray-200">
+          <h2 className="text-xl font-bold text-gray-900 mb-1">
             {steps[currentStep - 1].name}
           </h2>
           <p className="text-sm text-gray-600">
