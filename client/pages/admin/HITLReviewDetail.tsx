@@ -336,9 +336,16 @@ const HITLReviewDetail: React.FC = () => {
       const isClaimed = assignedTo === currentStaffId;
       const isClaimedByOther = !!assignedTo && assignedTo !== currentStaffId;
 
-      setClaimedByMe(isClaimed);
-      setClaimedByOther(isClaimedByOther);
-      setAssignedStaffName(null); // Will be set if we fetch from base table with staff join
+      // Only update claim status if we have definitive information
+      // If assigned_to is null, it might mean the view/RLS blocked access
+      // In that case, preserve the existing claimedByMe state
+      if (assignedTo !== null) {
+        setClaimedByMe(isClaimed);
+        setClaimedByOther(isClaimedByOther);
+        setAssignedStaffName(null); // Will be set if we fetch from base table with staff join
+      } else {
+        console.warn("⚠️ assigned_to is null - preserving existing claim status to avoid false negatives");
+      }
 
       console.log(
         `🔐 Claimed by me: ${isClaimed}, by other: ${isClaimedByOther} (assigned_to: ${assignedTo}, staffId: ${currentStaffId})`,
