@@ -116,9 +116,7 @@ export default function ManualQuoteForm({
     console.log("  - customer:", customer);
 
     if (!staffId || !customer) {
-      console.log(
-        "⏸️ [QUOTE CREATION] Missing staffId or customer - skipping",
-      );
+      console.log("⏸️ [QUOTE CREATION] Missing staffId or customer - skipping");
       return;
     }
 
