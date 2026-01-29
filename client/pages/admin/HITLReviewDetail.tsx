@@ -182,6 +182,11 @@ const HITLReviewDetail: React.FC = () => {
   const [sendEmailToCustomer, setSendEmailToCustomer] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
 
+  // Update & Send Payment Link state
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateReason, setUpdateReason] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+
   // Page splitting/combining
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
   const [splitMode, setSplitMode] = useState(false);
