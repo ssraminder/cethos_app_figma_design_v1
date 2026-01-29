@@ -316,7 +316,32 @@ export default function StaffFileUploadForm({
               Files ({files.length})
             </h3>
 
-            {allFilesUploaded && (
+            {/* Analyze Files Button */}
+            {hasFilesToAnalyze && !isAnalyzing && (
+              <button
+                onClick={analyzeFiles}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+              >
+                <Loader2 className="w-4 h-4" />
+                Analyze Files with AI
+              </button>
+            )}
+
+            {isAnalyzing && (
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 text-sm font-medium rounded-md">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Analyzing files...
+              </div>
+            )}
+
+            {allFilesAnalyzed && processWithAI && (
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 text-sm font-medium rounded-md">
+                <CheckCircle className="w-4 h-4" />
+                All files analyzed
+              </div>
+            )}
+
+            {allFilesUploaded && !processWithAI && (
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 text-sm font-medium rounded-md">
                 <CheckCircle className="w-4 h-4" />
                 All files uploaded
