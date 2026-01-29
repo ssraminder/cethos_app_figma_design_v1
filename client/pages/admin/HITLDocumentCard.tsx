@@ -32,9 +32,9 @@ export default function HITLDocumentCard({
   children,
 }: HITLDocumentCardProps) {
   const hasAnalysis = !!analysis;
-  const aiStatus = file.ai_processing_status || 'unknown';
-  const hasFailed = aiStatus === 'failed' || aiStatus === 'error';
-  const isPending = aiStatus === 'pending' || aiStatus === 'processing';
+  const aiStatus = file.ai_processing_status || "unknown";
+  const hasFailed = aiStatus === "failed" || aiStatus === "error";
+  const isPending = aiStatus === "pending" || aiStatus === "processing";
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -69,9 +69,7 @@ export default function HITLDocumentCard({
           )}
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-gray-400">
-            {isExpanded ? "▼" : "▶"}
-          </span>
+          <span className="text-gray-400">{isExpanded ? "▼" : "▶"}</span>
         </div>
       </button>
 
@@ -88,12 +86,17 @@ export default function HITLDocumentCard({
                     ⚠️ AI Analysis Failed
                   </h4>
                   <p className="text-sm text-red-800 mb-3">
-                    Automated document analysis could not be completed. 
-                    <strong> This document requires manual review and entry.</strong>
+                    Automated document analysis could not be completed.
+                    <strong>
+                      {" "}
+                      This document requires manual review and entry.
+                    </strong>
                   </p>
                   {file.error_message && (
                     <div className="mt-3 p-4 bg-red-100 rounded-lg border border-red-200">
-                      <p className="text-xs font-bold text-red-900 mb-2">Error Details:</p>
+                      <p className="text-xs font-bold text-red-900 mb-2">
+                        Error Details:
+                      </p>
                       <p className="text-sm text-red-800 font-mono leading-relaxed">
                         {file.error_message}
                       </p>
@@ -114,7 +117,8 @@ export default function HITLDocumentCard({
                     Analysis In Progress
                   </h4>
                   <p className="text-sm text-yellow-800">
-                    The document is currently being analyzed. Please refresh the page in a moment to see results.
+                    The document is currently being analyzed. Please refresh the
+                    page in a moment to see results.
                   </p>
                 </div>
               </div>
@@ -139,7 +143,10 @@ export default function HITLDocumentCard({
               </div>
               <div className="mt-4 flex justify-between items-center">
                 <span className="text-sm text-gray-600">
-                  Size: <strong>{((file.file_size || 0) / 1024 / 1024).toFixed(2)} MB</strong>
+                  Size:{" "}
+                  <strong>
+                    {((file.file_size || 0) / 1024 / 1024).toFixed(2)} MB
+                  </strong>
                 </span>
                 <a
                   href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${file.storage_path}`}
@@ -160,18 +167,22 @@ export default function HITLDocumentCard({
                 </h5>
                 <div className="space-y-3 text-sm text-blue-900">
                   <p>
-                    Since automated analysis is not available for this document, 
+                    Since automated analysis is not available for this document,
                     you must manually review and enter the details:
                   </p>
                   <ul className="list-disc list-inside space-y-2 ml-2">
                     <li>Review the document preview carefully</li>
                     <li>Count pages and estimate word count</li>
                     <li>Identify document type and complexity</li>
-                    <li>Enter details in <strong>Translation Details</strong> section</li>
+                    <li>
+                      Enter details in <strong>Translation Details</strong>{" "}
+                      section
+                    </li>
                   </ul>
                   <div className="mt-4 p-3 bg-blue-100 rounded border border-blue-200">
                     <p className="text-xs font-semibold">
-                      💡 Tip: Download the file to view the full document if needed.
+                      💡 Tip: Download the file to view the full document if
+                      needed.
                     </p>
                   </div>
                 </div>

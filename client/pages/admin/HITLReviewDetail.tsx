@@ -2500,8 +2500,12 @@ const HITLReviewDetail: React.FC = () => {
             <div className="space-y-4">
               {quoteFiles.map((file, index) => {
                 // Find matching analysis result if it exists
-                const analysis = analysisResults.find(a => a.quote_file_id === file.id);
-                const pages = analysis ? (pageData[analysis.quote_file_id] || []) : [];
+                const analysis = analysisResults.find(
+                  (a) => a.quote_file_id === file.id,
+                );
+                const pages = analysis
+                  ? pageData[analysis.quote_file_id] || []
+                  : [];
                 const totalWords = pages.reduce(
                   (sum, p) => sum + getPageWordCount(p),
                   0,
@@ -2520,7 +2524,9 @@ const HITLReviewDetail: React.FC = () => {
                       analysis={null}
                       isExpanded={isExpanded}
                       hasChanges={false}
-                      onToggle={() => setExpandedFile(isExpanded ? null : fileId)}
+                      onToggle={() =>
+                        setExpandedFile(isExpanded ? null : fileId)
+                      }
                     />
                   );
                 }
@@ -2534,15 +2540,15 @@ const HITLReviewDetail: React.FC = () => {
                     {/* File Header */}
                     <button
                       onClick={() =>
-                        setExpandedFile(
-                          isExpanded ? null : fileId,
-                        )
+                        setExpandedFile(isExpanded ? null : fileId)
                       }
                       className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
                     >
                       <div className="flex items-center gap-4">
                         <span className="text-lg font-medium">
-                          {index + 1}. {file.original_filename || analysis.quote_file?.original_filename}
+                          {index + 1}.{" "}
+                          {file.original_filename ||
+                            analysis.quote_file?.original_filename}
                         </span>
                         <span className="text-sm text-gray-500">
                           {totalWords} words • {pages.length} page(s)
