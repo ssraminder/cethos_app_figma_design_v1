@@ -211,6 +211,9 @@ export default function AdminQuoteDetail() {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showResendModal, setShowResendModal] = useState(false);
+  const [resendCustomMessage, setResendCustomMessage] = useState("");
+  const [isResending, setIsResending] = useState(false);
 
   const { session: currentStaff } = useAdminAuthContext();
 
