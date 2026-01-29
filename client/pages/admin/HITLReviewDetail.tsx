@@ -230,18 +230,22 @@ const HITLReviewDetail: React.FC = () => {
   const [showAddressSection, setShowAddressSection] = useState(false);
   const [billingAddress, setBillingAddress] = useState<any>(null);
   const [shippingAddress, setShippingAddress] = useState<any>(null);
-  const [turnaroundType, setTurnaroundType] = useState<'standard' | 'rush' | 'same_day'>('standard');
+  const [turnaroundType, setTurnaroundType] = useState<
+    "standard" | "rush" | "same_day"
+  >("standard");
   const [rushFee, setRushFee] = useState(0);
   const [rushMultiplierValue, setRushMultiplierValue] = useState(1.3);
   const [sameDayMultiplierValue, setSameDayMultiplierValue] = useState(2.0);
-  const [turnaroundOptions, setTurnaroundOptions] = useState<Array<{
-    id: string;
-    code: string;
-    name: string;
-    description: string;
-    multiplier: number;
-    is_rush: boolean;
-  }>>([]);
+  const [turnaroundOptions, setTurnaroundOptions] = useState<
+    Array<{
+      id: string;
+      code: string;
+      name: string;
+      description: string;
+      multiplier: number;
+      is_rush: boolean;
+    }>
+  >([]);
 
   // Page splitting/combining
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
@@ -450,7 +454,9 @@ const HITLReviewDetail: React.FC = () => {
         setShippingAddress(quote.shipping_address);
       }
       if (quote.turnaround_type) {
-        setTurnaroundType(quote.turnaround_type as 'standard' | 'rush' | 'same_day');
+        setTurnaroundType(
+          quote.turnaround_type as "standard" | "rush" | "same_day",
+        );
       }
       if (quote.rush_fee) {
         setRushFee(parseFloat(quote.rush_fee) || 0);
@@ -1243,7 +1249,9 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
-  const handleUpdateTurnaroundType = async (newType: 'standard' | 'rush' | 'same_day') => {
+  const handleUpdateTurnaroundType = async (
+    newType: "standard" | "rush" | "same_day",
+  ) => {
     if (!reviewData?.quote_id || !reviewData?.quotes) return;
 
     try {
@@ -1252,10 +1260,10 @@ const HITLReviewDetail: React.FC = () => {
       let newRushFee = 0;
       let multiplier = 1.0;
 
-      if (newType === 'rush') {
+      if (newType === "rush") {
         multiplier = rushMultiplierValue;
         newRushFee = subtotal * (multiplier - 1);
-      } else if (newType === 'same_day') {
+      } else if (newType === "same_day") {
         multiplier = sameDayMultiplierValue;
         newRushFee = subtotal * (multiplier - 1);
       }
@@ -1265,15 +1273,17 @@ const HITLReviewDetail: React.FC = () => {
       const deliveryFee = reviewData.quotes.delivery_fee || 0;
       const newSubtotalWithRush = subtotal + newRushFee;
       const taxRate = reviewData.quotes.tax_rate || 0;
-      const taxAmount = (newSubtotalWithRush + certificationTotal + deliveryFee) * taxRate;
-      const newTotal = newSubtotalWithRush + certificationTotal + deliveryFee + taxAmount;
+      const taxAmount =
+        (newSubtotalWithRush + certificationTotal + deliveryFee) * taxRate;
+      const newTotal =
+        newSubtotalWithRush + certificationTotal + deliveryFee + taxAmount;
 
       const { error } = await supabase
         .from("quotes")
         .update({
           turnaround_type: newType,
           rush_fee: newRushFee,
-          is_rush: newType !== 'standard',
+          is_rush: newType !== "standard",
           tax_amount: taxAmount,
           total: newTotal,
         })
@@ -1291,13 +1301,15 @@ const HITLReviewDetail: React.FC = () => {
           ...reviewData.quotes,
           turnaround_type: newType,
           rush_fee: newRushFee,
-          is_rush: newType !== 'standard',
+          is_rush: newType !== "standard",
           tax_amount: taxAmount,
           total: newTotal,
-        }
+        },
       });
 
-      alert(`✅ Turnaround type updated to ${newType}!\nRush Fee: $${newRushFee.toFixed(2)}\nNew Total: $${newTotal.toFixed(2)}`);
+      alert(
+        `✅ Turnaround type updated to ${newType}!\nRush Fee: $${newRushFee.toFixed(2)}\nNew Total: $${newTotal.toFixed(2)}`,
+      );
       await fetchAllData(); // Refresh to get updated pricing
     } catch (error) {
       console.error("Failed to update turnaround type:", error);
@@ -2253,31 +2265,48 @@ const HITLReviewDetail: React.FC = () => {
 
                     {/* Turnaround Type Selection */}
                     <div className="border-b pb-6">
-                      <h4 className="font-semibold text-gray-800 mb-3">Rush Options</h4>
+                      <h4 className="font-semibold text-gray-800 mb-3">
+                        Rush Options
+                      </h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         {turnaroundOptions.map((option) => {
                           const isSelected = turnaroundType === option.code;
-                          const multiplier = option.code === 'rush' ? rushMultiplierValue :
-                                            option.code === 'same_day' ? sameDayMultiplierValue :
-                                            1.0;
+                          const multiplier =
+                            option.code === "rush"
+                              ? rushMultiplierValue
+                              : option.code === "same_day"
+                                ? sameDayMultiplierValue
+                                : 1.0;
                           const calculatedFee = option.is_rush
-                            ? (reviewData.quotes.subtotal || 0) * (multiplier - 1)
+                            ? (reviewData.quotes.subtotal || 0) *
+                              (multiplier - 1)
                             : 0;
 
                           return (
                             <button
                               key={option.id}
-                              onClick={() => handleUpdateTurnaroundType(option.code as 'standard' | 'rush' | 'same_day')}
+                              onClick={() =>
+                                handleUpdateTurnaroundType(
+                                  option.code as
+                                    | "standard"
+                                    | "rush"
+                                    | "same_day",
+                                )
+                              }
                               className={`p-4 rounded-lg border-2 transition-all text-left ${
                                 isSelected
-                                  ? 'border-green-500 bg-green-50'
-                                  : 'border-gray-200 hover:border-gray-300'
+                                  ? "border-green-500 bg-green-50"
+                                  : "border-gray-200 hover:border-gray-300"
                               }`}
                             >
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
-                                  <h5 className="font-medium text-gray-900">{option.name}</h5>
-                                  <p className="text-xs text-gray-600 mt-1">{option.description}</p>
+                                  <h5 className="font-medium text-gray-900">
+                                    {option.name}
+                                  </h5>
+                                  <p className="text-xs text-gray-600 mt-1">
+                                    {option.description}
+                                  </p>
                                   {option.is_rush && (
                                     <p className="text-sm font-semibold text-green-600 mt-2">
                                       +${calculatedFee.toFixed(2)}
@@ -2296,71 +2325,124 @@ const HITLReviewDetail: React.FC = () => {
 
                     {/* Billing Address */}
                     <div>
-                      <h4 className="font-semibold text-gray-800 mb-3">Billing Address</h4>
+                      <h4 className="font-semibold text-gray-800 mb-3">
+                        Billing Address
+                      </h4>
                       {billingAddress ? (
                         <div className="p-4 bg-gray-50 rounded-lg border">
-                          <p className="text-sm text-gray-900">{billingAddress.name || reviewData.quotes.customer?.full_name}</p>
-                          <p className="text-sm text-gray-600">{billingAddress.address_line1}</p>
+                          <p className="text-sm text-gray-900">
+                            {billingAddress.name ||
+                              reviewData.quotes.customer?.full_name}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {billingAddress.address_line1}
+                          </p>
                           {billingAddress.address_line2 && (
-                            <p className="text-sm text-gray-600">{billingAddress.address_line2}</p>
+                            <p className="text-sm text-gray-600">
+                              {billingAddress.address_line2}
+                            </p>
                           )}
                           <p className="text-sm text-gray-600">
-                            {billingAddress.city}, {billingAddress.province || billingAddress.state} {billingAddress.postal_code}
+                            {billingAddress.city},{" "}
+                            {billingAddress.province || billingAddress.state}{" "}
+                            {billingAddress.postal_code}
                           </p>
-                          <p className="text-sm text-gray-600">{billingAddress.country || 'Canada'}</p>
+                          <p className="text-sm text-gray-600">
+                            {billingAddress.country || "Canada"}
+                          </p>
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-500 italic">No billing address on file</p>
+                        <p className="text-sm text-gray-500 italic">
+                          No billing address on file
+                        </p>
                       )}
                     </div>
 
                     {/* Shipping/Delivery Address */}
                     <div>
-                      <h4 className="font-semibold text-gray-800 mb-3">Delivery Address</h4>
+                      <h4 className="font-semibold text-gray-800 mb-3">
+                        Delivery Address
+                      </h4>
                       {shippingAddress ? (
                         <div className="p-4 bg-gray-50 rounded-lg border">
-                          <p className="text-sm text-gray-900">{shippingAddress.name || reviewData.quotes.customer?.full_name}</p>
-                          <p className="text-sm text-gray-600">{shippingAddress.address_line1}</p>
+                          <p className="text-sm text-gray-900">
+                            {shippingAddress.name ||
+                              reviewData.quotes.customer?.full_name}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {shippingAddress.address_line1}
+                          </p>
                           {shippingAddress.address_line2 && (
-                            <p className="text-sm text-gray-600">{shippingAddress.address_line2}</p>
+                            <p className="text-sm text-gray-600">
+                              {shippingAddress.address_line2}
+                            </p>
                           )}
                           <p className="text-sm text-gray-600">
-                            {shippingAddress.city}, {shippingAddress.province || shippingAddress.state} {shippingAddress.postal_code}
+                            {shippingAddress.city},{" "}
+                            {shippingAddress.province || shippingAddress.state}{" "}
+                            {shippingAddress.postal_code}
                           </p>
-                          <p className="text-sm text-gray-600">{shippingAddress.country || 'Canada'}</p>
+                          <p className="text-sm text-gray-600">
+                            {shippingAddress.country || "Canada"}
+                          </p>
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-500 italic">No delivery address on file (digital delivery only)</p>
+                        <p className="text-sm text-gray-500 italic">
+                          No delivery address on file (digital delivery only)
+                        </p>
                       )}
                     </div>
 
                     {/* Summary */}
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h4 className="font-semibold text-blue-900 mb-2">Pricing Summary</h4>
+                      <h4 className="font-semibold text-blue-900 mb-2">
+                        Pricing Summary
+                      </h4>
                       <div className="space-y-1 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-700">Subtotal:</span>
-                          <span className="font-medium">${(reviewData.quotes.subtotal || 0).toFixed(2)}</span>
+                          <span className="font-medium">
+                            ${(reviewData.quotes.subtotal || 0).toFixed(2)}
+                          </span>
                         </div>
                         {rushFee > 0 && (
                           <div className="flex justify-between text-green-700">
-                            <span>{turnaroundType === 'same_day' ? 'Same-Day' : 'Rush'} Fee:</span>
-                            <span className="font-medium">+${rushFee.toFixed(2)}</span>
+                            <span>
+                              {turnaroundType === "same_day"
+                                ? "Same-Day"
+                                : "Rush"}{" "}
+                              Fee:
+                            </span>
+                            <span className="font-medium">
+                              +${rushFee.toFixed(2)}
+                            </span>
                           </div>
                         )}
                         <div className="flex justify-between">
                           <span className="text-gray-700">Certification:</span>
-                          <span className="font-medium">${(reviewData.quotes.certification_total || 0).toFixed(2)}</span>
+                          <span className="font-medium">
+                            $
+                            {(
+                              reviewData.quotes.certification_total || 0
+                            ).toFixed(2)}
+                          </span>
                         </div>
                         {reviewData.quotes.delivery_fee > 0 && (
                           <div className="flex justify-between">
                             <span className="text-gray-700">Delivery:</span>
-                            <span className="font-medium">${(reviewData.quotes.delivery_fee || 0).toFixed(2)}</span>
+                            <span className="font-medium">
+                              $
+                              {(reviewData.quotes.delivery_fee || 0).toFixed(2)}
+                            </span>
                           </div>
                         )}
                         <div className="flex justify-between border-t pt-1 mt-2">
-                          <span className="font-semibold text-gray-900">Total:</span>
-                          <span className="font-bold text-lg">${(reviewData.quotes.total || 0).toFixed(2)}</span>
+                          <span className="font-semibold text-gray-900">
+                            Total:
+                          </span>
+                          <span className="font-bold text-lg">
+                            ${(reviewData.quotes.total || 0).toFixed(2)}
+                          </span>
                         </div>
                       </div>
                     </div>
