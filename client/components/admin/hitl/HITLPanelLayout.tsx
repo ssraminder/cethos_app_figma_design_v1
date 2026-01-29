@@ -94,14 +94,7 @@ export default function HITLPanelLayout({
 }: HITLPanelLayoutProps) {
   // Collapsible sections state - default expand important sections
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set([
-      "customer",
-      "documents",
-      "analysis",
-      "certification",
-      "billing",
-      "shipping",
-    ]),
+    new Set(["customer", "documents", "analysis", "certification", "billing", "shipping"]),
   );
 
   const toggleSection = (section: string) => {
@@ -175,11 +168,11 @@ export default function HITLPanelLayout({
       </CollapsibleSection>
 
       {/* Document Management */}
-      {reviewData?.quote_id && onRefreshFiles && (
+      {reviewData?.id && onRefreshFiles && (
         <CollapsibleSection id="documents" title="Document Management">
           <div className="space-y-4">
             <DocumentManagementPanel
-              quoteId={reviewData.quote_id}
+              quoteId={reviewData.id}
               files={quoteFiles}
               onFilesUploaded={onRefreshFiles}
             />
@@ -228,12 +221,12 @@ export default function HITLPanelLayout({
       </CollapsibleSection>
 
       {/* Quote Certification - Global certification for all documents */}
-      {reviewData?.quote_id && (
+      {reviewData?.id && (
         <CollapsibleSection id="certification" title="Quote Certification">
           {(() => {
             const certData = reviewData
               ? {
-                  quote_id: reviewData.quote_id,
+                  quote_id: reviewData.id,
                   current_certification_type_id:
                     (reviewData as any).certification_type_id || undefined,
                   current_certification_name:
@@ -241,10 +234,7 @@ export default function HITLPanelLayout({
                   document_count: quoteFiles.length || 0,
                 }
               : null;
-            console.log(
-              "🎖️ Rendering certification section with data:",
-              certData,
-            );
+            console.log('🎖️ Rendering certification section with data:', certData);
             return (
               <EditableQuoteCertificationPanel
                 certificationData={certData}
@@ -263,7 +253,7 @@ export default function HITLPanelLayout({
           pricingData={
             reviewData
               ? {
-                  quote_id: reviewData.quote_id,
+                  quote_id: reviewData.id,
                   subtotal:
                     (reviewData as any).subtotal || reviewData.subtotal || 0,
                   certification_total:
@@ -289,23 +279,20 @@ export default function HITLPanelLayout({
 
       {/* Billing Address - Editable */}
       {(() => {
-        console.log(
-          "🏢 Billing section - reviewData?.quote_id:",
-          reviewData?.quote_id,
-        );
-        console.log("🏢 Billing section - reviewData:", reviewData);
-        return reviewData?.quote_id ? (
+        console.log('🏢 Billing section - reviewData?.id:', reviewData?.id);
+        console.log('🏢 Billing section - reviewData:', reviewData);
+        return reviewData?.id ? (
           <CollapsibleSection id="billing" title="Billing Address">
             {(() => {
-              console.log("🏢 Rendering billing panel with:", {
-                quoteId: reviewData.quote_id,
+              console.log('🏢 Rendering billing panel with:', {
+                quoteId: reviewData.id,
                 billingAddress: (reviewData as any).billing_address,
                 customerName: reviewData.customer_name,
                 customerEmail: reviewData.customer_email,
               });
               return (
                 <EditableBillingAddressPanel
-                  quoteId={reviewData.quote_id}
+                  quoteId={reviewData.id}
                   billingAddress={(reviewData as any).billing_address || null}
                   customerName={reviewData.customer_name}
                   customerEmail={reviewData.customer_email}
@@ -320,23 +307,19 @@ export default function HITLPanelLayout({
 
       {/* Shipping Address & Delivery - Editable */}
       {(() => {
-        console.log(
-          "🚚 Shipping section - reviewData?.quote_id:",
-          reviewData?.quote_id,
-        );
-        return reviewData?.quote_id ? (
+        console.log('🚚 Shipping section - reviewData?.id:', reviewData?.id);
+        return reviewData?.id ? (
           <CollapsibleSection id="shipping" title="Shipping & Delivery">
             {(() => {
-              console.log("🚚 Rendering shipping panel with:", {
-                quoteId: reviewData.quote_id,
+              console.log('🚚 Rendering shipping panel with:', {
+                quoteId: reviewData.id,
                 shippingAddress: (reviewData as any).shipping_address,
-                physicalDeliveryOptionId: (reviewData as any)
-                  .physical_delivery_option_id,
+                physicalDeliveryOptionId: (reviewData as any).physical_delivery_option_id,
                 customerName: reviewData.customer_name,
               });
               return (
                 <EditableShippingAddressPanel
-                  quoteId={reviewData.quote_id}
+                  quoteId={reviewData.id}
                   shippingAddress={(reviewData as any).shipping_address || null}
                   physicalDeliveryOptionId={
                     (reviewData as any).physical_delivery_option_id || null
@@ -361,10 +344,10 @@ export default function HITLPanelLayout({
       </CollapsibleSection>
 
       {/* Messaging */}
-      {reviewData?.quote_id && staffId && (
+      {reviewData?.id && staffId && (
         <CollapsibleSection id="messaging" title="Customer Messaging">
           <MessagePanel
-            quoteId={reviewData.quote_id}
+            quoteId={reviewData.id}
             staffId={staffId}
             staffName={staffName || "Staff"}
           />
