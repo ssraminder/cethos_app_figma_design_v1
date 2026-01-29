@@ -40,6 +40,12 @@ export default function EditableQuoteCertificationPanel({
   loading = false,
   onUpdate,
 }: EditableQuoteCertificationPanelProps) {
+  console.log('🎖️ EditableQuoteCertificationPanel rendering:', {
+    certificationData,
+    staffId,
+    loading,
+  });
+
   const [isExpanded, setIsExpanded] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);

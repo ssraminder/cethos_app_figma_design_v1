@@ -94,14 +94,7 @@ export default function HITLPanelLayout({
 }: HITLPanelLayoutProps) {
   // Collapsible sections state - default expand important sections
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set([
-      "customer",
-      "documents",
-      "analysis",
-      "certification",
-      "billing",
-      "shipping",
-    ]),
+    new Set(["customer", "documents", "analysis", "certification", "billing", "shipping"]),
   );
 
   const toggleSection = (section: string) => {
@@ -230,23 +223,27 @@ export default function HITLPanelLayout({
       {/* Quote Certification - Global certification for all documents */}
       {reviewData?.quote_id && (
         <CollapsibleSection id="certification" title="Quote Certification">
-          <EditableQuoteCertificationPanel
-            certificationData={
-              reviewData
-                ? {
-                    quote_id: reviewData.quote_id,
-                    current_certification_type_id:
-                      (reviewData as any).certification_type_id || undefined,
-                    current_certification_name:
-                      (reviewData as any).certification_name || undefined,
-                    document_count: quoteFiles.length || 0,
-                  }
-                : null
-            }
-            staffId={staffId}
-            loading={loading}
-            onUpdate={onRefreshFiles}
-          />
+          {(() => {
+            const certData = reviewData
+              ? {
+                  quote_id: reviewData.quote_id,
+                  current_certification_type_id:
+                    (reviewData as any).certification_type_id || undefined,
+                  current_certification_name:
+                    (reviewData as any).certification_name || undefined,
+                  document_count: quoteFiles.length || 0,
+                }
+              : null;
+            console.log('🎖️ Rendering certification section with data:', certData);
+            return (
+              <EditableQuoteCertificationPanel
+                certificationData={certData}
+                staffId={staffId}
+                loading={loading}
+                onUpdate={onRefreshFiles}
+              />
+            );
+          })()}
         </CollapsibleSection>
       )}
 
@@ -281,34 +278,61 @@ export default function HITLPanelLayout({
       </CollapsibleSection>
 
       {/* Billing Address - Editable */}
-      {reviewData?.quote_id && (
-        <CollapsibleSection id="billing" title="Billing Address">
-          <EditableBillingAddressPanel
-            quoteId={reviewData.quote_id}
-            billingAddress={(reviewData as any).billing_address || null}
-            customerName={reviewData.customer_name}
-            customerEmail={reviewData.customer_email}
-            loading={loading}
-            onUpdate={onRefreshFiles}
-          />
-        </CollapsibleSection>
-      )}
+      {(() => {
+        console.log('🏢 Billing section - reviewData?.quote_id:', reviewData?.quote_id);
+        console.log('🏢 Billing section - reviewData:', reviewData);
+        return reviewData?.quote_id ? (
+          <CollapsibleSection id="billing" title="Billing Address">
+            {(() => {
+              console.log('🏢 Rendering billing panel with:', {
+                quoteId: reviewData.quote_id,
+                billingAddress: (reviewData as any).billing_address,
+                customerName: reviewData.customer_name,
+                customerEmail: reviewData.customer_email,
+              });
+              return (
+                <EditableBillingAddressPanel
+                  quoteId={reviewData.quote_id}
+                  billingAddress={(reviewData as any).billing_address || null}
+                  customerName={reviewData.customer_name}
+                  customerEmail={reviewData.customer_email}
+                  loading={loading}
+                  onUpdate={onRefreshFiles}
+                />
+              );
+            })()}
+          </CollapsibleSection>
+        ) : null;
+      })()}
 
       {/* Shipping Address & Delivery - Editable */}
-      {reviewData?.quote_id && (
-        <CollapsibleSection id="shipping" title="Shipping & Delivery">
-          <EditableShippingAddressPanel
-            quoteId={reviewData.quote_id}
-            shippingAddress={(reviewData as any).shipping_address || null}
-            physicalDeliveryOptionId={
-              (reviewData as any).physical_delivery_option_id || null
-            }
-            customerName={reviewData.customer_name}
-            loading={loading}
-            onUpdate={onRefreshFiles}
-          />
-        </CollapsibleSection>
-      )}
+      {(() => {
+        console.log('🚚 Shipping section - reviewData?.quote_id:', reviewData?.quote_id);
+        return reviewData?.quote_id ? (
+          <CollapsibleSection id="shipping" title="Shipping & Delivery">
+            {(() => {
+              console.log('🚚 Rendering shipping panel with:', {
+                quoteId: reviewData.quote_id,
+                shippingAddress: (reviewData as any).shipping_address,
+                physicalDeliveryOptionId: (reviewData as any).physical_delivery_option_id,
+                customerName: reviewData.customer_name,
+              });
+              return (
+                <EditableShippingAddressPanel
+                  quoteId={reviewData.quote_id}
+                  shippingAddress={(reviewData as any).shipping_address || null}
+                  physicalDeliveryOptionId={
+                    (reviewData as any).physical_delivery_option_id || null
+                  }
+                  customerName={reviewData.customer_name}
+                  loading={loading}
+                  onUpdate={onRefreshFiles}
+                />
+              );
+            })()}
+          </CollapsibleSection>
+        ) : null;
+      })()}
 
       {/* Internal Notes */}
       <CollapsibleSection id="notes" title="Internal Notes">
