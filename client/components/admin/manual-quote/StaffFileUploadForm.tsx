@@ -107,6 +107,65 @@ export default function StaffFileUploadForm({
     }
   };
 
+  const analyzeFiles = async () => {
+    if (!processWithAI || files.length === 0 || !quoteId) return;
+
+    setIsAnalyzing(true);
+
+    // Process each file with timeout
+    for (const file of files) {
+      // Skip if already completed or currently analyzing
+      if (analysisStatus[file.id] === "completed" || analysisStatus[file.id] === "analyzing") {
+        continue;
+      }
+
+      // Only analyze successfully uploaded files
+      if (uploadStatus[file.id] !== "success") {
+        continue;
+      }
+
+      setAnalysisStatus((prev) => ({ ...prev, [file.id]: "analyzing" }));
+
+      try {
+        // Create a promise that rejects after 1 minute (60000ms)
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Analysis timeout")), 60000);
+        });
+
+        // Create the analysis promise
+        // TODO: Replace with actual process-document edge function call
+        const analysisPromise = simulateAIAnalysis(file);
+
+        // Race between analysis and timeout
+        await Promise.race([analysisPromise, timeoutPromise]);
+
+        setAnalysisStatus((prev) => ({ ...prev, [file.id]: "completed" }));
+      } catch (error) {
+        console.error(`Analysis failed for ${file.name}:`, error);
+
+        if (error instanceof Error && error.message === "Analysis timeout") {
+          setAnalysisStatus((prev) => ({ ...prev, [file.id]: "timeout" }));
+        } else {
+          setAnalysisStatus((prev) => ({ ...prev, [file.id]: "failed" }));
+        }
+      }
+    }
+
+    setIsAnalyzing(false);
+  };
+
+  // Simulated AI analysis (replace with actual API call)
+  const simulateAIAnalysis = (file: FileData): Promise<void> => {
+    return new Promise((resolve) => {
+      // Simulate processing time (2-5 seconds per file)
+      const processingTime = Math.random() * 3000 + 2000;
+      setTimeout(() => {
+        console.log(`Analyzed ${file.name}`);
+        resolve();
+      }, processingTime);
+    });
+  };
+
   const removeFile = (id: string) => {
     const updated = files.filter((f) => f.id !== id);
     setFiles(updated);
