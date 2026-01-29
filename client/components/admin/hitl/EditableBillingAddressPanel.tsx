@@ -32,7 +32,7 @@ export default function EditableBillingAddressPanel({
   loading = false,
   onUpdate,
 }: EditableBillingAddressPanelProps) {
-  console.log('🏢 EditableBillingAddressPanel rendering:', {
+  console.log("🏢 EditableBillingAddressPanel rendering:", {
     quoteId,
     billingAddress,
     customerName,

@@ -42,7 +42,7 @@ export default function EditableShippingAddressPanel({
   loading = false,
   onUpdate,
 }: EditableShippingAddressPanelProps) {
-  console.log('🚚 EditableShippingAddressPanel rendering:', {
+  console.log("🚚 EditableShippingAddressPanel rendering:", {
     quoteId,
     shippingAddress,
     physicalDeliveryOptionId,

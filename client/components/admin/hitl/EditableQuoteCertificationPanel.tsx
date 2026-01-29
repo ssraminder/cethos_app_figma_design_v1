@@ -40,7 +40,7 @@ export default function EditableQuoteCertificationPanel({
   loading = false,
   onUpdate,
 }: EditableQuoteCertificationPanelProps) {
-  console.log('🎖️ EditableQuoteCertificationPanel rendering:', {
+  console.log("🎖️ EditableQuoteCertificationPanel rendering:", {
     certificationData,
     staffId,
     loading,
