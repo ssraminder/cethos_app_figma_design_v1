@@ -311,22 +311,35 @@ async function simpleTextExtraction(
 
   // Detect document type and estimate pages
   if (fileName.endsWith(".pdf") || fileInfo.mime_type.includes("pdf")) {
-    // Count PDF pages by looking for page markers
-    const pageMatches = text.match(/\/Type\s*\/Page[^s]/g);
-    pageCount = pageMatches ? pageMatches.length : 1;
+    // Use same page counting logic as process-document (counting endstream markers)
+    pageCount = (text.match(/endstream/g) || []).length;
+    pageCount = Math.max(1, pageCount); // At least 1 page
 
-    // For each page, extract text (simplified)
-    // In production, use a proper PDF parser
-    const estimatedWordsPerPage =
-      text.split(/\s+/).filter((w) => w.length > 0).length / pageCount;
+    // Extract visible text from PDF (rough extraction)
+    // Remove binary data and extract readable text
+    const cleanedText = text
+      .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]/g, "") // Remove control chars
+      .replace(/stream[\s\S]*?endstream/g, "") // Remove binary streams
+      .replace(/\/[A-Z][a-zA-Z0-9]*/g, "") // Remove PDF commands
+      .replace(/\s+/g, " ") // Normalize whitespace
+      .trim();
 
+    // Count total words in cleaned text
+    const allWords = cleanedText.split(/\s+/).filter((w) => w.length > 2); // Filter short fragments
+    const totalWords = allWords.length;
+    const estimatedWordsPerPage = Math.floor(totalWords / pageCount);
+
+    // Create per-page breakdown with actual text snippets
     for (let i = 1; i <= pageCount; i++) {
-      const pageText = `[Page ${i} text would be extracted here]`;
-      const wordCount = Math.floor(estimatedWordsPerPage);
+      const startIdx = Math.floor((i - 1) * (allWords.length / pageCount));
+      const endIdx = Math.floor(i * (allWords.length / pageCount));
+      const pageWords = allWords.slice(startIdx, endIdx);
+      const pageText = pageWords.join(" ");
+
       pages.push({
         page_number: i,
-        text: pageText,
-        word_count: wordCount,
+        text: pageText.substring(0, 1000), // First 1000 chars as preview
+        word_count: pageWords.length,
       });
     }
   } else {
