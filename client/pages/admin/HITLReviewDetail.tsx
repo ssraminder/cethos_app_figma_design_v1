@@ -304,6 +304,36 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
+  const fetchTurnaroundOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("delivery_options")
+        .select("id, code, name, description, multiplier, is_rush")
+        .eq("category", "turnaround")
+        .eq("is_active", true)
+        .order("sort_order");
+
+      if (error) throw error;
+      setTurnaroundOptions(data || []);
+
+      // Fetch rush/same-day multipliers from settings
+      const { data: settings } = await supabase
+        .from("app_settings")
+        .select("setting_key, setting_value")
+        .in("setting_key", ["rush_multiplier", "same_day_multiplier"]);
+
+      settings?.forEach((setting) => {
+        if (setting.setting_key === "rush_multiplier") {
+          setRushMultiplierValue(parseFloat(setting.setting_value) || 1.3);
+        } else if (setting.setting_key === "same_day_multiplier") {
+          setSameDayMultiplierValue(parseFloat(setting.setting_value) || 2.0);
+        }
+      });
+    } catch (err) {
+      console.error("Error fetching turnaround options:", err);
+    }
+  };
+
   const fetchReviewData = async () => {
     console.log("🔍 Fetching review data for ID:", reviewId);
     console.log("🔍 SUPABASE_URL:", SUPABASE_URL);
