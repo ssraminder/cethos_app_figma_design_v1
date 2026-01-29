@@ -231,11 +231,27 @@ const HITLReviewDetail: React.FC = () => {
         fetchCertificationTypes(),
         fetchLanguages(),
         fetchSettings(),
+        fetchPaymentMethods(),
       ]);
     } catch (error) {
       console.error("Error fetching data:", error);
     }
     setLoading(false);
+  };
+
+  const fetchPaymentMethods = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("payment_methods")
+        .select("id, name, code")
+        .eq("is_active", true)
+        .order("display_order");
+
+      if (error) throw error;
+      setPaymentMethods(data || []);
+    } catch (err) {
+      console.error("Error fetching payment methods:", err);
+    }
   };
 
   const fetchReviewData = async () => {
