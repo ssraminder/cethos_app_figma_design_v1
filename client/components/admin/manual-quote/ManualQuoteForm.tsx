@@ -83,14 +83,19 @@ export default function ManualQuoteForm({
   ];
 
   const handleNext = async () => {
-    console.log("⏭️ [NAVIGATION] handleNext called - current step:", currentStep);
+    console.log(
+      "⏭️ [NAVIGATION] handleNext called - current step:",
+      currentStep,
+    );
     console.log("  - quoteId:", quoteId);
     console.log("  - staffUser?.id:", staffUser?.id);
     console.log("  - customer:", customer);
 
     // Create quote when moving to step 3 (file upload) if not already created
     if (currentStep === 2 && !quoteId && staffUser?.id && customer) {
-      console.log("🎯 [NAVIGATION] Moving from step 2 to 3 - creating quote first");
+      console.log(
+        "🎯 [NAVIGATION] Moving from step 2 to 3 - creating quote first",
+      );
       await createInitialQuote();
     }
 
@@ -106,13 +111,17 @@ export default function ManualQuoteForm({
     console.log("  - customer:", customer);
 
     if (!staffUser?.id || !customer) {
-      console.log("⏸️ [QUOTE CREATION] Missing staffUser or customer - skipping");
+      console.log(
+        "⏸️ [QUOTE CREATION] Missing staffUser or customer - skipping",
+      );
       return;
     }
 
     setIsSubmitting(true);
     try {
-      console.log("🌐 [QUOTE CREATION] Calling create-staff-quote edge function");
+      console.log(
+        "🌐 [QUOTE CREATION] Calling create-staff-quote edge function",
+      );
       const createQuoteResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-staff-quote`,
         {
@@ -143,7 +152,10 @@ export default function ManualQuoteForm({
         },
       );
 
-      console.log("📡 [QUOTE CREATION] Response status:", createQuoteResponse.status);
+      console.log(
+        "📡 [QUOTE CREATION] Response status:",
+        createQuoteResponse.status,
+      );
 
       if (!createQuoteResponse.ok) {
         const error = await createQuoteResponse.json();
@@ -152,7 +164,10 @@ export default function ManualQuoteForm({
       }
 
       const quoteResult = await createQuoteResponse.json();
-      console.log("✅ [QUOTE CREATION] Quote created successfully:", quoteResult);
+      console.log(
+        "✅ [QUOTE CREATION] Quote created successfully:",
+        quoteResult,
+      );
       console.log("  - New quoteId:", quoteResult.quoteId);
 
       setQuoteId(quoteResult.quoteId);
