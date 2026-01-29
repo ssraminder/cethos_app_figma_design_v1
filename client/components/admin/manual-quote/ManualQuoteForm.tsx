@@ -93,11 +93,11 @@ export default function ManualQuoteForm({
       currentStep,
     );
     console.log("  - quoteId:", quoteId);
-    console.log("  - staffUser?.id:", staffUser?.id);
+    console.log("  - staffId:", staffId);
     console.log("  - customer:", customer);
 
     // Create quote when moving to step 3 (file upload) if not already created
-    if (currentStep === 2 && !quoteId && staffUser?.id && customer) {
+    if (currentStep === 2 && !quoteId && staffId && customer) {
       console.log(
         "🎯 [NAVIGATION] Moving from step 2 to 3 - creating quote first",
       );
