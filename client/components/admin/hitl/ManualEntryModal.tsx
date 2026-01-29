@@ -167,9 +167,13 @@ export default function ManualEntryModal({
         });
       }
 
-      setLanguages(languagesRes.data || []);
-      setDocumentTypes(docTypesRes.data || []);
-      setCertificationTypes(certTypesRes.data || []);
+      const fetchedLanguages = languagesRes.data || [];
+      const fetchedDocTypes = docTypesRes.data || [];
+      const fetchedCertTypes = certTypesRes.data || [];
+
+      setLanguages(fetchedLanguages);
+      setDocumentTypes(fetchedDocTypes);
+      setCertificationTypes(fetchedCertTypes);
 
       // Check for existing analysis (for editing)
       const { data: existingAnalysis } = await supabase
@@ -179,7 +183,8 @@ export default function ManualEntryModal({
         .single();
 
       if (existingAnalysis) {
-        prePopulateForm(existingAnalysis);
+        // Pass fetched data directly to avoid stale state issues
+        prePopulateForm(existingAnalysis, fetchedLanguages, fetchedCertTypes);
       }
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -189,9 +194,13 @@ export default function ManualEntryModal({
     }
   };
 
-  const prePopulateForm = (analysis: any) => {
-    // Set language by code
-    const language = languages.find(
+  const prePopulateForm = (
+    analysis: any,
+    languagesList: Language[],
+    certTypesList: CertificationType[]
+  ) => {
+    // Set language by code - use passed languages list instead of state
+    const language = languagesList.find(
       (l) => l.code === analysis.detected_language
     );
     if (language) {
@@ -203,9 +212,14 @@ export default function ManualEntryModal({
       setSelectedDocumentType(analysis.detected_document_type);
     }
 
-    // Set certification
+    // Set certification - use passed cert types list instead of state
     if (analysis.certification_type_id) {
-      setSelectedCertificationId(analysis.certification_type_id);
+      const certExists = certTypesList.some(
+        (c) => c.id === analysis.certification_type_id
+      );
+      if (certExists) {
+        setSelectedCertificationId(analysis.certification_type_id);
+      }
     }
 
     // Reconstruct pages from total word count and page count

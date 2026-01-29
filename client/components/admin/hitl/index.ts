@@ -12,6 +12,8 @@ export { default as EditablePricingSummaryPanel } from "./EditablePricingSummary
 export { default as EditableQuoteCertificationPanel } from "./EditableQuoteCertificationPanel";
 export { default as DocumentManagementPanel } from "./DocumentManagementPanel";
 export { default as ManualDocumentEntry } from "./ManualDocumentEntry";
+export { default as ManualEntryModal } from "./ManualEntryModal";
+export { default as AnalyzeDocumentModal } from "./AnalyzeDocumentModal";
 export {
   default as HITLPanelLayout,
   useResponsiveLayout,
