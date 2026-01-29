@@ -135,6 +135,15 @@ export default function DocumentFilesPanel({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-1 flex-shrink-0">
+                {/* Analyze Button */}
+                <button
+                  onClick={() => setAnalyzeFile(file)}
+                  className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                  title="Analyze/Re-analyze file"
+                >
+                  <Brain className="w-4 h-4" />
+                </button>
+
                 {/* Preview Button */}
                 <button
                   onClick={() => setPreviewFile(file)}
