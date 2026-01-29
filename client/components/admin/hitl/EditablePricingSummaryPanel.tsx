@@ -461,6 +461,32 @@ export default function EditablePricingSummaryPanel({
             )}
           </div>
 
+          {/* Quote-Level Certification Dropdown */}
+          {pricingData.document_count && pricingData.document_count > 0 && (
+            <div className="border-t pt-3 space-y-2">
+              <label className="text-xs font-semibold text-gray-700 uppercase block">
+                Quote Certification
+              </label>
+              <select
+                value={selectedCertificationId}
+                onChange={(e) => handleCertificationChange(e.target.value)}
+                disabled={isSavingCertification}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">-- Select Certification --</option>
+                {certificationTypes.map((cert) => (
+                  <option key={cert.id} value={cert.id}>
+                    {cert.name} - ${Number(cert.price).toFixed(2)} × {pricingData.document_count} = $
+                    {(Number(cert.price) * (pricingData.document_count || 0)).toFixed(2)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 italic">
+                Applies to all {pricingData.document_count} document{pricingData.document_count !== 1 ? "s" : ""} in quote
+              </p>
+            </div>
+          )}
+
           {/* Adjustments */}
           {adjustments.length > 0 && (
             <div className="border-t pt-2 space-y-2">
