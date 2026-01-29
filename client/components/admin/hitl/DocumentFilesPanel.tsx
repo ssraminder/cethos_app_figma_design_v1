@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { FileText, Download, Eye } from "lucide-react";
+import { FileText, Download, Eye, Brain } from "lucide-react";
 import DocumentPreviewModal from "../../admin/DocumentPreviewModal";
+import AnalyzeDocumentModal from "./AnalyzeDocumentModal";
 
 interface QuoteFile {
   id: string;
@@ -14,14 +15,19 @@ interface QuoteFile {
 
 interface DocumentFilesPanelProps {
   files: QuoteFile[];
+  quoteId: string;
   loading?: boolean;
+  onRefresh?: () => void;
 }
 
 export default function DocumentFilesPanel({
   files,
+  quoteId,
   loading = false,
+  onRefresh,
 }: DocumentFilesPanelProps) {
   const [previewFile, setPreviewFile] = useState<QuoteFile | null>(null);
+  const [analyzeFile, setAnalyzeFile] = useState<QuoteFile | null>(null);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 B";
