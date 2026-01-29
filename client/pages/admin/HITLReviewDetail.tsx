@@ -23,7 +23,7 @@ import {
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
-import { HITLPanelLayout } from "../../components/admin/hitl";
+import { HITLPanelLayout, PricingSummaryBox } from "../../components/admin/hitl";
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
 
 interface PageData {
@@ -3325,53 +3325,15 @@ const HITLReviewDetail: React.FC = () => {
         <div className="space-y-6">
           {reviewData && reviewData.quotes && (
             <>
-              {/* Pricing Summary */}
-              <div className="bg-white rounded-lg border p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-gray-400" />
-                  Pricing Summary
-                </h2>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Subtotal</span>
-                    <span>${(reviewData.quotes.subtotal || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Certification</span>
-                    <span>
-                      ${(reviewData.quotes.certification_total || 0).toFixed(2)}
-                    </span>
-                  </div>
-                  {reviewData.quotes.rush_fee > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Rush Fee</span>
-                      <span>
-                        ${(reviewData.quotes.rush_fee || 0).toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  {reviewData.quotes.delivery_fee > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Delivery</span>
-                      <span>
-                        ${(reviewData.quotes.delivery_fee || 0).toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Tax</span>
-                    <span>
-                      ${(reviewData.quotes.tax_amount || 0).toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="border-t pt-2 mt-2 flex justify-between font-semibold">
-                    <span>Total</span>
-                    <span className="text-lg">
-                      ${(reviewData.quotes.total || 0).toFixed(2)} CAD
-                    </span>
-                  </div>
-                </div>
-              </div>
+              {/* Pricing Summary - Enhanced with Quote Certifications & Adjustments */}
+              <PricingSummaryBox
+                quoteId={reviewData.quotes.id}
+                staffId={staffSession?.staffId}
+                onPricingChange={() => {
+                  // Refresh review data when pricing changes
+                  fetchReviewData();
+                }}
+              />
 
               {/* Review Status */}
               <div className="bg-white rounded-lg border p-6">
