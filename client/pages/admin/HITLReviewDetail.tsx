@@ -442,6 +442,20 @@ const HITLReviewDetail: React.FC = () => {
       const reviewWithQuote = { ...review, quotes: quote };
       setReviewData(reviewWithQuote);
 
+      // Load billing/shipping addresses and turnaround options from quote
+      if (quote.billing_address) {
+        setBillingAddress(quote.billing_address);
+      }
+      if (quote.shipping_address) {
+        setShippingAddress(quote.shipping_address);
+      }
+      if (quote.turnaround_type) {
+        setTurnaroundType(quote.turnaround_type as 'standard' | 'rush' | 'same_day');
+      }
+      if (quote.rush_fee) {
+        setRushFee(parseFloat(quote.rush_fee) || 0);
+      }
+
       // Check if claimed by current user
       const currentStaffId = staffSession?.staffId;
       const isClaimed = assignedTo === currentStaffId;
