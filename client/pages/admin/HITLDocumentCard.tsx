@@ -34,7 +34,9 @@ export default function HITLDocumentCard({
   const hasAnalysis = !!analysis;
   const aiStatus = file.ai_processing_status || "unknown";
   const hasFailed = aiStatus === "failed" || aiStatus === "error";
-  const isPending = aiStatus === "pending" || aiStatus === "processing";
+  const isProcessing = aiStatus === "processing";
+  const isPending = aiStatus === "pending";
+  const isSkipped = aiStatus === "skipped";
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -51,10 +53,18 @@ export default function HITLDocumentCard({
             <span className="px-3 py-1 rounded-full text-xs bg-red-100 text-red-800 font-semibold border border-red-300">
               ⚠️ AI Analysis Failed
             </span>
-          ) : isPending ? (
-            <span className="px-3 py-1 rounded-full text-xs bg-yellow-100 text-yellow-800 font-semibold border border-yellow-300">
+          ) : isProcessing ? (
+            <span className="px-3 py-1 rounded-full text-xs bg-blue-100 text-blue-800 font-semibold border border-blue-300">
               <Loader2 className="w-3 h-3 inline mr-1 animate-spin" />
               Processing...
+            </span>
+          ) : isPending ? (
+            <span className="px-3 py-1 rounded-full text-xs bg-yellow-100 text-yellow-800 font-semibold border border-yellow-300">
+              ⏳ Pending
+            </span>
+          ) : isSkipped ? (
+            <span className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700 font-semibold border border-gray-300">
+              Ready for Analysis
             </span>
           ) : (
             <span className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700 font-semibold border border-gray-300">
@@ -107,18 +117,36 @@ export default function HITLDocumentCard({
             </div>
           )}
 
+          {/* Processing Alert */}
+          {isProcessing && (
+            <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-5 mb-6">
+              <div className="flex items-start gap-4">
+                <Loader2 className="w-7 h-7 text-blue-600 animate-spin flex-shrink-0 mt-1" />
+                <div className="flex-1">
+                  <h4 className="font-bold text-blue-900 text-lg mb-2">
+                    Analysis In Progress
+                  </h4>
+                  <p className="text-sm text-blue-800">
+                    The document is currently being analyzed by AI. The page will
+                    update automatically when complete.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Pending Alert */}
           {isPending && (
             <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-5 mb-6">
               <div className="flex items-start gap-4">
-                <Loader2 className="w-7 h-7 text-yellow-600 animate-spin flex-shrink-0 mt-1" />
+                <span className="text-2xl flex-shrink-0 mt-1">⏳</span>
                 <div className="flex-1">
                   <h4 className="font-bold text-yellow-900 text-lg mb-2">
-                    Analysis In Progress
+                    Pending Analysis
                   </h4>
                   <p className="text-sm text-yellow-800">
-                    The document is currently being analyzed. Please refresh the
-                    page in a moment to see results.
+                    This document is awaiting analysis. Use the Document Management
+                    panel to start AI analysis or enter details manually.
                   </p>
                 </div>
               </div>
