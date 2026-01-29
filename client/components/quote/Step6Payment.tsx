@@ -36,6 +36,7 @@ export default function Step6Payment() {
   const [documentNames, setDocumentNames] = useState<string[]>([]);
   const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [entryPoint, setEntryPoint] = useState<string | null>(null);
 
   const shippingAddress = state.shippingAddress;
   const billingAddress = state.billingAddress;
@@ -60,7 +61,7 @@ export default function Step6Payment() {
     try {
       const { data: quoteData, error: fetchError } = await supabase
         .from("quotes")
-        .select("calculated_totals, expires_at, quote_number")
+        .select("calculated_totals, expires_at, quote_number, entry_point")
         .eq("id", state.quoteId)
         .single();
 
@@ -101,6 +102,10 @@ export default function Step6Payment() {
 
       if (quoteData?.quote_number) {
         setQuoteNumber(quoteData.quote_number);
+      }
+
+      if (quoteData?.entry_point) {
+        setEntryPoint(quoteData.entry_point);
       }
 
       if (quoteData?.calculated_totals) {
@@ -514,6 +519,26 @@ export default function Step6Payment() {
           )}
         </button>
       </div>
+
+      {/* E-Transfer Option (only for staff_manual quotes) */}
+      {entryPoint === "staff_manual" && (
+        <div className="mt-6">
+          <div className="text-center mb-3">
+            <span className="text-sm text-gray-500">or</span>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              navigate(`/etransfer/confirm?quote_id=${state.quoteId}`)
+            }
+            disabled={loading || !pricing || pricing.total <= 0}
+            className="w-full py-3 px-4 border-2 border-cethos-teal text-cethos-teal rounded-xl hover:bg-cethos-teal hover:text-white transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            <Mail className="w-5 h-5" />
+            <span>Pay by E-Transfer</span>
+          </button>
+        </div>
+      )}
 
       {/* Terms */}
       <p className="text-xs text-gray-500 text-center mt-4">
