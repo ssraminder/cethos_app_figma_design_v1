@@ -164,6 +164,8 @@ export default function AnalyzeDocumentModal({
         timeoutPromise,
       ])) as any;
 
+      console.log("process-document response:", data);
+
       if (error) throw error;
 
       if (!data.success) {
@@ -173,7 +175,10 @@ export default function AnalyzeDocumentModal({
       // Extract results from process-document response
       const result = data.results?.[0];
       if (!result) {
-        throw new Error("No results returned from analysis");
+        console.error("No results in response. Full data:", data);
+        throw new Error(
+          data.error || "No results returned from analysis - please check logs",
+        );
       }
 
       // Create OCR result structure from process-document data
