@@ -52,7 +52,6 @@ interface Language {
 interface DocumentType {
   code: string;
   name: string;
-  default_complexity: string;
 }
 
 interface CertificationType {
@@ -140,7 +139,7 @@ export default function ManualEntryModal({
             .order("sort_order"),
           supabase
             .from("document_types")
-            .select("code, name, default_complexity")
+            .select("code, name")
             .eq("is_active", true)
             .order("sort_order"),
           supabase
@@ -180,7 +179,7 @@ export default function ManualEntryModal({
         .from("ai_analysis_results")
         .select("*")
         .eq("quote_file_id", file.id)
-        .single();
+        .maybeSingle();
 
       if (existingAnalysis) {
         // Pass fetched data directly to avoid stale state issues
