@@ -69,8 +69,16 @@ export default function EditableTranslationDetailsPanel({
   const fetchOptions = async () => {
     try {
       const [languagesRes, usesRes] = await Promise.all([
-        supabase.from("languages").select("id, code, name").eq("is_active", true).order("name"),
-        supabase.from("intended_uses").select("id, code, name").eq("is_active", true).order("name"),
+        supabase
+          .from("languages")
+          .select("id, code, name")
+          .eq("is_active", true)
+          .order("name"),
+        supabase
+          .from("intended_uses")
+          .select("id, code, name")
+          .eq("is_active", true)
+          .order("name"),
       ]);
 
       if (languagesRes.data) setLanguages(languagesRes.data);
@@ -115,7 +123,9 @@ export default function EditableTranslationDetailsPanel({
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error("Failed to update translation details:", error);
-      alert("Failed to update translation details: " + (error as Error).message);
+      alert(
+        "Failed to update translation details: " + (error as Error).message,
+      );
     } finally {
       setIsSaving(false);
     }
@@ -141,8 +151,12 @@ export default function EditableTranslationDetailsPanel({
     return null;
   }
 
-  const selectedSourceLanguage = languages.find((l) => l.id === sourceLanguageId);
-  const selectedTargetLanguage = languages.find((l) => l.id === targetLanguageId);
+  const selectedSourceLanguage = languages.find(
+    (l) => l.id === sourceLanguageId,
+  );
+  const selectedTargetLanguage = languages.find(
+    (l) => l.id === targetLanguageId,
+  );
   const selectedIntendedUse = intendedUses.find((u) => u.id === intendedUseId);
 
   return (
@@ -183,7 +197,9 @@ export default function EditableTranslationDetailsPanel({
                 <p className="text-xs text-gray-500 mb-1">Source Language</p>
                 <p className="font-medium text-gray-900">
                   {translationData.source_language_name}{" "}
-                  <span className="text-gray-500">({translationData.source_language_code})</span>
+                  <span className="text-gray-500">
+                    ({translationData.source_language_code})
+                  </span>
                 </p>
               </div>
 
@@ -191,30 +207,40 @@ export default function EditableTranslationDetailsPanel({
                 <p className="text-xs text-gray-500 mb-1">Target Language</p>
                 <p className="font-medium text-gray-900">
                   {translationData.target_language_name}{" "}
-                  <span className="text-gray-500">({translationData.target_language_code})</span>
+                  <span className="text-gray-500">
+                    ({translationData.target_language_code})
+                  </span>
                 </p>
               </div>
 
               <div>
                 <p className="text-xs text-gray-500 mb-1">Purpose</p>
-                <p className="font-medium text-gray-900">{translationData.intended_use_name}</p>
+                <p className="font-medium text-gray-900">
+                  {translationData.intended_use_name}
+                </p>
               </div>
 
               <div>
                 <p className="text-xs text-gray-500 mb-1">Country of Issue</p>
-                <p className="font-medium text-gray-900">{translationData.country_of_issue}</p>
+                <p className="font-medium text-gray-900">
+                  {translationData.country_of_issue}
+                </p>
               </div>
 
               {translationData.service_province && (
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Service Province</p>
-                  <p className="font-medium text-gray-900">{translationData.service_province}</p>
+                  <p className="font-medium text-gray-900">
+                    {translationData.service_province}
+                  </p>
                 </div>
               )}
 
               {translationData.special_instructions && (
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Special Instructions</p>
+                  <p className="text-xs text-gray-500 mb-1">
+                    Special Instructions
+                  </p>
                   <p className="text-sm text-gray-700 bg-gray-50 p-2 rounded border">
                     {translationData.special_instructions}
                   </p>
@@ -225,7 +251,9 @@ export default function EditableTranslationDetailsPanel({
             // Edit Mode
             <>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Source Language *</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Source Language *
+                </label>
                 <select
                   value={sourceLanguageId}
                   onChange={(e) => setSourceLanguageId(e.target.value)}
@@ -242,7 +270,9 @@ export default function EditableTranslationDetailsPanel({
               </div>
 
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Target Language *</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Target Language *
+                </label>
                 <select
                   value={targetLanguageId}
                   onChange={(e) => setTargetLanguageId(e.target.value)}
@@ -259,7 +289,9 @@ export default function EditableTranslationDetailsPanel({
               </div>
 
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Purpose *</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Purpose *
+                </label>
                 <select
                   value={intendedUseId}
                   onChange={(e) => setIntendedUseId(e.target.value)}
@@ -276,7 +308,9 @@ export default function EditableTranslationDetailsPanel({
               </div>
 
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Country of Issue *</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Country of Issue *
+                </label>
                 <input
                   type="text"
                   value={countryOfIssue}
@@ -288,7 +322,9 @@ export default function EditableTranslationDetailsPanel({
               </div>
 
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Service Province (Optional)</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Service Province (Optional)
+                </label>
                 <input
                   type="text"
                   value={serviceProvince}
@@ -299,7 +335,9 @@ export default function EditableTranslationDetailsPanel({
               </div>
 
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Special Instructions (Optional)</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Special Instructions (Optional)
+                </label>
                 <textarea
                   value={specialInstructions}
                   onChange={(e) => setSpecialInstructions(e.target.value)}
@@ -313,7 +351,13 @@ export default function EditableTranslationDetailsPanel({
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={handleSave}
-                  disabled={isSaving || !sourceLanguageId || !targetLanguageId || !intendedUseId || !countryOfIssue}
+                  disabled={
+                    isSaving ||
+                    !sourceLanguageId ||
+                    !targetLanguageId ||
+                    !intendedUseId ||
+                    !countryOfIssue
+                  }
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className="w-4 h-4" />

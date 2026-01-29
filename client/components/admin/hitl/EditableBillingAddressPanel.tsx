@@ -173,25 +173,37 @@ export default function EditableBillingAddressPanel({
             billingAddress ? (
               <>
                 {billingAddress.name && (
-                  <p className="font-medium text-gray-900">{billingAddress.name}</p>
+                  <p className="font-medium text-gray-900">
+                    {billingAddress.name}
+                  </p>
                 )}
                 {billingAddress.company && (
                   <p className="text-gray-700">{billingAddress.company}</p>
                 )}
                 <p className="text-gray-700">{billingAddress.address_line1}</p>
                 {billingAddress.address_line2 && (
-                  <p className="text-gray-700">{billingAddress.address_line2}</p>
+                  <p className="text-gray-700">
+                    {billingAddress.address_line2}
+                  </p>
                 )}
                 <p className="text-gray-700">
                   {billingAddress.city}
-                  {billingAddress.province && `, ${billingAddress.province}`} {billingAddress.postal_code}
+                  {billingAddress.province &&
+                    `, ${billingAddress.province}`}{" "}
+                  {billingAddress.postal_code}
                 </p>
-                <p className="text-gray-700 font-medium">{billingAddress.country}</p>
+                <p className="text-gray-700 font-medium">
+                  {billingAddress.country}
+                </p>
                 {billingAddress.phone && (
-                  <p className="text-gray-600 text-xs">Phone: {billingAddress.phone}</p>
+                  <p className="text-gray-600 text-xs">
+                    Phone: {billingAddress.phone}
+                  </p>
                 )}
                 {billingAddress.email && (
-                  <p className="text-gray-600 text-xs">Email: {billingAddress.email}</p>
+                  <p className="text-gray-600 text-xs">
+                    Email: {billingAddress.email}
+                  </p>
                 )}
               </>
             ) : (
@@ -202,7 +214,9 @@ export default function EditableBillingAddressPanel({
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Full Name</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Full Name
+                  </label>
                   <input
                     type="text"
                     value={name}
@@ -212,7 +226,9 @@ export default function EditableBillingAddressPanel({
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Company (Optional)</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Company (Optional)
+                  </label>
                   <input
                     type="text"
                     value={company}
@@ -224,7 +240,9 @@ export default function EditableBillingAddressPanel({
               </div>
 
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Address Line 1 *</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Address Line 1 *
+                </label>
                 <input
                   type="text"
                   value={addressLine1}
@@ -236,7 +254,9 @@ export default function EditableBillingAddressPanel({
               </div>
 
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Address Line 2 (Optional)</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Address Line 2 (Optional)
+                </label>
                 <input
                   type="text"
                   value={addressLine2}
@@ -248,7 +268,9 @@ export default function EditableBillingAddressPanel({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">City *</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    City *
+                  </label>
                   <input
                     type="text"
                     value={city}
@@ -259,7 +281,9 @@ export default function EditableBillingAddressPanel({
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">State/Province</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    State/Province
+                  </label>
                   <input
                     type="text"
                     value={province}
@@ -272,7 +296,9 @@ export default function EditableBillingAddressPanel({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Postal/ZIP Code *</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Postal/ZIP Code *
+                  </label>
                   <input
                     type="text"
                     value={postalCode}
@@ -283,7 +309,9 @@ export default function EditableBillingAddressPanel({
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Country *</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Country *
+                  </label>
                   <input
                     type="text"
                     value={country}
@@ -297,7 +325,9 @@ export default function EditableBillingAddressPanel({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Phone (Optional)</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Phone (Optional)
+                  </label>
                   <input
                     type="tel"
                     value={phone}
@@ -307,7 +337,9 @@ export default function EditableBillingAddressPanel({
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Email (Optional)</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Email (Optional)
+                  </label>
                   <input
                     type="email"
                     value={email}
@@ -322,7 +354,13 @@ export default function EditableBillingAddressPanel({
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={handleSave}
-                  disabled={isSaving || !addressLine1 || !city || !postalCode || !country}
+                  disabled={
+                    isSaving ||
+                    !addressLine1 ||
+                    !city ||
+                    !postalCode ||
+                    !country
+                  }
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className="w-4 h-4" />

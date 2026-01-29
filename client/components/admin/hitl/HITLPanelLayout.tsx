@@ -205,7 +205,8 @@ export default function HITLPanelLayout({
                   target_language_code:
                     (reviewData as any).target_language?.code || "",
                   intended_use_id: (reviewData as any).intended_use_id || "",
-                  intended_use_name: (reviewData as any).intended_use?.name || "",
+                  intended_use_name:
+                    (reviewData as any).intended_use?.name || "",
                   country_of_issue: (reviewData as any).country_of_issue || "",
                   service_province: (reviewData as any).service_province,
                   special_instructions: (reviewData as any)

@@ -73,7 +73,9 @@ export default function EditableShippingAddressPanel({
     try {
       const { data, error } = await supabase
         .from("delivery_options")
-        .select("id, code, name, description, price, delivery_group, delivery_type, requires_address")
+        .select(
+          "id, code, name, description, price, delivery_group, delivery_type, requires_address",
+        )
         .eq("is_active", true)
         .eq("is_physical", true)
         .order("sort_order");
@@ -111,12 +113,16 @@ export default function EditableShippingAddressPanel({
   };
 
   const handleSave = async () => {
-    const selectedOption = deliveryOptions.find((opt) => opt.id === selectedDeliveryOptionId);
-    
+    const selectedOption = deliveryOptions.find(
+      (opt) => opt.id === selectedDeliveryOptionId,
+    );
+
     // If delivery requires address, validate address fields
     if (selectedOption?.requires_address) {
       if (!addressLine1 || !city || !postalCode || !country) {
-        alert("Please fill in all required address fields for this delivery method");
+        alert(
+          "Please fill in all required address fields for this delivery method",
+        );
         return;
       }
     }
@@ -181,7 +187,9 @@ export default function EditableShippingAddressPanel({
     );
   }
 
-  const selectedOption = deliveryOptions.find((opt) => opt.id === selectedDeliveryOptionId);
+  const selectedOption = deliveryOptions.find(
+    (opt) => opt.id === selectedDeliveryOptionId,
+  );
   const requiresAddress = selectedOption?.requires_address || false;
 
   return (
@@ -221,8 +229,12 @@ export default function EditableShippingAddressPanel({
               {physicalDeliveryOptionId && selectedOption ? (
                 <>
                   <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                    <p className="font-medium text-blue-900">{selectedOption.name}</p>
-                    <p className="text-xs text-blue-700 mt-1">{selectedOption.description}</p>
+                    <p className="font-medium text-blue-900">
+                      {selectedOption.name}
+                    </p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      {selectedOption.description}
+                    </p>
                     {selectedOption.price > 0 && (
                       <p className="text-sm font-semibold text-blue-900 mt-2">
                         ${selectedOption.price.toFixed(2)}
@@ -236,35 +248,53 @@ export default function EditableShippingAddressPanel({
                         Delivery Address
                       </p>
                       {shippingAddress.name && (
-                        <p className="font-medium text-gray-900">{shippingAddress.name}</p>
+                        <p className="font-medium text-gray-900">
+                          {shippingAddress.name}
+                        </p>
                       )}
                       {shippingAddress.company && (
-                        <p className="text-gray-700">{shippingAddress.company}</p>
+                        <p className="text-gray-700">
+                          {shippingAddress.company}
+                        </p>
                       )}
-                      <p className="text-gray-700">{shippingAddress.address_line1}</p>
+                      <p className="text-gray-700">
+                        {shippingAddress.address_line1}
+                      </p>
                       {shippingAddress.address_line2 && (
-                        <p className="text-gray-700">{shippingAddress.address_line2}</p>
+                        <p className="text-gray-700">
+                          {shippingAddress.address_line2}
+                        </p>
                       )}
                       <p className="text-gray-700">
                         {shippingAddress.city}
-                        {shippingAddress.province && `, ${shippingAddress.province}`} {shippingAddress.postal_code}
+                        {shippingAddress.province &&
+                          `, ${shippingAddress.province}`}{" "}
+                        {shippingAddress.postal_code}
                       </p>
-                      <p className="text-gray-700 font-medium">{shippingAddress.country}</p>
+                      <p className="text-gray-700 font-medium">
+                        {shippingAddress.country}
+                      </p>
                       {shippingAddress.phone && (
-                        <p className="text-gray-600 text-xs mt-1">Phone: {shippingAddress.phone}</p>
+                        <p className="text-gray-600 text-xs mt-1">
+                          Phone: {shippingAddress.phone}
+                        </p>
                       )}
                     </div>
                   )}
                 </>
               ) : (
-                <p className="text-gray-500 italic">No shipping information on file (Digital delivery only)</p>
+                <p className="text-gray-500 italic">
+                  No shipping information on file (Digital delivery only)
+                </p>
               )}
             </>
           ) : (
             // Edit Mode
             <>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Delivery Method *</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Delivery Method *
+                </label>
                 <select
                   value={selectedDeliveryOptionId}
                   onChange={(e) => setSelectedDeliveryOptionId(e.target.value)}
@@ -274,12 +304,17 @@ export default function EditableShippingAddressPanel({
                   <option value="">Select delivery method...</option>
                   {deliveryOptions.map((option) => (
                     <option key={option.id} value={option.id}>
-                      {option.name} {option.price > 0 ? `($${option.price.toFixed(2)})` : "(Free)"}
+                      {option.name}{" "}
+                      {option.price > 0
+                        ? `($${option.price.toFixed(2)})`
+                        : "(Free)"}
                     </option>
                   ))}
                 </select>
                 {selectedOption && (
-                  <p className="text-xs text-gray-600 mt-1">{selectedOption.description}</p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {selectedOption.description}
+                  </p>
                 )}
               </div>
 
@@ -293,7 +328,9 @@ export default function EditableShippingAddressPanel({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Full Name *</label>
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        Full Name *
+                      </label>
                       <input
                         type="text"
                         value={name}
@@ -304,7 +341,9 @@ export default function EditableShippingAddressPanel({
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Company (Optional)</label>
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        Company (Optional)
+                      </label>
                       <input
                         type="text"
                         value={company}
@@ -316,7 +355,9 @@ export default function EditableShippingAddressPanel({
                   </div>
 
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Address Line 1 *</label>
+                    <label className="text-xs text-gray-500 mb-1 block">
+                      Address Line 1 *
+                    </label>
                     <input
                       type="text"
                       value={addressLine1}
@@ -328,7 +369,9 @@ export default function EditableShippingAddressPanel({
                   </div>
 
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Address Line 2 (Optional)</label>
+                    <label className="text-xs text-gray-500 mb-1 block">
+                      Address Line 2 (Optional)
+                    </label>
                     <input
                       type="text"
                       value={addressLine2}
@@ -340,7 +383,9 @@ export default function EditableShippingAddressPanel({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-500 mb-1 block">City *</label>
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        City *
+                      </label>
                       <input
                         type="text"
                         value={city}
@@ -351,7 +396,9 @@ export default function EditableShippingAddressPanel({
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-500 mb-1 block">State/Province</label>
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        State/Province
+                      </label>
                       <input
                         type="text"
                         value={province}
@@ -364,7 +411,9 @@ export default function EditableShippingAddressPanel({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Postal/ZIP Code *</label>
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        Postal/ZIP Code *
+                      </label>
                       <input
                         type="text"
                         value={postalCode}
@@ -375,7 +424,9 @@ export default function EditableShippingAddressPanel({
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Country *</label>
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        Country *
+                      </label>
                       <input
                         type="text"
                         value={country}
@@ -388,7 +439,9 @@ export default function EditableShippingAddressPanel({
                   </div>
 
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Phone (Optional)</label>
+                    <label className="text-xs text-gray-500 mb-1 block">
+                      Phone (Optional)
+                    </label>
                     <input
                       type="tel"
                       value={phone}

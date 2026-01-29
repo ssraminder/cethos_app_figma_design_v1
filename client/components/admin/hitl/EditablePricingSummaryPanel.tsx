@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { DollarSign, ChevronDown, ChevronUp, Plus, Trash2, Save } from "lucide-react";
+import {
+  DollarSign,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Trash2,
+  Save,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 interface PricingSummaryData {
@@ -38,10 +45,14 @@ export default function EditablePricingSummaryPanel({
   const [isExpanded, setIsExpanded] = useState(true);
   const [adjustments, setAdjustments] = useState<QuoteAdjustment[]>([]);
   const [showAddAdjustment, setShowAddAdjustment] = useState(false);
-  
+
   // New adjustment form
-  const [newAdjustmentType, setNewAdjustmentType] = useState<"discount" | "surcharge">("discount");
-  const [newValueType, setNewValueType] = useState<"percentage" | "fixed">("percentage");
+  const [newAdjustmentType, setNewAdjustmentType] = useState<
+    "discount" | "surcharge"
+  >("discount");
+  const [newValueType, setNewValueType] = useState<"percentage" | "fixed">(
+    "percentage",
+  );
   const [newValue, setNewValue] = useState("");
   const [newReason, setNewReason] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -72,11 +83,14 @@ export default function EditablePricingSummaryPanel({
   const calculateAdjustmentAmount = (
     type: "discount" | "surcharge",
     valueType: "percentage" | "fixed",
-    value: number
+    value: number,
   ): number => {
     if (!pricingData) return 0;
 
-    const baseAmount = pricingData.subtotal + (pricingData.certification_total || 0) + (pricingData.rush_fee || 0);
+    const baseAmount =
+      pricingData.subtotal +
+      (pricingData.certification_total || 0) +
+      (pricingData.rush_fee || 0);
 
     if (valueType === "fixed") {
       return value;
@@ -100,19 +114,21 @@ export default function EditablePricingSummaryPanel({
 
     setIsSaving(true);
     try {
-      const calculatedAmount = calculateAdjustmentAmount(newAdjustmentType, newValueType, value);
+      const calculatedAmount = calculateAdjustmentAmount(
+        newAdjustmentType,
+        newValueType,
+        value,
+      );
 
-      const { error } = await supabase
-        .from("quote_adjustments")
-        .insert({
-          quote_id: pricingData.quote_id,
-          adjustment_type: newAdjustmentType,
-          value_type: newValueType,
-          value: value,
-          calculated_amount: calculatedAmount,
-          reason: newReason,
-          created_by_staff_id: staffId || null,
-        });
+      const { error } = await supabase.from("quote_adjustments").insert({
+        quote_id: pricingData.quote_id,
+        adjustment_type: newAdjustmentType,
+        value_type: newValueType,
+        value: value,
+        calculated_amount: calculatedAmount,
+        reason: newReason,
+        created_by_staff_id: staffId || null,
+      });
 
       if (error) throw error;
 
@@ -123,7 +139,7 @@ export default function EditablePricingSummaryPanel({
       setNewValue("");
       setNewReason("");
       setShowAddAdjustment(false);
-      
+
       alert("✅ Adjustment added successfully!");
       await fetchAdjustments();
       if (onUpdate) onUpdate();
@@ -177,14 +193,15 @@ export default function EditablePricingSummaryPanel({
         }
       });
 
-      const baseTotal = 
-        pricingData.subtotal + 
-        (pricingData.certification_total || 0) + 
-        (pricingData.rush_fee || 0) + 
+      const baseTotal =
+        pricingData.subtotal +
+        (pricingData.certification_total || 0) +
+        (pricingData.rush_fee || 0) +
         (pricingData.delivery_fee || 0);
 
       const subtotalWithAdjustments = baseTotal + adjustmentTotal;
-      const newTaxAmount = subtotalWithAdjustments * (pricingData.tax_rate || 0);
+      const newTaxAmount =
+        subtotalWithAdjustments * (pricingData.tax_rate || 0);
       const newTotal = subtotalWithAdjustments + newTaxAmount;
 
       // Update quote with new totals
@@ -196,7 +213,6 @@ export default function EditablePricingSummaryPanel({
           updated_at: new Date().toISOString(),
         })
         .eq("id", pricingData.quote_id);
-
     } catch (error) {
       console.error("Error recalculating total:", error);
     }
@@ -230,10 +246,10 @@ export default function EditablePricingSummaryPanel({
   }
 
   const adjustmentTotal = getTotalAdjustments();
-  const baseTotal = 
-    pricingData.subtotal + 
-    (pricingData.certification_total || 0) + 
-    (pricingData.rush_fee || 0) + 
+  const baseTotal =
+    pricingData.subtotal +
+    (pricingData.certification_total || 0) +
+    (pricingData.rush_fee || 0) +
     (pricingData.delivery_fee || 0);
   const subtotalWithAdjustments = baseTotal + adjustmentTotal;
 
@@ -296,20 +312,33 @@ export default function EditablePricingSummaryPanel({
           {/* Adjustments */}
           {adjustments.length > 0 && (
             <div className="border-t pt-2 space-y-2">
-              <p className="text-xs font-semibold text-gray-700 uppercase">Adjustments</p>
+              <p className="text-xs font-semibold text-gray-700 uppercase">
+                Adjustments
+              </p>
               {adjustments.map((adj) => (
-                <div key={adj.id} className="flex justify-between items-start bg-gray-50 p-2 rounded">
+                <div
+                  key={adj.id}
+                  className="flex justify-between items-start bg-gray-50 p-2 rounded"
+                >
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <span
                         className={`text-xs font-medium ${
-                          adj.adjustment_type === "discount" ? "text-green-700" : "text-red-700"
+                          adj.adjustment_type === "discount"
+                            ? "text-green-700"
+                            : "text-red-700"
                         }`}
                       >
-                        {adj.adjustment_type === "discount" ? "Discount" : "Surcharge"}
+                        {adj.adjustment_type === "discount"
+                          ? "Discount"
+                          : "Surcharge"}
                       </span>
                       <span className="text-xs text-gray-500">
-                        ({adj.value_type === "percentage" ? `${adj.value}%` : `$${adj.value.toFixed(2)}`})
+                        (
+                        {adj.value_type === "percentage"
+                          ? `${adj.value}%`
+                          : `$${adj.value.toFixed(2)}`}
+                        )
                       </span>
                     </div>
                     <p className="text-xs text-gray-600 mt-0.5">{adj.reason}</p>
@@ -317,10 +346,13 @@ export default function EditablePricingSummaryPanel({
                   <div className="flex items-center gap-2">
                     <span
                       className={`font-medium ${
-                        adj.adjustment_type === "discount" ? "text-green-700" : "text-red-700"
+                        adj.adjustment_type === "discount"
+                          ? "text-green-700"
+                          : "text-red-700"
                       }`}
                     >
-                      {adj.adjustment_type === "discount" ? "-" : "+"}${adj.calculated_amount.toFixed(2)}
+                      {adj.adjustment_type === "discount" ? "-" : "+"}$
+                      {adj.calculated_amount.toFixed(2)}
                     </span>
                     <button
                       onClick={() => handleDeleteAdjustment(adj.id)}
@@ -350,10 +382,16 @@ export default function EditablePricingSummaryPanel({
             <div className="border border-blue-200 bg-blue-50 p-3 rounded space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs text-gray-600 mb-1 block">Type</label>
+                  <label className="text-xs text-gray-600 mb-1 block">
+                    Type
+                  </label>
                   <select
                     value={newAdjustmentType}
-                    onChange={(e) => setNewAdjustmentType(e.target.value as "discount" | "surcharge")}
+                    onChange={(e) =>
+                      setNewAdjustmentType(
+                        e.target.value as "discount" | "surcharge",
+                      )
+                    }
                     className="w-full border rounded px-2 py-1 text-sm"
                   >
                     <option value="discount">Discount</option>
@@ -361,10 +399,14 @@ export default function EditablePricingSummaryPanel({
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600 mb-1 block">Value Type</label>
+                  <label className="text-xs text-gray-600 mb-1 block">
+                    Value Type
+                  </label>
                   <select
                     value={newValueType}
-                    onChange={(e) => setNewValueType(e.target.value as "percentage" | "fixed")}
+                    onChange={(e) =>
+                      setNewValueType(e.target.value as "percentage" | "fixed")
+                    }
                     className="w-full border rounded px-2 py-1 text-sm"
                   >
                     <option value="percentage">Percentage (%)</option>
@@ -382,14 +424,18 @@ export default function EditablePricingSummaryPanel({
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
                   className="w-full border rounded px-3 py-2 text-sm"
-                  placeholder={newValueType === "percentage" ? "e.g., 10" : "e.g., 25.00"}
+                  placeholder={
+                    newValueType === "percentage" ? "e.g., 10" : "e.g., 25.00"
+                  }
                   step="0.01"
                   min="0"
                 />
               </div>
 
               <div>
-                <label className="text-xs text-gray-600 mb-1 block">Reason *</label>
+                <label className="text-xs text-gray-600 mb-1 block">
+                  Reason *
+                </label>
                 <input
                   type="text"
                   value={newReason}
@@ -427,11 +473,15 @@ export default function EditablePricingSummaryPanel({
           <div className="border-t pt-2 space-y-2">
             {adjustmentTotal !== 0 && (
               <div className="flex justify-between text-xs">
-                <span className="text-gray-600">Subtotal after adjustments:</span>
-                <span className="font-medium">${subtotalWithAdjustments.toFixed(2)}</span>
+                <span className="text-gray-600">
+                  Subtotal after adjustments:
+                </span>
+                <span className="font-medium">
+                  ${subtotalWithAdjustments.toFixed(2)}
+                </span>
               </div>
             )}
-            
+
             <div className="flex justify-between">
               <span className="text-gray-600">Tax:</span>
               <span className="font-medium text-gray-900">

@@ -1,6 +1,7 @@
 # HITL Review - Editable Sections Implementation Summary
 
 ## Overview
+
 This document summarizes the comprehensive updates to the HITL (Human-in-the-Loop) Review system, adding full editing capabilities for Translation Details, Pricing with Discounts/Surcharges, and International Billing/Shipping Address management.
 
 ---
@@ -8,9 +9,11 @@ This document summarizes the comprehensive updates to the HITL (Human-in-the-Loo
 ## ✅ Implementation Complete
 
 ### 1. **Editable Translation Details Panel**
+
 **File:** `code/client/components/admin/hitl/EditableTranslationDetailsPanel.tsx`
 
 **Features:**
+
 - ✅ Edit source and target languages (dropdown from database)
 - ✅ Edit purpose/intended use (dropdown from database)
 - ✅ Edit country of issue (text input, international)
@@ -21,6 +24,7 @@ This document summarizes the comprehensive updates to the HITL (Human-in-the-Loo
 - ✅ Database persistence to `quotes` table
 
 **Database Fields Updated:**
+
 - `source_language_id`
 - `target_language_id`
 - `intended_use_id`
@@ -31,9 +35,11 @@ This document summarizes the comprehensive updates to the HITL (Human-in-the-Loo
 ---
 
 ### 2. **Editable Pricing Summary with Discounts & Surcharges**
+
 **File:** `code/client/components/admin/hitl/EditablePricingSummaryPanel.tsx`
 
 **Features:**
+
 - ✅ Display complete pricing breakdown:
   - Subtotal
   - Certification Total
@@ -62,19 +68,23 @@ This document summarizes the comprehensive updates to the HITL (Human-in-the-Loo
   - Shows subtotal after adjustments
 
 **Database Tables:**
+
 - `quote_adjustments` (stores all discounts/surcharges)
   - Fields: `adjustment_type`, `value_type`, `value`, `calculated_amount`, `reason`, `created_by_staff_id`
 - Updates `quotes` table with new totals
 
 **Helper Function:**
+
 - `calculate_quote_adjustments(quote_id)` - SQL function to sum all adjustments
 
 ---
 
 ### 3. **Editable Billing Address Panel**
+
 **File:** `code/client/components/admin/hitl/EditableBillingAddressPanel.tsx`
 
 **Features:**
+
 - ✅ **International Address Support:**
   - Full Name
   - Company (optional)
@@ -99,6 +109,7 @@ This document summarizes the comprehensive updates to the HITL (Human-in-the-Loo
   - No Canada-specific validation
 
 **Address Structure (JSONB):**
+
 ```json
 {
   "name": "John Doe",
@@ -117,9 +128,11 @@ This document summarizes the comprehensive updates to the HITL (Human-in-the-Loo
 ---
 
 ### 4. **Editable Shipping Address & Delivery Options Panel**
+
 **File:** `code/client/components/admin/hitl/EditableShippingAddressPanel.tsx`
 
 **Features:**
+
 - ✅ **Delivery Method Selection (from database):**
   - Regular Mail ($0.00)
   - Priority Mail ($15.00)
@@ -150,6 +163,7 @@ This document summarizes the comprehensive updates to the HITL (Human-in-the-Loo
   - Delivery fee: `quotes.delivery_fee` (auto-populated from delivery option price)
 
 **Database Integration:**
+
 - Fetches delivery options from `delivery_options` table
 - Filters: `is_active = true AND is_physical = true`
 - Automatically updates delivery fee when option changes
@@ -159,6 +173,7 @@ This document summarizes the comprehensive updates to the HITL (Human-in-the-Loo
 ## Database Changes
 
 ### New Table: `quote_adjustments`
+
 ```sql
 CREATE TABLE quote_adjustments (
   id UUID PRIMARY KEY,
@@ -175,6 +190,7 @@ CREATE TABLE quote_adjustments (
 ```
 
 ### Updated Tables:
+
 - `quotes` table already has:
   - `billing_address` (JSONB)
   - `shipping_address` (JSONB)
@@ -182,6 +198,7 @@ CREATE TABLE quote_adjustments (
   - `delivery_fee` (DECIMAL)
 
 ### Delivery Options (Pre-configured):
+
 ```
 ID                                  | Code                 | Name                      | Price   | Requires Address
 ------------------------------------|----------------------|---------------------------|---------|------------------
@@ -201,12 +218,14 @@ cabe990f-50c3-48ad-b88f-3e0ce710445e| pickup               | Pickup             
 **Updated File:** `code/client/components/admin/hitl/HITLPanelLayout.tsx`
 
 **New Collapsible Sections:**
+
 1. Translation Details (now editable)
 2. Pricing Summary (with discounts/surcharges)
 3. **NEW:** Billing Address
 4. **NEW:** Shipping & Delivery
 
 **Props Added:**
+
 - `onUpdate` callback for refreshing data after edits
 - `staffId` for tracking who made adjustments
 
@@ -286,15 +305,18 @@ cabe990f-50c3-48ad-b88f-3e0ce710445e| pickup               | Pickup             
 ## Files Modified/Created
 
 ### Created:
+
 - `code/client/components/admin/hitl/EditableTranslationDetailsPanel.tsx`
 - `code/client/components/admin/hitl/EditablePricingSummaryPanel.tsx`
 - `code/client/components/admin/hitl/EditableBillingAddressPanel.tsx`
 - `code/client/components/admin/hitl/EditableShippingAddressPanel.tsx`
 
 ### Modified:
+
 - `code/client/components/admin/hitl/HITLPanelLayout.tsx`
 
 ### Database:
+
 - Applied migration: `quote_adjustments` table
 - Verified: `delivery_options` table populated
 
