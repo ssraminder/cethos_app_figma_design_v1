@@ -182,7 +182,12 @@ export default function HITLPanelLayout({
               files={quoteFiles}
               onFilesUploaded={onRefreshFiles}
             />
-            <DocumentFilesPanel files={quoteFiles} loading={loading} />
+            <DocumentFilesPanel
+              files={quoteFiles}
+              quoteId={reviewData.id}
+              loading={loading}
+              onRefresh={onRefreshFiles}
+            />
           </div>
         </CollapsibleSection>
       )}
