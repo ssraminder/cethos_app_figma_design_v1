@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { supabase } from "@/lib/supabase";
 import { XCircle, Mail, AlertTriangle, Send, CreditCard } from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
