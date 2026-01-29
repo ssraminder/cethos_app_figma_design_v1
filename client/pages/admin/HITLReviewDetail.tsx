@@ -2471,16 +2471,20 @@ const HITLReviewDetail: React.FC = () => {
             )}
 
             {/* Page Selection Toolbar */}
-            {claimedByMe && analysisResults.length > 0 && (
+            {analysisResults.length > 0 && (
               <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setSplitMode(!splitMode)}
+                    disabled={!claimedByMe}
                     className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                       splitMode
                         ? "bg-blue-600 text-white"
-                        : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                        : !claimedByMe
+                          ? "bg-gray-200 border border-gray-300 text-gray-400 cursor-not-allowed"
+                          : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
                     }`}
+                    title={!claimedByMe ? "Claim this review to select pages" : ""}
                   >
                     {splitMode ? "✓ Selection Mode" : "Select Pages"}
                   </button>
