@@ -116,7 +116,10 @@ export default function StaffFileUploadForm({
     // Process each file with timeout
     for (const file of files) {
       // Skip if already completed or currently analyzing
-      if (analysisStatus[file.id] === "completed" || analysisStatus[file.id] === "analyzing") {
+      if (
+        analysisStatus[file.id] === "completed" ||
+        analysisStatus[file.id] === "analyzing"
+      ) {
         continue;
       }
 
@@ -246,7 +249,7 @@ export default function StaffFileUploadForm({
         uploadStatus[file.id] === "success" &&
         (analysisStatus[file.id] === "idle" ||
           analysisStatus[file.id] === "failed" ||
-          analysisStatus[file.id] === "timeout")
+          analysisStatus[file.id] === "timeout"),
     );
 
   return (
@@ -412,8 +415,10 @@ export default function StaffFileUploadForm({
           <div className="text-sm text-blue-800">
             <p className="font-medium">Files will upload when you click Next</p>
             <p className="text-xs mt-1">
-              Files will be uploaded to the server when you move to the next step.
-              {processWithAI && " Then click 'Analyze Files with AI' to process them."}
+              Files will be uploaded to the server when you move to the next
+              step.
+              {processWithAI &&
+                " Then click 'Analyze Files with AI' to process them."}
             </p>
           </div>
         </div>
@@ -432,10 +437,13 @@ export default function StaffFileUploadForm({
               {processWithAI && (
                 <>
                   <li>
-                    Click "Analyze Files with AI" after uploading to extract document details
+                    Click "Analyze Files with AI" after uploading to extract
+                    document details
                   </li>
                   <li>Each file analysis has a 1-minute timeout</li>
-                  <li>You can override AI results in the next step if needed</li>
+                  <li>
+                    You can override AI results in the next step if needed
+                  </li>
                 </>
               )}
             </>
