@@ -1,5 +1,7 @@
 import React, { useState } from "react";
-import { FileText, Download, Eye, Brain, Pencil } from "lucide-react";
+import { FileText, Download, Eye, Brain, Pencil, Trash2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 import DocumentPreviewModal from "../../admin/DocumentPreviewModal";
 import AnalyzeDocumentModal from "./AnalyzeDocumentModal";
 import ManualEntryModal from "./ManualEntryModal";
@@ -30,6 +32,61 @@ export default function DocumentFilesPanel({
   const [previewFile, setPreviewFile] = useState<QuoteFile | null>(null);
   const [analyzeFile, setAnalyzeFile] = useState<QuoteFile | null>(null);
   const [manualEntryFile, setManualEntryFile] = useState<QuoteFile | null>(null);
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+
+  const handleDeleteFile = async (file: QuoteFile) => {
+    // Confirmation dialog
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${file.original_filename}"?\n\nThis will also remove any analysis results for this file.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingFileId(file.id);
+
+    try {
+      // 1. Delete from ai_analysis_results (if exists)
+      if (supabase) {
+        await supabase
+          .from('ai_analysis_results')
+          .delete()
+          .eq('quote_file_id', file.id);
+
+        // 2. Delete from quote_files table
+        const { error: dbError } = await supabase
+          .from('quote_files')
+          .delete()
+          .eq('id', file.id);
+
+        if (dbError) throw dbError;
+
+        // 3. Delete from storage bucket
+        if (file.storage_path) {
+          const { error: storageError } = await supabase.storage
+            .from('quote-files')
+            .remove([file.storage_path]);
+
+          if (storageError) {
+            console.warn('Storage delete warning:', storageError);
+            // Don't throw - file might already be deleted
+          }
+        }
+      }
+
+      toast.success(`"${file.original_filename}" deleted successfully`);
+
+      // 4. Refresh file list
+      if (onRefresh) {
+        onRefresh();
+      }
+
+    } catch (error: any) {
+      console.error('Error deleting file:', error);
+      toast.error(`Failed to delete file: ${error.message}`);
+    } finally {
+      setDeletingFileId(null);
+    }
+  };
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 B";
@@ -175,10 +232,20 @@ export default function DocumentFilesPanel({
                     link.click();
                     document.body.removeChild(link);
                   }}
-                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                  className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
                   title="Download file"
                 >
                   <Download className="w-4 h-4" />
+                </button>
+
+                {/* Delete Button */}
+                <button
+                  onClick={() => handleDeleteFile(file)}
+                  disabled={deletingFileId === file.id}
+                  className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                  title="Delete file"
+                >
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             </div>
