@@ -11,7 +11,7 @@ interface QuoteFile {
   id: string;
   original_filename: string;
   file_size: number;
-  processing_status?: string;
+  ai_processing_status?: string;
   storage_path?: string;
   mime_type: string;
   created_at: string;
@@ -133,13 +133,15 @@ export default function DocumentManagementPanel({
 
   const getStatusIcon = (status?: string) => {
     switch (status) {
-      case "complete":
+      case "completed":
         return <CheckCircle className="w-4 h-4 text-green-600" />;
       case "pending":
       case "processing":
         return <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />;
       case "failed":
         return <XCircle className="w-4 h-4 text-red-600" />;
+      case "skipped":
+        return <AlertCircle className="w-4 h-4 text-gray-500" />;
       default:
         return <AlertCircle className="w-4 h-4 text-gray-400" />;
     }
@@ -147,22 +149,24 @@ export default function DocumentManagementPanel({
 
   const getStatusBadge = (status?: string) => {
     switch (status) {
-      case "complete":
+      case "completed":
         return "bg-green-100 text-green-800";
       case "pending":
       case "processing":
         return "bg-blue-100 text-blue-800";
       case "failed":
         return "bg-red-100 text-red-800";
+      case "skipped":
+        return "bg-gray-100 text-gray-600";
       default:
         return "bg-gray-100 text-gray-800";
     }
   };
 
-  const failedFiles = files.filter((f) => f.processing_status === "failed");
+  const failedFiles = files.filter((f) => f.ai_processing_status === "failed");
   const processingFiles = files.filter(
     (f) =>
-      f.processing_status === "pending" || f.processing_status === "processing",
+      f.ai_processing_status === "pending" || f.ai_processing_status === "processing",
   );
 
   return (
@@ -262,7 +266,7 @@ export default function DocumentManagementPanel({
                 className="flex items-center justify-between bg-white rounded p-2"
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {getStatusIcon(file.processing_status)}
+                  {getStatusIcon(file.ai_processing_status)}
                   <span className="text-xs text-gray-900 truncate">
                     {file.original_filename}
                   </span>
@@ -298,7 +302,7 @@ export default function DocumentManagementPanel({
         </div>
         <div className="bg-green-50 rounded p-2">
           <div className="text-green-900 font-semibold">
-            {files.filter((f) => f.processing_status === "complete").length}
+            {files.filter((f) => f.ai_processing_status === "completed").length}
           </div>
           <div className="text-green-700">Processed</div>
         </div>

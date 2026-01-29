@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { FileText, Download, Eye, Brain, Pencil, Trash2 } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { FileText, Download, Eye, Brain, Pencil, Trash2, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import DocumentPreviewModal from "../../admin/DocumentPreviewModal";
@@ -11,7 +11,7 @@ interface QuoteFile {
   original_filename: string;
   file_size: number;
   created_at: string;
-  processing_status?: string;
+  ai_processing_status?: string;
   storage_path?: string;
   mime_type: string;
 }
@@ -33,6 +33,87 @@ export default function DocumentFilesPanel({
   const [analyzeFile, setAnalyzeFile] = useState<QuoteFile | null>(null);
   const [manualEntryFile, setManualEntryFile] = useState<QuoteFile | null>(null);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollCountRef = useRef<number>(0);
+  const MAX_POLL_COUNT = 24; // Max 4 minutes of polling (24 * 10 seconds)
+
+  // Polling for processing status updates
+  useEffect(() => {
+    // Check if any files are currently processing
+    const hasProcessingFiles = files.some(
+      (f) => f.ai_processing_status === 'processing'
+    );
+
+    // Clean up existing interval
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+
+    if (!hasProcessingFiles) {
+      // Reset poll count when no files are processing
+      pollCountRef.current = 0;
+      return;
+    }
+
+    console.log("🔄 Starting polling - documents are processing");
+
+    pollIntervalRef.current = setInterval(async () => {
+      pollCountRef.current += 1;
+      console.log(`🔄 Polling for status updates... (attempt ${pollCountRef.current}/${MAX_POLL_COUNT})`);
+
+      // Stop polling after max attempts
+      if (pollCountRef.current >= MAX_POLL_COUNT) {
+        console.log("⚠️ Max polling attempts reached, stopping polling");
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        return;
+      }
+
+      // Re-fetch file statuses from database
+      if (supabase) {
+        const { data: filesData, error } = await supabase
+          .from('quote_files')
+          .select('id, ai_processing_status')
+          .eq('quote_id', quoteId);
+
+        if (error) {
+          console.error("❌ Polling error:", error);
+          return;
+        }
+
+        // Check if any status changed from processing
+        const stillProcessing = filesData?.some(
+          (f) => f.ai_processing_status === 'processing'
+        );
+
+        if (!stillProcessing) {
+          console.log("✅ Processing complete - refreshing data");
+          pollCountRef.current = 0;
+
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+
+          // Trigger full refresh
+          if (onRefresh) {
+            await onRefresh();
+          }
+        }
+      }
+    }, 10000); // 10 seconds
+
+    return () => {
+      if (pollIntervalRef.current) {
+        console.log("🔄 Stopping polling (cleanup)");
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [files, quoteId, onRefresh]);
 
   const handleDeleteFile = async (file: QuoteFile) => {
     // Confirmation dialog
@@ -98,12 +179,16 @@ export default function DocumentFilesPanel({
 
   const getStatusBadge = (status?: string) => {
     switch (status) {
-      case "complete":
+      case "completed":
         return "bg-green-100 text-green-800";
       case "pending":
         return "bg-yellow-100 text-yellow-800";
+      case "processing":
+        return "bg-blue-100 text-blue-800";
       case "failed":
         return "bg-red-100 text-red-800";
+      case "skipped":
+        return "bg-gray-100 text-gray-600";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -111,14 +196,35 @@ export default function DocumentFilesPanel({
 
   const getStatusIcon = (status?: string) => {
     switch (status) {
-      case "complete":
+      case "completed":
         return "✓";
       case "pending":
         return "⏳";
+      case "processing":
+        return "⟳";
       case "failed":
         return "✗";
+      case "skipped":
+        return "○";
       default:
         return "•";
+    }
+  };
+
+  const getStatusLabel = (status?: string) => {
+    switch (status) {
+      case "completed":
+        return "Complete";
+      case "pending":
+        return "Pending";
+      case "processing":
+        return "Processing...";
+      case "failed":
+        return "Failed";
+      case "skipped":
+        return "Ready for Analysis";
+      default:
+        return status || "Unknown";
     }
   };
 
@@ -177,16 +283,19 @@ export default function DocumentFilesPanel({
                 </div>
 
                 {/* Processing Status */}
-                {file.processing_status && (
+                {file.ai_processing_status && (
                   <div className="mt-1 flex items-center gap-1">
                     <span
                       className={`text-xs px-2 py-0.5 rounded font-medium ${getStatusBadge(
-                        file.processing_status,
-                      )}`}
+                        file.ai_processing_status,
+                      )} flex items-center gap-1`}
                     >
-                      {getStatusIcon(file.processing_status)}{" "}
-                      {file.processing_status.charAt(0).toUpperCase() +
-                        file.processing_status.slice(1)}
+                      {file.ai_processing_status === 'processing' ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        getStatusIcon(file.ai_processing_status)
+                      )}{" "}
+                      {getStatusLabel(file.ai_processing_status)}
                     </span>
                   </div>
                 )}

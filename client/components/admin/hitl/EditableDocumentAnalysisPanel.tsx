@@ -261,10 +261,10 @@ export default function EditableDocumentAnalysisPanel({
 
       if (deleteError) throw deleteError;
 
-      // 2. Reset quote_files status to 'pending'
+      // 2. Reset quote_files status to 'skipped' (not 'pending' to avoid auto-processing)
       const { error: updateError } = await supabase
         .from("quote_files")
-        .update({ ai_processing_status: "pending" })
+        .update({ ai_processing_status: "skipped" })
         .eq("id", fileId);
 
       if (updateError) throw updateError;
