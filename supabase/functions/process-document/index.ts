@@ -162,7 +162,7 @@ serve(async (req) => {
           .from("ai_analysis_results")
           .upsert({
             quote_id: file.quote_id,
-            file_id: file.id,
+            quote_file_id: file.id,
             detected_language: analysis.language,
             detected_document_type: analysis.documentType,
             word_count: analysis.wordCount,
@@ -173,7 +173,7 @@ serve(async (req) => {
             created_at: now,
             updated_at: now,
           }, {
-            onConflict: "file_id",
+            onConflict: "quote_file_id",
           });
 
         if (insertError) {
