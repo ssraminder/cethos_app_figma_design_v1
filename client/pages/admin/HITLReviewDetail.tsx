@@ -2963,6 +2963,124 @@ const HITLReviewDetail: React.FC = () => {
         </div>
       )}
 
+      {/* Manual Payment Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                <CreditCard className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Manual Payment
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {reviewData?.quote_number}
+                </p>
+              </div>
+            </div>
+
+            {/* Warning */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-800">
+                <p className="font-medium mb-1">Important:</p>
+                <p>This will immediately convert the quote to a paid order. Ensure payment has been received before proceeding.</p>
+              </div>
+            </div>
+
+            {/* Quote Summary */}
+            {reviewData && (
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs font-medium text-gray-500 mb-2">
+                  Quote Summary
+                </p>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Customer:</span>
+                    <span className="font-medium">
+                      {reviewData.customer_name || reviewData.quotes?.customer?.full_name}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Email:</span>
+                    <span className="font-medium">
+                      {reviewData.customer_email || reviewData.quotes?.customer?.email}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-t pt-1 mt-1">
+                    <span className="text-gray-600">Total Amount:</span>
+                    <span className="font-bold text-lg text-purple-600">
+                      ${reviewData.total?.toFixed(2) || reviewData.quotes?.total?.toFixed(2) || "0.00"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Payment Method Selection */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Payment Method <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={selectedPaymentMethod}
+                onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                disabled={isProcessingPayment}
+              >
+                <option value="">Select payment method...</option>
+                {paymentMethods.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Optional Remarks */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Remarks (Optional)
+              </label>
+              <textarea
+                value={paymentRemarks}
+                onChange={(e) => setPaymentRemarks(e.target.value)}
+                placeholder="Add any notes about this payment (e.g., reference number, transaction ID, etc.)..."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                disabled={isProcessingPayment}
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setSelectedPaymentMethod("");
+                  setPaymentRemarks("");
+                }}
+                disabled={isProcessingPayment}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleManualPayment}
+                disabled={isProcessingPayment || !selectedPaymentMethod}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <CreditCard className="w-4 h-4" />
+                {isProcessingPayment ? "Processing..." : "Confirm Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Split Modal */}
       {showSplitModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
