@@ -835,6 +835,122 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
+  const handleManualPayment = async () => {
+    if (!selectedPaymentMethod) {
+      alert("Please select a payment method.");
+      return;
+    }
+
+    if (!staffSession?.staffId || !reviewData?.quote_id) {
+      alert("Missing required data. Please refresh the page.");
+      return;
+    }
+
+    const confirmMsg = `Are you sure you want to manually mark this quote as PAID?\n\n` +
+      `Quote: ${reviewData.quote_number}\n` +
+      `Total: $${reviewData.total?.toFixed(2) || "0.00"}\n` +
+      `Payment Method: ${paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name}\n\n` +
+      `This will:\n` +
+      `- Convert the quote to an order\n` +
+      `- Mark it as paid\n` +
+      `- Cannot be undone`;
+
+    if (!confirm(confirmMsg)) {
+      return;
+    }
+
+    setIsProcessingPayment(true);
+
+    try {
+      const quote = reviewData.quotes || reviewData;
+
+      // Generate order number
+      const orderNumber = `ORD-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      // Create order from quote
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .insert({
+          order_number: orderNumber,
+          quote_id: reviewData.quote_id,
+          customer_id: quote.customer_id,
+          status: "paid",
+          work_status: "pending",
+          subtotal: quote.subtotal || 0,
+          certification_total: quote.certification_total || 0,
+          rush_fee: quote.rush_fee || 0,
+          delivery_fee: quote.delivery_fee || 0,
+          tax_rate: quote.tax_rate || 0.05,
+          tax_amount: quote.tax_amount || 0,
+          total_amount: quote.total || 0,
+          amount_paid: quote.total || 0,
+          balance_due: 0,
+          currency: "CAD",
+          is_rush: quote.is_rush || false,
+          paid_at: new Date().toISOString(),
+          service_province: quote.service_province,
+        })
+        .select()
+        .single();
+
+      if (orderError) {
+        console.error("Order creation error:", orderError);
+        throw new Error(`Failed to create order: ${orderError.message}`);
+      }
+
+      // Update quote status to converted
+      const { error: quoteUpdateError } = await supabase
+        .from("quotes")
+        .update({
+          status: "converted",
+          converted_to_order_id: order.id,
+        })
+        .eq("id", reviewData.quote_id);
+
+      if (quoteUpdateError) {
+        console.error("Quote update error:", quoteUpdateError);
+        throw new Error(`Failed to update quote: ${quoteUpdateError.message}`);
+      }
+
+      // Log staff activity
+      await supabase.from("staff_activity_log").insert({
+        staff_id: staffSession.staffId,
+        action_type: "manual_payment",
+        entity_type: "order",
+        entity_id: order.id,
+        details: {
+          quote_id: reviewData.quote_id,
+          quote_number: reviewData.quote_number,
+          order_number: orderNumber,
+          payment_method_id: selectedPaymentMethod,
+          payment_method: paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name,
+          amount: quote.total,
+          remarks: paymentRemarks || null,
+        },
+      });
+
+      alert(
+        `✅ Payment recorded successfully!\n\n` +
+          `Order Number: ${orderNumber}\n` +
+          `Amount: $${quote.total?.toFixed(2) || "0.00"}\n` +
+          `Payment Method: ${paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name}\n\n` +
+          `The quote has been converted to an order.`
+      );
+
+      setShowPaymentModal(false);
+      setSelectedPaymentMethod("");
+      setPaymentRemarks("");
+
+      // Navigate to order or refresh
+      navigate("/admin/hitl");
+    } catch (error) {
+      console.error("Failed to process manual payment:", error);
+      alert("Failed to process payment: " + (error as Error).message);
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
   // ============================================
   // EDIT HELPERS
   // ============================================
