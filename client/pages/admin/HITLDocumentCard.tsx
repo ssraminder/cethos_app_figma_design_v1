@@ -47,11 +47,7 @@ export default function HITLDocumentCard({
           <span className="text-lg font-medium">
             {index + 1}. {file.original_filename}
           </span>
-          {hasAnalysis ? (
-            <span className="text-sm text-gray-500">
-              {/* Word/page count shown by parent when analysis exists */}
-            </span>
-          ) : hasFailed ? (
+          {hasFailed ? (
             <span className="px-3 py-1 rounded-full text-xs bg-red-100 text-red-800 font-semibold border border-red-300">
               ⚠️ AI Analysis Failed
             </span>
