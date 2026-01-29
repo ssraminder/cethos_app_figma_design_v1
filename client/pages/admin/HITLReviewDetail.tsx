@@ -2507,13 +2507,24 @@ const HITLReviewDetail: React.FC = () => {
                 );
                 const fileId = file.id;
                 const isExpanded = expandedFile === fileId;
-
-                // Determine AI status
-                const aiStatus = file.ai_processing_status || 'unknown';
                 const hasAnalysis = !!analysis;
-                const hasFailed = aiStatus === 'failed' || aiStatus === 'error';
-                const isPending = aiStatus === 'pending' || aiStatus === 'processing';
 
+                // SURGICAL FIX: Use new component for files without analysis
+                if (!hasAnalysis) {
+                  return (
+                    <HITLDocumentCard
+                      key={fileId}
+                      file={file}
+                      index={index}
+                      analysis={null}
+                      isExpanded={isExpanded}
+                      hasChanges={false}
+                      onToggle={() => setExpandedFile(isExpanded ? null : fileId)}
+                    />
+                  );
+                }
+
+                // Original code for files WITH analysis - keep unchanged
                 return (
                   <div
                     key={fileId}
@@ -2530,41 +2541,25 @@ const HITLReviewDetail: React.FC = () => {
                     >
                       <div className="flex items-center gap-4">
                         <span className="text-lg font-medium">
-                          {index + 1}. {file.original_filename}
+                          {index + 1}. {file.original_filename || analysis.quote_file?.original_filename}
                         </span>
-                        {hasAnalysis ? (
-                          <span className="text-sm text-gray-500">
-                            {totalWords} words • {pages.length} page(s)
-                          </span>
-                        ) : hasFailed ? (
-                          <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-800 font-medium">
-                            ⚠️ AI Analysis Failed
-                          </span>
-                        ) : isPending ? (
-                          <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800 font-medium">
-                            ⏳ Processing...
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
-                            📄 No Analysis
-                          </span>
-                        )}
-                        {hasAnalysis && hasChanges(analysis.quote_file_id) && (
+                        <span className="text-sm text-gray-500">
+                          {totalWords} words • {pages.length} page(s)
+                        </span>
+                        {hasChanges(analysis.quote_file_id) && (
                           <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
                             Unsaved changes
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-4">
-                        {hasAnalysis && (
-                          <span className="text-lg font-bold text-blue-600">
-                            $
-                            {calculateLineTotal(
-                              analysis.quote_file_id,
-                              analysis,
-                            ).toFixed(2)}
-                          </span>
-                        )}
+                        <span className="text-lg font-bold text-blue-600">
+                          $
+                          {calculateLineTotal(
+                            analysis.quote_file_id,
+                            analysis,
+                          ).toFixed(2)}
+                        </span>
                         <span className="text-gray-400">
                           {isExpanded ? "▼" : "▶"}
                         </span>
@@ -2572,7 +2567,7 @@ const HITLReviewDetail: React.FC = () => {
                     </button>
 
                     {/* Expanded Content */}
-                    {expandedFile === analysis.id && (
+                    {isExpanded && (
                       <div className="p-6 border-t">
                         <div className="grid grid-cols-2 gap-6">
                           {/* Left Column: Document Preview */}
