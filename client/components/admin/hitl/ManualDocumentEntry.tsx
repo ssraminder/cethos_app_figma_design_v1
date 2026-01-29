@@ -10,7 +10,7 @@ interface ManualDocumentEntryProps {
     id: string;
     code: string;
     name: string;
-    price_multiplier: number;
+    multiplier: number;
   }>;
   documentTypes: Array<{ id: string; code: string; name: string }>;
   certificationTypes: Array<{
@@ -99,7 +99,7 @@ export default function ManualDocumentEntry({
     const selectedLanguage = languages.find(
       (l) => l.id === formData.detected_language,
     );
-    const languageMultiplier = selectedLanguage?.price_multiplier || 1.0;
+    const languageMultiplier = selectedLanguage?.multiplier || 1.0;
 
     const translationCost =
       (formData.billable_pages || 0) *

@@ -137,7 +137,7 @@ const HITLReviewDetail: React.FC = () => {
 
   // Language data
   const [languages, setLanguages] = useState<
-    Array<{ id: string; code: string; name: string; price_multiplier: number }>
+    Array<{ id: string; code: string; name: string; multiplier: number }>
   >([]);
 
   // Settings from database
@@ -1863,7 +1863,7 @@ const HITLReviewDetail: React.FC = () => {
 
   const getLanguageMultiplier = (languageCode: string) => {
     const lang = languages.find((l) => l.code === languageCode);
-    return lang?.price_multiplier || 1.0;
+    return lang?.multiplier || 1.0;
   };
 
   // ============================================
@@ -2740,7 +2740,7 @@ const HITLReviewDetail: React.FC = () => {
                                   >
                                     {languages.map((lang) => (
                                       <option key={lang.code} value={lang.code}>
-                                        {lang.name} ({lang.price_multiplier}x)
+                                        {lang.name} ({lang.multiplier}x)
                                       </option>
                                     ))}
                                   </select>
