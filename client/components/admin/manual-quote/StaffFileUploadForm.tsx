@@ -243,17 +243,6 @@ export default function StaffFileUploadForm({
     }
   };
 
-  // Simulated AI analysis (replace with actual API call)
-  const simulateAIAnalysis = (file: FileData): Promise<void> => {
-    return new Promise((resolve) => {
-      // Simulate processing time (2-5 seconds per file)
-      const processingTime = Math.random() * 3000 + 2000;
-      setTimeout(() => {
-        console.log(`Analyzed ${file.name}`);
-        resolve();
-      }, processingTime);
-    });
-  };
 
   const removeFile = (id: string) => {
     const updated = files.filter((f) => f.id !== id);
