@@ -281,6 +281,7 @@ const HITLReviewDetail: React.FC = () => {
         fetchLanguages(),
         fetchSettings(),
         fetchPaymentMethods(),
+        fetchTurnaroundOptions(),
       ]);
     } catch (error) {
       console.error("Error fetching data:", error);
