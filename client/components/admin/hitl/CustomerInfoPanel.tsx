@@ -11,6 +11,7 @@ interface CustomerData {
   status: string;
   created_at: string;
   expires_at?: string;
+  entry_point?: string;
 }
 
 interface CustomerInfoPanelProps {
@@ -151,6 +152,15 @@ export default function CustomerInfoPanel({
               {customerData.quote_number}
             </span>
           </div>
+
+          {customerData.entry_point && (
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-600">Route:</span>
+              <span className="text-sm font-medium text-gray-900">
+                {customerData.entry_point}
+              </span>
+            </div>
+          )}
 
           <div className="flex justify-between">
             <span className="text-sm text-gray-600">Total:</span>
