@@ -968,6 +968,159 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   // ============================================
+  // FILE UPLOAD FUNCTIONS
+  // ============================================
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(e.target.files || []);
+    addFiles(selectedFiles);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    addFiles(droppedFiles);
+  };
+
+  const addFiles = async (newFiles: File[]) => {
+    console.log("📁 [FILE UPLOAD] Adding", newFiles.length, "files");
+
+    const fileData = newFiles.map((file) => ({
+      id: `${Date.now()}-${Math.random()}`,
+      name: file.name,
+      size: file.size,
+      file,
+      uploadStatus: "pending" as const,
+    }));
+
+    const updatedFiles = [...uploadedFiles, ...fileData];
+    setUploadedFiles(updatedFiles);
+
+    // Upload immediately if we have a quote ID
+    if (reviewData?.quote_id) {
+      for (const fileItem of fileData) {
+        await uploadFile(fileItem);
+      }
+    }
+  };
+
+  const uploadFile = async (fileItem: typeof uploadedFiles[0]) => {
+    if (!reviewData?.quote_id || !staffSession?.staffId) return;
+
+    console.log(`📤 [FILE UPLOAD] Uploading ${fileItem.name}`);
+
+    // Update status to uploading
+    setUploadedFiles((prev) =>
+      prev.map((f) =>
+        f.id === fileItem.id ? { ...f, uploadStatus: "uploading" } : f
+      )
+    );
+    setIsUploadingFiles(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", fileItem.file);
+      formData.append("quoteId", reviewData.quote_id);
+      formData.append("staffId", staffSession.staffId);
+      formData.append("processWithAI", processWithAI ? "true" : "false");
+
+      const uploadResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: formData,
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error(`❌ [FILE UPLOAD] Upload failed:`, errorText);
+        throw new Error("Upload failed");
+      }
+
+      const result = await uploadResponse.json();
+      console.log(`✅ [FILE UPLOAD] Upload successful:`, result);
+
+      // Update with uploaded file ID
+      setUploadedFiles((prev) =>
+        prev.map((f) =>
+          f.id === fileItem.id
+            ? {
+                ...f,
+                uploadStatus: "success",
+                uploadedFileId: result.fileId,
+              }
+            : f
+        )
+      );
+    } catch (error) {
+      console.error(`❌ [FILE UPLOAD] Failed to upload:`, error);
+      setUploadedFiles((prev) =>
+        prev.map((f) =>
+          f.id === fileItem.id ? { ...f, uploadStatus: "failed" } : f
+        )
+      );
+    } finally {
+      setIsUploadingFiles(false);
+    }
+  };
+
+  const analyzeUploadedFiles = async () => {
+    if (!processWithAI || !reviewData?.quote_id) return;
+
+    console.log("🧠 [AI ANALYSIS] Starting analysis");
+    setIsAnalyzing(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "process-document",
+        {
+          body: { quoteId: reviewData.quote_id },
+        }
+      );
+
+      if (error) {
+        console.error("❌ [AI ANALYSIS] Error:", error);
+        alert("Failed to analyze files: " + error.message);
+        return;
+      }
+
+      console.log("✅ [AI ANALYSIS] Response:", data);
+      alert("✅ Files analyzed successfully! Refreshing quote data...");
+
+      // Clear uploaded files and refresh data
+      setUploadedFiles([]);
+      setShowUploadSection(false);
+      await fetchAllData();
+    } catch (error) {
+      console.error("❌ [AI ANALYSIS] Error:", error);
+      alert("Failed to analyze files: " + (error as Error).message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const removeUploadedFile = (id: string) => {
+    setUploadedFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+  };
+
+  const allFilesUploaded =
+    uploadedFiles.length > 0 &&
+    uploadedFiles.every((f) => f.uploadStatus === "success");
+
+  // ============================================
   // EDIT HELPERS
   // ============================================
 
