@@ -297,6 +297,7 @@ async function runOCRAnalysis(
 }
 
 // Simple text extraction (fallback/development)
+// Uses same approach as process-document function
 async function simpleTextExtraction(
   fileData: Blob,
   fileInfo: { mime_type: string; original_filename: string },
@@ -304,87 +305,40 @@ async function simpleTextExtraction(
   const startTime = Date.now();
   const fileName = fileInfo.original_filename.toLowerCase();
   const buffer = await fileData.arrayBuffer();
-  const text = new TextDecoder("latin1").decode(buffer); // Use latin1 to preserve all bytes
+  const text = new TextDecoder().decode(buffer); // Default UTF-8 encoding
 
   let pageCount = 1;
   const pages: OCRPageResult[] = [];
 
   // Detect document type and estimate pages
   if (fileName.endsWith(".pdf") || fileInfo.mime_type.includes("pdf")) {
-    // Count actual pages by looking for /Type /Page in the PDF structure
-    const pageMatches = text.match(/\/Type\s*\/Page[^s]/g);
-    pageCount = pageMatches ? pageMatches.length : 1;
-
-    // Alternative: look for /Count in Pages object which tells total pages
-    const countMatch = text.match(/\/Type\s*\/Pages.*?\/Count\s+(\d+)/s);
-    if (countMatch && countMatch[1]) {
-      pageCount = parseInt(countMatch[1], 10);
-    }
-
+    // Simple PDF page count estimation (count occurrences of "endstream")
+    // Same as process-document function
+    pageCount = (text.match(/endstream/g) || []).length;
     pageCount = Math.max(1, pageCount); // At least 1 page
+  }
 
-    // Extract text content from PDF text objects
-    // Text in PDFs is between BT (BeginText) and ET (EndText) operators
-    // Text strings are in parentheses () or angle brackets <>
-    const textObjects = text.match(/BT[\s\S]*?ET/g) || [];
+  // Extract all words from entire text (same as process-document)
+  // This includes PDF commands but also captures actual content
+  const allWords = text.split(/\s+/).filter((w) => w.length > 0);
+  const totalWords = allWords.length;
 
-    let allExtractedText: string[] = [];
+  // Distribute words across pages
+  const wordsPerPage = Math.ceil(totalWords / pageCount);
 
-    for (const textObj of textObjects) {
-      // Extract strings from text object
-      // Match text in parentheses: (text) or <hex>
-      const strings = textObj.match(/\(([^)]*)\)/g) || [];
+  for (let i = 1; i <= pageCount; i++) {
+    const startIdx = (i - 1) * wordsPerPage;
+    const endIdx = Math.min(i * wordsPerPage, allWords.length);
+    const pageWords = allWords.slice(startIdx, endIdx);
+    const pageText = pageWords.join(" ");
 
-      for (const str of strings) {
-        // Remove parentheses and unescape
-        let extractedText = str.slice(1, -1);
-        // Handle PDF escape sequences
-        extractedText = extractedText
-          .replace(/\\n/g, "\n")
-          .replace(/\\r/g, "\r")
-          .replace(/\\t/g, "\t")
-          .replace(/\\b/g, "\b")
-          .replace(/\\f/g, "\f")
-          .replace(/\\\\/g, "\\")
-          .replace(/\\([()])/g, "$1");
-
-        if (extractedText.trim().length > 0) {
-          allExtractedText.push(extractedText);
-        }
-      }
-    }
-
-    // Combine all extracted text
-    const fullText = allExtractedText.join(" ");
-    const allWords = fullText.split(/\s+/).filter((w) => w.trim().length > 0);
-    const totalWords = allWords.length;
-
-    // Distribute words across pages
-    const wordsPerPage = Math.ceil(totalWords / pageCount);
-
-    for (let i = 1; i <= pageCount; i++) {
-      const startIdx = (i - 1) * wordsPerPage;
-      const endIdx = Math.min(i * wordsPerPage, allWords.length);
-      const pageWords = allWords.slice(startIdx, endIdx);
-      const pageText = pageWords.join(" ");
-
-      pages.push({
-        page_number: i,
-        text: pageText.substring(0, 1000), // First 1000 chars as preview
-        word_count: pageWords.length,
-      });
-    }
-  } else {
-    // For non-PDF files, treat as single page
-    const words = text.split(/\s+/).filter((w) => w.length > 0);
     pages.push({
-      page_number: 1,
-      text: text.substring(0, 1000), // First 1000 chars as preview
-      word_count: words.length,
+      page_number: i,
+      text: pageText.substring(0, 1000), // First 1000 chars as preview
+      word_count: pageWords.length,
     });
   }
 
-  const totalWords = pages.reduce((sum, page) => sum + page.word_count, 0);
   const processingTime = Date.now() - startTime;
 
   return {
