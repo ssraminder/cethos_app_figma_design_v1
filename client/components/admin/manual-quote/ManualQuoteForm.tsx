@@ -191,16 +191,57 @@ export default function ManualQuoteForm({
     }
   };
 
-  const handleFinalSubmit = async () => {
+  const handleFinalSubmit = async (sendNotification: boolean) => {
+    if (!staffId || !customer || !quoteId) {
+      toast.error("Missing required information");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      // Final quote submission logic will go here
+      console.log("📝 [FINAL SUBMIT] Finalizing quote");
+      console.log("  - Quote ID:", quoteId);
+      console.log("  - Pricing:", pricing);
+      console.log("  - Staff Notes:", staffNotes);
+
+      // Call the edge function to finalize the quote with pricing data
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/finalize-staff-quote`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            staffId,
+            quoteId,
+            customerId: customer.id,
+            pricing,
+            staffNotes,
+            sendNotification,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("❌ [FINAL SUBMIT] Error:", errorData);
+        throw new Error(errorData.error || "Failed to finalize quote");
+      }
+
+      const result = await response.json();
+      console.log("✅ [FINAL SUBMIT] Success:", result);
+
       toast.success("Quote created successfully!");
-      if (onComplete && quoteId) {
+      if (onComplete) {
         onComplete(quoteId);
       }
     } catch (error) {
-      toast.error("Failed to create quote");
+      console.error("❌ [FINAL SUBMIT] Error:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create quote"
+      );
     } finally {
       setIsSubmitting(false);
     }
