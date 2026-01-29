@@ -6,8 +6,8 @@ import { toast } from "sonner";
 import StaffCustomerForm from "./StaffCustomerForm";
 import StaffTranslationDetailsForm from "./StaffTranslationDetailsForm";
 import StaffFileUploadForm, { FileWithAnalysis } from "./StaffFileUploadForm";
-import StaffPricingForm from "./StaffPricingForm";
-import StaffPaymentReviewForm from "./StaffPaymentReviewForm";
+import StaffPricingForm, { QuotePricing } from "./StaffPricingForm";
+import StaffReviewForm from "./StaffReviewForm";
 
 interface CustomerData {
   id?: string;
