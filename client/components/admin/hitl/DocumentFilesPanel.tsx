@@ -186,6 +186,20 @@ export default function DocumentFilesPanel({
         />
       )}
 
+      {/* Analyze Document Modal */}
+      {analyzeFile && (
+        <AnalyzeDocumentModal
+          isOpen={true}
+          onClose={() => setAnalyzeFile(null)}
+          file={analyzeFile}
+          quoteId={quoteId}
+          onAnalysisComplete={() => {
+            setAnalyzeFile(null);
+            if (onRefresh) onRefresh();
+          }}
+        />
+      )}
+
       {/* File Statistics */}
       {files.length > 0 && (
         <div className="border-t pt-3 space-y-2 text-xs text-gray-600">
