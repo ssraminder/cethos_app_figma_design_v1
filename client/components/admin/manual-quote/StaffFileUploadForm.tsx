@@ -190,66 +190,57 @@ export default function StaffFileUploadForm({
       "files",
     );
 
-    // Process each file with timeout
-    for (const file of files) {
-      console.log(`🧠 [AI ANALYSIS] Checking file: ${file.name}`);
-      console.log(`  - Analysis status: ${analysisStatus[file.id]}`);
-      console.log(`  - Upload status: ${uploadStatus[file.id]}`);
+    try {
+      // Call the process-document edge function
+      console.log("🔌 [AI ANALYSIS] Calling process-document edge function");
 
-      // Skip if already completed or currently analyzing
-      if (
-        analysisStatus[file.id] === "completed" ||
-        analysisStatus[file.id] === "analyzing"
-      ) {
-        console.log(
-          `  ⏭️ Skipping ${file.name} - already ${analysisStatus[file.id]}`,
-        );
-        continue;
-      }
+      const { data, error } = await supabase.functions.invoke("process-document", {
+        body: { quoteId },
+      });
 
-      // Only analyze successfully uploaded files
-      if (uploadStatus[file.id] !== "success") {
-        console.log(
-          `  ⏭️ Skipping ${file.name} - not uploaded (status: ${uploadStatus[file.id]})`,
-        );
-        continue;
-      }
-
-      console.log(`🧠 [AI ANALYSIS] Analyzing ${file.name}...`);
-      setAnalysisStatus((prev) => ({ ...prev, [file.id]: "analyzing" }));
-
-      try {
-        // Create a promise that rejects after 1 minute (60000ms)
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error("Analysis timeout")), 60000);
-        });
-
-        // Create the analysis promise
-        // TODO: Replace with actual process-document edge function call
-        const analysisPromise = simulateAIAnalysis(file);
-
-        // Race between analysis and timeout
-        await Promise.race([analysisPromise, timeoutPromise]);
-
-        console.log(`✅ [AI ANALYSIS] Completed analysis for ${file.name}`);
-        setAnalysisStatus((prev) => ({ ...prev, [file.id]: "completed" }));
-      } catch (error) {
-        console.error(
-          `❌ [AI ANALYSIS] Analysis failed for ${file.name}:`,
-          error,
-        );
-
-        if (error instanceof Error && error.message === "Analysis timeout") {
-          console.log(`⏱️ [AI ANALYSIS] Timeout for ${file.name}`);
-          setAnalysisStatus((prev) => ({ ...prev, [file.id]: "timeout" }));
-        } else {
+      if (error) {
+        console.error("❌ [AI ANALYSIS] Edge function error:", error);
+        // Mark all files as failed
+        files.forEach((file) => {
           setAnalysisStatus((prev) => ({ ...prev, [file.id]: "failed" }));
+        });
+        return;
+      }
+
+      console.log("✅ [AI ANALYSIS] Edge function response:", data);
+
+      // Update analysis status for each file based on response
+      if (data && data.results) {
+        for (const result of data.results) {
+          if (result.success) {
+            console.log(`✅ [AI ANALYSIS] Completed analysis for ${result.fileName}`);
+            // Find the file by name and mark as completed
+            const fileId = files.find((f) => f.name === result.fileName)?.id;
+            if (fileId) {
+              setAnalysisStatus((prev) => ({ ...prev, [fileId]: "completed" }));
+            }
+          } else {
+            console.error(
+              `❌ [AI ANALYSIS] Analysis failed for ${result.fileName}: ${result.error}`,
+            );
+            const fileId = files.find((f) => f.name === result.fileName)?.id;
+            if (fileId) {
+              setAnalysisStatus((prev) => ({ ...prev, [fileId]: "failed" }));
+            }
+          }
         }
       }
-    }
 
-    console.log("✅ [AI ANALYSIS] All files processed");
-    setIsAnalyzing(false);
+      console.log("✅ [AI ANALYSIS] All files processed");
+    } catch (error) {
+      console.error("❌ [AI ANALYSIS] Analysis error:", error);
+      // Mark all files as failed
+      files.forEach((file) => {
+        setAnalysisStatus((prev) => ({ ...prev, [file.id]: "failed" }));
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   // Simulated AI analysis (replace with actual API call)
