@@ -430,6 +430,7 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   const fetchReviewData = async () => {
+    console.log("🔄 [HITLReviewDetail] Refreshing files AND analysis data...");
     console.log("🔍 Fetching review data for ID:", reviewId);
     console.log("🔍 SUPABASE_URL:", SUPABASE_URL);
     console.log("🔍 SUPABASE_ANON_KEY exists:", !!SUPABASE_ANON_KEY);
@@ -586,26 +587,37 @@ const HITLReviewDetail: React.FC = () => {
       }
 
       if (quote?.id) {
-        console.log("🔍 Fetching quote files for quote:", quote.id);
+        console.log("🔍 [HITLReviewDetail] Fetching quote files for quote:", quote.id);
 
-        // Fetch quote files for the document files panel
-        const files = await fetchFromSupabase(
-          `quote_files?quote_id=eq.${quote.id}&order=created_at.desc`,
-        );
-        console.log("📁 Quote files:", files);
-        setQuoteFiles(files || []);
+        // Fetch BOTH datasets in parallel for better performance
+        const [filesResult, analysisResult] = await Promise.all([
+          fetchFromSupabase(
+            `quote_files?quote_id=eq.${quote.id}&order=created_at.desc`,
+          ),
+          fetchFromSupabase(
+            `ai_analysis_results?quote_id=eq.${quote.id}&select=*,quote_file:quote_files(*),ocr_provider,ocr_confidence,llm_model,processing_time_ms,language_confidence,document_type_confidence,complexity_confidence`,
+          ),
+        ]);
 
-        console.log("🔍 Fetching analysis results for quote:", quote.id);
+        // Process files result
+        console.log("✅ [HITLReviewDetail] Files fetched:", filesResult?.length || 0);
+        setQuoteFiles(filesResult || []);
 
-        // Fetch analysis results with quote_file relationship and AI metadata (using nested select)
-        const analysis = await fetchFromSupabase(
-          `ai_analysis_results?quote_id=eq.${quote.id}&select=*,quote_file:quote_files(*),ocr_provider,ocr_confidence,llm_model,processing_time_ms,language_confidence,document_type_confidence,complexity_confidence`,
-        );
+        // Process analysis result with detailed logging
+        console.log("✅ [HITLReviewDetail] Analysis results fetched:", analysisResult?.length || 0);
+        console.log("✅ [HITLReviewDetail] Analysis data:", analysisResult?.map((a: any) => ({
+          file: a.quote_file?.original_filename,
+          word_count: a.word_count,
+          page_count: a.page_count,
+          billable_pages: a.billable_pages,
+          line_total: a.line_total
+        })));
 
-        console.log("📊 Analysis results:", analysis);
-        console.log("📊 Analysis count:", analysis?.length || 0);
+        setAnalysisResults(analysisResult || []);
 
-        setAnalysisResults(analysis || []);
+        // Alias for backward compatibility with code below
+        const files = filesResult;
+        const analysis = analysisResult;
 
         if (analysis && analysis.length > 0) {
           // Fetch pages for each file
@@ -648,8 +660,9 @@ const HITLReviewDetail: React.FC = () => {
           setAdditionalCerts(certsMap);
         }
       }
+      console.log("🔄 [HITLReviewDetail] Refresh complete!");
     } catch (error) {
-      console.error("❌ Unexpected error in fetchReviewData:", error);
+      console.error("❌ [HITLReviewDetail] Unexpected error in fetchReviewData:", error);
     }
   };
 
