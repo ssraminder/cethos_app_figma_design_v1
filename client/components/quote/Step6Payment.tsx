@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Loader2,
   Clock,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 
