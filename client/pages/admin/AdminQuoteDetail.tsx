@@ -605,6 +605,57 @@ export default function AdminQuoteDetail() {
     }
   };
 
+  const handleResendQuote = async () => {
+    if (!currentStaff?.staffId || !id) return;
+    setIsResending(true);
+
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      // Call resend-quote-email Edge Function
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/resend-quote-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: id,
+            staffId: currentStaff.staffId,
+            customMessage: resendCustomMessage.trim() || undefined,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to resend quote email");
+      }
+
+      // Show success message
+      alert(
+        `✅ Quote email sent successfully!\n\n` +
+          `Quote Number: ${result.quoteNumber}\n` +
+          `Customer Email: ${result.customerEmail}\n` +
+          `Email Sent: ${result.emailSent ? "Yes" : "No"}\n` +
+          `Magic Link: ${result.magicLink}\n` +
+          `Expires: ${new Date(result.expiresAt).toLocaleString()}`,
+      );
+
+      setShowResendModal(false);
+      setResendCustomMessage("");
+    } catch (error) {
+      console.error("Failed to resend quote:", error);
+      alert("Failed to resend quote email: " + (error as Error).message);
+    } finally {
+      setIsResending(false);
+    }
+  };
+
   const openEditModal = (field: EditField, item: AIAnalysis) => {
     let value: string | number = "";
     if (field === "document_type") {
