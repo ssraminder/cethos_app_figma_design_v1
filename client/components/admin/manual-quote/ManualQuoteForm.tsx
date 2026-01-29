@@ -68,7 +68,9 @@ export default function ManualQuoteForm({
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Create Manual Quote</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Create Manual Quote
+          </h1>
           <p className="text-gray-600 mt-2">
             Follow the steps below to create a new quote for a customer
           </p>
@@ -95,9 +97,7 @@ export default function ManualQuoteForm({
                   </div>
                   <p
                     className={`text-sm font-medium text-center ${
-                      currentStep >= step.id
-                        ? "text-gray-900"
-                        : "text-gray-500"
+                      currentStep >= step.id ? "text-gray-900" : "text-gray-500"
                     }`}
                   >
                     {step.name}
@@ -168,13 +168,17 @@ export default function ManualQuoteForm({
 function Step1Placeholder() {
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-gray-900">Step 1: Customer Information</h2>
-      
+      <h2 className="text-xl font-semibold text-gray-900">
+        Step 1: Customer Information
+      </h2>
+
       <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex gap-3">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-blue-800">
           <p className="font-medium">Placeholder Form</p>
-          <p className="mt-1">Customer information form fields will be implemented here</p>
+          <p className="mt-1">
+            Customer information form fields will be implemented here
+          </p>
         </div>
       </div>
 
@@ -224,13 +228,17 @@ function Step1Placeholder() {
 function Step2Placeholder() {
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-gray-900">Step 2: Translation Details</h2>
-      
+      <h2 className="text-xl font-semibold text-gray-900">
+        Step 2: Translation Details
+      </h2>
+
       <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex gap-3">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-blue-800">
           <p className="font-medium">Placeholder Form</p>
-          <p className="mt-1">Translation details form fields will be implemented here</p>
+          <p className="mt-1">
+            Translation details form fields will be implemented here
+          </p>
         </div>
       </div>
 
@@ -278,8 +286,10 @@ function Step2Placeholder() {
 function Step3Placeholder() {
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-gray-900">Step 3: Upload Files</h2>
-      
+      <h2 className="text-xl font-semibold text-gray-900">
+        Step 3: Upload Files
+      </h2>
+
       <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex gap-3">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-blue-800">
@@ -290,7 +300,9 @@ function Step3Placeholder() {
 
       <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
         <p className="text-gray-500">File upload area placeholder</p>
-        <p className="text-sm text-gray-400 mt-2">Drag and drop or click to upload files</p>
+        <p className="text-sm text-gray-400 mt-2">
+          Drag and drop or click to upload files
+        </p>
       </div>
     </div>
   );
@@ -300,12 +312,14 @@ function Step4Placeholder() {
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-gray-900">Step 4: Pricing</h2>
-      
+
       <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex gap-3">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-blue-800">
           <p className="font-medium">Placeholder Form</p>
-          <p className="mt-1">Pricing calculation interface will be implemented here</p>
+          <p className="mt-1">
+            Pricing calculation interface will be implemented here
+          </p>
         </div>
       </div>
 
@@ -330,30 +344,42 @@ function Step4Placeholder() {
 function Step5Placeholder() {
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-gray-900">Step 5: Review & Confirm</h2>
-      
+      <h2 className="text-xl font-semibold text-gray-900">
+        Step 5: Review & Confirm
+      </h2>
+
       <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex gap-3">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-blue-800">
           <p className="font-medium">Placeholder Form</p>
-          <p className="mt-1">Quote review and confirmation will be shown here</p>
+          <p className="mt-1">
+            Quote review and confirmation will be shown here
+          </p>
         </div>
       </div>
 
       <div className="space-y-4">
         <div className="bg-gray-50 rounded-md p-4">
           <p className="text-sm font-medium text-gray-700">Customer Details</p>
-          <p className="text-sm text-gray-500 mt-2">Customer information will be displayed here</p>
+          <p className="text-sm text-gray-500 mt-2">
+            Customer information will be displayed here
+          </p>
         </div>
 
         <div className="bg-gray-50 rounded-md p-4">
-          <p className="text-sm font-medium text-gray-700">Translation Details</p>
-          <p className="text-sm text-gray-500 mt-2">Translation details will be displayed here</p>
+          <p className="text-sm font-medium text-gray-700">
+            Translation Details
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            Translation details will be displayed here
+          </p>
         </div>
 
         <div className="bg-gray-50 rounded-md p-4">
           <p className="text-sm font-medium text-gray-700">Quote Summary</p>
-          <p className="text-sm text-gray-500 mt-2">Quote summary will be displayed here</p>
+          <p className="text-sm text-gray-500 mt-2">
+            Quote summary will be displayed here
+          </p>
         </div>
       </div>
     </div>
