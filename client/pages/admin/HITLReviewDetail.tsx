@@ -2500,49 +2500,73 @@ const HITLReviewDetail: React.FC = () => {
               {quoteFiles.map((file, index) => {
                 // Find matching analysis result if it exists
                 const analysis = analysisResults.find(a => a.quote_file_id === file.id);
-                const pages = pageData[analysis.quote_file_id] || [];
+                const pages = analysis ? (pageData[analysis.quote_file_id] || []) : [];
                 const totalWords = pages.reduce(
                   (sum, p) => sum + getPageWordCount(p),
                   0,
                 );
+                const fileId = file.id;
+                const isExpanded = expandedFile === fileId;
+
+                // Determine AI status
+                const aiStatus = file.ai_processing_status || 'unknown';
+                const hasAnalysis = !!analysis;
+                const hasFailed = aiStatus === 'failed' || aiStatus === 'error';
+                const isPending = aiStatus === 'pending' || aiStatus === 'processing';
 
                 return (
                   <div
-                    key={analysis.id}
+                    key={fileId}
                     className="bg-white rounded-lg shadow overflow-hidden"
                   >
                     {/* File Header */}
                     <button
                       onClick={() =>
                         setExpandedFile(
-                          expandedFile === analysis.id ? null : analysis.id,
+                          isExpanded ? null : fileId,
                         )
                       }
                       className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
                     >
                       <div className="flex items-center gap-4">
                         <span className="text-lg font-medium">
-                          {index + 1}. {analysis.quote_file?.original_filename}
+                          {index + 1}. {file.original_filename}
                         </span>
-                        <span className="text-sm text-gray-500">
-                          {totalWords} words • {pages.length} page(s)
-                        </span>
-                        {hasChanges(analysis.quote_file_id) && (
+                        {hasAnalysis ? (
+                          <span className="text-sm text-gray-500">
+                            {totalWords} words • {pages.length} page(s)
+                          </span>
+                        ) : hasFailed ? (
+                          <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-800 font-medium">
+                            ⚠️ AI Analysis Failed
+                          </span>
+                        ) : isPending ? (
+                          <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800 font-medium">
+                            ⏳ Processing...
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
+                            📄 No Analysis
+                          </span>
+                        )}
+                        {hasAnalysis && hasChanges(analysis.quote_file_id) && (
                           <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
                             Unsaved changes
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="text-lg font-bold text-blue-600">
-                          $
-                          {calculateLineTotal(
-                            analysis.quote_file_id,
-                            analysis,
-                          ).toFixed(2)}
-                        </span>
+                        {hasAnalysis && (
+                          <span className="text-lg font-bold text-blue-600">
+                            $
+                            {calculateLineTotal(
+                              analysis.quote_file_id,
+                              analysis,
+                            ).toFixed(2)}
+                          </span>
+                        )}
                         <span className="text-gray-400">
-                          {expandedFile === analysis.id ? "▼" : "▶"}
+                          {isExpanded ? "▼" : "▶"}
                         </span>
                       </div>
                     </button>
