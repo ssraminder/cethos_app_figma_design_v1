@@ -18,6 +18,18 @@ interface PricingSummaryData {
   tax_amount: number;
   tax_rate: number;
   total: number;
+  document_count?: number;
+  current_certification_type_id?: string;
+}
+
+interface CertificationType {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  price: number;
+  is_default: boolean;
+  is_active: boolean;
 }
 
 interface QuoteAdjustment {
