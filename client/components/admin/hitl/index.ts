@@ -1,6 +1,7 @@
 export { default as CustomerInfoPanel } from "./CustomerInfoPanel";
 export { default as EditableCustomerPaymentPanel } from "./EditableCustomerPaymentPanel";
 export { default as DocumentFilesPanel } from "./DocumentFilesPanel";
+export { default as AddressesDeliveryPanel } from "./AddressesDeliveryPanel";
 export { default as QuoteDetailsPanel } from "./QuoteDetailsPanel";
 export { default as InternalNotesPanel } from "./InternalNotesPanel";
 export { default as DocumentAnalysisPanel } from "./DocumentAnalysisPanel";

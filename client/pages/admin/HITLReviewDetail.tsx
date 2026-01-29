@@ -20,6 +20,7 @@ import {
   Clock,
   User,
   Check,
+  Camera,
 } from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -2141,49 +2142,87 @@ const HITLReviewDetail: React.FC = () => {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Header Section */}
-      <div className="mb-6">
-        <button
-          onClick={() => navigate("/admin/hitl")}
-          className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Queue
-        </button>
-
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Review: {reviewData?.quotes?.quote_number}
-            </h1>
-            <div className="flex items-center gap-3 mt-2">
-              {claimedByMe ? (
-                <span className="inline-flex px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800">
-                  ✓ Claimed by you
+      {/* Sticky Header Section */}
+      <div className="sticky top-0 z-40 bg-white border-b border-gray-200 -mx-6 px-6 py-4 mb-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          {/* Left: Back button and title */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate("/admin/hitl")}
+              className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-700"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </button>
+            <div className="border-l border-gray-300 h-8"></div>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">
+                {reviewData?.quotes?.quote_number || "Loading..."}
+              </h1>
+              <div className="flex items-center gap-2">
+                {claimedByMe ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                    Claimed by you
+                  </span>
+                ) : claimedByOther ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                    {assignedStaffName || "Another staff"}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                    Unclaimed
+                  </span>
+                )}
+                <span className="text-xs text-gray-500 capitalize">
+                  {reviewData?.status?.replace(/_/g, " ") || "Pending"}
                 </span>
-              ) : claimedByOther ? (
-                <span className="inline-flex px-3 py-1 text-sm font-medium rounded-full bg-gray-100 text-gray-600">
-                  Claimed by {assignedStaffName || "another staff"}
-                </span>
-              ) : (
-                <span className="inline-flex px-3 py-1 text-sm font-medium rounded-full bg-amber-100 text-amber-700">
-                  Unclaimed
-                </span>
-              )}
-              <span className="text-gray-500 text-sm">
-                Status: {reviewData?.status?.replace(/_/g, " ") || "Pending"}
-              </span>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Right: Action Buttons */}
+          <div className="flex items-center gap-2">
             {!claimedByMe && !claimedByOther && (
               <button
                 onClick={handleClaimReview}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium transition-colors"
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium transition-colors text-sm"
               >
                 Claim Review
               </button>
+            )}
+
+            {claimedByMe && reviewData?.status === "in_review" && (
+              <>
+                <button
+                  onClick={() => setShowRejectQuoteModal(true)}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-1.5 px-3 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 text-sm font-medium"
+                >
+                  <XCircle className="w-4 h-4" />
+                  <span className="hidden sm:inline">Reject</span>
+                </button>
+
+                <button
+                  onClick={handleEscalateReview}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-1.5 px-3 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm font-medium"
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="hidden sm:inline">Escalate</span>
+                </button>
+
+                <button
+                  onClick={handleApproveReview}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm font-medium"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  {isSubmitting ? "Processing..." : "Update Quote"}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -2963,11 +3002,11 @@ const HITLReviewDetail: React.FC = () => {
                                 </p>
 
                                 {/* Primary Certification */}
-                                <div className="flex items-center justify-between mb-3">
-                                  <span className="text-sm font-medium">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <span className="text-sm font-medium whitespace-nowrap flex-shrink-0">
                                     Primary:
                                   </span>
-                                  <div className="flex items-center gap-2 flex-1 ml-4">
+                                  <div className="flex items-center gap-2 flex-1">
                                     {claimedByMe ? (
                                       <select
                                         value={
@@ -3325,6 +3364,20 @@ const HITLReviewDetail: React.FC = () => {
                               </div>
                             )}
                           </div>
+
+                          {/* Request Better Scan Button - Inside Document Card */}
+                          {claimedByMe && (
+                            <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
+                              <button
+                                onClick={() => setShowRejectModal(true)}
+                                disabled={isSubmitting}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm transition-colors disabled:opacity-50"
+                              >
+                                <Camera className="w-4 h-4" />
+                                Request Better Scan
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3375,6 +3428,14 @@ const HITLReviewDetail: React.FC = () => {
                 onPricingChange={() => {
                   // Refresh review data when pricing changes
                   fetchReviewData();
+                }}
+                showActions={claimedByMe && reviewData?.status === "in_review"}
+                isSubmitting={isSubmitting}
+                onUpdateAndSendPaymentLink={() => setShowUpdateModal(true)}
+                onManualPayment={() => {
+                  const total = reviewData?.total || reviewData?.quotes?.total || 0;
+                  setAmountPaid(total.toFixed(2));
+                  setShowPaymentModal(true);
                 }}
               />
             </>
@@ -3453,66 +3514,8 @@ const HITLReviewDetail: React.FC = () => {
         />
       )}
 
-      {/* Action Footer - Only show when claimed by me */}
-      {claimedByMe && reviewData?.status === "in_review" && (
-        <div className="mt-8 bg-white border rounded-lg p-6 flex flex-wrap items-center justify-end gap-3">
-          {/* Action Buttons */}
-          <button
-            onClick={() => setShowRejectQuoteModal(true)}
-            disabled={isSubmitting}
-            className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-          >
-            <XCircle className="w-4 h-4" />
-            Reject Quote
-          </button>
-
-          <button
-            onClick={() => setShowRejectModal(true)}
-            disabled={isSubmitting}
-            className="px-4 py-2 bg-red-100 text-red-700 border border-red-300 rounded-lg hover:bg-red-200 font-medium disabled:opacity-50"
-          >
-            Request Better Scan
-          </button>
-
-          <button
-            onClick={() => setShowUpdateModal(true)}
-            disabled={isSubmitting}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
-          >
-            <Send className="w-4 h-4" />
-            Update & Send Payment Link
-          </button>
-
-          <button
-            onClick={() => {
-              const total = reviewData?.total || reviewData?.quotes?.total || 0;
-              setAmountPaid(total.toFixed(2));
-              setShowPaymentModal(true);
-            }}
-            disabled={isSubmitting}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium disabled:opacity-50"
-          >
-            <CreditCard className="w-4 h-4" />
-            Manual Payment
-          </button>
-
-          <button
-            onClick={handleEscalateReview}
-            disabled={isSubmitting}
-            className="px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-200 font-medium disabled:opacity-50"
-          >
-            Escalate to Admin
-          </button>
-
-          <button
-            onClick={handleApproveReview}
-            disabled={isSubmitting}
-            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50"
-          >
-            {isSubmitting ? "Processing..." : "Update Quote ✓"}
-          </button>
-        </div>
-      )}
+      {/* Note: Main action buttons (Reject, Escalate, Update Quote) are now in the sticky header */}
+      {/* Payment buttons (Update & Send Payment Link, Manual Payment) are now in PricingSummaryBox */}
 
       {/* Reject Modal */}
       {showRejectModal && (

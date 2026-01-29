@@ -2,8 +2,7 @@ import React, { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import CustomerInfoPanel from "./CustomerInfoPanel";
 import DocumentFilesPanel from "./DocumentFilesPanel";
-import EditableBillingAddressPanel from "./EditableBillingAddressPanel";
-import EditableShippingAddressPanel from "./EditableShippingAddressPanel";
+import AddressesDeliveryPanel from "./AddressesDeliveryPanel";
 import InternalNotesPanel from "./InternalNotesPanel";
 import MessagePanel from "../../messaging/MessagePanel";
 import DocumentManagementPanel from "./DocumentManagementPanel";
@@ -93,8 +92,7 @@ export default function HITLPanelLayout({
       "customer",
       "documents",
       "analysis",
-      "billing",
-      "shipping",
+      "addresses",
     ]),
   );
 
@@ -193,63 +191,21 @@ export default function HITLPanelLayout({
         {children}
       </CollapsibleSection>
 
-      {/* Billing Address - Editable */}
-      {(() => {
-        console.log("🏢 Billing section - reviewData?.id:", reviewData?.id);
-        console.log("🏢 Billing section - reviewData:", reviewData);
-        return reviewData?.id ? (
-          <CollapsibleSection id="billing" title="Billing Address">
-            {(() => {
-              console.log("🏢 Rendering billing panel with:", {
-                quoteId: reviewData.id,
-                billingAddress: (reviewData as any).billing_address,
-                customerName: reviewData.customer_name,
-                customerEmail: reviewData.customer_email,
-              });
-              return (
-                <EditableBillingAddressPanel
-                  quoteId={reviewData.id}
-                  billingAddress={(reviewData as any).billing_address || null}
-                  customerName={reviewData.customer_name}
-                  customerEmail={reviewData.customer_email}
-                  loading={loading}
-                  onUpdate={onRefreshFiles}
-                />
-              );
-            })()}
-          </CollapsibleSection>
-        ) : null;
-      })()}
-
-      {/* Shipping Address & Delivery - Editable */}
-      {(() => {
-        console.log("🚚 Shipping section - reviewData?.id:", reviewData?.id);
-        return reviewData?.id ? (
-          <CollapsibleSection id="shipping" title="Shipping & Delivery">
-            {(() => {
-              console.log("🚚 Rendering shipping panel with:", {
-                quoteId: reviewData.id,
-                shippingAddress: (reviewData as any).shipping_address,
-                physicalDeliveryOptionId: (reviewData as any)
-                  .physical_delivery_option_id,
-                customerName: reviewData.customer_name,
-              });
-              return (
-                <EditableShippingAddressPanel
-                  quoteId={reviewData.id}
-                  shippingAddress={(reviewData as any).shipping_address || null}
-                  physicalDeliveryOptionId={
-                    (reviewData as any).physical_delivery_option_id || null
-                  }
-                  customerName={reviewData.customer_name}
-                  loading={loading}
-                  onUpdate={onRefreshFiles}
-                />
-              );
-            })()}
-          </CollapsibleSection>
-        ) : null;
-      })()}
+      {/* Combined Addresses & Delivery Section */}
+      {reviewData?.id && (
+        <CollapsibleSection id="addresses" title="Addresses & Delivery">
+          <AddressesDeliveryPanel
+            quoteId={reviewData.id}
+            billingAddress={(reviewData as any).billing_address || null}
+            shippingAddress={(reviewData as any).shipping_address || null}
+            physicalDeliveryOptionId={(reviewData as any).physical_delivery_option_id || null}
+            customerName={reviewData.customer_name}
+            customerEmail={reviewData.customer_email}
+            loading={loading}
+            onUpdate={onRefreshFiles}
+          />
+        </CollapsibleSection>
+      )}
 
       {/* Internal Notes */}
       <CollapsibleSection id="notes" title="Internal Notes">
