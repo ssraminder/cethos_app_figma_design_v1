@@ -125,25 +125,41 @@ export default function StaffFileUploadForm({
   };
 
   const analyzeFiles = async () => {
-    if (!processWithAI || files.length === 0 || !quoteId) return;
+    console.log("🧠 [AI ANALYSIS] analyzeFiles called");
+    console.log("🧠 [AI ANALYSIS] ProcessWithAI:", processWithAI);
+    console.log("🧠 [AI ANALYSIS] Files count:", files.length);
+    console.log("🧠 [AI ANALYSIS] QuoteId:", quoteId);
+
+    if (!processWithAI || files.length === 0 || !quoteId) {
+      console.log("⏸️ [AI ANALYSIS] Skipping analysis - missing requirements");
+      return;
+    }
 
     setIsAnalyzing(true);
+    console.log("🧠 [AI ANALYSIS] Starting analysis for", files.length, "files");
 
     // Process each file with timeout
     for (const file of files) {
+      console.log(`🧠 [AI ANALYSIS] Checking file: ${file.name}`);
+      console.log(`  - Analysis status: ${analysisStatus[file.id]}`);
+      console.log(`  - Upload status: ${uploadStatus[file.id]}`);
+
       // Skip if already completed or currently analyzing
       if (
         analysisStatus[file.id] === "completed" ||
         analysisStatus[file.id] === "analyzing"
       ) {
+        console.log(`  ⏭️ Skipping ${file.name} - already ${analysisStatus[file.id]}`);
         continue;
       }
 
       // Only analyze successfully uploaded files
       if (uploadStatus[file.id] !== "success") {
+        console.log(`  ⏭️ Skipping ${file.name} - not uploaded (status: ${uploadStatus[file.id]})`);
         continue;
       }
 
+      console.log(`🧠 [AI ANALYSIS] Analyzing ${file.name}...`);
       setAnalysisStatus((prev) => ({ ...prev, [file.id]: "analyzing" }));
 
       try {
@@ -159,11 +175,13 @@ export default function StaffFileUploadForm({
         // Race between analysis and timeout
         await Promise.race([analysisPromise, timeoutPromise]);
 
+        console.log(`✅ [AI ANALYSIS] Completed analysis for ${file.name}`);
         setAnalysisStatus((prev) => ({ ...prev, [file.id]: "completed" }));
       } catch (error) {
-        console.error(`Analysis failed for ${file.name}:`, error);
+        console.error(`❌ [AI ANALYSIS] Analysis failed for ${file.name}:`, error);
 
         if (error instanceof Error && error.message === "Analysis timeout") {
+          console.log(`⏱️ [AI ANALYSIS] Timeout for ${file.name}`);
           setAnalysisStatus((prev) => ({ ...prev, [file.id]: "timeout" }));
         } else {
           setAnalysisStatus((prev) => ({ ...prev, [file.id]: "failed" }));
@@ -171,6 +189,7 @@ export default function StaffFileUploadForm({
       }
     }
 
+    console.log("✅ [AI ANALYSIS] All files processed");
     setIsAnalyzing(false);
   };
 
