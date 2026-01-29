@@ -1824,6 +1824,12 @@ const HITLReviewDetail: React.FC = () => {
       ) || 1.0;
     const pages = pageData[fileId] || [];
 
+    // If no page data available, use the pre-calculated billable_pages from analysis
+    if (pages.length === 0) {
+      // Use analysis.billable_pages if available, otherwise minimum 1.0
+      return Math.max(analysis.billable_pages || 0, 1.0);
+    }
+
     let totalBillable = 0;
     pages.forEach((page) => {
       const words = getPageWordCount(page);
@@ -2510,10 +2516,11 @@ const HITLReviewDetail: React.FC = () => {
                     ai_processing_status: 'completed',
                   };
                   const pages = pageData[analysis.quote_file_id] || [];
-                  const totalWords = pages.reduce(
-                    (sum, p) => sum + getPageWordCount(p),
-                    0,
-                  );
+                  // Use analysis values as fallback when page data is unavailable
+                  const totalWords = pages.length > 0
+                    ? pages.reduce((sum, p) => sum + getPageWordCount(p), 0)
+                    : (analysis.word_count || 0);
+                  const pageCount = pages.length > 0 ? pages.length : (analysis.page_count || 0);
                   const fileId = analysis.quote_file_id;
                   const isExpanded = expandedFile === fileId;
 
@@ -2537,7 +2544,7 @@ const HITLReviewDetail: React.FC = () => {
                               analysis.quote_file?.original_filename}
                           </span>
                           <span className="text-sm text-gray-500">
-                            {totalWords} words • {pages.length} page(s)
+                            {totalWords} words • {pageCount} page(s)
                           </span>
                           {hasChanges(analysis.quote_file_id) && (
                             <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
