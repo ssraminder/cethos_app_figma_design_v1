@@ -95,6 +95,7 @@ export default function EditableDocumentAnalysisPanel({
     correctedValue: any;
     analysisId: string;
   } | null>(null);
+  const [removingAnalysisId, setRemovingAnalysisId] = useState<string | null>(null);
 
   const currentAnalysis = analysisResults.find(
     (a) => a.quote_file_id === selectedFileId,
@@ -232,6 +233,53 @@ export default function EditableDocumentAnalysisPanel({
     } catch (error) {
       console.error("Error saving correction:", error);
       toast.error("Failed to save correction");
+    }
+  };
+
+  const handleRemoveAnalysis = async (
+    analysisId: string,
+    fileId: string,
+    fileName: string,
+  ) => {
+    // Confirmation dialog
+    const confirmed = window.confirm(
+      `Remove analysis for "${fileName}"?\n\nThe file will remain in the upload list and can be re-analyzed.`
+    );
+
+    if (!confirmed) return;
+
+    setRemovingAnalysisId(analysisId);
+
+    try {
+      if (!supabase) throw new Error("Supabase not initialized");
+
+      // 1. Delete from ai_analysis_results
+      const { error: deleteError } = await supabase
+        .from("ai_analysis_results")
+        .delete()
+        .eq("id", analysisId);
+
+      if (deleteError) throw deleteError;
+
+      // 2. Reset quote_files status to 'pending'
+      const { error: updateError } = await supabase
+        .from("quote_files")
+        .update({ ai_processing_status: "pending" })
+        .eq("id", fileId);
+
+      if (updateError) throw updateError;
+
+      toast.success(`Analysis removed for "${fileName}"`);
+
+      // 3. Refresh data
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (error: any) {
+      console.error("Error removing analysis:", error);
+      toast.error(`Failed to remove analysis: ${error.message}`);
+    } finally {
+      setRemovingAnalysisId(null);
     }
   };
 
@@ -442,13 +490,30 @@ export default function EditableDocumentAnalysisPanel({
                     </button>
                   </>
                 ) : (
-                  <button
-                    onClick={() => toggleEdit(currentAnalysis.quote_file_id)}
-                    className="px-3 py-1.5 text-sm text-blue-600 border border-blue-600 rounded hover:bg-blue-50 flex items-center gap-1"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                    Edit
-                  </button>
+                  <>
+                    <button
+                      onClick={() => toggleEdit(currentAnalysis.quote_file_id)}
+                      className="px-3 py-1.5 text-sm text-blue-600 border border-blue-600 rounded hover:bg-blue-50 flex items-center gap-1"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleRemoveAnalysis(
+                          currentAnalysis.analysis_id,
+                          currentAnalysis.quote_file_id,
+                          currentAnalysis.original_filename,
+                        )
+                      }
+                      disabled={removingAnalysisId === currentAnalysis.analysis_id}
+                      className="px-3 py-1.5 text-sm text-red-600 border border-red-600 rounded hover:bg-red-50 flex items-center gap-1 disabled:opacity-50"
+                      title="Remove analysis (file will remain for re-analysis)"
+                    >
+                      <X className="w-4 h-4" />
+                      Remove
+                    </button>
+                  </>
                 )}
               </div>
             </div>
