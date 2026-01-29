@@ -35,32 +35,68 @@ export default function Index() {
   const [saveSent, setSaveSent] = useState(false);
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
 
-  // Load existing quote from URL parameters (for upload route redirect)
+  // Load existing quote from URL parameters (for upload route redirect and magic links)
   useEffect(() => {
     const loadExistingQuote = async () => {
       const quoteId = searchParams.get("quote_id");
+      const quoteNumber = searchParams.get("quote_number");
       const stepParam = searchParams.get("step");
+      const token = searchParams.get("token");
 
-      if (!quoteId || state.quoteId === quoteId) return;
+      // Skip if no identifier or quote already loaded
+      if ((!quoteId && !quoteNumber) || (quoteId && state.quoteId === quoteId)) return;
 
-      console.log("📥 Loading existing quote from URL:", quoteId);
+      console.log("📥 Loading existing quote from URL:", { quoteId, quoteNumber, step: stepParam, hasToken: !!token });
       setIsLoadingQuote(true);
 
       try {
+        // Validate magic link token if provided
+        if (token && quoteNumber) {
+          const { data: magicLink, error: tokenError } = await supabase
+            .from("customer_magic_links")
+            .select("id, expires_at, is_valid, customer_id")
+            .eq("token", token)
+            .eq("is_valid", true)
+            .single();
+
+          if (tokenError || !magicLink) {
+            console.error("❌ Invalid or expired magic link");
+            window.location.href = "/quote/expired";
+            return;
+          }
+
+          // Check if token is expired
+          if (new Date(magicLink.expires_at) < new Date()) {
+            console.error("❌ Magic link expired");
+            window.location.href = "/quote/expired";
+            return;
+          }
+
+          console.log("✅ Magic link validated successfully");
+        }
+
         // Fetch the quote with all related data
-        const { data: quote, error } = await supabase
+        let query = supabase
           .from("quotes")
           .select(
             `
             *,
             customer:customers(*)
           `,
-          )
-          .eq("id", quoteId)
-          .single();
+          );
+
+        // Use quote_id or quote_number to fetch
+        if (quoteId) {
+          query = query.eq("id", quoteId);
+        } else if (quoteNumber) {
+          query = query.eq("quote_number", quoteNumber);
+        }
+
+        const { data: quote, error } = await query.single();
 
         if (error || !quote) {
           console.error("Failed to load quote:", error);
+          window.location.href = "/quote/expired";
           return;
         }
 
@@ -76,6 +112,7 @@ export default function Index() {
         });
       } catch (error) {
         console.error("Error loading quote:", error);
+        window.location.href = "/quote/expired";
       } finally {
         setIsLoadingQuote(false);
       }
