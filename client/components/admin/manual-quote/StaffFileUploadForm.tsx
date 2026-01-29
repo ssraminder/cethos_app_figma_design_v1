@@ -67,17 +67,14 @@ export default function StaffFileUploadForm({
     if (quoteId) {
       for (const file of fileData) {
         setUploadStatus((prev) => ({ ...prev, [file.id]: "uploading" }));
-        setAnalysisStatus((prev) => ({
-          ...prev,
-          [file.id]: processWithAI ? "analyzing" : "idle",
-        }));
+        setAnalysisStatus((prev) => ({ ...prev, [file.id]: "idle" }));
 
         try {
           const formData = new FormData();
           formData.append("file", file.file);
           formData.append("quoteId", quoteId);
           formData.append("staffId", staffId);
-          formData.append("processWithAI", processWithAI.toString());
+          formData.append("processWithAI", "false"); // Don't auto-analyze
 
           const uploadResponse = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
@@ -94,20 +91,10 @@ export default function StaffFileUploadForm({
             throw new Error("Upload failed");
           }
 
-          const result = await uploadResponse.json();
-
           setUploadStatus((prev) => ({ ...prev, [file.id]: "success" }));
-
-          // If AI processing was enabled, mark as completed
-          if (processWithAI && result.analysisComplete) {
-            setAnalysisStatus((prev) => ({ ...prev, [file.id]: "completed" }));
-          } else if (processWithAI) {
-            setAnalysisStatus((prev) => ({ ...prev, [file.id]: "failed" }));
-          }
         } catch (error) {
           console.error(`Failed to upload ${file.name}:`, error);
           setUploadStatus((prev) => ({ ...prev, [file.id]: "failed" }));
-          setAnalysisStatus((prev) => ({ ...prev, [file.id]: "failed" }));
         }
       }
     } else {
