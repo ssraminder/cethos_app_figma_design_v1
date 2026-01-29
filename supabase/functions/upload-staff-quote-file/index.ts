@@ -126,7 +126,7 @@ serve(async (req) => {
         storage_path: storagePath,
         file_size: file.size,
         mime_type: file.type,
-        uploaded_by_staff_id: staffId,
+        is_staff_created: true,
         ai_processing_status: processWithAI ? "pending" : "skipped",
         created_at: now,
         updated_at: now,
