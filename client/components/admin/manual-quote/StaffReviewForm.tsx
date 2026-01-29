@@ -45,7 +45,9 @@ interface StaffReviewFormProps {
   pricing: QuotePricing;
   staffNotes: string;
   onStaffNotesChange: (notes: string) => void;
-  onEditSection: (section: "customer" | "translation" | "files" | "pricing") => void;
+  onEditSection: (
+    section: "customer" | "translation" | "files" | "pricing",
+  ) => void;
   onPrevious: () => void;
   onSubmit: (sendNotification: boolean) => Promise<void>;
   submitting?: boolean;
@@ -65,7 +67,7 @@ export default function StaffReviewForm({
 }: StaffReviewFormProps) {
   const [languages, setLanguages] = useState<Record<string, Language>>({});
   const [intendedUses, setIntendedUses] = useState<Record<string, IntendedUse>>(
-    {}
+    {},
   );
   const [countries, setCountries] = useState<Record<string, Country>>({});
   const [sendNotification, setSendNotification] = useState(false);
@@ -138,7 +140,9 @@ export default function StaffReviewForm({
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                 Customer Type
               </p>
-              <p className="text-gray-900 capitalize">{customer?.customerType}</p>
+              <p className="text-gray-900 capitalize">
+                {customer?.customerType}
+              </p>
             </div>
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
@@ -336,7 +340,10 @@ export default function StaffReviewForm({
         <div className="p-6 space-y-6">
           {/* Per-File Details */}
           {pricing.filePrices.map((filePrice, idx) => (
-            <div key={filePrice.fileId} className="border-b border-gray-200 pb-4">
+            <div
+              key={filePrice.fileId}
+              className="border-b border-gray-200 pb-4"
+            >
               <div className="font-medium text-gray-900 mb-3">
                 {idx + 1}. {filePrice.fileName}
               </div>
@@ -344,7 +351,8 @@ export default function StaffReviewForm({
                 <div className="flex justify-between text-gray-600">
                   <span>
                     Translation ({filePrice.billablePages} pages × $
-                    {filePrice.baseRate.toFixed(2)} × {filePrice.languageMultiplier.toFixed(2)}x ×
+                    {filePrice.baseRate.toFixed(2)} ×{" "}
+                    {filePrice.languageMultiplier.toFixed(2)}x ×
                     {filePrice.complexityMultiplier.toFixed(2)}x):
                   </span>
                   <span className="font-medium text-gray-900">
@@ -394,9 +402,7 @@ export default function StaffReviewForm({
 
             {pricing.discountAmount > 0 && (
               <div className="flex justify-between text-green-700">
-                <span>
-                  Discount ({pricing.discountReason}):
-                </span>
+                <span>Discount ({pricing.discountReason}):</span>
                 <span className="font-medium text-green-900">
                   -${pricing.discountAmount.toFixed(2)}
                 </span>
@@ -405,9 +411,7 @@ export default function StaffReviewForm({
 
             {pricing.surchargeAmount > 0 && (
               <div className="flex justify-between text-orange-700">
-                <span>
-                  Surcharge ({pricing.surchargeReason}):
-                </span>
+                <span>Surcharge ({pricing.surchargeReason}):</span>
                 <span className="font-medium text-orange-900">
                   +${pricing.surchargeAmount.toFixed(2)}
                 </span>
@@ -440,9 +444,7 @@ export default function StaffReviewForm({
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
           <h3 className="font-semibold text-gray-900">Internal Notes</h3>
-          <p className="text-xs text-gray-600 mt-1">
-            Not visible to customer
-          </p>
+          <p className="text-xs text-gray-600 mt-1">Not visible to customer</p>
         </div>
         <div className="p-6">
           <textarea

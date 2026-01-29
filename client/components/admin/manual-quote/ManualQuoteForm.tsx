@@ -218,7 +218,7 @@ export default function ManualQuoteForm({
             staffNotes,
             sendNotification,
           }),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -237,7 +237,7 @@ export default function ManualQuoteForm({
     } catch (error) {
       console.error("❌ [FINAL SUBMIT] Error:", error);
       toast.error(
-        error instanceof Error ? error.message : "Failed to create quote"
+        error instanceof Error ? error.message : "Failed to create quote",
       );
     } finally {
       setIsSubmitting(false);

@@ -1,10 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  ChevronDown,
-  ChevronUp,
-  AlertCircle,
-  DollarSign,
-} from "lucide-react";
+import { ChevronDown, ChevronUp, AlertCircle, DollarSign } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { FileWithAnalysis } from "./StaffFileUploadForm";
 
@@ -146,9 +141,9 @@ export default function StaffPricingForm({
   useEffect(() => {
     if (files.length > 0 && value.filePrices.length === 0) {
       const initialFilePrices = files.map((file) => {
-        const language = languages.find(
-          (l) => l.code === file.detectedLanguageCode
-        ) || languages[0];
+        const language =
+          languages.find((l) => l.code === file.detectedLanguageCode) ||
+          languages[0];
         const complexity = file.complexity || "low";
         const pageCount = file.pageCount || 1;
 
@@ -191,15 +186,18 @@ export default function StaffPricingForm({
     certificationTypeId?: string;
     language?: Language;
   }): FilePrice => {
-    const language =
-      langOverride || languages.find((l) => l.id === languageId);
-    const languageMultiplier = language?.multiplier ? parseFloat(language.multiplier as any) : 1.0;
+    const language = langOverride || languages.find((l) => l.id === languageId);
+    const languageMultiplier = language?.multiplier
+      ? parseFloat(language.multiplier as any)
+      : 1.0;
     const complexityMultiplier =
       COMPLEXITY_MULTIPLIERS[complexity] || COMPLEXITY_MULTIPLIERS.low;
     const certification = certifications.find(
-      (c) => c.id === certificationTypeId
+      (c) => c.id === certificationTypeId,
     );
-    const certificationCost = certification?.price ? parseFloat(certification.price as any) : 0;
+    const certificationCost = certification?.price
+      ? parseFloat(certification.price as any)
+      : 0;
 
     const translationCost =
       BASE_RATE * billablePages * languageMultiplier * complexityMultiplier;
@@ -234,7 +232,7 @@ export default function StaffPricingForm({
       | "languageMultiplier"
       | "complexityMultiplier"
     >,
-    fieldValue: any
+    fieldValue: any,
   ) => {
     const newFilePrices = value.filePrices.map((fp) => {
       if (fp.fileId !== fileId) return fp;
@@ -243,13 +241,17 @@ export default function StaffPricingForm({
 
       // Recalculate costs when relevant fields change
       const language = languages.find((l) => l.id === updated.languageId);
-      const languageMultiplier = language?.multiplier ? parseFloat(language.multiplier as any) : 1.0;
+      const languageMultiplier = language?.multiplier
+        ? parseFloat(language.multiplier as any)
+        : 1.0;
       const complexityMultiplier =
         COMPLEXITY_MULTIPLIERS[updated.complexity] || 1.0;
       const certification = certifications.find(
-        (c) => c.id === updated.certificationTypeId
+        (c) => c.id === updated.certificationTypeId,
       );
-      const certificationCost = certification?.price ? parseFloat(certification.price as any) : 0;
+      const certificationCost = certification?.price
+        ? parseFloat(certification.price as any)
+        : 0;
 
       updated.languageMultiplier = languageMultiplier;
       updated.complexityMultiplier = complexityMultiplier;
@@ -259,12 +261,12 @@ export default function StaffPricingForm({
             updated.billablePages *
             languageMultiplier *
             complexityMultiplier *
-          100
+            100,
         ) / 100;
       updated.certificationCost = certificationCost;
       updated.lineTotal =
         Math.round(
-          (updated.translationCost + updated.certificationCost) * 100
+          (updated.translationCost + updated.certificationCost) * 100,
         ) / 100;
 
       return updated;
@@ -276,7 +278,7 @@ export default function StaffPricingForm({
 
   const handleQuoteLevelChange = (
     field: keyof Omit<QuotePricing, "filePrices">,
-    fieldValue: any
+    fieldValue: any,
   ) => {
     const newPricing = { ...value, [field]: fieldValue };
     recalculateTotals(newPricing);
@@ -286,7 +288,7 @@ export default function StaffPricingForm({
     // Calculate document subtotal
     const documentSubtotal = pricing.filePrices.reduce(
       (sum, fp) => sum + fp.lineTotal,
-      0
+      0,
     );
 
     // Calculate rush fee
@@ -296,16 +298,18 @@ export default function StaffPricingForm({
 
     // Calculate delivery fee
     const deliveryOption = deliveryOptions.find(
-      (d) => d.id === pricing.deliveryOptionId
+      (d) => d.id === pricing.deliveryOptionId,
     );
-    const deliveryFee = deliveryOption?.price ? parseFloat(deliveryOption.price as any) : 0;
+    const deliveryFee = deliveryOption?.price
+      ? parseFloat(deliveryOption.price as any)
+      : 0;
 
     // Calculate discount
     let discountAmount = 0;
     if (pricing.hasDiscount && pricing.discountValue) {
       if (pricing.discountType === "percentage") {
         discountAmount =
-          Math.round((documentSubtotal * pricing.discountValue) / 100 * 100) /
+          Math.round(((documentSubtotal * pricing.discountValue) / 100) * 100) /
           100;
       } else {
         discountAmount = pricing.discountValue;
@@ -317,17 +321,24 @@ export default function StaffPricingForm({
     if (pricing.hasSurcharge && pricing.surchargeValue) {
       if (pricing.surchargeType === "percentage") {
         surchargeAmount =
-          Math.round((documentSubtotal * pricing.surchargeValue) / 100 * 100) /
-          100;
+          Math.round(
+            ((documentSubtotal * pricing.surchargeValue) / 100) * 100,
+          ) / 100;
       } else {
         surchargeAmount = pricing.surchargeValue;
       }
     }
 
     // Calculate pre-tax total
-    const preTaxTotal = Math.round(
-      (documentSubtotal + rushFee + deliveryFee + surchargeAmount - discountAmount) * 100
-    ) / 100;
+    const preTaxTotal =
+      Math.round(
+        (documentSubtotal +
+          rushFee +
+          deliveryFee +
+          surchargeAmount -
+          discountAmount) *
+          100,
+      ) / 100;
 
     // Calculate tax
     const taxRate = pricing.taxRate || DEFAULT_TAX_RATE;
@@ -420,7 +431,7 @@ export default function StaffPricingForm({
                         handleFileFieldChange(
                           filePrice.fileId,
                           "languageId",
-                          e.target.value
+                          e.target.value,
                         )
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -448,7 +459,7 @@ export default function StaffPricingForm({
                           handleFileFieldChange(
                             filePrice.fileId,
                             "pageCount",
-                            parseInt(e.target.value) || 1
+                            parseInt(e.target.value) || 1,
                           )
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -468,7 +479,7 @@ export default function StaffPricingForm({
                           handleFileFieldChange(
                             filePrice.fileId,
                             "billablePages",
-                            parseFloat(e.target.value) || 1
+                            parseFloat(e.target.value) || 1,
                           )
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -488,7 +499,7 @@ export default function StaffPricingForm({
                           handleFileFieldChange(
                             filePrice.fileId,
                             "complexity",
-                            e.target.value as "low" | "medium" | "high"
+                            e.target.value as "low" | "medium" | "high",
                           )
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -508,7 +519,7 @@ export default function StaffPricingForm({
                           handleFileFieldChange(
                             filePrice.fileId,
                             "certificationTypeId",
-                            e.target.value
+                            e.target.value,
                           )
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -529,9 +540,7 @@ export default function StaffPricingForm({
                       <span>${filePrice.baseRate.toFixed(2)}/page</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-700">
-                        × Billable Pages:
-                      </span>
+                      <span className="text-gray-700">× Billable Pages:</span>
                       <span>{filePrice.billablePages}</span>
                     </div>
                     <div className="flex justify-between text-sm">
@@ -674,16 +683,14 @@ export default function StaffPricingForm({
               <input
                 type="number"
                 min="0"
-                max={
-                  value.discountType === "percentage" ? "100" : "9999.99"
-                }
+                max={value.discountType === "percentage" ? "100" : "9999.99"}
                 step={value.discountType === "percentage" ? "1" : "0.01"}
                 placeholder="Enter amount"
                 value={value.discountValue || ""}
                 onChange={(e) =>
                   handleQuoteLevelChange(
                     "discountValue",
-                    e.target.value ? parseFloat(e.target.value) : undefined
+                    e.target.value ? parseFloat(e.target.value) : undefined,
                   )
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -750,16 +757,14 @@ export default function StaffPricingForm({
               <input
                 type="number"
                 min="0"
-                max={
-                  value.surchargeType === "percentage" ? "100" : "9999.99"
-                }
+                max={value.surchargeType === "percentage" ? "100" : "9999.99"}
                 step={value.surchargeType === "percentage" ? "1" : "0.01"}
                 placeholder="Enter amount"
                 value={value.surchargeValue || ""}
                 onChange={(e) =>
                   handleQuoteLevelChange(
                     "surchargeValue",
-                    e.target.value ? parseFloat(e.target.value) : undefined
+                    e.target.value ? parseFloat(e.target.value) : undefined,
                   )
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -796,7 +801,10 @@ export default function StaffPricingForm({
             step="0.01"
             value={(value.taxRate * 100).toFixed(2)}
             onChange={(e) =>
-              handleQuoteLevelChange("taxRate", parseFloat(e.target.value) / 100)
+              handleQuoteLevelChange(
+                "taxRate",
+                parseFloat(e.target.value) / 100,
+              )
             }
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
