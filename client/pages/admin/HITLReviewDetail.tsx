@@ -23,7 +23,7 @@ import {
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
-import { HITLPanelLayout, PricingSummaryBox } from "../../components/admin/hitl";
+import { HITLPanelLayout, PricingSummaryBox, TranslationDetailsCard } from "../../components/admin/hitl";
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
 
 interface PageData {
@@ -2226,6 +2226,15 @@ const HITLReviewDetail: React.FC = () => {
               onRefreshFiles={fetchReviewData}
             >
               {/* Center Panel Content: Document Accordion */}
+
+              {/* Translation Details Card - TOP OF MAIN CONTENT */}
+              <TranslationDetailsCard
+                quoteId={reviewData.quote_id}
+                onDetailsChange={() => {
+                  // Refresh pricing when language/multiplier changes
+                  fetchReviewData();
+                }}
+              />
 
               {/* Billing, Delivery & Rush Options Section */}
               {claimedByMe && reviewData?.quotes && (
