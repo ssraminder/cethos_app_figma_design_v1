@@ -7,6 +7,8 @@ import {
   ChevronDown,
   DollarSign,
   AlertCircle,
+  Send,
+  CreditCard,
 } from "lucide-react";
 
 // Types
@@ -58,12 +60,21 @@ interface Props {
   quoteId: string;
   staffId?: string;
   onPricingChange?: () => void;
+  // Action button handlers
+  showActions?: boolean;
+  isSubmitting?: boolean;
+  onUpdateAndSendPaymentLink?: () => void;
+  onManualPayment?: () => void;
 }
 
 export default function PricingSummaryBox({
   quoteId,
   staffId,
   onPricingChange,
+  showActions = false,
+  isSubmitting = false,
+  onUpdateAndSendPaymentLink,
+  onManualPayment,
 }: Props) {
   // State
   const [pricing, setPricing] = useState<PricingData | null>(null);
@@ -516,7 +527,7 @@ export default function PricingSummaryBox({
         <hr className="border-gray-200" />
 
         {/* Rush Fee (if applicable) */}
-        {pricing?.rushFee && pricing.rushFee > 0 && (
+        {pricing && pricing.rushFee > 0 && (
           <>
             <div className="flex justify-between items-center">
               <span className="text-gray-600">Rush Fee (30%):</span>
@@ -529,7 +540,7 @@ export default function PricingSummaryBox({
         )}
 
         {/* Delivery Fee (if applicable) */}
-        {pricing?.deliveryFee && pricing.deliveryFee > 0 && (
+        {pricing && pricing.deliveryFee > 0 && (
           <>
             <div className="flex justify-between items-center">
               <span className="text-gray-600">Delivery:</span>
@@ -590,6 +601,28 @@ export default function PricingSummaryBox({
           />
           {recalculating ? "Recalculating..." : "Recalculate Totals"}
         </button>
+
+        {/* Action Buttons - Payment Actions */}
+        {showActions && (
+          <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
+            <button
+              onClick={onUpdateAndSendPaymentLink}
+              disabled={isSubmitting}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send className="w-4 h-4" />
+              Update & Send Payment Link
+            </button>
+            <button
+              onClick={onManualPayment}
+              disabled={isSubmitting}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CreditCard className="w-4 h-4" />
+              Manual Payment
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Adjustment Modal */}
