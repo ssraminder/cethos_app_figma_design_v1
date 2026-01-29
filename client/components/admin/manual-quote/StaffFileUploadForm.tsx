@@ -54,6 +54,11 @@ export default function StaffFileUploadForm({
   };
 
   const addFiles = async (newFiles: File[]) => {
+    console.log("📁 [FILE UPLOAD] addFiles called with", newFiles.length, "files");
+    console.log("📁 [FILE UPLOAD] Current quoteId:", quoteId);
+    console.log("📁 [FILE UPLOAD] StaffId:", staffId);
+    console.log("📁 [FILE UPLOAD] ProcessWithAI:", processWithAI);
+
     const fileData: FileData[] = newFiles.map((file) => ({
       id: `${Date.now()}-${Math.random()}`,
       name: file.name,
@@ -67,7 +72,9 @@ export default function StaffFileUploadForm({
 
     // Upload each file immediately if we have a quoteId
     if (quoteId) {
+      console.log("✅ [FILE UPLOAD] QuoteId exists - starting immediate upload");
       for (const file of fileData) {
+        console.log(`📤 [FILE UPLOAD] Uploading file: ${file.name} (${file.size} bytes)`);
         setUploadStatus((prev) => ({ ...prev, [file.id]: "uploading" }));
         setAnalysisStatus((prev) => ({ ...prev, [file.id]: "idle" }));
 
@@ -78,6 +85,7 @@ export default function StaffFileUploadForm({
           formData.append("staffId", staffId);
           formData.append("processWithAI", "false"); // Don't auto-analyze
 
+          console.log(`🌐 [FILE UPLOAD] Fetching upload endpoint for ${file.name}`);
           const uploadResponse = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
             {
@@ -89,17 +97,25 @@ export default function StaffFileUploadForm({
             },
           );
 
+          console.log(`📡 [FILE UPLOAD] Response status for ${file.name}:`, uploadResponse.status);
+
           if (!uploadResponse.ok) {
+            const errorText = await uploadResponse.text();
+            console.error(`❌ [FILE UPLOAD] Upload failed for ${file.name}:`, errorText);
             throw new Error("Upload failed");
           }
 
+          const result = await uploadResponse.json();
+          console.log(`✅ [FILE UPLOAD] Upload successful for ${file.name}:`, result);
           setUploadStatus((prev) => ({ ...prev, [file.id]: "success" }));
         } catch (error) {
-          console.error(`Failed to upload ${file.name}:`, error);
+          console.error(`❌ [FILE UPLOAD] Failed to upload ${file.name}:`, error);
           setUploadStatus((prev) => ({ ...prev, [file.id]: "failed" }));
         }
       }
+      console.log("✅ [FILE UPLOAD] All files processed");
     } else {
+      console.log("⏸️ [FILE UPLOAD] No quoteId - files will be pending until quote is created");
       // Set initial status if no quoteId yet
       fileData.forEach((f) => {
         setUploadStatus((prev) => ({ ...prev, [f.id]: "pending" }));
