@@ -57,6 +57,14 @@ export default function ManualQuoteForm({
 }: ManualQuoteFormProps) {
   const { session } = useAdminAuthContext();
   const staffUser = session?.user;
+
+  console.log("🔑 [AUTH DEBUG] ManualQuoteForm auth state:");
+  console.log("  - session:", session);
+  console.log("  - session?.user:", session?.user);
+  console.log("  - session?.user?.id:", session?.user?.id);
+  console.log("  - staffUser:", staffUser);
+  console.log("  - staffUser?.id:", staffUser?.id);
+
   const [currentStep, setCurrentStep] = useState(1);
   const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [quote, setQuote] = useState<QuoteData>({});
