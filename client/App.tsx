@@ -30,6 +30,8 @@ import QuoteSavedPage from "./pages/quote/QuoteSavedPage";
 import QuoteExpiredPage from "./pages/quote/QuoteExpiredPage";
 import UploadPage from "./pages/upload/UploadPage";
 import UploadConfirmationPage from "./pages/upload/UploadConfirmationPage";
+import ETransferConfirmation from "./pages/ETransferConfirmation";
+import ETransferSuccess from "./pages/ETransferSuccess";
 
 // Customer Dashboard pages
 import ProtectedCustomerRoute from "./components/customer/ProtectedCustomerRoute";
@@ -134,6 +136,16 @@ const App = () => (
                     />
                     <Route path="/order/success" element={<OrderSuccess />} />
                     <Route path="/payment/cancel" element={<PaymentCancel />} />
+
+                    {/* E-Transfer Payment Routes */}
+                    <Route
+                      path="/etransfer/confirm"
+                      element={<ETransferConfirmation />}
+                    />
+                    <Route
+                      path="/etransfer/success"
+                      element={<ETransferSuccess />}
+                    />
 
                     {/* Upload Form Routes */}
                     <Route path="/upload" element={<UploadPage />} />
