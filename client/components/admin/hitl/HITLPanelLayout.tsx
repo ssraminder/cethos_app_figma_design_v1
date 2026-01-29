@@ -94,7 +94,14 @@ export default function HITLPanelLayout({
 }: HITLPanelLayoutProps) {
   // Collapsible sections state - default expand important sections
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(["customer", "documents", "analysis", "certification", "billing", "shipping"]),
+    new Set([
+      "customer",
+      "documents",
+      "analysis",
+      "certification",
+      "billing",
+      "shipping",
+    ]),
   );
 
   const toggleSection = (section: string) => {
@@ -234,7 +241,10 @@ export default function HITLPanelLayout({
                   document_count: quoteFiles.length || 0,
                 }
               : null;
-            console.log('🎖️ Rendering certification section with data:', certData);
+            console.log(
+              "🎖️ Rendering certification section with data:",
+              certData,
+            );
             return (
               <EditableQuoteCertificationPanel
                 certificationData={certData}
@@ -279,12 +289,12 @@ export default function HITLPanelLayout({
 
       {/* Billing Address - Editable */}
       {(() => {
-        console.log('🏢 Billing section - reviewData?.id:', reviewData?.id);
-        console.log('🏢 Billing section - reviewData:', reviewData);
+        console.log("🏢 Billing section - reviewData?.id:", reviewData?.id);
+        console.log("🏢 Billing section - reviewData:", reviewData);
         return reviewData?.id ? (
           <CollapsibleSection id="billing" title="Billing Address">
             {(() => {
-              console.log('🏢 Rendering billing panel with:', {
+              console.log("🏢 Rendering billing panel with:", {
                 quoteId: reviewData.id,
                 billingAddress: (reviewData as any).billing_address,
                 customerName: reviewData.customer_name,
@@ -307,14 +317,15 @@ export default function HITLPanelLayout({
 
       {/* Shipping Address & Delivery - Editable */}
       {(() => {
-        console.log('🚚 Shipping section - reviewData?.id:', reviewData?.id);
+        console.log("🚚 Shipping section - reviewData?.id:", reviewData?.id);
         return reviewData?.id ? (
           <CollapsibleSection id="shipping" title="Shipping & Delivery">
             {(() => {
-              console.log('🚚 Rendering shipping panel with:', {
+              console.log("🚚 Rendering shipping panel with:", {
                 quoteId: reviewData.id,
                 shippingAddress: (reviewData as any).shipping_address,
-                physicalDeliveryOptionId: (reviewData as any).physical_delivery_option_id,
+                physicalDeliveryOptionId: (reviewData as any)
+                  .physical_delivery_option_id,
                 customerName: reviewData.customer_name,
               });
               return (
