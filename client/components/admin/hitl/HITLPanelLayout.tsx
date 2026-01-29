@@ -8,6 +8,7 @@ import ContactInfoPanel from "./ContactInfoPanel";
 import EditablePricingSummaryPanel from "./EditablePricingSummaryPanel";
 import EditableBillingAddressPanel from "./EditableBillingAddressPanel";
 import EditableShippingAddressPanel from "./EditableShippingAddressPanel";
+import EditableQuoteCertificationPanel from "./EditableQuoteCertificationPanel";
 import InternalNotesPanel from "./InternalNotesPanel";
 import MessagePanel from "../../messaging/MessagePanel";
 import DocumentManagementPanel from "./DocumentManagementPanel";
@@ -218,6 +219,29 @@ export default function HITLPanelLayout({
           onUpdate={onRefreshFiles}
         />
       </CollapsibleSection>
+
+      {/* Quote Certification - Global certification for all documents */}
+      {reviewData?.quote_id && (
+        <CollapsibleSection id="certification" title="Quote Certification">
+          <EditableQuoteCertificationPanel
+            certificationData={
+              reviewData
+                ? {
+                    quote_id: reviewData.quote_id,
+                    current_certification_type_id:
+                      (reviewData as any).certification_type_id || undefined,
+                    current_certification_name:
+                      (reviewData as any).certification_name || undefined,
+                    document_count: quoteFiles.length || 0,
+                  }
+                : null
+            }
+            staffId={staffId}
+            loading={loading}
+            onUpdate={onRefreshFiles}
+          />
+        </CollapsibleSection>
+      )}
 
       {/* Pricing Summary - Editable with Discounts/Surcharges */}
       <CollapsibleSection id="pricing" title="Pricing Summary">
