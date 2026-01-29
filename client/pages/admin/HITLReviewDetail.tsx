@@ -2537,32 +2537,37 @@ const HITLReviewDetail: React.FC = () => {
                   return (
                     <div
                       key={fileId}
-                      className="bg-white rounded-lg shadow overflow-hidden"
+                      className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
                     >
                       {/* File Header */}
                       <button
                         onClick={() =>
                           setExpandedFile(isExpanded ? null : fileId)
                         }
-                        className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
+                        className="w-full px-4 py-3 flex justify-between items-center bg-gradient-to-r from-gray-50 to-white border-b border-gray-200 hover:from-gray-100 hover:to-gray-50 text-left transition-colors"
                       >
-                        <div className="flex items-center gap-4">
-                          <span className="text-lg font-medium">
-                            {index + 1}.{" "}
-                            {file.original_filename ||
-                              analysis.quote_file?.original_filename}
-                          </span>
-                          <span className="text-sm text-gray-500">
-                            {totalWords} words • {displayPageCount} page(s)
-                          </span>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <FileText className="w-4 h-4 text-teal-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-gray-900">
+                              {index + 1}.{" "}
+                              {file.original_filename ||
+                                analysis.quote_file?.original_filename}
+                            </h4>
+                            <p className="text-xs text-gray-500">
+                              {totalWords} words • {displayPageCount} page(s)
+                            </p>
+                          </div>
                           {hasChanges(analysis.quote_file_id) && (
-                            <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
-                              Unsaved changes
+                            <span className="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800 font-medium">
+                              Unsaved
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className="text-lg font-bold text-blue-600">
+                        <div className="flex items-center gap-3">
+                          <span className="text-lg font-semibold text-gray-900">
                             $
                             {calculateLineTotal(
                               analysis.quote_file_id,
@@ -2582,8 +2587,8 @@ const HITLReviewDetail: React.FC = () => {
                                 file.original_filename || analysis.quote_file?.original_filename || "Unknown"
                               );
                             }}
-                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Remove analysis (file will remain for re-analysis)"
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                            title="Remove analysis"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -2653,8 +2658,8 @@ const HITLReviewDetail: React.FC = () => {
                             {/* Right Column: Analysis & Editing */}
                             <div className="space-y-4">
                               {/* Document Type */}
-                              <div className="bg-white border rounded p-3">
-                                <label className="text-sm text-gray-500 block mb-1">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                                   Document Type
                                 </label>
                                 {claimedByMe ? (
@@ -2689,18 +2694,18 @@ const HITLReviewDetail: React.FC = () => {
                                         );
                                       }
                                     }}
-                                    className="w-full border rounded px-3 py-2"
+                                    className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                                   />
                                 ) : (
-                                  <div className="font-medium">
+                                  <div className="font-medium text-gray-900">
                                     {analysis.detected_document_type}
                                   </div>
                                 )}
                               </div>
 
                               {/* Language */}
-                              <div className="bg-white border rounded p-3">
-                                <label className="text-sm text-gray-500 block mb-1">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                                   Detected Language
                                 </label>
                                 {claimedByMe ? (
@@ -2731,7 +2736,7 @@ const HITLReviewDetail: React.FC = () => {
                                         );
                                       }
                                     }}
-                                    className="w-full border rounded px-3 py-2"
+                                    className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                                   >
                                     {languages.map((lang) => (
                                       <option key={lang.code} value={lang.code}>
@@ -2740,15 +2745,15 @@ const HITLReviewDetail: React.FC = () => {
                                     ))}
                                   </select>
                                 ) : (
-                                  <div className="font-medium">
+                                  <div className="font-medium text-gray-900">
                                     {analysis.detected_language}
                                   </div>
                                 )}
                               </div>
 
                               {/* Complexity */}
-                              <div className="bg-white border rounded p-3">
-                                <label className="text-sm text-gray-500 block mb-1">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                                   Complexity
                                 </label>
                                 {claimedByMe ? (
@@ -2779,7 +2784,7 @@ const HITLReviewDetail: React.FC = () => {
                                         );
                                       }
                                     }}
-                                    className="w-full border rounded px-3 py-2"
+                                    className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                                   >
                                     <option value="easy">Easy (1.0x)</option>
                                     <option value="medium">
@@ -2788,7 +2793,7 @@ const HITLReviewDetail: React.FC = () => {
                                     <option value="hard">Hard (1.25x)</option>
                                   </select>
                                 ) : (
-                                  <div className="font-medium capitalize">
+                                  <div className="font-medium text-gray-900 capitalize">
                                     {analysis.assessed_complexity} (
                                     {analysis.complexity_multiplier}x)
                                   </div>
@@ -2796,11 +2801,11 @@ const HITLReviewDetail: React.FC = () => {
                               </div>
 
                               {/* Page Breakdown */}
-                              <div className="bg-white border rounded p-3">
-                                <label className="text-sm text-gray-500 block mb-2">
+                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <p className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-3">
                                   Page Breakdown ({pages.length} page
                                   {pages.length !== 1 ? "s" : ""})
-                                </label>
+                                </p>
                                 <div className="space-y-2">
                                   {pages.map((page, idx) => {
                                     const words = getPageWordCount(page);
@@ -2889,9 +2894,9 @@ const HITLReviewDetail: React.FC = () => {
                                 </div>
 
                                 {/* Document Billable Total */}
-                                <div className="flex justify-between mt-3 pt-2 border-t font-medium">
-                                  <span>Document Billable:</span>
-                                  <span>
+                                <div className="flex justify-between mt-3 pt-3 border-t border-blue-200">
+                                  <span className="text-sm font-medium text-blue-700">Document Billable:</span>
+                                  <span className="text-sm font-bold text-blue-700">
                                     {calculateDocumentBillable(
                                       analysis.quote_file_id,
                                       analysis,
@@ -2923,10 +2928,10 @@ const HITLReviewDetail: React.FC = () => {
                               </div>
 
                               {/* CERTIFICATION SECTION */}
-                              <div className="bg-white border rounded p-3">
-                                <label className="text-sm text-gray-500 block mb-2">
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                                   Certification
-                                </label>
+                                </p>
 
                                 {/* Primary Certification */}
                                 <div className="flex items-center justify-between mb-3">
@@ -3064,13 +3069,13 @@ const HITLReviewDetail: React.FC = () => {
                               </div>
 
                               {/* PRICING SUMMARY */}
-                              <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                                <h4 className="text-sm font-semibold text-blue-800 mb-2">
+                              <div className="bg-gradient-to-r from-teal-50 to-green-50 border border-teal-100 rounded-lg p-4">
+                                <p className="text-xs font-medium text-teal-700 uppercase tracking-wide mb-2">
                                   Document Total
-                                </h4>
+                                </p>
                                 <div className="space-y-1 text-sm">
                                   <div className="flex justify-between">
-                                    <span>Billable Pages:</span>
+                                    <span className="text-gray-600">Billable Pages:</span>
                                     <span>
                                       {calculateDocumentBillable(
                                         analysis.quote_file_id,
@@ -3079,7 +3084,7 @@ const HITLReviewDetail: React.FC = () => {
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
-                                    <span>Translation:</span>
+                                    <span className="text-gray-600">Translation:</span>
                                     <span>
                                       $
                                       {calculateTranslationCost(
@@ -3089,7 +3094,7 @@ const HITLReviewDetail: React.FC = () => {
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
-                                    <span>Certification:</span>
+                                    <span className="text-gray-600">Certification:</span>
                                     <span>
                                       $
                                       {calculateCertificationTotal(
@@ -3098,9 +3103,9 @@ const HITLReviewDetail: React.FC = () => {
                                       ).toFixed(2)}
                                     </span>
                                   </div>
-                                  <div className="flex justify-between font-bold border-t pt-1 mt-1 text-blue-800">
+                                  <div className="flex justify-between font-semibold border-t border-teal-200 pt-2 mt-2 text-teal-700">
                                     <span>Line Total:</span>
-                                    <span>
+                                    <span className="font-bold">
                                       $
                                       {calculateLineTotal(
                                         analysis.quote_file_id,
@@ -3343,62 +3348,6 @@ const HITLReviewDetail: React.FC = () => {
                   fetchReviewData();
                 }}
               />
-
-              {/* Review Status */}
-              <div className="bg-white rounded-lg border p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <User className="w-5 h-5 text-gray-400" />
-                  Review Status
-                </h2>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Assigned To</span>
-                    <span className="font-medium">
-                      {claimedByMe
-                        ? "You"
-                        : claimedByOther
-                          ? assignedStaffName || "Staff Member"
-                          : "Unassigned"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Status</span>
-                    <span className="font-medium capitalize">
-                      {reviewData.status?.replace(/_/g, " ") || "Pending"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Documents</span>
-                    <span className="font-medium">{quoteFiles.length}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Timeline */}
-              <div className="bg-white rounded-lg border p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-gray-400" />
-                  Timeline
-                </h2>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Created</span>
-                    <span>
-                      {reviewData.created_at
-                        ? new Date(reviewData.created_at).toLocaleString()
-                        : "—"}
-                    </span>
-                  </div>
-                  {reviewData.assigned_at && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Claimed</span>
-                      <span>
-                        {new Date(reviewData.assigned_at).toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
             </>
           )}
         </div>
