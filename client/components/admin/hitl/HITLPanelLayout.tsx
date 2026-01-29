@@ -8,7 +8,6 @@ import ContactInfoPanel from "./ContactInfoPanel";
 import EditablePricingSummaryPanel from "./EditablePricingSummaryPanel";
 import EditableBillingAddressPanel from "./EditableBillingAddressPanel";
 import EditableShippingAddressPanel from "./EditableShippingAddressPanel";
-import EditableQuoteCertificationPanel from "./EditableQuoteCertificationPanel";
 import InternalNotesPanel from "./InternalNotesPanel";
 import MessagePanel from "../../messaging/MessagePanel";
 import DocumentManagementPanel from "./DocumentManagementPanel";
