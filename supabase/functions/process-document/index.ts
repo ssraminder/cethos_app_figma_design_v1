@@ -86,7 +86,9 @@ serve(async (req) => {
       }
 
       filesToProcess = [file];
-      console.log(`🎯 [PROCESS-DOCUMENT] Processing specific file: ${file.original_filename}`);
+      console.log(
+        `🎯 [PROCESS-DOCUMENT] Processing specific file: ${file.original_filename}`,
+      );
     } else if (quoteId) {
       // Process all files for quote
       const { data: files, error: filesError } = await supabaseAdmin
