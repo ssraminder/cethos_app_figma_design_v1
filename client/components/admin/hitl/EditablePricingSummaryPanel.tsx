@@ -59,8 +59,11 @@ export default function EditablePricingSummaryPanel({
   const [showAddAdjustment, setShowAddAdjustment] = useState(false);
 
   // Certification state
-  const [certificationTypes, setCertificationTypes] = useState<CertificationType[]>([]);
-  const [selectedCertificationId, setSelectedCertificationId] = useState<string>("");
+  const [certificationTypes, setCertificationTypes] = useState<
+    CertificationType[]
+  >([]);
+  const [selectedCertificationId, setSelectedCertificationId] =
+    useState<string>("");
   const [isSavingCertification, setIsSavingCertification] = useState(false);
 
   // New adjustment form
@@ -125,7 +128,9 @@ export default function EditablePricingSummaryPanel({
   const handleCertificationChange = async (certificationTypeId: string) => {
     if (!pricingData?.quote_id || !certificationTypeId) return;
 
-    const selectedCert = certificationTypes.find((c) => c.id === certificationTypeId);
+    const selectedCert = certificationTypes.find(
+      (c) => c.id === certificationTypeId,
+    );
     if (!selectedCert) return;
 
     const documentCount = pricingData.document_count || 0;
@@ -136,11 +141,13 @@ export default function EditablePricingSummaryPanel({
 
     if (
       !confirm(
-        `Apply "${selectedCert.name}" certification to all ${documentCount} document(s)?\n\nCost: $${selectedCert.price.toFixed(2)} × ${documentCount} = $${(selectedCert.price * documentCount).toFixed(2)}`
+        `Apply "${selectedCert.name}" certification to all ${documentCount} document(s)?\n\nCost: $${selectedCert.price.toFixed(2)} × ${documentCount} = $${(selectedCert.price * documentCount).toFixed(2)}`,
       )
     ) {
       // Reset to previous value if cancelled
-      setSelectedCertificationId(pricingData.current_certification_type_id || "");
+      setSelectedCertificationId(
+        pricingData.current_certification_type_id || "",
+      );
       return;
     }
 
@@ -180,21 +187,20 @@ export default function EditablePricingSummaryPanel({
             })
             .eq("id", existing.id);
         } else {
-          await supabase
-            .from("document_certifications")
-            .insert({
-              quote_file_id: file.id,
-              certification_type_id: certificationTypeId,
-              is_primary: true,
-              price: selectedCert.price,
-              added_by: staffId || null,
-              added_at: new Date().toISOString(),
-            });
+          await supabase.from("document_certifications").insert({
+            quote_file_id: file.id,
+            certification_type_id: certificationTypeId,
+            is_primary: true,
+            price: selectedCert.price,
+            added_by: staffId || null,
+            added_at: new Date().toISOString(),
+          });
         }
       }
 
       // Recalculate certification total
-      const totalCertificationCost = quoteFiles.length * Number(selectedCert.price);
+      const totalCertificationCost =
+        quoteFiles.length * Number(selectedCert.price);
 
       await supabase
         .from("quotes")
@@ -226,7 +232,9 @@ export default function EditablePricingSummaryPanel({
       console.error("Failed to update certification:", error);
       alert("Failed to update certification: " + (error as Error).message);
       // Reset to previous value on error
-      setSelectedCertificationId(pricingData.current_certification_type_id || "");
+      setSelectedCertificationId(
+        pricingData.current_certification_type_id || "",
+      );
     } finally {
       setIsSavingCertification(false);
     }
@@ -476,13 +484,17 @@ export default function EditablePricingSummaryPanel({
                 <option value="">-- Select Certification --</option>
                 {certificationTypes.map((cert) => (
                   <option key={cert.id} value={cert.id}>
-                    {cert.name} - ${Number(cert.price).toFixed(2)} × {pricingData.document_count} = $
-                    {(Number(cert.price) * (pricingData.document_count || 0)).toFixed(2)}
+                    {cert.name} - ${Number(cert.price).toFixed(2)} ×{" "}
+                    {pricingData.document_count} = $
+                    {(
+                      Number(cert.price) * (pricingData.document_count || 0)
+                    ).toFixed(2)}
                   </option>
                 ))}
               </select>
               <p className="text-xs text-gray-500 italic">
-                Applies to all {pricingData.document_count} document{pricingData.document_count !== 1 ? "s" : ""} in quote
+                Applies to all {pricingData.document_count} document
+                {pricingData.document_count !== 1 ? "s" : ""} in quote
               </p>
             </div>
           )}
