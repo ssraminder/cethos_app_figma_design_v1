@@ -66,7 +66,9 @@ serve(async (req) => {
       // Process single file
       const { data: file, error: fileError } = await supabaseAdmin
         .from("quote_files")
-        .select("id, quote_id, original_filename, storage_path, file_size, mime_type")
+        .select(
+          "id, quote_id, original_filename, storage_path, file_size, mime_type",
+        )
         .eq("id", fileId)
         .single();
 
@@ -88,7 +90,9 @@ serve(async (req) => {
       // Process all files for quote
       const { data: files, error: filesError } = await supabaseAdmin
         .from("quote_files")
-        .select("id, quote_id, original_filename, storage_path, file_size, mime_type")
+        .select(
+          "id, quote_id, original_filename, storage_path, file_size, mime_type",
+        )
         .eq("quote_id", quoteId)
         .eq("ai_processing_status", "pending");
 
@@ -121,13 +125,17 @@ serve(async (req) => {
       );
     }
 
-    console.log(`📁 [PROCESS-DOCUMENT] Found ${filesToProcess.length} files to process`);
+    console.log(
+      `📁 [PROCESS-DOCUMENT] Found ${filesToProcess.length} files to process`,
+    );
 
     // Process each file
     const results: ProcessingResult[] = [];
 
     for (const file of filesToProcess) {
-      console.log(`🔄 [PROCESS-DOCUMENT] Processing file: ${file.original_filename}`);
+      console.log(
+        `🔄 [PROCESS-DOCUMENT] Processing file: ${file.original_filename}`,
+      );
 
       try {
         // Update status to processing
@@ -137,13 +145,19 @@ serve(async (req) => {
           .eq("id", file.id);
 
         // Download file from storage
-        console.log(`📥 [PROCESS-DOCUMENT] Downloading file from storage: ${file.storage_path}`);
-        const { data: fileData, error: downloadError } = await supabaseAdmin.storage
-          .from("quote-files")
-          .download(file.storage_path);
+        console.log(
+          `📥 [PROCESS-DOCUMENT] Downloading file from storage: ${file.storage_path}`,
+        );
+        const { data: fileData, error: downloadError } =
+          await supabaseAdmin.storage
+            .from("quote-files")
+            .download(file.storage_path);
 
         if (downloadError || !fileData) {
-          console.error(`❌ [PROCESS-DOCUMENT] Download failed:`, downloadError);
+          console.error(
+            `❌ [PROCESS-DOCUMENT] Download failed:`,
+            downloadError,
+          );
           await supabaseAdmin
             .from("quote_files")
             .update({
@@ -160,24 +174,30 @@ serve(async (req) => {
         const now = new Date().toISOString();
         const { error: insertError } = await supabaseAdmin
           .from("ai_analysis_results")
-          .upsert({
-            quote_id: file.quote_id,
-            quote_file_id: file.id,
-            detected_language: analysis.language,
-            detected_document_type: analysis.documentType,
-            word_count: analysis.wordCount,
-            page_count: analysis.pageCount,
-            assessed_complexity: analysis.complexity,
-            processing_status: "completed",
-            processed_at: now,
-            created_at: now,
-            updated_at: now,
-          }, {
-            onConflict: "quote_file_id",
-          });
+          .upsert(
+            {
+              quote_id: file.quote_id,
+              quote_file_id: file.id,
+              detected_language: analysis.language,
+              detected_document_type: analysis.documentType,
+              word_count: analysis.wordCount,
+              page_count: analysis.pageCount,
+              assessed_complexity: analysis.complexity,
+              processing_status: "completed",
+              processed_at: now,
+              created_at: now,
+              updated_at: now,
+            },
+            {
+              onConflict: "quote_file_id",
+            },
+          );
 
         if (insertError) {
-          console.error(`❌ [PROCESS-DOCUMENT] Failed to store results:`, insertError);
+          console.error(
+            `❌ [PROCESS-DOCUMENT] Failed to store results:`,
+            insertError,
+          );
           await supabaseAdmin
             .from("quote_files")
             .update({
@@ -195,7 +215,9 @@ serve(async (req) => {
           })
           .eq("id", file.id);
 
-        console.log(`✅ [PROCESS-DOCUMENT] Completed analysis for ${file.original_filename}`);
+        console.log(
+          `✅ [PROCESS-DOCUMENT] Completed analysis for ${file.original_filename}`,
+        );
 
         results.push({
           success: true,
@@ -307,11 +329,20 @@ async function analyzeFile(
 
     // Simple language detection based on common words
     // This is a very basic implementation
-    if (text.toLowerCase().includes("este") || text.toLowerCase().includes("que")) {
+    if (
+      text.toLowerCase().includes("este") ||
+      text.toLowerCase().includes("que")
+    ) {
       language = "es";
-    } else if (text.toLowerCase().includes("le") || text.toLowerCase().includes("la")) {
+    } else if (
+      text.toLowerCase().includes("le") ||
+      text.toLowerCase().includes("la")
+    ) {
       language = "fr";
-    } else if (text.toLowerCase().includes("der") || text.toLowerCase().includes("und")) {
+    } else if (
+      text.toLowerCase().includes("der") ||
+      text.toLowerCase().includes("und")
+    ) {
       language = "de";
     }
 

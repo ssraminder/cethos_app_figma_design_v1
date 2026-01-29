@@ -194,9 +194,12 @@ export default function StaffFileUploadForm({
       // Call the process-document edge function
       console.log("🔌 [AI ANALYSIS] Calling process-document edge function");
 
-      const { data, error } = await supabase.functions.invoke("process-document", {
-        body: { quoteId },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        "process-document",
+        {
+          body: { quoteId },
+        },
+      );
 
       if (error) {
         console.error("❌ [AI ANALYSIS] Edge function error:", error);
@@ -213,7 +216,9 @@ export default function StaffFileUploadForm({
       if (data && data.results) {
         for (const result of data.results) {
           if (result.success) {
-            console.log(`✅ [AI ANALYSIS] Completed analysis for ${result.fileName}`);
+            console.log(
+              `✅ [AI ANALYSIS] Completed analysis for ${result.fileName}`,
+            );
             // Find the file by name and mark as completed
             const fileId = files.find((f) => f.name === result.fileName)?.id;
             if (fileId) {
@@ -242,7 +247,6 @@ export default function StaffFileUploadForm({
       setIsAnalyzing(false);
     }
   };
-
 
   const removeFile = (id: string) => {
     const updated = files.filter((f) => f.id !== id);
