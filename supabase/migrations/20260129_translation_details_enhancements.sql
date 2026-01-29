@@ -66,12 +66,12 @@ WHERE native_name IS NULL;
 -- Ensure multiplier column exists and has reasonable defaults by tier
 -- Update multipliers based on tier if they're at default 1.0
 UPDATE languages
-SET price_multiplier = CASE tier
+SET multiplier = CASE tier
   WHEN 1 THEN 1.0
   WHEN 2 THEN 1.25
   WHEN 3 THEN 1.5
 END
-WHERE price_multiplier = 1.0 OR price_multiplier IS NULL;
+WHERE multiplier = 1.0 OR multiplier IS NULL;
 
 -- ============================================================================
 -- 2. ADD language_multiplier_override COLUMN TO quotes TABLE
@@ -103,7 +103,7 @@ DECLARE
   v_language_multiplier DECIMAL(4,2);
 BEGIN
   -- Get language multiplier (use override if set, otherwise use language's default)
-  SELECT COALESCE(q.language_multiplier_override, COALESCE(l.price_multiplier, 1.0))
+  SELECT COALESCE(q.language_multiplier_override, COALESCE(l.multiplier, 1.0))
   INTO v_language_multiplier
   FROM quotes q
   LEFT JOIN languages l ON q.source_language_id = l.id

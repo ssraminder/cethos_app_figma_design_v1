@@ -46,7 +46,7 @@ interface Language {
   id: string;
   code: string;
   name: string;
-  price_multiplier: number;
+  multiplier: number;
 }
 
 interface DocumentType {
@@ -134,7 +134,7 @@ export default function ManualEntryModal({
             ]),
           supabase
             .from("languages")
-            .select("id, code, name, price_multiplier")
+            .select("id, code, name, multiplier")
             .eq("is_active", true)
             .order("sort_order"),
           supabase
