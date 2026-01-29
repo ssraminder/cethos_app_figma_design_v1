@@ -55,7 +55,7 @@ export default function DocumentManagementPanel({
 
         // Upload file
         const uploadResponse = await fetch(
-          `${SUPABASE_URL}/functions/v1/upload-quote-file`,
+          `${SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
           {
             method: "POST",
             headers: {
