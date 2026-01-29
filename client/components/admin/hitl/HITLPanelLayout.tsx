@@ -278,6 +278,9 @@ export default function HITLPanelLayout({
                     0,
                   tax_rate: (reviewData as any).tax_rate || 0,
                   total: (reviewData as any).total || reviewData.total || 0,
+                  document_count: quoteFiles.length || 0,
+                  current_certification_type_id:
+                    (reviewData as any).certification_type_id || undefined,
                 }
               : null
           }
