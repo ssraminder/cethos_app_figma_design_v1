@@ -725,6 +725,93 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
+  const handleUpdateAndNotify = async () => {
+    if (!updateReason.trim()) {
+      alert("Please provide a reason for the update.");
+      return;
+    }
+
+    if (!staffSession?.staffId || !reviewData?.quote_id) {
+      alert("Missing required data. Please refresh the page.");
+      return;
+    }
+
+    setIsUpdating(true);
+
+    try {
+      // Collect document pricing changes if any local edits exist
+      const documents = [];
+      for (const analysisId in localEdits) {
+        const edits = localEdits[analysisId];
+        if (Object.keys(edits).length > 0) {
+          documents.push({
+            analysisId,
+            billablePages: edits.billable_pages,
+            translationCost: edits.line_total,
+            certificationCost: edits.certification_price,
+          });
+        }
+      }
+
+      // Call Edge Function to update quote and notify customer
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/update-quote-and-notify`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: reviewData.quote_id,
+            staffId: staffSession.staffId,
+            updateReason: updateReason.trim(),
+            changes: {
+              documents: documents.length > 0 ? documents : undefined,
+            },
+            sendToCustomer: true,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to update quote");
+      }
+
+      // Show success message with version and pricing info
+      const priceDelta = result.newTotal - result.oldTotal;
+      const deltaText =
+        priceDelta > 0
+          ? `+$${priceDelta.toFixed(2)}`
+          : priceDelta < 0
+            ? `-$${Math.abs(priceDelta).toFixed(2)}`
+            : "No change";
+
+      alert(
+        `✅ Quote updated successfully!\n\n` +
+          `Version: ${result.newVersion}\n` +
+          `Old Total: $${result.oldTotal.toFixed(2)}\n` +
+          `New Total: $${result.newTotal.toFixed(2)}\n` +
+          `Change: ${deltaText}\n\n` +
+          `Customer notified: ${result.emailSent ? "Yes" : "No"}\n` +
+          `Magic Link: ${result.magicLink}`,
+      );
+
+      setShowUpdateModal(false);
+      setUpdateReason("");
+
+      // Optionally refresh data or navigate
+      await fetchAllData();
+    } catch (error) {
+      console.error("Failed to update quote:", error);
+      alert("Failed to update quote: " + (error as Error).message);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   // ============================================
   // EDIT HELPERS
   // ============================================
