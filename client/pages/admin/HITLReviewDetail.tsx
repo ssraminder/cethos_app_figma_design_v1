@@ -15,6 +15,10 @@ import {
   Loader2,
   Brain,
   X,
+  ArrowLeft,
+  DollarSign,
+  Clock,
+  User,
 } from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
