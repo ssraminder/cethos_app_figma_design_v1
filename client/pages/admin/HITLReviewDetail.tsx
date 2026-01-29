@@ -853,6 +853,68 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
+  // Remove analysis for a file (allows re-analysis)
+  const handleRemoveAnalysis = async (
+    analysisId: string,
+    fileId: string,
+    fileName: string,
+  ) => {
+    // Confirmation dialog
+    const confirmed = window.confirm(
+      `Remove analysis for "${fileName}"?\n\nThe file will remain in the upload list and can be re-analyzed.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      // 1. Delete from ai_analysis_results
+      const deleteResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/ai_analysis_results?id=eq.${analysisId}`,
+        {
+          method: "DELETE",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!deleteResponse.ok) {
+        throw new Error("Failed to delete analysis results");
+      }
+
+      // 2. Reset quote_files status to 'pending'
+      const updateResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/quote_files?id=eq.${fileId}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            ai_processing_status: "pending",
+          }),
+        }
+      );
+
+      if (!updateResponse.ok) {
+        throw new Error("Failed to reset file status");
+      }
+
+      alert(`Analysis removed for "${fileName}". The file can now be re-analyzed.`);
+
+      // 3. Refresh data
+      await fetchReviewData();
+    } catch (error) {
+      console.error("Error removing analysis:", error);
+      alert("Failed to remove analysis: " + (error as Error).message);
+    }
+  };
+
   const handleUpdateAndNotify = async () => {
     if (!updateReason.trim()) {
       alert("Please provide a reason for the update.");
@@ -2402,6 +2464,21 @@ const HITLReviewDetail: React.FC = () => {
                           <span className="text-gray-400">
                             {isExpanded ? "▼" : "▶"}
                           </span>
+                          {/* Remove Analysis Button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveAnalysis(
+                                analysis.id,
+                                analysis.quote_file_id,
+                                file.original_filename || analysis.quote_file?.original_filename || "Unknown"
+                              );
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="Remove analysis (file will remain for re-analysis)"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
                       </button>
 
