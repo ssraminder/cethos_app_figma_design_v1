@@ -41,6 +41,16 @@ export default function StaffFileUploadForm({
   >({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  useEffect(() => {
+    console.log("📋 [COMPONENT STATE] StaffFileUploadForm rendered/updated");
+    console.log("  - quoteId:", quoteId);
+    console.log("  - staffId:", staffId);
+    console.log("  - processWithAI:", processWithAI);
+    console.log("  - files count:", files.length);
+    console.log("  - uploadStatus:", uploadStatus);
+    console.log("  - analysisStatus:", analysisStatus);
+  }, [quoteId, staffId, processWithAI, files.length, uploadStatus, analysisStatus]);
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
     addFiles(selectedFiles);
