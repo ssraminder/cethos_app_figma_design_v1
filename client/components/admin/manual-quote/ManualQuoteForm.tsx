@@ -45,6 +45,23 @@ export default function ManualQuoteForm({
   const [processWithAI, setProcessWithAI] = useState(true);
   const [quoteId, setQuoteId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pricing, setPricing] = useState<QuotePricing>({
+    filePrices: [],
+    documentSubtotal: 0,
+    isRush: false,
+    rushFee: 0,
+    deliveryOptionId: undefined,
+    deliveryFee: 0,
+    hasDiscount: false,
+    discountAmount: 0,
+    hasSurcharge: false,
+    surchargeAmount: 0,
+    preTaxTotal: 0,
+    taxRate: 0.05,
+    taxAmount: 0,
+    total: 0,
+  });
+  const [staffNotes, setStaffNotes] = useState("");
 
   const steps = [
     { id: 1, name: "Customer Info", description: "Enter customer details" },
