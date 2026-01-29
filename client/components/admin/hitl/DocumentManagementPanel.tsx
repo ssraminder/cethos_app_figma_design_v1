@@ -19,12 +19,14 @@ interface QuoteFile {
 
 interface DocumentManagementPanelProps {
   quoteId: string;
+  staffId?: string;
   files: QuoteFile[];
   onFilesUploaded: () => void;
 }
 
 export default function DocumentManagementPanel({
   quoteId,
+  staffId,
   files,
   onFilesUploaded,
 }: DocumentManagementPanelProps) {
@@ -51,6 +53,7 @@ export default function DocumentManagementPanel({
         const formData = new FormData();
         formData.append("file", file);
         formData.append("quoteId", quoteId);
+        formData.append("staffId", staffId || "");
         formData.append("processWithAI", processWithAI.toString());
 
         // Upload file

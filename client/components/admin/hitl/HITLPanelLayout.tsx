@@ -179,6 +179,7 @@ export default function HITLPanelLayout({
           <div className="space-y-4">
             <DocumentManagementPanel
               quoteId={reviewData.id}
+              staffId={staffId}
               files={quoteFiles}
               onFilesUploaded={onRefreshFiles}
             />
