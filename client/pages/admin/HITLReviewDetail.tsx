@@ -2056,6 +2056,7 @@ const HITLReviewDetail: React.FC = () => {
               staffName={staffSession?.name}
               loading={loading}
               onSaveInternalNotes={handleSaveInternalNotes}
+              onRefreshFiles={fetchReviewData}
             >
               {/* Center Panel Content: Document Accordion */}
 

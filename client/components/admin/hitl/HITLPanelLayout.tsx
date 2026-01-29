@@ -94,7 +94,7 @@ export default function HITLPanelLayout({
 }: HITLPanelLayoutProps) {
   // Collapsible sections state - default expand important sections
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(["customer", "documents", "analysis"]),
+    new Set(["customer", "documents", "analysis", "certification", "billing", "shipping"]),
   );
 
   const toggleSection = (section: string) => {
