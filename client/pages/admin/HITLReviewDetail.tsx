@@ -3,7 +3,19 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { XCircle, Mail, AlertTriangle, Send, CreditCard, Upload, FileText, CheckCircle, Loader2, Brain, X } from "lucide-react";
+import {
+  XCircle,
+  Mail,
+  AlertTriangle,
+  Send,
+  CreditCard,
+  Upload,
+  FileText,
+  CheckCircle,
+  Loader2,
+  Brain,
+  X,
+} from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
@@ -193,18 +205,22 @@ const HITLReviewDetail: React.FC = () => {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
   const [paymentRemarks, setPaymentRemarks] = useState("");
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [paymentMethods, setPaymentMethods] = useState<Array<{id: string; name: string; code: string}>>([]);
+  const [paymentMethods, setPaymentMethods] = useState<
+    Array<{ id: string; name: string; code: string }>
+  >([]);
 
   // File upload state
   const [showUploadSection, setShowUploadSection] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{
-    id: string;
-    name: string;
-    size: number;
-    file: File;
-    uploadStatus: "pending" | "uploading" | "success" | "failed";
-    uploadedFileId?: string;
-  }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<
+    Array<{
+      id: string;
+      name: string;
+      size: number;
+      file: File;
+      uploadStatus: "pending" | "uploading" | "success" | "failed";
+      uploadedFileId?: string;
+    }>
+  >([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [processWithAI, setProcessWithAI] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -862,10 +878,11 @@ const HITLReviewDetail: React.FC = () => {
       return;
     }
 
-    const confirmMsg = `Are you sure you want to manually mark this quote as PAID?\n\n` +
+    const confirmMsg =
+      `Are you sure you want to manually mark this quote as PAID?\n\n` +
       `Quote: ${reviewData.quote_number}\n` +
       `Total: $${reviewData.total?.toFixed(2) || "0.00"}\n` +
-      `Payment Method: ${paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name}\n\n` +
+      `Payment Method: ${paymentMethods.find((pm) => pm.id === selectedPaymentMethod)?.name}\n\n` +
       `This will:\n` +
       `- Convert the quote to an order\n` +
       `- Mark it as paid\n` +
@@ -939,7 +956,9 @@ const HITLReviewDetail: React.FC = () => {
           quote_number: reviewData.quote_number,
           order_number: orderNumber,
           payment_method_id: selectedPaymentMethod,
-          payment_method: paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name,
+          payment_method: paymentMethods.find(
+            (pm) => pm.id === selectedPaymentMethod,
+          )?.name,
           amount: quote.total,
           remarks: paymentRemarks || null,
         },
@@ -949,8 +968,8 @@ const HITLReviewDetail: React.FC = () => {
         `✅ Payment recorded successfully!\n\n` +
           `Order Number: ${orderNumber}\n` +
           `Amount: $${quote.total?.toFixed(2) || "0.00"}\n` +
-          `Payment Method: ${paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name}\n\n` +
-          `The quote has been converted to an order.`
+          `Payment Method: ${paymentMethods.find((pm) => pm.id === selectedPaymentMethod)?.name}\n\n` +
+          `The quote has been converted to an order.`,
       );
 
       setShowPaymentModal(false);
@@ -1005,7 +1024,7 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
-  const uploadFile = async (fileItem: typeof uploadedFiles[0]) => {
+  const uploadFile = async (fileItem: (typeof uploadedFiles)[0]) => {
     if (!reviewData?.quote_id || !staffSession?.staffId) return;
 
     console.log(`📤 [FILE UPLOAD] Uploading ${fileItem.name}`);
@@ -1013,8 +1032,8 @@ const HITLReviewDetail: React.FC = () => {
     // Update status to uploading
     setUploadedFiles((prev) =>
       prev.map((f) =>
-        f.id === fileItem.id ? { ...f, uploadStatus: "uploading" } : f
-      )
+        f.id === fileItem.id ? { ...f, uploadStatus: "uploading" } : f,
+      ),
     );
     setIsUploadingFiles(true);
 
@@ -1033,7 +1052,7 @@ const HITLReviewDetail: React.FC = () => {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: formData,
-        }
+        },
       );
 
       if (!uploadResponse.ok) {
@@ -1054,15 +1073,15 @@ const HITLReviewDetail: React.FC = () => {
                 uploadStatus: "success",
                 uploadedFileId: result.fileId,
               }
-            : f
-        )
+            : f,
+        ),
       );
     } catch (error) {
       console.error(`❌ [FILE UPLOAD] Failed to upload:`, error);
       setUploadedFiles((prev) =>
         prev.map((f) =>
-          f.id === fileItem.id ? { ...f, uploadStatus: "failed" } : f
-        )
+          f.id === fileItem.id ? { ...f, uploadStatus: "failed" } : f,
+        ),
       );
     } finally {
       setIsUploadingFiles(false);
@@ -1080,7 +1099,7 @@ const HITLReviewDetail: React.FC = () => {
         "process-document",
         {
           body: { quoteId: reviewData.quote_id },
-        }
+        },
       );
 
       if (error) {
@@ -1878,7 +1897,10 @@ const HITLReviewDetail: React.FC = () => {
                         onChange={(e) => setProcessWithAI(e.target.checked)}
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
-                      <label htmlFor="processWithAI" className="flex-1 cursor-pointer">
+                      <label
+                        htmlFor="processWithAI"
+                        className="flex-1 cursor-pointer"
+                      >
                         <span className="text-sm font-medium text-blue-900">
                           Automatically process with AI
                         </span>
@@ -1936,15 +1958,17 @@ const HITLReviewDetail: React.FC = () => {
                           </h4>
 
                           {/* Analyze Button */}
-                          {processWithAI && allFilesUploaded && !isAnalyzing && (
-                            <button
-                              onClick={analyzeUploadedFiles}
-                              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
-                            >
-                              <Brain className="w-4 h-4" />
-                              Analyze Files with AI
-                            </button>
-                          )}
+                          {processWithAI &&
+                            allFilesUploaded &&
+                            !isAnalyzing && (
+                              <button
+                                onClick={analyzeUploadedFiles}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+                              >
+                                <Brain className="w-4 h-4" />
+                                Analyze Files with AI
+                              </button>
+                            )}
 
                           {isAnalyzing && (
                             <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 text-sm font-medium rounded-md">
@@ -2002,7 +2026,9 @@ const HITLReviewDetail: React.FC = () => {
                                   </span>
                                 )}
                                 {file.uploadStatus === "pending" && (
-                                  <span className="text-amber-600">Pending upload...</span>
+                                  <span className="text-amber-600">
+                                    Pending upload...
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -2014,11 +2040,19 @@ const HITLReviewDetail: React.FC = () => {
                     <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
                       <p className="font-medium text-gray-700 mb-1">Note:</p>
                       <ul className="list-disc list-inside space-y-1">
-                        <li>Files will be uploaded immediately when selected</li>
+                        <li>
+                          Files will be uploaded immediately when selected
+                        </li>
                         {processWithAI && (
-                          <li>Click "Analyze Files with AI" to process the uploaded documents</li>
+                          <li>
+                            Click "Analyze Files with AI" to process the
+                            uploaded documents
+                          </li>
                         )}
-                        <li>After analysis, the quote will be refreshed with the new files</li>
+                        <li>
+                          After analysis, the quote will be refreshed with the
+                          new files
+                        </li>
                       </ul>
                     </div>
                   </div>
@@ -3342,7 +3376,10 @@ const HITLReviewDetail: React.FC = () => {
               <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-amber-800">
                 <p className="font-medium mb-1">Important:</p>
-                <p>This will immediately convert the quote to a paid order. Ensure payment has been received before proceeding.</p>
+                <p>
+                  This will immediately convert the quote to a paid order.
+                  Ensure payment has been received before proceeding.
+                </p>
               </div>
             </div>
 
@@ -3356,19 +3393,24 @@ const HITLReviewDetail: React.FC = () => {
                   <div className="flex justify-between">
                     <span className="text-gray-600">Customer:</span>
                     <span className="font-medium">
-                      {reviewData.customer_name || reviewData.quotes?.customer?.full_name}
+                      {reviewData.customer_name ||
+                        reviewData.quotes?.customer?.full_name}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Email:</span>
                     <span className="font-medium">
-                      {reviewData.customer_email || reviewData.quotes?.customer?.email}
+                      {reviewData.customer_email ||
+                        reviewData.quotes?.customer?.email}
                     </span>
                   </div>
                   <div className="flex justify-between border-t pt-1 mt-1">
                     <span className="text-gray-600">Total Amount:</span>
                     <span className="font-bold text-lg text-purple-600">
-                      ${reviewData.total?.toFixed(2) || reviewData.quotes?.total?.toFixed(2) || "0.00"}
+                      $
+                      {reviewData.total?.toFixed(2) ||
+                        reviewData.quotes?.total?.toFixed(2) ||
+                        "0.00"}
                     </span>
                   </div>
                 </div>
