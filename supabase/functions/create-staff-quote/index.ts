@@ -172,13 +172,28 @@ serve(async (req) => {
       customerId = newCustomer.id;
     }
 
-    // 4. Generate quote number
-    const { data: quoteCount } = await supabaseAdmin
-      .from("quotes")
-      .select("id", { count: "exact", head: true });
-
+    // 4. Generate quote number (find highest number for current year)
     const year = new Date().getFullYear();
-    const quoteNumber = `QT-${year}-${String((quoteCount || 0) + 1).padStart(5, "0")}`;
+    const yearStart = `${year}-01-01`;
+    const yearEnd = `${year}-12-31`;
+
+    const { data: existingQuotes } = await supabaseAdmin
+      .from("quotes")
+      .select("quote_number")
+      .gte("created_at", yearStart)
+      .lte("created_at", yearEnd)
+      .like("quote_number", `QT-${year}-%`)
+      .order("quote_number", { ascending: false })
+      .limit(1);
+
+    let nextNumber = 1;
+    if (existingQuotes && existingQuotes.length > 0) {
+      // Extract number from QT-2026-00005 format
+      const lastNumber = existingQuotes[0].quote_number.split("-")[2];
+      nextNumber = parseInt(lastNumber, 10) + 1;
+    }
+
+    const quoteNumber = `QT-${year}-${String(nextNumber).padStart(5, "0")}`;
 
     // 5. Create quote
     const { data: quote, error: quoteCreateError } = await supabaseAdmin
