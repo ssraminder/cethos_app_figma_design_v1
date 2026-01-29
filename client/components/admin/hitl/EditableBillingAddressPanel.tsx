@@ -32,7 +32,15 @@ export default function EditableBillingAddressPanel({
   loading = false,
   onUpdate,
 }: EditableBillingAddressPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  console.log('🏢 EditableBillingAddressPanel rendering:', {
+    quoteId,
+    billingAddress,
+    customerName,
+    customerEmail,
+    loading,
+  });
+
+  const [isExpanded, setIsExpanded] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 

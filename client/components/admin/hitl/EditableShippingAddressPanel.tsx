@@ -42,7 +42,15 @@ export default function EditableShippingAddressPanel({
   loading = false,
   onUpdate,
 }: EditableShippingAddressPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  console.log('🚚 EditableShippingAddressPanel rendering:', {
+    quoteId,
+    shippingAddress,
+    physicalDeliveryOptionId,
+    customerName,
+    loading,
+  });
+
+  const [isExpanded, setIsExpanded] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
