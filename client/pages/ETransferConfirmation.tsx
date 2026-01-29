@@ -53,7 +53,7 @@ export default function ETransferConfirmation() {
             email,
             full_name
           )
-        `
+        `,
         )
         .eq("id", quoteId)
         .single();
@@ -152,7 +152,8 @@ export default function ETransferConfirmation() {
     } catch (err: any) {
       console.error("Error confirming payment:", err);
       setError(
-        err.message || "Failed to confirm payment. Please try again or contact support."
+        err.message ||
+          "Failed to confirm payment. Please try again or contact support.",
       );
       toast.error("Failed to confirm payment");
     } finally {

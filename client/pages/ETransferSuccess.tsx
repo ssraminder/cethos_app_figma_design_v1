@@ -136,9 +136,7 @@ export default function ETransferSuccess() {
             <span className="font-semibold">Note:</span> If you haven't sent the
             e-Transfer yet, please do so as soon as possible to avoid delays in
             processing your order. Send to{" "}
-            <span className="font-mono font-semibold">
-              payments@cethos.com
-            </span>{" "}
+            <span className="font-mono font-semibold">payments@cethos.com</span>{" "}
             and include your quote number ({quoteNumber}) in the message.
           </p>
         </div>
