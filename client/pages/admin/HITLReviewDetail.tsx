@@ -21,6 +21,7 @@ import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
 import { HITLPanelLayout } from "../../components/admin/hitl";
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
+import HITLDocumentCard from "./HITLDocumentCard";
 
 interface PageData {
   id: string;
