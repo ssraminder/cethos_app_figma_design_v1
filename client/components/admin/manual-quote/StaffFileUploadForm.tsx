@@ -233,6 +233,21 @@ export default function StaffFileUploadForm({
     files.length > 0 &&
     files.every((file) => uploadStatus[file.id] === "success");
 
+  const allFilesAnalyzed =
+    files.length > 0 &&
+    files.every((file) => analysisStatus[file.id] === "completed");
+
+  const hasFilesToAnalyze =
+    processWithAI &&
+    files.length > 0 &&
+    files.some(
+      (file) =>
+        uploadStatus[file.id] === "success" &&
+        (analysisStatus[file.id] === "idle" ||
+          analysisStatus[file.id] === "failed" ||
+          analysisStatus[file.id] === "timeout")
+    );
+
   return (
     <div className="space-y-6">
       {/* AI Processing Toggle */}
