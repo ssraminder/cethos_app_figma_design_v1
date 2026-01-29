@@ -8,6 +8,7 @@ import {
   Loader2,
   Brain,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 interface FileData {
   id: string;
