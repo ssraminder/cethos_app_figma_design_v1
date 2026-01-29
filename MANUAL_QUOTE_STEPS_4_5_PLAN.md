@@ -3,6 +3,7 @@
 ## Step 4: Per-File Pricing & Quote-Level Adjustments
 
 ### Overview
+
 Calculate pricing for each uploaded file individually, then aggregate to quote-level totals with adjustments.
 
 ---
@@ -12,11 +13,13 @@ Calculate pricing for each uploaded file individually, then aggregate to quote-l
 #### For Each File, Display:
 
 **1. File Header (Read-only Display)**
+
 - **File Name**: `file.name`
 - **Source**: From `FileWithAnalysis.name`
 - **Actions**: None (display only)
 
 **2. Detected Language Override**
+
 - **Field**: Dropdown (editable)
 - **Source**: Initially from `file.detectedLanguageCode` (AI analysis)
 - **Options**: Query `languages` table
@@ -31,6 +34,7 @@ Calculate pricing for each uploaded file individually, then aggregate to quote-l
 - **Affects**: `languageMultiplier` in pricing calculation
 
 **3. Document Type Override**
+
 - **Field**: Dropdown (editable)
 - **Source**: Initially from `file.detectedDocumentType` (AI analysis)
 - **Options**: Query `document_types` table
@@ -45,6 +49,7 @@ Calculate pricing for each uploaded file individually, then aggregate to quote-l
 - **Actions**: Updates `file.documentTypeId`
 
 **4. Page Count Override**
+
 - **Field**: Number input (editable)
 - **Source**: Initially from `file.pageCount` (AI analysis)
 - **Min**: 1
@@ -54,6 +59,7 @@ Calculate pricing for each uploaded file individually, then aggregate to quote-l
 - **Affects**: Direct input to pricing calculation
 
 **5. Billable Pages**
+
 - **Field**: Number input with decimal (editable)
 - **Source**: Defaults to same as Page Count
 - **Min**: 0.5
@@ -64,6 +70,7 @@ Calculate pricing for each uploaded file individually, then aggregate to quote-l
 - **Affects**: Direct input to pricing calculation
 
 **6. Complexity Override**
+
 - **Field**: Dropdown (editable)
 - **Source**: Initially from `file.complexity` (AI analysis)
 - **Options**:
@@ -83,6 +90,7 @@ Calculate pricing for each uploaded file individually, then aggregate to quote-l
 - **Affects**: `complexityMultiplier` in pricing calculation
 
 **7. Certification Type**
+
 - **Field**: Dropdown (editable)
 - **Source**: Query `certification_types` table
   ```sql
@@ -91,7 +99,7 @@ Calculate pricing for each uploaded file individually, then aggregate to quote-l
   WHERE is_active = true
   ORDER BY sort_order, name
   ```
-- **Options**: 
+- **Options**:
   - None ($0)
   - Standard Certification ($25)
   - Notarized ($45)
@@ -118,10 +126,10 @@ const complexityMultiplier = {
 }[file.complexity];
 
 // Calculate translation cost
-file.translationCost = 
-  baseRate × 
-  file.billablePages × 
-  languageMultiplier × 
+file.translationCost =
+  baseRate ×
+  file.billablePages ×
+  languageMultiplier ×
   complexityMultiplier;
 
 // Get certification cost
@@ -132,6 +140,7 @@ file.lineTotal = file.translationCost + file.certificationCost;
 ```
 
 **Display Format**:
+
 ```
 ┌─────────────────────────────────────────┐
 │ Translation Calculation                 │
@@ -156,15 +165,15 @@ file.lineTotal = file.translationCost + file.certificationCost;
 #### Fields:
 
 **1. Document Subtotal (Auto-calculated, Read-only)**
+
 - **Calculation**: Sum of all `file.lineTotal`
   ```typescript
-  const documentSubtotal = files.reduce((sum, file) => 
-    sum + file.lineTotal, 0
-  );
+  const documentSubtotal = files.reduce((sum, file) => sum + file.lineTotal, 0);
   ```
 - **Display**: `$XXX.XX`
 
 **2. Rush Service Toggle**
+
 - **Field**: Checkbox
 - **Source**: User input
 - **Default**: `false`
@@ -173,25 +182,27 @@ file.lineTotal = file.translationCost + file.certificationCost;
 - **Affects**: Adds `rushFee` to total
 
 **3. Rush Fee (Auto-calculated, Read-only)**
-- **Calculation**: 
+
+- **Calculation**:
   ```typescript
   const rushFee = isRush ? documentSubtotal × 0.30 : 0;
   ```
 - **Source**: `delivery_options` table where `code = 'rush'`
   ```sql
-  SELECT multiplier FROM delivery_options 
+  SELECT multiplier FROM delivery_options
   WHERE code = 'rush' AND is_active = true
   ```
 - **Display**: Only shown if rush is selected
 - **Format**: `+$XXX.XX` (in amber/warning color)
 
 **4. Physical Delivery Option**
+
 - **Field**: Dropdown
 - **Source**: Query `delivery_options` table
   ```sql
   SELECT id, code, name, price, estimated_days
   FROM delivery_options
-  WHERE category = 'delivery' 
+  WHERE category = 'delivery'
     AND is_active = true
   ORDER BY sort_order
   ```
@@ -204,6 +215,7 @@ file.lineTotal = file.translationCost + file.certificationCost;
 - **Affects**: `deliveryFee`
 
 **5. Delivery Fee (Auto-calculated, Read-only)**
+
 - **Calculation**: Selected delivery option's price
   ```typescript
   const deliveryFee = selectedDeliveryOption?.price || 0;
@@ -211,24 +223,26 @@ file.lineTotal = file.translationCost + file.certificationCost;
 - **Display**: `$XXX.XX`
 
 **6. Discount Section (Optional)**
+
 - **Toggle**: "Apply Discount" checkbox
 - **When Enabled**:
-  
+
   **Discount Type**:
   - Radio: "Fixed Amount" or "Percentage"
-  
+
   **Discount Value**:
   - Number input
   - If percentage: 0-100% range
   - If fixed: $0 - $9999.99
-  
+
   **Discount Reason** (Required when discount > 0):
   - Textarea
   - Max 500 characters
   - Placeholder: "Reason for discount (e.g., loyal customer, promotional offer)"
   - Validation: Required if discount applied
-  
+
   **Calculated Discount Amount**:
+
   ```typescript
   const discountAmount = discountType === 'percentage'
     ? documentSubtotal × (discountValue / 100)
@@ -236,24 +250,26 @@ file.lineTotal = file.translationCost + file.certificationCost;
   ```
 
 **7. Surcharge Section (Optional)**
+
 - **Toggle**: "Apply Surcharge" checkbox
 - **When Enabled**:
-  
+
   **Surcharge Type**:
   - Radio: "Fixed Amount" or "Percentage"
-  
+
   **Surcharge Value**:
   - Number input
   - If percentage: 0-100% range
   - If fixed: $0 - $9999.99
-  
+
   **Surcharge Reason** (Required when surcharge > 0):
   - Textarea
   - Max 500 characters
   - Placeholder: "Reason for surcharge (e.g., difficult content, tight deadline)"
   - Validation: Required if surcharge applied
-  
+
   **Calculated Surcharge Amount**:
+
   ```typescript
   const surchargeAmount = surchargeType === 'percentage'
     ? documentSubtotal × (surchargeValue / 100)
@@ -261,24 +277,22 @@ file.lineTotal = file.translationCost + file.certificationCost;
   ```
 
 **8. Pre-tax Total (Auto-calculated, Read-only)**
+
 - **Calculation**:
   ```typescript
-  const preTaxTotal = 
-    documentSubtotal + 
-    rushFee + 
-    deliveryFee + 
-    surchargeAmount - 
-    discountAmount;
+  const preTaxTotal =
+    documentSubtotal + rushFee + deliveryFee + surchargeAmount - discountAmount;
   ```
 - **Display**: `$XXX.XX`
 
 **9. Tax Rate (Auto-detected or manual)**
+
 - **Field**: Read-only display with option to override
 - **Source**: Query `tax_rates` table based on service province
   ```sql
   SELECT rate, tax_name
   FROM tax_rates
-  WHERE region_code = ? 
+  WHERE region_code = ?
     AND is_active = true
     AND (effective_from IS NULL OR effective_from <= NOW())
     AND (effective_to IS NULL OR effective_to >= NOW())
@@ -290,6 +304,7 @@ file.lineTotal = file.translationCost + file.certificationCost;
 - **Override**: Allow manual selection if needed
 
 **10. Tax Amount (Auto-calculated, Read-only)**
+
 - **Calculation**:
   ```typescript
   const taxAmount = preTaxTotal × taxRate;
@@ -297,6 +312,7 @@ file.lineTotal = file.translationCost + file.certificationCost;
 - **Display**: `$XXX.XX`
 
 **11. Final Total (Auto-calculated, Read-only)**
+
 - **Calculation**:
   ```typescript
   const total = preTaxTotal + taxAmount;
@@ -309,16 +325,16 @@ file.lineTotal = file.translationCost + file.certificationCost;
 
 ```typescript
 interface FilePrice {
-  fileId: string;  // Reference to FileWithAnalysis.id
-  
+  fileId: string; // Reference to FileWithAnalysis.id
+
   // Editable fields
   languageId: string;
   documentTypeId?: string;
   pageCount: number;
   billablePages: number;
-  complexity: 'low' | 'medium' | 'high';
+  complexity: "low" | "medium" | "high";
   certificationTypeId: string;
-  
+
   // Calculated fields
   baseRate: number;
   languageMultiplier: number;
@@ -331,27 +347,27 @@ interface FilePrice {
 interface QuotePricing {
   // Per-file pricing
   filePrices: FilePrice[];
-  
+
   // Quote-level fields
   documentSubtotal: number;
   isRush: boolean;
   rushFee: number;
   deliveryOptionId: string;
   deliveryFee: number;
-  
+
   // Adjustments
   hasDiscount: boolean;
-  discountType?: 'fixed' | 'percentage';
+  discountType?: "fixed" | "percentage";
   discountValue?: number;
   discountAmount: number;
   discountReason?: string;
-  
+
   hasSurcharge: boolean;
-  surchargeType?: 'fixed' | 'percentage';
+  surchargeType?: "fixed" | "percentage";
   surchargeValue?: number;
   surchargeAmount: number;
   surchargeReason?: string;
-  
+
   // Totals
   preTaxTotal: number;
   taxRate: number;
@@ -365,11 +381,13 @@ interface QuotePricing {
 ### Actions & Edge Function Calls:
 
 **1. Auto-Calculate on Any Change**
+
 - **Trigger**: Any field update
 - **Action**: Recalculate all totals in real-time
 - **No API call**: Pure client-side calculation
 
 **2. Optional: Server-Side Validation**
+
 - **Edge Function**: `calculate-manual-quote-pricing`
 - **When**: Before proceeding to Step 5
 - **Purpose**: Verify calculations match server-side logic
@@ -391,6 +409,7 @@ interface QuotePricing {
 ## Step 5: Review & Confirm
 
 ### Overview
+
 Display all quote information for final review before creation.
 
 ---
@@ -400,6 +419,7 @@ Display all quote information for final review before creation.
 **Data Source**: From Step 1 (`CustomerData`)
 
 **Fields (Read-only)**:
+
 - Full Name: `customer.fullName`
 - Email: `customer.email`
 - Phone: `customer.phone`
@@ -407,6 +427,7 @@ Display all quote information for final review before creation.
 - Company Name: `customer.companyName` (if business)
 
 **Actions**:
+
 - "Edit" button → Go back to Step 1
 
 ---
@@ -416,6 +437,7 @@ Display all quote information for final review before creation.
 **Data Source**: From Step 2 (`QuoteData`)
 
 **Fields (Read-only)**:
+
 - Source Language: Query language name from `languages` table
   ```typescript
   const sourceLang = await getLanguageById(quote.sourceLanguageId);
@@ -440,6 +462,7 @@ Display all quote information for final review before creation.
 - Special Instructions: `quote.specialInstructions` (if provided)
 
 **Actions**:
+
 - "Edit" button → Go back to Step 2
 
 ---
@@ -451,6 +474,7 @@ Display all quote information for final review before creation.
 **For Each File, Display**:
 
 **File Card**:
+
 ```
 ┌──────────────────────────────────────────────┐
 │ 📄 Birth Certificate.pdf                    │
@@ -464,6 +488,7 @@ Display all quote information for final review before creation.
 ```
 
 **Data Displayed**:
+
 - File name: `file.name`
 - Detected language: `file.detectedLanguage`
 - Document type: `file.detectedDocumentType`
@@ -472,10 +497,12 @@ Display all quote information for final review before creation.
 - Analysis status: `file.analysisStatus`
 
 **If No Files**:
+
 - Display: "No files uploaded"
 - Note: "Manual entry will be required"
 
 **Actions**:
+
 - "Edit" button → Go back to Step 3
 - "Re-analyze" button (if AI failed)
 
@@ -528,6 +555,7 @@ Display all quote information for final review before creation.
 ```
 
 **Actions**:
+
 - "Edit Pricing" button → Go back to Step 4
 
 ---
@@ -535,6 +563,7 @@ Display all quote information for final review before creation.
 ### Section 5: Internal Notes
 
 **Field**: Textarea (editable)
+
 - **Name**: `staffNotes`
 - **Placeholder**: "Internal notes about this quote (not visible to customer)..."
 - **Max Length**: 2000 characters
@@ -546,12 +575,14 @@ Display all quote information for final review before creation.
 ### Section 6: Quote Creation Options
 
 **Entry Point** (Auto-selected, hidden):
+
 - Field: Dropdown
 - Options: staff_manual, staff_phone, staff_walkin, staff_email
 - Default: staff_manual
 - Storage: `quotes.entry_point`
 
 **Notification Preference**:
+
 - Field: Radio buttons
 - Options:
   - "Send quote immediately" → Email quote to customer
@@ -566,6 +597,7 @@ Display all quote information for final review before creation.
 **1. "Create Quote" (Primary Action)**
 
 **Triggers**:
+
 1. Validate all data
 2. Create/update customer record
 3. Update quote record with all data
@@ -578,12 +610,13 @@ Display all quote information for final review before creation.
 **Edge Function**: `create-staff-quote` or update existing quote
 
 **API Call**:
+
 ```typescript
-const response = await fetch('/functions/v1/create-staff-quote', {
-  method: 'POST',
+const response = await fetch("/functions/v1/create-staff-quote", {
+  method: "POST",
   body: JSON.stringify({
     staffId: session.staffId,
-    
+
     // Customer
     customerData: {
       id: customer.id,
@@ -591,21 +624,21 @@ const response = await fetch('/functions/v1/create-staff-quote', {
       fullName: customer.fullName,
       phone: customer.phone,
       customerType: customer.customerType,
-      companyName: customer.companyName
+      companyName: customer.companyName,
     },
-    
+
     // Quote details
     quoteData: {
       sourceLanguageId: quote.sourceLanguageId,
       targetLanguageId: quote.targetLanguageId,
       intendedUseId: quote.intendedUseId,
       countryOfIssue: quote.countryOfIssue,
-      specialInstructions: quote.specialInstructions
+      specialInstructions: quote.specialInstructions,
     },
-    
+
     // Files (already uploaded)
-    fileIds: files.map(f => f.uploadedFileId),
-    
+    fileIds: files.map((f) => f.uploadedFileId),
+
     // Pricing
     pricing: {
       filePrices: pricing.filePrices,
@@ -621,18 +654,19 @@ const response = await fetch('/functions/v1/create-staff-quote', {
       preTaxTotal: pricing.preTaxTotal,
       taxRate: pricing.taxRate,
       taxAmount: pricing.taxAmount,
-      total: pricing.total
+      total: pricing.total,
     },
-    
+
     // Meta
-    entryPoint: 'staff_manual',
+    entryPoint: "staff_manual",
     staffNotes: staffNotes,
-    sendNotification: notificationPreference === 'send'
-  })
+    sendNotification: notificationPreference === "send",
+  }),
 });
 ```
 
 **On Success**:
+
 ```typescript
 // Response
 {
@@ -647,6 +681,7 @@ navigate(`/admin/quotes/${quoteId}`);
 ```
 
 **On Error**:
+
 ```typescript
 // Response
 {
@@ -660,11 +695,13 @@ toast.error("Failed to create quote");
 ```
 
 **2. "Save as Draft" (Secondary Action)**
+
 - Same as "Create Quote" but sets status to 'draft'
 - No email sent
 - Can be edited later
 
 **3. "Cancel" (Tertiary Action)**
+
 - Confirm dialog: "Are you sure? All progress will be lost."
 - Navigate to `/admin/quotes`
 
@@ -673,9 +710,10 @@ toast.error("Failed to create quote");
 ### Database Updates on Final Submission:
 
 **1. `customers` table** (if new customer):
+
 ```sql
 INSERT INTO customers (
-  email, full_name, phone, 
+  email, full_name, phone,
   customer_type, company_name,
   created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())
@@ -683,6 +721,7 @@ RETURNING id
 ```
 
 **2. `quotes` table** (update existing draft):
+
 ```sql
 UPDATE quotes SET
   customer_id = ?,
@@ -691,7 +730,7 @@ UPDATE quotes SET
   intended_use_id = ?,
   country_of_issue = ?,
   special_instructions = ?,
-  
+
   subtotal = ?,
   certification_total = ?,
   rush_fee = ?,
@@ -699,22 +738,23 @@ UPDATE quotes SET
   tax_rate = ?,
   tax_amount = ?,
   total = ?,
-  
+
   is_rush = ?,
   delivery_option_id = ?,
-  
+
   status = 'quote_ready',
   entry_point = ?,
   manual_quote_notes = ?,
-  
+
   created_by_staff_id = ?,
   is_manual_quote = true,
-  
+
   updated_at = NOW()
 WHERE id = ?
 ```
 
 **3. `ai_analysis_results` table** (per file):
+
 ```sql
 UPDATE ai_analysis_results SET
   detected_language = ?,
@@ -723,18 +763,19 @@ UPDATE ai_analysis_results SET
   billable_pages = ?,
   assessed_complexity = ?,
   complexity_multiplier = ?,
-  
+
   base_rate = ?,
   line_total = ?,
-  
+
   certification_type_id = ?,
   certification_price = ?,
-  
+
   updated_at = NOW()
 WHERE quote_file_id = ?
 ```
 
 **4. `quote_adjustments` table** (if discount/surcharge):
+
 ```sql
 INSERT INTO quote_adjustments (
   quote_id,
@@ -749,6 +790,7 @@ INSERT INTO quote_adjustments (
 ```
 
 **5. `staff_activity_log` table**:
+
 ```sql
 INSERT INTO staff_activity_log (
   staff_id,
@@ -772,6 +814,7 @@ INSERT INTO staff_activity_log (
 ## Summary
 
 ### Step 4 Key Features:
+
 - ✅ Per-file editable pricing
 - ✅ Real-time calculation updates
 - ✅ Quote-level adjustments (rush, delivery, discount, surcharge)
@@ -779,6 +822,7 @@ INSERT INTO staff_activity_log (
 - ✅ Comprehensive price breakdown
 
 ### Step 5 Key Features:
+
 - ✅ Complete quote review
 - ✅ Edit buttons for each section
 - ✅ Detailed pricing display
@@ -788,6 +832,7 @@ INSERT INTO staff_activity_log (
 - ✅ Optional email notification
 
 ### Database Tables Used:
+
 1. customers
 2. quotes
 3. quote_files
