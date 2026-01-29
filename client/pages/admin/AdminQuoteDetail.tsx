@@ -747,6 +747,17 @@ export default function AdminQuoteDetail() {
               </Link>
             )}
 
+            {/* Send Quote Again Button - show for quote_ready status */}
+            {quote.status === "quote_ready" && (
+              <button
+                onClick={() => setShowResendModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Send className="w-4 h-4" />
+                Send Quote Again
+              </button>
+            )}
+
             {/* Delete Quote Button */}
             {!orderId && !["paid", "converted"].includes(quote.status) ? (
               <button
