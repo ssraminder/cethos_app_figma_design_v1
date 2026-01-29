@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { XCircle, Mail, AlertTriangle, Send } from "lucide-react";
+import { XCircle, Mail, AlertTriangle, Send, CreditCard } from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
@@ -186,6 +186,13 @@ const HITLReviewDetail: React.FC = () => {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateReason, setUpdateReason] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Manual Payment state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
+  const [paymentRemarks, setPaymentRemarks] = useState("");
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<Array<{id: string; name: string; code: string}>>([]);
 
   // Page splitting/combining
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
