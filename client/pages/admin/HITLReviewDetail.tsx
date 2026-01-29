@@ -1202,6 +1202,110 @@ const HITLReviewDetail: React.FC = () => {
     uploadedFiles.every((f) => f.uploadStatus === "success");
 
   // ============================================
+  // ADDRESS AND TURNAROUND HANDLING
+  // ============================================
+
+  const handleUpdateBillingAddress = async (address: any) => {
+    if (!reviewData?.quote_id) return;
+
+    try {
+      const { error } = await supabase
+        .from("quotes")
+        .update({ billing_address: address })
+        .eq("id", reviewData.quote_id);
+
+      if (error) throw error;
+
+      setBillingAddress(address);
+      alert("✅ Billing address updated successfully!");
+    } catch (error) {
+      console.error("Failed to update billing address:", error);
+      alert("Failed to update billing address: " + (error as Error).message);
+    }
+  };
+
+  const handleUpdateShippingAddress = async (address: any) => {
+    if (!reviewData?.quote_id) return;
+
+    try {
+      const { error } = await supabase
+        .from("quotes")
+        .update({ shipping_address: address })
+        .eq("id", reviewData.quote_id);
+
+      if (error) throw error;
+
+      setShippingAddress(address);
+      alert("✅ Shipping address updated successfully!");
+    } catch (error) {
+      console.error("Failed to update shipping address:", error);
+      alert("Failed to update shipping address: " + (error as Error).message);
+    }
+  };
+
+  const handleUpdateTurnaroundType = async (newType: 'standard' | 'rush' | 'same_day') => {
+    if (!reviewData?.quote_id || !reviewData?.quotes) return;
+
+    try {
+      // Calculate new rush fee
+      const subtotal = reviewData.quotes.subtotal || 0;
+      let newRushFee = 0;
+      let multiplier = 1.0;
+
+      if (newType === 'rush') {
+        multiplier = rushMultiplierValue;
+        newRushFee = subtotal * (multiplier - 1);
+      } else if (newType === 'same_day') {
+        multiplier = sameDayMultiplierValue;
+        newRushFee = subtotal * (multiplier - 1);
+      }
+
+      // Calculate new total
+      const certificationTotal = reviewData.quotes.certification_total || 0;
+      const deliveryFee = reviewData.quotes.delivery_fee || 0;
+      const newSubtotalWithRush = subtotal + newRushFee;
+      const taxRate = reviewData.quotes.tax_rate || 0;
+      const taxAmount = (newSubtotalWithRush + certificationTotal + deliveryFee) * taxRate;
+      const newTotal = newSubtotalWithRush + certificationTotal + deliveryFee + taxAmount;
+
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          turnaround_type: newType,
+          rush_fee: newRushFee,
+          is_rush: newType !== 'standard',
+          tax_amount: taxAmount,
+          total: newTotal,
+        })
+        .eq("id", reviewData.quote_id);
+
+      if (error) throw error;
+
+      setTurnaroundType(newType);
+      setRushFee(newRushFee);
+
+      // Update review data with new totals
+      setReviewData({
+        ...reviewData,
+        quotes: {
+          ...reviewData.quotes,
+          turnaround_type: newType,
+          rush_fee: newRushFee,
+          is_rush: newType !== 'standard',
+          tax_amount: taxAmount,
+          total: newTotal,
+        }
+      });
+
+      alert(`✅ Turnaround type updated to ${newType}!\nRush Fee: $${newRushFee.toFixed(2)}\nNew Total: $${newTotal.toFixed(2)}`);
+      await fetchAllData(); // Refresh to get updated pricing
+    } catch (error) {
+      console.error("Failed to update turnaround type:", error);
+      alert("Failed to update turnaround type: " + (error as Error).message);
+    }
+  };
+
+  // ============================================
   // EDIT HELPERS
   // ============================================
 
