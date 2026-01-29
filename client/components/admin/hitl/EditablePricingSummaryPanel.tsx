@@ -58,6 +58,11 @@ export default function EditablePricingSummaryPanel({
   const [adjustments, setAdjustments] = useState<QuoteAdjustment[]>([]);
   const [showAddAdjustment, setShowAddAdjustment] = useState(false);
 
+  // Certification state
+  const [certificationTypes, setCertificationTypes] = useState<CertificationType[]>([]);
+  const [selectedCertificationId, setSelectedCertificationId] = useState<string>("");
+  const [isSavingCertification, setIsSavingCertification] = useState(false);
+
   // New adjustment form
   const [newAdjustmentType, setNewAdjustmentType] = useState<
     "discount" | "surcharge"
@@ -74,6 +79,16 @@ export default function EditablePricingSummaryPanel({
       fetchAdjustments();
     }
   }, [pricingData?.quote_id]);
+
+  useEffect(() => {
+    fetchCertificationTypes();
+  }, []);
+
+  useEffect(() => {
+    if (pricingData?.current_certification_type_id) {
+      setSelectedCertificationId(pricingData.current_certification_type_id);
+    }
+  }, [pricingData?.current_certification_type_id]);
 
   const fetchAdjustments = async () => {
     if (!pricingData?.quote_id) return;
