@@ -158,8 +158,7 @@ export default function AnalyzeDocumentModal({
           quoteId: quoteId,
           analysisType: analysisType,
           ocrProvider: selectedOcrProvider,
-          aiModel:
-            analysisType === "ocr_and_ai" ? selectedAiModel : undefined,
+          aiModel: analysisType === "ocr_and_ai" ? selectedAiModel : undefined,
         },
       });
 
