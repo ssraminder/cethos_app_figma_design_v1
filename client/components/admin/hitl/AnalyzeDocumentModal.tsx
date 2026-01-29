@@ -60,7 +60,7 @@ interface AnalyzeDocumentModalProps {
   onClose: () => void;
   file: QuoteFile;
   quoteId: string;
-  onAnalysisComplete?: () => void;
+  onAnalysisComplete?: () => void | Promise<void>;
 }
 
 const AI_MODELS = [
@@ -244,19 +244,34 @@ export default function AnalyzeDocumentModal({
     }
 
     try {
-      // Update the quote with the new analysis results
-      // The ai_analysis_results table should already be updated by the edge function
-      // We just need to recalculate the quote totals
+      console.log("🔵 [AnalyzeDocumentModal] Apply to Quote clicked");
+      console.log("🔵 [AnalyzeDocumentModal] File ID:", file.id);
+      console.log("🔵 [AnalyzeDocumentModal] Quote ID:", quoteId);
+
+      // The ai_analysis_results table is already updated by the edge function
+      // We need to signal the parent to refresh its data
 
       toast.success("Analysis results applied to quote!");
 
+      // CRITICAL: Call the callback to refresh parent data BEFORE closing
       if (onAnalysisComplete) {
-        onAnalysisComplete();
+        console.log(
+          "🔵 [AnalyzeDocumentModal] Calling onAnalysisComplete callback...",
+        );
+        await onAnalysisComplete();
+        console.log(
+          "🔵 [AnalyzeDocumentModal] onAnalysisComplete callback completed",
+        );
+      } else {
+        console.warn(
+          "⚠️ [AnalyzeDocumentModal] No onAnalysisComplete callback provided!",
+        );
       }
 
+      // Close the modal AFTER the callback completes
       onClose();
     } catch (error) {
-      console.error("Error applying results:", error);
+      console.error("❌ [AnalyzeDocumentModal] Error applying analysis:", error);
       toast.error("Failed to apply results to quote");
     }
   };

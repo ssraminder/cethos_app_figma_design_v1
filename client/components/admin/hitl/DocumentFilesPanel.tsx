@@ -17,7 +17,7 @@ interface DocumentFilesPanelProps {
   files: QuoteFile[];
   quoteId: string;
   loading?: boolean;
-  onRefresh?: () => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
 export default function DocumentFilesPanel({
@@ -193,9 +193,23 @@ export default function DocumentFilesPanel({
           onClose={() => setAnalyzeFile(null)}
           file={analyzeFile}
           quoteId={quoteId}
-          onAnalysisComplete={() => {
+          onAnalysisComplete={async () => {
+            console.log(
+              "🟢 [DocumentFilesPanel] onAnalysisComplete callback triggered!",
+            );
+            console.log(
+              "🟢 [DocumentFilesPanel] Refreshing data before closing modal...",
+            );
+
+            // CRITICAL: Refresh data FIRST, then close modal
+            if (onRefresh) {
+              console.log("🟢 [DocumentFilesPanel] Calling onRefresh...");
+              await onRefresh();
+              console.log("🟢 [DocumentFilesPanel] onRefresh completed!");
+            }
+
+            // Close modal state after refresh completes
             setAnalyzeFile(null);
-            if (onRefresh) onRefresh();
           }}
         />
       )}
