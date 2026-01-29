@@ -64,8 +64,16 @@ interface AnalyzeDocumentModalProps {
 }
 
 const AI_MODELS = [
-  { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4", provider: "anthropic" },
-  { value: "claude-opus-4-20250514", label: "Claude Opus 4", provider: "anthropic" },
+  {
+    value: "claude-sonnet-4-20250514",
+    label: "Claude Sonnet 4",
+    provider: "anthropic",
+  },
+  {
+    value: "claude-opus-4-20250514",
+    label: "Claude Opus 4",
+    provider: "anthropic",
+  },
   { value: "gpt-4o", label: "GPT-4o", provider: "openai" },
   { value: "gemini-pro", label: "Gemini Pro", provider: "google" },
 ];
@@ -78,10 +86,14 @@ export default function AnalyzeDocumentModal({
   onAnalysisComplete,
 }: AnalyzeDocumentModalProps) {
   // Configuration state
-  const [analysisType, setAnalysisType] = useState<"ocr_only" | "ocr_and_ai">("ocr_and_ai");
+  const [analysisType, setAnalysisType] = useState<"ocr_only" | "ocr_and_ai">(
+    "ocr_and_ai",
+  );
   const [ocrProviders, setOcrProviders] = useState<OCRProvider[]>([]);
   const [selectedOcrProvider, setSelectedOcrProvider] = useState<string>("");
-  const [selectedAiModel, setSelectedAiModel] = useState<string>("claude-sonnet-4-20250514");
+  const [selectedAiModel, setSelectedAiModel] = useState<string>(
+    "claude-sonnet-4-20250514",
+  );
 
   // Processing state
   const [isProcessing, setIsProcessing] = useState(false);
@@ -125,16 +137,20 @@ export default function AnalyzeDocumentModal({
     try {
       // Call the analyze-document edge function
       setProcessingStep("Running OCR analysis...");
-      
-      const { data, error } = await supabase.functions.invoke("analyze-document", {
-        body: {
-          fileId: file.id,
-          quoteId: quoteId,
-          analysisType: analysisType,
-          ocrProvider: selectedOcrProvider,
-          aiModel: analysisType === "ocr_and_ai" ? selectedAiModel : undefined,
+
+      const { data, error } = await supabase.functions.invoke(
+        "analyze-document",
+        {
+          body: {
+            fileId: file.id,
+            quoteId: quoteId,
+            analysisType: analysisType,
+            ocrProvider: selectedOcrProvider,
+            aiModel:
+              analysisType === "ocr_and_ai" ? selectedAiModel : undefined,
+          },
         },
-      });
+      );
 
       if (error) throw error;
 
@@ -153,7 +169,9 @@ export default function AnalyzeDocumentModal({
       }
 
       setShowResults(true);
-      toast.success(`Analysis completed! Processed ${data.ocrResult?.total_pages || 0} pages`);
+      toast.success(
+        `Analysis completed! Processed ${data.ocrResult?.total_pages || 0} pages`,
+      );
     } catch (error) {
       console.error("Analysis error:", error);
       toast.error("Analysis failed: " + (error as Error).message);
@@ -173,13 +191,13 @@ export default function AnalyzeDocumentModal({
       // Update the quote with the new analysis results
       // The ai_analysis_results table should already be updated by the edge function
       // We just need to recalculate the quote totals
-      
+
       toast.success("Analysis results applied to quote!");
-      
+
       if (onAnalysisComplete) {
         onAnalysisComplete();
       }
-      
+
       onClose();
     } catch (error) {
       console.error("Error applying results:", error);
@@ -224,7 +242,8 @@ export default function AnalyzeDocumentModal({
             <div className="flex-1">
               <div className="font-medium text-gray-900">OCR + AI Analysis</div>
               <div className="text-sm text-gray-600 mt-1">
-                Extract text + detect language, document type, and complexity using AI.
+                Extract text + detect language, document type, and complexity
+                using AI.
               </div>
             </div>
           </label>
@@ -249,12 +268,12 @@ export default function AnalyzeDocumentModal({
               {provider.provider === "google_document_ai"
                 ? "Google Document AI"
                 : provider.provider === "aws_textract"
-                ? "AWS Textract"
-                : provider.provider === "azure_form_recognizer"
-                ? "Azure Form Recognizer"
-                : provider.provider === "mistral"
-                ? "Mistral (OCR + AI)"
-                : provider.provider}
+                  ? "AWS Textract"
+                  : provider.provider === "azure_form_recognizer"
+                    ? "Azure Form Recognizer"
+                    : provider.provider === "mistral"
+                      ? "Mistral (OCR + AI)"
+                      : provider.provider}
             </option>
           ))}
         </select>
@@ -332,13 +351,17 @@ export default function AnalyzeDocumentModal({
             </div>
           </div>
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="text-sm text-green-700 font-medium">Total Words</div>
+            <div className="text-sm text-green-700 font-medium">
+              Total Words
+            </div>
             <div className="text-2xl font-bold text-green-900 mt-1">
               {ocrResult.total_words.toLocaleString()}
             </div>
           </div>
           <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-            <div className="text-sm text-purple-700 font-medium">Avg Words/Page</div>
+            <div className="text-sm text-purple-700 font-medium">
+              Avg Words/Page
+            </div>
             <div className="text-2xl font-bold text-purple-900 mt-1">
               {Math.round(ocrResult.total_words / ocrResult.total_pages)}
             </div>
@@ -393,7 +416,9 @@ export default function AnalyzeDocumentModal({
             {ocrResult.processing_time_ms && (
               <span>
                 Processing Time:{" "}
-                <strong>{(ocrResult.processing_time_ms / 1000).toFixed(2)}s</strong>
+                <strong>
+                  {(ocrResult.processing_time_ms / 1000).toFixed(2)}s
+                </strong>
               </span>
             )}
           </div>
@@ -406,7 +431,8 @@ export default function AnalyzeDocumentModal({
     if (!aiResult) {
       return (
         <div className="text-center py-8 text-gray-500">
-          No AI analysis results available. Select "OCR + AI Analysis" to get AI insights.
+          No AI analysis results available. Select "OCR + AI Analysis" to get AI
+          insights.
         </div>
       );
     }
@@ -416,7 +442,9 @@ export default function AnalyzeDocumentModal({
         {/* AI Analysis Summary */}
         <div className="grid grid-cols-2 gap-4">
           <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-            <div className="text-sm text-gray-600 font-medium">Detected Language</div>
+            <div className="text-sm text-gray-600 font-medium">
+              Detected Language
+            </div>
             <div className="text-lg font-semibold text-gray-900 mt-1">
               {aiResult.detected_language}
             </div>
@@ -428,13 +456,16 @@ export default function AnalyzeDocumentModal({
           </div>
 
           <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-            <div className="text-sm text-gray-600 font-medium">Document Type</div>
+            <div className="text-sm text-gray-600 font-medium">
+              Document Type
+            </div>
             <div className="text-lg font-semibold text-gray-900 mt-1">
               {aiResult.detected_document_type}
             </div>
             {aiResult.document_type_confidence && (
               <div className="text-xs text-gray-500 mt-1">
-                Confidence: {(aiResult.document_type_confidence * 100).toFixed(0)}%
+                Confidence:{" "}
+                {(aiResult.document_type_confidence * 100).toFixed(0)}%
               </div>
             )}
           </div>
@@ -452,7 +483,9 @@ export default function AnalyzeDocumentModal({
           </div>
 
           <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-            <div className="text-sm text-gray-600 font-medium">Complexity Multiplier</div>
+            <div className="text-sm text-gray-600 font-medium">
+              Complexity Multiplier
+            </div>
             <div className="text-lg font-semibold text-gray-900 mt-1">
               {aiResult.complexity_multiplier || 1.0}x
             </div>
@@ -463,7 +496,9 @@ export default function AnalyzeDocumentModal({
         <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex justify-between items-center">
             <div>
-              <div className="text-sm text-blue-700 font-medium">AI Detected Counts</div>
+              <div className="text-sm text-blue-700 font-medium">
+                AI Detected Counts
+              </div>
               <div className="text-xs text-blue-600 mt-1">
                 Based on content analysis
               </div>
@@ -569,7 +604,9 @@ export default function AnalyzeDocumentModal({
               <h2 className="text-xl font-semibold text-gray-900">
                 Analyze Document
               </h2>
-              <p className="text-sm text-gray-600 mt-0.5">{file.original_filename}</p>
+              <p className="text-sm text-gray-600 mt-0.5">
+                {file.original_filename}
+              </p>
             </div>
           </div>
           <button

@@ -81,7 +81,9 @@ serve(async (req) => {
     // Fetch file information
     const { data: file, error: fileError } = await supabaseAdmin
       .from("quote_files")
-      .select("id, quote_id, original_filename, storage_path, file_size, mime_type")
+      .select(
+        "id, quote_id, original_filename, storage_path, file_size, mime_type",
+      )
       .eq("id", fileId)
       .single();
 
@@ -107,7 +109,9 @@ serve(async (req) => {
       .eq("id", fileId);
 
     // Download file from storage
-    console.log(`📥 [ANALYZE-DOCUMENT] Downloading from storage: ${file.storage_path}`);
+    console.log(
+      `📥 [ANALYZE-DOCUMENT] Downloading from storage: ${file.storage_path}`,
+    );
     const { data: fileData, error: downloadError } = await supabaseAdmin.storage
       .from("quote-files")
       .download(file.storage_path);
@@ -132,7 +136,9 @@ serve(async (req) => {
     }
 
     // Run OCR analysis
-    console.log(`🔍 [ANALYZE-DOCUMENT] Running OCR with provider: ${ocrProvider}`);
+    console.log(
+      `🔍 [ANALYZE-DOCUMENT] Running OCR with provider: ${ocrProvider}`,
+    );
     const ocrStartTime = Date.now();
     const ocrResult = await runOCRAnalysis(fileData, file, ocrProvider);
     const ocrProcessingTime = Date.now() - ocrStartTime;
@@ -157,14 +163,19 @@ serve(async (req) => {
       .single();
 
     if (ocrInsertError) {
-      console.error(`❌ [ANALYZE-DOCUMENT] Failed to save OCR results:`, ocrInsertError);
+      console.error(
+        `❌ [ANALYZE-DOCUMENT] Failed to save OCR results:`,
+        ocrInsertError,
+      );
     }
 
     let aiResult = null;
 
     // Run AI analysis if requested
     if (analysisType === "ocr_and_ai" && aiModel) {
-      console.log(`🤖 [ANALYZE-DOCUMENT] Running AI analysis with model: ${aiModel}`);
+      console.log(
+        `🤖 [ANALYZE-DOCUMENT] Running AI analysis with model: ${aiModel}`,
+      );
       const aiStartTime = Date.now();
 
       // Combine all page texts
@@ -208,7 +219,10 @@ serve(async (req) => {
         .single();
 
       if (aiInsertError) {
-        console.error(`❌ [ANALYZE-DOCUMENT] Failed to save AI results:`, aiInsertError);
+        console.error(
+          `❌ [ANALYZE-DOCUMENT] Failed to save AI results:`,
+          aiInsertError,
+        );
       } else {
         aiResult.id = savedAiResult.id;
       }
@@ -303,7 +317,8 @@ async function simpleTextExtraction(
 
     // For each page, extract text (simplified)
     // In production, use a proper PDF parser
-    const estimatedWordsPerPage = text.split(/\s+/).filter((w) => w.length > 0).length / pageCount;
+    const estimatedWordsPerPage =
+      text.split(/\s+/).filter((w) => w.length > 0).length / pageCount;
 
     for (let i = 1; i <= pageCount; i++) {
       const pageText = `[Page ${i} text would be extracted here]`;
