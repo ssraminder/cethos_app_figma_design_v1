@@ -56,14 +56,11 @@ export default function ManualQuoteForm({
   onCancel,
 }: ManualQuoteFormProps) {
   const { session } = useAdminAuthContext();
-  const staffUser = session?.user;
+  const staffId = session?.staffId;
 
   console.log("🔑 [AUTH DEBUG] ManualQuoteForm auth state:");
   console.log("  - session:", session);
-  console.log("  - session?.user:", session?.user);
-  console.log("  - session?.user?.id:", session?.user?.id);
-  console.log("  - staffUser:", staffUser);
-  console.log("  - staffUser?.id:", staffUser?.id);
+  console.log("  - staffId:", staffId);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [customer, setCustomer] = useState<CustomerData | null>(null);
