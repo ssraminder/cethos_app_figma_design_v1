@@ -2495,9 +2495,11 @@ const HITLReviewDetail: React.FC = () => {
               </div>
             )}
 
-            {/* Document List */}
+            {/* Document List - SURGICAL FIX: Show ALL files, not just those with successful AI analysis */}
             <div className="space-y-4">
-              {analysisResults.map((analysis, index) => {
+              {quoteFiles.map((file, index) => {
+                // Find matching analysis result if it exists
+                const analysis = analysisResults.find(a => a.quote_file_id === file.id);
                 const pages = pageData[analysis.quote_file_id] || [];
                 const totalWords = pages.reduce(
                   (sum, p) => sum + getPageWordCount(p),
