@@ -80,10 +80,10 @@ serve(async (req) => {
       .eq("quote_id", quoteId)
       .maybeSingle();
 
-    const isInHITLQueue = hitlReview && (
-      !hitlReview.assigned_to || // Unassigned - any staff can work on it
-      hitlReview.assigned_to === staffId // Assigned to this staff
-    );
+    const isInHITLQueue =
+      hitlReview &&
+      (!hitlReview.assigned_to || // Unassigned - any staff can work on it
+        hitlReview.assigned_to === staffId); // Assigned to this staff
 
     if (!isOwner && !isManualQuote && !isInHITLQueue) {
       return new Response(
