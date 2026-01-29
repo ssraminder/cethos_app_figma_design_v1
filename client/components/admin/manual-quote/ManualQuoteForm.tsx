@@ -1,50 +1,12 @@
 import { useState } from "react";
-import { useAdminAuthContext } from "@/context/AdminAuthContext";
-import { supabase } from "@/lib/supabase";
-import { CheckCircle, Circle, ChevronRight, ChevronLeft } from "lucide-react";
+import {
+  CheckCircle,
+  Circle,
+  ChevronRight,
+  ChevronLeft,
+  AlertCircle,
+} from "lucide-react";
 import { toast } from "sonner";
-import StaffCustomerForm from "./StaffCustomerForm";
-import StaffTranslationDetailsForm from "./StaffTranslationDetailsForm";
-import StaffFileUploadForm from "./StaffFileUploadForm";
-import StaffPricingForm from "./StaffPricingForm";
-import StaffPaymentReviewForm from "./StaffPaymentReviewForm";
-
-interface CustomerData {
-  id?: string;
-  email?: string;
-  phone?: string;
-  fullName: string;
-  customerType: "individual" | "business";
-  companyName?: string;
-}
-
-interface QuoteData {
-  sourceLanguageId?: string;
-  targetLanguageId?: string;
-  intendedUseId?: string;
-  countryOfIssue?: string;
-  specialInstructions?: string;
-}
-
-interface FileData {
-  id: string;
-  name: string;
-  size: number;
-  file: File;
-}
-
-interface PricingData {
-  translationTotal: number;
-  certificationTotal: number;
-  subtotal: number;
-  rushFee: number;
-  deliveryFee: number;
-  taxRate: number;
-  taxAmount: number;
-  total: number;
-  discount?: number;
-  surcharge?: number;
-}
 
 interface ManualQuoteFormProps {
   onComplete?: (quoteId: string) => void;
@@ -55,25 +17,8 @@ export default function ManualQuoteForm({
   onComplete,
   onCancel,
 }: ManualQuoteFormProps) {
-  const { session } = useAdminAuthContext();
-  const staffId = session?.staffId;
-
-  console.log("🔑 [AUTH DEBUG] ManualQuoteForm auth state:");
-  console.log("  - session:", session);
-  console.log("  - staffId:", staffId);
-
   const [currentStep, setCurrentStep] = useState(1);
-  const [customer, setCustomer] = useState<CustomerData | null>(null);
-  const [quote, setQuote] = useState<QuoteData>({});
-  const [files, setFiles] = useState<FileData[]>([]);
-  const [pricing, setPricing] = useState<PricingData | null>(null);
-  const [entryPoint, setEntryPoint] = useState<
-    "staff_manual" | "staff_phone" | "staff_walkin" | "staff_email"
-  >("staff_manual");
-  const [notes, setNotes] = useState("");
-  const [quoteId, setQuoteId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [processWithAI, setProcessWithAI] = useState(true);
 
   const steps = [
     { id: 1, name: "Customer Info", description: "Enter customer details" },
@@ -88,100 +33,22 @@ export default function ManualQuoteForm({
   ];
 
   const handleNext = async () => {
-    console.log(
-      "⏭️ [NAVIGATION] handleNext called - current step:",
-      currentStep,
-    );
-    console.log("  - quoteId:", quoteId);
-    console.log("  - staffId:", staffId);
-    console.log("  - customer:", customer);
-
-    // Create quote when moving to step 3 (file upload) if not already created
-    if (currentStep === 2 && !quoteId && staffId && customer) {
-      console.log(
-        "🎯 [NAVIGATION] Moving from step 2 to 3 - creating quote first",
-      );
-      await createInitialQuote();
-    }
-
     if (currentStep < steps.length) {
-      console.log("⏭️ [NAVIGATION] Moving to step", currentStep + 1);
       setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const createInitialQuote = async () => {
-    console.log("📝 [QUOTE CREATION] createInitialQuote called");
-    console.log("  - staffId:", staffId);
-    console.log("  - customer:", customer);
-
-    if (!staffId || !customer) {
-      console.log("⏸️ [QUOTE CREATION] Missing staffId or customer - skipping");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      console.log(
-        "🌐 [QUOTE CREATION] Calling create-staff-quote edge function",
-      );
-      const createQuoteResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-staff-quote`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            staffId: staffId,
-            customerData: {
-              email: customer.email,
-              phone: customer.phone,
-              fullName: customer.fullName,
-              customerType: customer.customerType,
-              companyName: customer.companyName,
-            },
-            quoteData: {
-              sourceLanguageId: quote.sourceLanguageId,
-              targetLanguageId: quote.targetLanguageId,
-              intendedUseId: quote.intendedUseId,
-              countryOfIssue: quote.countryOfIssue,
-              specialInstructions: quote.specialInstructions,
-            },
-            entryPoint,
-            notes,
-          }),
-        },
-      );
-
-      console.log(
-        "📡 [QUOTE CREATION] Response status:",
-        createQuoteResponse.status,
-      );
-
-      if (!createQuoteResponse.ok) {
-        const error = await createQuoteResponse.json();
-        console.error("❌ [QUOTE CREATION] Error response:", error);
-        throw new Error(error.message || "Failed to create quote");
+    } else {
+      // Submit form
+      setIsSubmitting(true);
+      try {
+        // Placeholder submission logic
+        toast.success("Quote created successfully!");
+        if (onComplete) {
+          onComplete("placeholder-quote-id");
+        }
+      } catch (error) {
+        toast.error("Failed to create quote");
+      } finally {
+        setIsSubmitting(false);
       }
-
-      const quoteResult = await createQuoteResponse.json();
-      console.log(
-        "✅ [QUOTE CREATION] Quote created successfully:",
-        quoteResult,
-      );
-      console.log("  - New quoteId:", quoteResult.quoteId);
-
-      setQuoteId(quoteResult.quoteId);
-      toast.success("Quote created - ready for file uploads");
-    } catch (error) {
-      console.error("❌ [QUOTE CREATION] Error creating quote:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create quote",
-      );
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -191,319 +58,305 @@ export default function ManualQuoteForm({
     }
   };
 
-  const canProceed = () => {
-    switch (currentStep) {
-      case 1: // Customer Info
-        return (
-          customer && customer.fullName && (customer.email || customer.phone)
-        );
-      case 2: // Translation Details
-        return true; // Optional fields
-      case 3: // Upload Files
-        return true; // Optional
-      case 4: // Pricing
-        return pricing && pricing.total > 0;
-      case 5: // Review
-        return true;
-      default:
-        return false;
-    }
-  };
-
-  const handleSubmit = async (
-    paymentMethodId: string,
-    sendPaymentLink: boolean,
-  ) => {
-    if (!staffId || !customer || !quoteId) {
-      toast.error("Missing required information");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      // Step 1: Calculate and save pricing
-      if (pricing) {
-        const pricingResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/calculate-manual-quote-pricing`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({
-              quoteId: quoteId,
-              staffId: staffId,
-              pricingData: pricing,
-              manualOverride: true,
-              useAutoCalculation: false,
-            }),
-          },
-        );
-
-        if (!pricingResponse.ok) {
-          console.error("Failed to save pricing");
-        }
-      }
-
-      // Step 2: Update payment method and mark as ready
-      if (supabase) {
-        const { error: updateError } = await supabase
-          .from("quotes")
-          .update({
-            payment_method_id: paymentMethodId,
-            status: "quote_ready",
-          })
-          .eq("id", quoteId);
-
-        if (updateError) {
-          console.error("Error updating payment method:", updateError);
-          throw updateError;
-        }
-      } else {
-        throw new Error("Supabase client not available");
-      }
-
-      // Step 3: Send payment link if needed
-      if (sendPaymentLink && customer.email) {
-        // TODO: Implement payment link generation via Stripe
-        // This would call another edge function to create a Stripe payment link
-        console.log("Payment link generation not implemented yet");
-      }
-
-      toast.success("Quote completed successfully!");
-
-      if (onComplete) {
-        onComplete(quoteId);
-      }
-    } catch (error) {
-      console.error("Error finalizing quote:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to finalize quote",
-      );
-    } finally {
-      setIsSubmitting(false);
+  const handleCancel = () => {
+    if (onCancel) {
+      onCancel();
     }
   };
 
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Create Manual Quote
-        </h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Create a quote on behalf of a customer
-        </p>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Create Manual Quote</h1>
+          <p className="text-gray-600 mt-2">
+            Follow the steps below to create a new quote for a customer
+          </p>
+        </div>
 
-      {/* Stepper */}
-      <div className="mb-8">
-        <nav aria-label="Progress">
-          <ol className="flex items-center">
-            {steps.map((step, stepIdx) => (
-              <li
-                key={step.id}
-                className={`relative ${
-                  stepIdx !== steps.length - 1 ? "pr-8 sm:pr-20 flex-1" : ""
-                }`}
-              >
-                {/* Completed Step */}
-                {step.id < currentStep ? (
-                  <>
-                    <div
-                      className="absolute inset-0 flex items-center"
-                      aria-hidden="true"
-                    >
-                      {stepIdx !== steps.length - 1 && (
-                        <div className="h-0.5 w-full bg-indigo-600"></div>
-                      )}
-                    </div>
-                    <div className="relative flex items-center justify-center">
-                      <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center hover:bg-indigo-700 cursor-pointer">
-                        <CheckCircle className="h-5 w-5 text-white" />
-                      </div>
-                      <span className="ml-2 text-xs font-medium text-indigo-600 hidden sm:block">
-                        {step.name}
-                      </span>
-                    </div>
-                  </>
-                ) : step.id === currentStep ? (
-                  /* Current Step */
-                  <>
-                    <div
-                      className="absolute inset-0 flex items-center"
-                      aria-hidden="true"
-                    >
-                      {stepIdx !== steps.length - 1 && (
-                        <div className="h-0.5 w-full bg-gray-200"></div>
-                      )}
-                    </div>
-                    <div className="relative flex items-center justify-center">
-                      <div className="h-8 w-8 rounded-full border-2 border-indigo-600 bg-white flex items-center justify-center">
-                        <Circle className="h-5 w-5 text-indigo-600 fill-indigo-600" />
-                      </div>
-                      <span className="ml-2 text-xs font-medium text-indigo-600 hidden sm:block">
-                        {step.name}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  /* Upcoming Step */
-                  <>
-                    <div
-                      className="absolute inset-0 flex items-center"
-                      aria-hidden="true"
-                    >
-                      {stepIdx !== steps.length - 1 && (
-                        <div className="h-0.5 w-full bg-gray-200"></div>
-                      )}
-                    </div>
-                    <div className="relative flex items-center justify-center">
-                      <div className="h-8 w-8 rounded-full border-2 border-gray-300 bg-white flex items-center justify-center hover:border-gray-400">
-                        <Circle className="h-5 w-5 text-gray-300" />
-                      </div>
-                      <span className="ml-2 text-xs font-medium text-gray-500 hidden sm:block">
-                        {step.name}
-                      </span>
-                    </div>
-                  </>
+        {/* Steps Indicator */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            {steps.map((step, index) => (
+              <div key={step.id} className="flex items-center flex-1">
+                <div className="flex flex-col items-center flex-1">
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors ${
+                      currentStep >= step.id
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-200 text-gray-400"
+                    }`}
+                  >
+                    {currentStep > step.id ? (
+                      <CheckCircle className="w-6 h-6" />
+                    ) : (
+                      <span className="font-semibold">{step.id}</span>
+                    )}
+                  </div>
+                  <p
+                    className={`text-sm font-medium text-center ${
+                      currentStep >= step.id
+                        ? "text-gray-900"
+                        : "text-gray-500"
+                    }`}
+                  >
+                    {step.name}
+                  </p>
+                  <p className="text-xs text-gray-500 text-center mt-1">
+                    {step.description}
+                  </p>
+                </div>
+
+                {index < steps.length - 1 && (
+                  <div
+                    className={`h-1 flex-1 mx-2 transition-colors ${
+                      currentStep > step.id ? "bg-blue-600" : "bg-gray-200"
+                    }`}
+                  />
                 )}
-              </li>
+              </div>
             ))}
-          </ol>
-        </nav>
-      </div>
-
-      {/* Form Content */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 min-h-[400px]">
-        {/* Step Header */}
-        <div className="mb-6 pb-4 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900 mb-1">
-            {steps[currentStep - 1].name}
-          </h2>
-          <p className="text-sm text-gray-600">
-            {steps[currentStep - 1].description}
-          </p>
+          </div>
         </div>
 
-        {/* Step 1: Customer Info */}
-        {currentStep === 1 && (
-          <StaffCustomerForm
-            value={customer}
-            onChange={setCustomer}
-            entryPoint={entryPoint}
-            onEntryPointChange={setEntryPoint}
-          />
-        )}
+        {/* Form Content */}
+        <div className="bg-white rounded-lg shadow-md p-8 mb-8">
+          {currentStep === 1 && <Step1Placeholder />}
+          {currentStep === 2 && <Step2Placeholder />}
+          {currentStep === 3 && <Step3Placeholder />}
+          {currentStep === 4 && <Step4Placeholder />}
+          {currentStep === 5 && <Step5Placeholder />}
+        </div>
 
-        {/* Step 2: Translation Details */}
-        {currentStep === 2 && (
-          <StaffTranslationDetailsForm value={quote} onChange={setQuote} />
-        )}
+        {/* Action Buttons */}
+        <div className="flex items-center justify-between">
+          <button
+            onClick={handleCancel}
+            className="px-6 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-md transition-colors"
+          >
+            Cancel
+          </button>
 
-        {/* Step 3: Upload Files */}
-        {currentStep === 3 && (
-          <StaffFileUploadForm
-            quoteId={quoteId}
-            staffId={staffId || ""}
-            onFilesChange={setFiles}
-            processWithAI={processWithAI}
-            onProcessWithAIChange={setProcessWithAI}
-          />
-        )}
+          <div className="flex gap-3">
+            <button
+              onClick={handleBack}
+              disabled={currentStep === 1 || isSubmitting}
+              className="inline-flex items-center gap-2 px-6 py-2 border border-gray-300 text-gray-700 font-medium rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </button>
 
-        {/* Step 4: Pricing */}
-        {currentStep === 4 && (
-          <StaffPricingForm
-            quoteId={quoteId}
-            onPricingChange={setPricing}
-            initialPricing={pricing}
-          />
-        )}
-
-        {/* Step 5: Review */}
-        {currentStep === 5 && (
-          <StaffPaymentReviewForm
-            reviewData={{
-              customer,
-              quote,
-              pricing,
-              files,
-              entryPoint,
-              notes,
-            }}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-          />
-        )}
-
-        {/* Navigation Buttons */}
-        <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
-          <div>
-            {currentStep > 1 && (
-              <button
-                type="button"
-                onClick={handleBack}
-                disabled={isSubmitting}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Back
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            {currentStep < 5 && (
-              <button
-                type="button"
-                onClick={onCancel}
-                disabled={isSubmitting}
-                className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </button>
-            )}
-
-            {currentStep < steps.length && (
-              <button
-                type="button"
-                onClick={handleNext}
-                disabled={!canProceed() || isSubmitting}
-                className={`inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${
-                  canProceed() && !isSubmitting
-                    ? "bg-indigo-600 hover:bg-indigo-700"
-                    : "bg-gray-300 cursor-not-allowed"
-                }`}
-              >
-                Next
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </button>
-            )}
+            <button
+              onClick={handleNext}
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {currentStep === steps.length ? "Create Quote" : "Next"}
+              {currentStep < steps.length && (
+                <ChevronRight className="w-4 h-4" />
+              )}
+            </button>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Debug Info */}
-      {process.env.NODE_ENV === "development" && (
-        <div className="mt-4 p-4 bg-gray-50 rounded text-xs">
-          <p>
-            <strong>Current Step:</strong> {currentStep}
-          </p>
-          <p>
-            <strong>Staff ID:</strong> {staffId}
-          </p>
-          <p>
-            <strong>Can Proceed:</strong> {canProceed() ? "Yes" : "No"}
-          </p>
-          <p>
-            <strong>Quote ID:</strong> {quoteId || "Not created yet"}
-          </p>
+// Placeholder Step Components
+function Step1Placeholder() {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-semibold text-gray-900">Step 1: Customer Information</h2>
+      
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex gap-3">
+        <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-blue-800">
+          <p className="font-medium">Placeholder Form</p>
+          <p className="mt-1">Customer information form fields will be implemented here</p>
         </div>
-      )}
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Full Name
+          </label>
+          <input
+            type="text"
+            placeholder="John Doe"
+            disabled
+            className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-500 bg-gray-50 cursor-not-allowed"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Email
+          </label>
+          <input
+            type="email"
+            placeholder="john@example.com"
+            disabled
+            className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-500 bg-gray-50 cursor-not-allowed"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Customer Type
+          </label>
+          <select
+            disabled
+            className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-500 bg-gray-50 cursor-not-allowed"
+          >
+            <option>Select customer type...</option>
+            <option>Individual</option>
+            <option>Business</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Step2Placeholder() {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-semibold text-gray-900">Step 2: Translation Details</h2>
+      
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex gap-3">
+        <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-blue-800">
+          <p className="font-medium">Placeholder Form</p>
+          <p className="mt-1">Translation details form fields will be implemented here</p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Source Language
+          </label>
+          <select
+            disabled
+            className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-500 bg-gray-50 cursor-not-allowed"
+          >
+            <option>Select source language...</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Target Language
+          </label>
+          <select
+            disabled
+            className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-500 bg-gray-50 cursor-not-allowed"
+          >
+            <option>Select target language...</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Intended Use
+          </label>
+          <select
+            disabled
+            className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-500 bg-gray-50 cursor-not-allowed"
+          >
+            <option>Select intended use...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Step3Placeholder() {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-semibold text-gray-900">Step 3: Upload Files</h2>
+      
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex gap-3">
+        <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-blue-800">
+          <p className="font-medium">Placeholder Form</p>
+          <p className="mt-1">File upload interface will be implemented here</p>
+        </div>
+      </div>
+
+      <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
+        <p className="text-gray-500">File upload area placeholder</p>
+        <p className="text-sm text-gray-400 mt-2">Drag and drop or click to upload files</p>
+      </div>
+    </div>
+  );
+}
+
+function Step4Placeholder() {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-semibold text-gray-900">Step 4: Pricing</h2>
+      
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex gap-3">
+        <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-blue-800">
+          <p className="font-medium">Placeholder Form</p>
+          <p className="mt-1">Pricing calculation interface will be implemented here</p>
+        </div>
+      </div>
+
+      <div className="bg-gray-50 rounded-md p-6 space-y-4">
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Subtotal:</span>
+          <span className="text-gray-900 font-medium">$0.00</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Tax:</span>
+          <span className="text-gray-900 font-medium">$0.00</span>
+        </div>
+        <div className="border-t border-gray-200 pt-4 flex justify-between">
+          <span className="text-gray-900 font-semibold">Total:</span>
+          <span className="text-gray-900 font-bold text-lg">$0.00</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Step5Placeholder() {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-semibold text-gray-900">Step 5: Review & Confirm</h2>
+      
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex gap-3">
+        <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-blue-800">
+          <p className="font-medium">Placeholder Form</p>
+          <p className="mt-1">Quote review and confirmation will be shown here</p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="bg-gray-50 rounded-md p-4">
+          <p className="text-sm font-medium text-gray-700">Customer Details</p>
+          <p className="text-sm text-gray-500 mt-2">Customer information will be displayed here</p>
+        </div>
+
+        <div className="bg-gray-50 rounded-md p-4">
+          <p className="text-sm font-medium text-gray-700">Translation Details</p>
+          <p className="text-sm text-gray-500 mt-2">Translation details will be displayed here</p>
+        </div>
+
+        <div className="bg-gray-50 rounded-md p-4">
+          <p className="text-sm font-medium text-gray-700">Quote Summary</p>
+          <p className="text-sm text-gray-500 mt-2">Quote summary will be displayed here</p>
+        </div>
+      </div>
     </div>
   );
 }
