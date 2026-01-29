@@ -1389,6 +1389,93 @@ export default function AdminQuoteDetail() {
           </div>
         </div>
       )}
+
+      {/* Send Quote Again Modal */}
+      {showResendModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                <Send className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Send Quote Again
+                </h3>
+                <p className="text-sm text-gray-500">{quote?.quote_number}</p>
+              </div>
+            </div>
+
+            {/* Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-start gap-2">
+              <Mail className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-blue-800">
+                <p className="font-medium mb-1">This will:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Invalidate all previous magic links for this customer</li>
+                  <li>Generate a fresh 30-day magic link</li>
+                  <li>Send quote email to customer</li>
+                  <li>Log this action in staff activity</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Customer Info */}
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs font-medium text-gray-500 mb-2">
+                Sending to:
+              </p>
+              <div className="text-sm">
+                <p className="font-medium text-gray-900">
+                  {quote?.customer?.full_name}
+                </p>
+                <p className="text-gray-600">{quote?.customer?.email}</p>
+              </div>
+            </div>
+
+            {/* Custom Message (Optional) */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Custom Message (Optional)
+              </label>
+              <textarea
+                value={resendCustomMessage}
+                onChange={(e) => setResendCustomMessage(e.target.value)}
+                placeholder="Add a personal note to the customer (e.g., 'We've updated your quote based on our conversation')..."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                If provided, this message will be displayed prominently in the
+                email to the customer.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowResendModal(false);
+                  setResendCustomMessage("");
+                }}
+                disabled={isResending}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResendQuote}
+                disabled={isResending}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                {isResending ? "Sending..." : "Send Quote"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
