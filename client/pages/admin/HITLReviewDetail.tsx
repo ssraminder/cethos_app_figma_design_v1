@@ -1997,1095 +1997,1077 @@ const HITLReviewDetail: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Main Content */}
         <div className="lg:col-span-2 space-y-6">
-        {/* No Data Warning */}
-        {!reviewData && !loading && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center max-w-2xl mx-auto mt-12">
-            <div className="mb-4">
-              <svg
-                className="w-16 h-16 mx-auto text-blue-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-            <p className="text-blue-900 font-semibold text-lg mb-2">
-              Review Not Found in Queue
-            </p>
-            <p className="text-blue-700 mb-4">
-              This review may have already been completed, rejected, or removed
-              from the queue.
-            </p>
-            <p className="text-blue-600 text-sm mb-6">
-              Review ID:{" "}
-              <code className="bg-blue-100 px-2 py-1 rounded">{reviewId}</code>
-            </p>
-            <button
-              onClick={() => navigate("/admin/hitl")}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
-            >
-              ← Return to HITL Queue
-            </button>
-          </div>
-        )}
-
-        {reviewData && !reviewData.quotes && (
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 text-center">
-            <p className="text-orange-800 font-medium">
-              No quote found for this review
-            </p>
-            <p className="text-orange-600 text-sm mt-2">
-              Quote ID: {reviewData.quote_id}
-            </p>
-          </div>
-        )}
-
-        {reviewData && reviewData.quotes && (
-          <HITLPanelLayout
-            reviewData={reviewData.quotes}
-            quoteFiles={quoteFiles}
-            staffId={staffSession?.staffId}
-            staffName={staffSession?.name}
-            loading={loading}
-            onSaveInternalNotes={handleSaveInternalNotes}
-          >
-            {/* Center Panel Content: Document Accordion */}
-
-            {/* File Upload Section */}
-            {claimedByMe && (
-              <div className="mb-6">
-                {!showUploadSection ? (
-                  <button
-                    onClick={() => setShowUploadSection(true)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
-                  >
-                    <Upload className="w-5 h-5" />
-                    Add Additional Files to Quote
-                  </button>
-                ) : (
-                  <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        Upload Additional Files
-                      </h3>
-                      <button
-                        onClick={() => {
-                          setShowUploadSection(false);
-                          setUploadedFiles([]);
-                        }}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
-
-                    {/* AI Processing Toggle */}
-                    <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-md">
-                      <input
-                        type="checkbox"
-                        id="processWithAI"
-                        checked={processWithAI}
-                        onChange={(e) => setProcessWithAI(e.target.checked)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <label
-                        htmlFor="processWithAI"
-                        className="flex-1 cursor-pointer"
-                      >
-                        <span className="text-sm font-medium text-blue-900">
-                          Automatically process with AI
-                        </span>
-                        <p className="text-xs text-blue-700 mt-0.5">
-                          {processWithAI
-                            ? "AI will analyze uploaded files (language, type, pages)"
-                            : "Manual entry required for all document details"}
-                        </p>
-                      </label>
-                    </div>
-
-                    {/* Upload Area */}
-                    <div
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setIsDragging(true);
-                      }}
-                      onDragLeave={() => setIsDragging(false)}
-                      onDrop={handleDrop}
-                      className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                        isDragging
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-gray-300 bg-gray-50 hover:border-gray-400"
-                      }`}
-                    >
-                      <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                      <p className="text-sm text-gray-600 mb-2">
-                        Drag and drop files here, or click to browse
-                      </p>
-                      <input
-                        type="file"
-                        multiple
-                        onChange={handleFileSelect}
-                        className="hidden"
-                        id="additionalFileInput"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                      />
-                      <label
-                        htmlFor="additionalFileInput"
-                        className="inline-block px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 cursor-pointer text-sm"
-                      >
-                        Choose Files
-                      </label>
-                      <p className="text-xs text-gray-500 mt-2">
-                        Supported: PDF, Word, Images (Max 10MB per file)
-                      </p>
-                    </div>
-
-                    {/* File List */}
-                    {uploadedFiles.length > 0 && (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-medium text-gray-900">
-                            Files ({uploadedFiles.length})
-                          </h4>
-
-                          {/* Analyze Button */}
-                          {processWithAI &&
-                            allFilesUploaded &&
-                            !isAnalyzing && (
-                              <button
-                                onClick={analyzeUploadedFiles}
-                                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
-                              >
-                                <Brain className="w-4 h-4" />
-                                Analyze Files with AI
-                              </button>
-                            )}
-
-                          {isAnalyzing && (
-                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 text-sm font-medium rounded-md">
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Analyzing files...
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="space-y-2">
-                          {uploadedFiles.map((file) => (
-                            <div
-                              key={file.id}
-                              className="border border-gray-200 rounded-md p-4 bg-white"
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex items-start gap-3 flex-1 min-w-0">
-                                  <FileText className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-gray-900 truncate">
-                                      {file.name}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                      {formatFileSize(file.size)}
-                                    </p>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() => removeUploadedFile(file.id)}
-                                  disabled={file.uploadStatus === "uploading"}
-                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
-                              </div>
-
-                              {/* Upload Status */}
-                              <div className="flex items-center gap-2 text-xs mt-2">
-                                {file.uploadStatus === "uploading" && (
-                                  <span className="inline-flex items-center gap-1 text-blue-600">
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    Uploading...
-                                  </span>
-                                )}
-                                {file.uploadStatus === "success" && (
-                                  <span className="inline-flex items-center gap-1 text-green-600">
-                                    <CheckCircle className="w-3 h-3" />
-                                    Uploaded successfully
-                                  </span>
-                                )}
-                                {file.uploadStatus === "failed" && (
-                                  <span className="inline-flex items-center gap-1 text-red-600">
-                                    <AlertTriangle className="w-3 h-3" />
-                                    Upload failed
-                                  </span>
-                                )}
-                                {file.uploadStatus === "pending" && (
-                                  <span className="text-amber-600">
-                                    Pending upload...
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
-                      <p className="font-medium text-gray-700 mb-1">Note:</p>
-                      <ul className="list-disc list-inside space-y-1">
-                        <li>
-                          Files will be uploaded immediately when selected
-                        </li>
-                        {processWithAI && (
-                          <li>
-                            Click "Analyze Files with AI" to process the
-                            uploaded documents
-                          </li>
-                        )}
-                        <li>
-                          After analysis, the quote will be refreshed with the
-                          new files
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                )}
+          {/* No Data Warning */}
+          {!reviewData && !loading && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center max-w-2xl mx-auto mt-12">
+              <div className="mb-4">
+                <svg
+                  className="w-16 h-16 mx-auto text-blue-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
               </div>
-            )}
+              <p className="text-blue-900 font-semibold text-lg mb-2">
+                Review Not Found in Queue
+              </p>
+              <p className="text-blue-700 mb-4">
+                This review may have already been completed, rejected, or
+                removed from the queue.
+              </p>
+              <p className="text-blue-600 text-sm mb-6">
+                Review ID:{" "}
+                <code className="bg-blue-100 px-2 py-1 rounded">
+                  {reviewId}
+                </code>
+              </p>
+              <button
+                onClick={() => navigate("/admin/hitl")}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+              >
+                ← Return to HITL Queue
+              </button>
+            </div>
+          )}
 
-            {/* Billing, Delivery & Rush Options Section */}
-            {claimedByMe && reviewData?.quotes && (
-              <div className="mb-6">
-                {!showAddressSection ? (
-                  <button
-                    onClick={() => setShowAddressSection(true)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"
-                  >
-                    <Mail className="w-5 h-5" />
-                    Manage Billing, Delivery & Rush Options
-                  </button>
-                ) : (
-                  <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        Billing, Delivery & Rush Options
-                      </h3>
-                      <button
-                        onClick={() => setShowAddressSection(false)}
-                        className="text-gray-400 hover:text-gray-600"
+          {reviewData && !reviewData.quotes && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 text-center">
+              <p className="text-orange-800 font-medium">
+                No quote found for this review
+              </p>
+              <p className="text-orange-600 text-sm mt-2">
+                Quote ID: {reviewData.quote_id}
+              </p>
+            </div>
+          )}
+
+          {reviewData && reviewData.quotes && (
+            <HITLPanelLayout
+              reviewData={reviewData.quotes}
+              quoteFiles={quoteFiles}
+              staffId={staffSession?.staffId}
+              staffName={staffSession?.name}
+              loading={loading}
+              onSaveInternalNotes={handleSaveInternalNotes}
+            >
+              {/* Center Panel Content: Document Accordion */}
+
+              {/* File Upload Section */}
+              {claimedByMe && (
+                <div className="mb-6">
+                  {!showUploadSection ? (
+                    <button
+                      onClick={() => setShowUploadSection(true)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                    >
+                      <Upload className="w-5 h-5" />
+                      Add Additional Files to Quote
+                    </button>
+                  ) : (
+                    <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          Upload Additional Files
+                        </h3>
+                        <button
+                          onClick={() => {
+                            setShowUploadSection(false);
+                            setUploadedFiles([]);
+                          }}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {/* AI Processing Toggle */}
+                      <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                        <input
+                          type="checkbox"
+                          id="processWithAI"
+                          checked={processWithAI}
+                          onChange={(e) => setProcessWithAI(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <label
+                          htmlFor="processWithAI"
+                          className="flex-1 cursor-pointer"
+                        >
+                          <span className="text-sm font-medium text-blue-900">
+                            Automatically process with AI
+                          </span>
+                          <p className="text-xs text-blue-700 mt-0.5">
+                            {processWithAI
+                              ? "AI will analyze uploaded files (language, type, pages)"
+                              : "Manual entry required for all document details"}
+                          </p>
+                        </label>
+                      </div>
+
+                      {/* Upload Area */}
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDragging(true);
+                        }}
+                        onDragLeave={() => setIsDragging(false)}
+                        onDrop={handleDrop}
+                        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                          isDragging
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-300 bg-gray-50 hover:border-gray-400"
+                        }`}
                       >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
+                        <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                        <p className="text-sm text-gray-600 mb-2">
+                          Drag and drop files here, or click to browse
+                        </p>
+                        <input
+                          type="file"
+                          multiple
+                          onChange={handleFileSelect}
+                          className="hidden"
+                          id="additionalFileInput"
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        />
+                        <label
+                          htmlFor="additionalFileInput"
+                          className="inline-block px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 cursor-pointer text-sm"
+                        >
+                          Choose Files
+                        </label>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Supported: PDF, Word, Images (Max 10MB per file)
+                        </p>
+                      </div>
 
-                    {/* Turnaround Type Selection */}
-                    <div className="border-b pb-6">
-                      <h4 className="font-semibold text-gray-800 mb-3">
-                        Rush Options
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {turnaroundOptions.map((option) => {
-                          const isSelected = turnaroundType === option.code;
-                          const multiplier =
-                            option.code === "rush"
-                              ? rushMultiplierValue
-                              : option.code === "same_day"
-                                ? sameDayMultiplierValue
-                                : 1.0;
-                          const calculatedFee = option.is_rush
-                            ? (reviewData.quotes.subtotal || 0) *
-                              (multiplier - 1)
-                            : 0;
+                      {/* File List */}
+                      {uploadedFiles.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium text-gray-900">
+                              Files ({uploadedFiles.length})
+                            </h4>
 
-                          return (
-                            <button
-                              key={option.id}
-                              onClick={() =>
-                                handleUpdateTurnaroundType(
-                                  option.code as
-                                    | "standard"
-                                    | "rush"
-                                    | "same_day",
-                                )
-                              }
-                              className={`p-4 rounded-lg border-2 transition-all text-left ${
-                                isSelected
-                                  ? "border-green-500 bg-green-50"
-                                  : "border-gray-200 hover:border-gray-300"
-                              }`}
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <h5 className="font-medium text-gray-900">
-                                    {option.name}
-                                  </h5>
-                                  <p className="text-xs text-gray-600 mt-1">
-                                    {option.description}
-                                  </p>
-                                  {option.is_rush && (
-                                    <p className="text-sm font-semibold text-green-600 mt-2">
-                                      +${calculatedFee.toFixed(2)}
-                                    </p>
+                            {/* Analyze Button */}
+                            {processWithAI &&
+                              allFilesUploaded &&
+                              !isAnalyzing && (
+                                <button
+                                  onClick={analyzeUploadedFiles}
+                                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+                                >
+                                  <Brain className="w-4 h-4" />
+                                  Analyze Files with AI
+                                </button>
+                              )}
+
+                            {isAnalyzing && (
+                              <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 text-sm font-medium rounded-md">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Analyzing files...
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-2">
+                            {uploadedFiles.map((file) => (
+                              <div
+                                key={file.id}
+                                className="border border-gray-200 rounded-md p-4 bg-white"
+                              >
+                                <div className="flex items-start justify-between">
+                                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                                    <FileText className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-gray-900 truncate">
+                                        {file.name}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        {formatFileSize(file.size)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => removeUploadedFile(file.id)}
+                                    disabled={file.uploadStatus === "uploading"}
+                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+
+                                {/* Upload Status */}
+                                <div className="flex items-center gap-2 text-xs mt-2">
+                                  {file.uploadStatus === "uploading" && (
+                                    <span className="inline-flex items-center gap-1 text-blue-600">
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                      Uploading...
+                                    </span>
+                                  )}
+                                  {file.uploadStatus === "success" && (
+                                    <span className="inline-flex items-center gap-1 text-green-600">
+                                      <CheckCircle className="w-3 h-3" />
+                                      Uploaded successfully
+                                    </span>
+                                  )}
+                                  {file.uploadStatus === "failed" && (
+                                    <span className="inline-flex items-center gap-1 text-red-600">
+                                      <AlertTriangle className="w-3 h-3" />
+                                      Upload failed
+                                    </span>
+                                  )}
+                                  {file.uploadStatus === "pending" && (
+                                    <span className="text-amber-600">
+                                      Pending upload...
+                                    </span>
                                   )}
                                 </div>
-                                {isSelected && (
-                                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                                )}
                               </div>
-                            </button>
-                          );
-                        })}
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
+                        <p className="font-medium text-gray-700 mb-1">Note:</p>
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>
+                            Files will be uploaded immediately when selected
+                          </li>
+                          {processWithAI && (
+                            <li>
+                              Click "Analyze Files with AI" to process the
+                              uploaded documents
+                            </li>
+                          )}
+                          <li>
+                            After analysis, the quote will be refreshed with the
+                            new files
+                          </li>
+                        </ul>
                       </div>
                     </div>
-
-                    {/* Billing Address */}
-                    <div>
-                      <h4 className="font-semibold text-gray-800 mb-3">
-                        Billing Address
-                      </h4>
-                      {billingAddress ? (
-                        <div className="p-4 bg-gray-50 rounded-lg border">
-                          <p className="text-sm text-gray-900">
-                            {billingAddress.name ||
-                              reviewData.quotes.customer?.full_name}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {billingAddress.address_line1}
-                          </p>
-                          {billingAddress.address_line2 && (
-                            <p className="text-sm text-gray-600">
-                              {billingAddress.address_line2}
-                            </p>
-                          )}
-                          <p className="text-sm text-gray-600">
-                            {billingAddress.city},{" "}
-                            {billingAddress.province || billingAddress.state}{" "}
-                            {billingAddress.postal_code}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {billingAddress.country || "Canada"}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500 italic">
-                          No billing address on file
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Shipping/Delivery Address */}
-                    <div>
-                      <h4 className="font-semibold text-gray-800 mb-3">
-                        Delivery Address
-                      </h4>
-                      {shippingAddress ? (
-                        <div className="p-4 bg-gray-50 rounded-lg border">
-                          <p className="text-sm text-gray-900">
-                            {shippingAddress.name ||
-                              reviewData.quotes.customer?.full_name}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {shippingAddress.address_line1}
-                          </p>
-                          {shippingAddress.address_line2 && (
-                            <p className="text-sm text-gray-600">
-                              {shippingAddress.address_line2}
-                            </p>
-                          )}
-                          <p className="text-sm text-gray-600">
-                            {shippingAddress.city},{" "}
-                            {shippingAddress.province || shippingAddress.state}{" "}
-                            {shippingAddress.postal_code}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {shippingAddress.country || "Canada"}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500 italic">
-                          No delivery address on file (digital delivery only)
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Summary */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h4 className="font-semibold text-blue-900 mb-2">
-                        Pricing Summary
-                      </h4>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-700">Subtotal:</span>
-                          <span className="font-medium">
-                            ${(reviewData.quotes.subtotal || 0).toFixed(2)}
-                          </span>
-                        </div>
-                        {rushFee > 0 && (
-                          <div className="flex justify-between text-green-700">
-                            <span>
-                              {turnaroundType === "same_day"
-                                ? "Same-Day"
-                                : "Rush"}{" "}
-                              Fee:
-                            </span>
-                            <span className="font-medium">
-                              +${rushFee.toFixed(2)}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex justify-between">
-                          <span className="text-gray-700">Certification:</span>
-                          <span className="font-medium">
-                            $
-                            {(
-                              reviewData.quotes.certification_total || 0
-                            ).toFixed(2)}
-                          </span>
-                        </div>
-                        {reviewData.quotes.delivery_fee > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-700">Delivery:</span>
-                            <span className="font-medium">
-                              $
-                              {(reviewData.quotes.delivery_fee || 0).toFixed(2)}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex justify-between border-t pt-1 mt-2">
-                          <span className="font-semibold text-gray-900">
-                            Total:
-                          </span>
-                          <span className="font-bold text-lg">
-                            ${(reviewData.quotes.total || 0).toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Page Selection Toolbar */}
-            {analysisResults.length > 0 && (
-              <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setSplitMode(!splitMode)}
-                    disabled={!claimedByMe}
-                    className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                      splitMode
-                        ? "bg-blue-600 text-white"
-                        : !claimedByMe
-                          ? "bg-gray-200 border border-gray-300 text-gray-400 cursor-not-allowed"
-                          : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
-                    }`}
-                    title={!claimedByMe ? "Claim this review to select pages" : ""}
-                  >
-                    {splitMode ? "✓ Selection Mode" : "Select Pages"}
-                  </button>
-
-                  {splitMode && selectedPages.size > 0 && (
-                    <>
-                      <span className="text-sm text-gray-600">
-                        {selectedPages.size} page(s) selected
-                      </span>
-                      <button
-                        onClick={() => setShowSplitModal(true)}
-                        className="px-3 py-1.5 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
-                      >
-                        Split to New Document
-                      </button>
-                      <button
-                        onClick={() => setShowCombineModal(true)}
-                        className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700"
-                      >
-                        Combine Into...
-                      </button>
-                      <button
-                        onClick={clearSelection}
-                        className="px-3 py-1.5 text-gray-600 hover:text-gray-800 text-sm"
-                      >
-                        Clear
-                      </button>
-                    </>
                   )}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Document List - SURGICAL FIX: Show ALL files, not just those with successful AI analysis */}
-            <div className="space-y-4">
-              {quoteFiles.map((file, index) => {
-                // Find matching analysis result if it exists
-                const analysis = analysisResults.find(
-                  (a) => a.quote_file_id === file.id,
-                );
-                const pages = analysis
-                  ? pageData[analysis.quote_file_id] || []
-                  : [];
-                const totalWords = pages.reduce(
-                  (sum, p) => sum + getPageWordCount(p),
-                  0,
-                );
-                const fileId = file.id;
-                const isExpanded = expandedFile === fileId;
-                const hasAnalysis = !!analysis;
-
-                // SURGICAL FIX: Use new component for files without analysis
-                if (!hasAnalysis) {
-                  return (
-                    <HITLDocumentCard
-                      key={fileId}
-                      file={file}
-                      index={index}
-                      analysis={null}
-                      isExpanded={isExpanded}
-                      hasChanges={false}
-                      onToggle={() =>
-                        setExpandedFile(isExpanded ? null : fileId)
-                      }
-                    />
-                  );
-                }
-
-                // Original code for files WITH analysis - keep unchanged
-                return (
-                  <div
-                    key={fileId}
-                    className="bg-white rounded-lg shadow overflow-hidden"
-                  >
-                    {/* File Header */}
+              {/* Billing, Delivery & Rush Options Section */}
+              {claimedByMe && reviewData?.quotes && (
+                <div className="mb-6">
+                  {!showAddressSection ? (
                     <button
-                      onClick={() =>
-                        setExpandedFile(isExpanded ? null : fileId)
-                      }
-                      className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
+                      onClick={() => setShowAddressSection(true)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"
                     >
-                      <div className="flex items-center gap-4">
-                        <span className="text-lg font-medium">
-                          {index + 1}.{" "}
-                          {file.original_filename ||
-                            analysis.quote_file?.original_filename}
-                        </span>
-                        <span className="text-sm text-gray-500">
-                          {totalWords} words • {pages.length} page(s)
-                        </span>
-                        {hasChanges(analysis.quote_file_id) && (
-                          <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
-                            Unsaved changes
-                          </span>
+                      <Mail className="w-5 h-5" />
+                      Manage Billing, Delivery & Rush Options
+                    </button>
+                  ) : (
+                    <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          Billing, Delivery & Rush Options
+                        </h3>
+                        <button
+                          onClick={() => setShowAddressSection(false)}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {/* Turnaround Type Selection */}
+                      <div className="border-b pb-6">
+                        <h4 className="font-semibold text-gray-800 mb-3">
+                          Rush Options
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          {turnaroundOptions.map((option) => {
+                            const isSelected = turnaroundType === option.code;
+                            const multiplier =
+                              option.code === "rush"
+                                ? rushMultiplierValue
+                                : option.code === "same_day"
+                                  ? sameDayMultiplierValue
+                                  : 1.0;
+                            const calculatedFee = option.is_rush
+                              ? (reviewData.quotes.subtotal || 0) *
+                                (multiplier - 1)
+                              : 0;
+
+                            return (
+                              <button
+                                key={option.id}
+                                onClick={() =>
+                                  handleUpdateTurnaroundType(
+                                    option.code as
+                                      | "standard"
+                                      | "rush"
+                                      | "same_day",
+                                  )
+                                }
+                                className={`p-4 rounded-lg border-2 transition-all text-left ${
+                                  isSelected
+                                    ? "border-green-500 bg-green-50"
+                                    : "border-gray-200 hover:border-gray-300"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <h5 className="font-medium text-gray-900">
+                                      {option.name}
+                                    </h5>
+                                    <p className="text-xs text-gray-600 mt-1">
+                                      {option.description}
+                                    </p>
+                                    {option.is_rush && (
+                                      <p className="text-sm font-semibold text-green-600 mt-2">
+                                        +${calculatedFee.toFixed(2)}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {isSelected && (
+                                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Billing Address */}
+                      <div>
+                        <h4 className="font-semibold text-gray-800 mb-3">
+                          Billing Address
+                        </h4>
+                        {billingAddress ? (
+                          <div className="p-4 bg-gray-50 rounded-lg border">
+                            <p className="text-sm text-gray-900">
+                              {billingAddress.name ||
+                                reviewData.quotes.customer?.full_name}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {billingAddress.address_line1}
+                            </p>
+                            {billingAddress.address_line2 && (
+                              <p className="text-sm text-gray-600">
+                                {billingAddress.address_line2}
+                              </p>
+                            )}
+                            <p className="text-sm text-gray-600">
+                              {billingAddress.city},{" "}
+                              {billingAddress.province || billingAddress.state}{" "}
+                              {billingAddress.postal_code}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {billingAddress.country || "Canada"}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500 italic">
+                            No billing address on file
+                          </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-lg font-bold text-blue-600">
-                          $
-                          {calculateLineTotal(
-                            analysis.quote_file_id,
-                            analysis,
-                          ).toFixed(2)}
-                        </span>
-                        <span className="text-gray-400">
-                          {isExpanded ? "▼" : "▶"}
-                        </span>
+
+                      {/* Shipping/Delivery Address */}
+                      <div>
+                        <h4 className="font-semibold text-gray-800 mb-3">
+                          Delivery Address
+                        </h4>
+                        {shippingAddress ? (
+                          <div className="p-4 bg-gray-50 rounded-lg border">
+                            <p className="text-sm text-gray-900">
+                              {shippingAddress.name ||
+                                reviewData.quotes.customer?.full_name}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {shippingAddress.address_line1}
+                            </p>
+                            {shippingAddress.address_line2 && (
+                              <p className="text-sm text-gray-600">
+                                {shippingAddress.address_line2}
+                              </p>
+                            )}
+                            <p className="text-sm text-gray-600">
+                              {shippingAddress.city},{" "}
+                              {shippingAddress.province ||
+                                shippingAddress.state}{" "}
+                              {shippingAddress.postal_code}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {shippingAddress.country || "Canada"}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500 italic">
+                            No delivery address on file (digital delivery only)
+                          </p>
+                        )}
                       </div>
+
+                      {/* Summary */}
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h4 className="font-semibold text-blue-900 mb-2">
+                          Pricing Summary
+                        </h4>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-700">Subtotal:</span>
+                            <span className="font-medium">
+                              ${(reviewData.quotes.subtotal || 0).toFixed(2)}
+                            </span>
+                          </div>
+                          {rushFee > 0 && (
+                            <div className="flex justify-between text-green-700">
+                              <span>
+                                {turnaroundType === "same_day"
+                                  ? "Same-Day"
+                                  : "Rush"}{" "}
+                                Fee:
+                              </span>
+                              <span className="font-medium">
+                                +${rushFee.toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="text-gray-700">
+                              Certification:
+                            </span>
+                            <span className="font-medium">
+                              $
+                              {(
+                                reviewData.quotes.certification_total || 0
+                              ).toFixed(2)}
+                            </span>
+                          </div>
+                          {reviewData.quotes.delivery_fee > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-700">Delivery:</span>
+                              <span className="font-medium">
+                                $
+                                {(reviewData.quotes.delivery_fee || 0).toFixed(
+                                  2,
+                                )}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex justify-between border-t pt-1 mt-2">
+                            <span className="font-semibold text-gray-900">
+                              Total:
+                            </span>
+                            <span className="font-bold text-lg">
+                              ${(reviewData.quotes.total || 0).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Page Selection Toolbar */}
+              {analysisResults.length > 0 && (
+                <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setSplitMode(!splitMode)}
+                      disabled={!claimedByMe}
+                      className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                        splitMode
+                          ? "bg-blue-600 text-white"
+                          : !claimedByMe
+                            ? "bg-gray-200 border border-gray-300 text-gray-400 cursor-not-allowed"
+                            : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                      }`}
+                      title={
+                        !claimedByMe ? "Claim this review to select pages" : ""
+                      }
+                    >
+                      {splitMode ? "✓ Selection Mode" : "Select Pages"}
                     </button>
 
-                    {/* Expanded Content */}
-                    {isExpanded && (
-                      <div className="p-6 border-t">
-                        <div className="grid grid-cols-2 gap-6">
-                          {/* Left Column: Document Preview */}
-                          <div>
-                            <h4 className="font-semibold mb-3">
-                              Document Preview
-                            </h4>
-                            <div className="border rounded-lg overflow-hidden bg-gray-50">
-                              <img
-                                src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
-                                alt={analysis.quote_file?.original_filename}
-                                className="w-full max-h-[400px] object-contain"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display =
-                                    "none";
-                                }}
-                              />
-                            </div>
-                            <div className="mt-2 space-y-2">
-                              <div className="flex justify-between text-sm text-gray-500">
-                                <span>
-                                  {(
-                                    analysis.quote_file?.file_size /
-                                    1024 /
-                                    1024
-                                  ).toFixed(2)}{" "}
-                                  MB
-                                </span>
-                                <a
-                                  href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
-                                  target="_blank"
-                                  className="text-blue-600 hover:underline"
-                                >
-                                  ↓ Download
-                                </a>
-                              </div>
-                              <button
-                                onClick={() => {
-                                  setPreviewDocument({
-                                    url: `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`,
-                                    name:
-                                      analysis.quote_file?.original_filename ||
-                                      "Document",
-                                    type: analysis.quote_file?.mime_type?.includes(
-                                      "pdf",
-                                    )
-                                      ? "pdf"
-                                      : "image",
-                                  });
-                                }}
-                                className="w-full px-3 py-2 bg-blue-50 text-blue-700 text-sm font-medium rounded hover:bg-blue-100 transition-colors"
-                              >
-                                👁 Full Preview
-                              </button>
-                            </div>
-                          </div>
+                    {splitMode && selectedPages.size > 0 && (
+                      <>
+                        <span className="text-sm text-gray-600">
+                          {selectedPages.size} page(s) selected
+                        </span>
+                        <button
+                          onClick={() => setShowSplitModal(true)}
+                          className="px-3 py-1.5 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
+                        >
+                          Split to New Document
+                        </button>
+                        <button
+                          onClick={() => setShowCombineModal(true)}
+                          className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700"
+                        >
+                          Combine Into...
+                        </button>
+                        <button
+                          onClick={clearSelection}
+                          className="px-3 py-1.5 text-gray-600 hover:text-gray-800 text-sm"
+                        >
+                          Clear
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
-                          {/* Right Column: Analysis & Editing */}
-                          <div className="space-y-4">
-                            {/* Document Type */}
-                            <div className="bg-white border rounded p-3">
-                              <label className="text-sm text-gray-500 block mb-1">
-                                Document Type
-                              </label>
-                              {claimedByMe ? (
-                                <input
-                                  type="text"
-                                  value={
-                                    getValue(
-                                      analysis.quote_file_id,
-                                      "detected_document_type",
-                                      analysis.detected_document_type,
-                                    ) || ""
-                                  }
-                                  onChange={(e) =>
-                                    updateLocalEdit(
-                                      analysis.quote_file_id,
-                                      "detected_document_type",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onBlur={(e) => {
-                                    const newValue = e.target.value;
-                                    if (
-                                      newValue !==
-                                      analysis.detected_document_type
-                                    ) {
-                                      handleFieldEdit(
+              {/* Document List - SURGICAL FIX: Show ALL files, not just those with successful AI analysis */}
+              <div className="space-y-4">
+                {quoteFiles.map((file, index) => {
+                  // Find matching analysis result if it exists
+                  const analysis = analysisResults.find(
+                    (a) => a.quote_file_id === file.id,
+                  );
+                  const pages = analysis
+                    ? pageData[analysis.quote_file_id] || []
+                    : [];
+                  const totalWords = pages.reduce(
+                    (sum, p) => sum + getPageWordCount(p),
+                    0,
+                  );
+                  const fileId = file.id;
+                  const isExpanded = expandedFile === fileId;
+                  const hasAnalysis = !!analysis;
+
+                  // SURGICAL FIX: Use new component for files without analysis
+                  if (!hasAnalysis) {
+                    return (
+                      <HITLDocumentCard
+                        key={fileId}
+                        file={file}
+                        index={index}
+                        analysis={null}
+                        isExpanded={isExpanded}
+                        hasChanges={false}
+                        onToggle={() =>
+                          setExpandedFile(isExpanded ? null : fileId)
+                        }
+                      />
+                    );
+                  }
+
+                  // Original code for files WITH analysis - keep unchanged
+                  return (
+                    <div
+                      key={fileId}
+                      className="bg-white rounded-lg shadow overflow-hidden"
+                    >
+                      {/* File Header */}
+                      <button
+                        onClick={() =>
+                          setExpandedFile(isExpanded ? null : fileId)
+                        }
+                        className="w-full p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 text-left"
+                      >
+                        <div className="flex items-center gap-4">
+                          <span className="text-lg font-medium">
+                            {index + 1}.{" "}
+                            {file.original_filename ||
+                              analysis.quote_file?.original_filename}
+                          </span>
+                          <span className="text-sm text-gray-500">
+                            {totalWords} words • {pages.length} page(s)
+                          </span>
+                          {hasChanges(analysis.quote_file_id) && (
+                            <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
+                              Unsaved changes
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-lg font-bold text-blue-600">
+                            $
+                            {calculateLineTotal(
+                              analysis.quote_file_id,
+                              analysis,
+                            ).toFixed(2)}
+                          </span>
+                          <span className="text-gray-400">
+                            {isExpanded ? "▼" : "▶"}
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Expanded Content */}
+                      {isExpanded && (
+                        <div className="p-6 border-t">
+                          <div className="grid grid-cols-2 gap-6">
+                            {/* Left Column: Document Preview */}
+                            <div>
+                              <h4 className="font-semibold mb-3">
+                                Document Preview
+                              </h4>
+                              <div className="border rounded-lg overflow-hidden bg-gray-50">
+                                <img
+                                  src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
+                                  alt={analysis.quote_file?.original_filename}
+                                  className="w-full max-h-[400px] object-contain"
+                                  onError={(e) => {
+                                    (
+                                      e.target as HTMLImageElement
+                                    ).style.display = "none";
+                                  }}
+                                />
+                              </div>
+                              <div className="mt-2 space-y-2">
+                                <div className="flex justify-between text-sm text-gray-500">
+                                  <span>
+                                    {(
+                                      analysis.quote_file?.file_size /
+                                      1024 /
+                                      1024
+                                    ).toFixed(2)}{" "}
+                                    MB
+                                  </span>
+                                  <a
+                                    href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
+                                    target="_blank"
+                                    className="text-blue-600 hover:underline"
+                                  >
+                                    ↓ Download
+                                  </a>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setPreviewDocument({
+                                      url: `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`,
+                                      name:
+                                        analysis.quote_file
+                                          ?.original_filename || "Document",
+                                      type: analysis.quote_file?.mime_type?.includes(
+                                        "pdf",
+                                      )
+                                        ? "pdf"
+                                        : "image",
+                                    });
+                                  }}
+                                  className="w-full px-3 py-2 bg-blue-50 text-blue-700 text-sm font-medium rounded hover:bg-blue-100 transition-colors"
+                                >
+                                  👁 Full Preview
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Right Column: Analysis & Editing */}
+                            <div className="space-y-4">
+                              {/* Document Type */}
+                              <div className="bg-white border rounded p-3">
+                                <label className="text-sm text-gray-500 block mb-1">
+                                  Document Type
+                                </label>
+                                {claimedByMe ? (
+                                  <input
+                                    type="text"
+                                    value={
+                                      getValue(
+                                        analysis.quote_file_id,
                                         "detected_document_type",
                                         analysis.detected_document_type,
-                                        newValue,
-                                        analysis.quote_file_id,
-                                        analysis.id,
-                                      );
+                                      ) || ""
                                     }
-                                  }}
-                                  className="w-full border rounded px-3 py-2"
-                                />
-                              ) : (
-                                <div className="font-medium">
-                                  {analysis.detected_document_type}
-                                </div>
-                              )}
-                            </div>
+                                    onChange={(e) =>
+                                      updateLocalEdit(
+                                        analysis.quote_file_id,
+                                        "detected_document_type",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onBlur={(e) => {
+                                      const newValue = e.target.value;
+                                      if (
+                                        newValue !==
+                                        analysis.detected_document_type
+                                      ) {
+                                        handleFieldEdit(
+                                          "detected_document_type",
+                                          analysis.detected_document_type,
+                                          newValue,
+                                          analysis.quote_file_id,
+                                          analysis.id,
+                                        );
+                                      }
+                                    }}
+                                    className="w-full border rounded px-3 py-2"
+                                  />
+                                ) : (
+                                  <div className="font-medium">
+                                    {analysis.detected_document_type}
+                                  </div>
+                                )}
+                              </div>
 
-                            {/* Language */}
-                            <div className="bg-white border rounded p-3">
-                              <label className="text-sm text-gray-500 block mb-1">
-                                Detected Language
-                              </label>
-                              {claimedByMe ? (
-                                <select
-                                  value={
-                                    getValue(
-                                      analysis.quote_file_id,
-                                      "detected_language",
-                                      analysis.detected_language,
-                                    ) || ""
-                                  }
-                                  onChange={(e) => {
-                                    const newValue = e.target.value;
-                                    updateLocalEdit(
-                                      analysis.quote_file_id,
-                                      "detected_language",
-                                      newValue,
-                                    );
-                                    if (
-                                      newValue !== analysis.detected_language
-                                    ) {
-                                      handleFieldEdit(
+                              {/* Language */}
+                              <div className="bg-white border rounded p-3">
+                                <label className="text-sm text-gray-500 block mb-1">
+                                  Detected Language
+                                </label>
+                                {claimedByMe ? (
+                                  <select
+                                    value={
+                                      getValue(
+                                        analysis.quote_file_id,
                                         "detected_language",
                                         analysis.detected_language,
-                                        newValue,
-                                        analysis.quote_file_id,
-                                        analysis.id,
-                                      );
+                                      ) || ""
                                     }
-                                  }}
-                                  className="w-full border rounded px-3 py-2"
-                                >
-                                  {languages.map((lang) => (
-                                    <option key={lang.code} value={lang.code}>
-                                      {lang.name} ({lang.price_multiplier}x)
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <div className="font-medium">
-                                  {analysis.detected_language}
-                                </div>
-                              )}
-                            </div>
+                                    onChange={(e) => {
+                                      const newValue = e.target.value;
+                                      updateLocalEdit(
+                                        analysis.quote_file_id,
+                                        "detected_language",
+                                        newValue,
+                                      );
+                                      if (
+                                        newValue !== analysis.detected_language
+                                      ) {
+                                        handleFieldEdit(
+                                          "detected_language",
+                                          analysis.detected_language,
+                                          newValue,
+                                          analysis.quote_file_id,
+                                          analysis.id,
+                                        );
+                                      }
+                                    }}
+                                    className="w-full border rounded px-3 py-2"
+                                  >
+                                    {languages.map((lang) => (
+                                      <option key={lang.code} value={lang.code}>
+                                        {lang.name} ({lang.price_multiplier}x)
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <div className="font-medium">
+                                    {analysis.detected_language}
+                                  </div>
+                                )}
+                              </div>
 
-                            {/* Complexity */}
-                            <div className="bg-white border rounded p-3">
-                              <label className="text-sm text-gray-500 block mb-1">
-                                Complexity
-                              </label>
-                              {claimedByMe ? (
-                                <select
-                                  value={
-                                    getValue(
-                                      analysis.quote_file_id,
-                                      "assessed_complexity",
-                                      analysis.assessed_complexity,
-                                    ) || "easy"
-                                  }
-                                  onChange={(e) => {
-                                    const newValue = e.target.value;
-                                    handleComplexityChange(
-                                      analysis.quote_file_id,
-                                      newValue,
-                                    );
-                                    if (
-                                      newValue !== analysis.assessed_complexity
-                                    ) {
-                                      handleFieldEdit(
+                              {/* Complexity */}
+                              <div className="bg-white border rounded p-3">
+                                <label className="text-sm text-gray-500 block mb-1">
+                                  Complexity
+                                </label>
+                                {claimedByMe ? (
+                                  <select
+                                    value={
+                                      getValue(
+                                        analysis.quote_file_id,
                                         "assessed_complexity",
                                         analysis.assessed_complexity,
-                                        newValue,
-                                        analysis.quote_file_id,
-                                        analysis.id,
-                                      );
+                                      ) || "easy"
                                     }
-                                  }}
-                                  className="w-full border rounded px-3 py-2"
-                                >
-                                  <option value="easy">Easy (1.0x)</option>
-                                  <option value="medium">Medium (1.15x)</option>
-                                  <option value="hard">Hard (1.25x)</option>
-                                </select>
-                              ) : (
-                                <div className="font-medium capitalize">
-                                  {analysis.assessed_complexity} (
-                                  {analysis.complexity_multiplier}x)
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Page Breakdown */}
-                            <div className="bg-white border rounded p-3">
-                              <label className="text-sm text-gray-500 block mb-2">
-                                Page Breakdown ({pages.length} page
-                                {pages.length !== 1 ? "s" : ""})
-                              </label>
-                              <div className="space-y-2">
-                                {pages.map((page, idx) => {
-                                  const words = getPageWordCount(page);
-                                  const complexity =
-                                    getValue(
-                                      analysis.quote_file_id,
-                                      "complexity_multiplier",
-                                      analysis.complexity_multiplier,
-                                    ) || 1.0;
-                                  const pageBillable = calculatePageBillable(
-                                    words,
-                                    complexity,
-                                  );
-
-                                  return (
-                                    <div
-                                      key={page.id}
-                                      className={`flex items-center justify-between p-2 rounded ${
-                                        selectedPages.has(page.id)
-                                          ? "bg-blue-50 border border-blue-200"
-                                          : "bg-gray-50"
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        {splitMode && (
-                                          <input
-                                            type="checkbox"
-                                            checked={selectedPages.has(page.id)}
-                                            onChange={() =>
-                                              togglePageSelection(page.id)
-                                            }
-                                            className="w-4 h-4 text-blue-600 rounded cursor-pointer"
-                                          />
-                                        )}
-                                        <span className="text-sm font-medium">
-                                          Page {idx + 1}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-3">
-                                        {claimedByMe ? (
-                                          <input
-                                            type="number"
-                                            value={words}
-                                            onChange={(e) =>
-                                              updatePageWordCount(
-                                                page,
-                                                parseInt(e.target.value) || 0,
-                                              )
-                                            }
-                                            onBlur={(e) => {
-                                              const newValue =
-                                                parseInt(e.target.value) || 0;
-                                              if (
-                                                newValue !== page.word_count
-                                              ) {
-                                                handleFieldEdit(
-                                                  "page_word_count",
-                                                  page.word_count,
-                                                  newValue,
-                                                  page.quote_file_id,
-                                                  undefined,
-                                                  page.id,
-                                                );
-                                              }
-                                            }}
-                                            className="w-20 text-right border rounded px-2 py-1 text-sm"
-                                            min="0"
-                                          />
-                                        ) : (
-                                          <span className="text-sm">
-                                            {words}
-                                          </span>
-                                        )}
-                                        <span className="text-xs text-gray-500">
-                                          words
-                                        </span>
-                                        <span className="text-xs text-blue-600 font-medium">
-                                          = {pageBillable.toFixed(2)} bp
-                                        </span>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
+                                    onChange={(e) => {
+                                      const newValue = e.target.value;
+                                      handleComplexityChange(
+                                        analysis.quote_file_id,
+                                        newValue,
+                                      );
+                                      if (
+                                        newValue !==
+                                        analysis.assessed_complexity
+                                      ) {
+                                        handleFieldEdit(
+                                          "assessed_complexity",
+                                          analysis.assessed_complexity,
+                                          newValue,
+                                          analysis.quote_file_id,
+                                          analysis.id,
+                                        );
+                                      }
+                                    }}
+                                    className="w-full border rounded px-3 py-2"
+                                  >
+                                    <option value="easy">Easy (1.0x)</option>
+                                    <option value="medium">
+                                      Medium (1.15x)
+                                    </option>
+                                    <option value="hard">Hard (1.25x)</option>
+                                  </select>
+                                ) : (
+                                  <div className="font-medium capitalize">
+                                    {analysis.assessed_complexity} (
+                                    {analysis.complexity_multiplier}x)
+                                  </div>
+                                )}
                               </div>
 
-                              {/* Document Billable Total */}
-                              <div className="flex justify-between mt-3 pt-2 border-t font-medium">
-                                <span>Document Billable:</span>
-                                <span>
-                                  {calculateDocumentBillable(
-                                    analysis.quote_file_id,
-                                    analysis,
-                                  ).toFixed(2)}{" "}
-                                  pages
-                                </span>
-                              </div>
-                              {calculateDocumentBillable(
-                                analysis.quote_file_id,
-                                analysis,
-                              ) === 1.0 &&
-                                pages.reduce(
-                                  (sum, p) =>
-                                    sum +
-                                    calculatePageBillable(
-                                      getPageWordCount(p),
+                              {/* Page Breakdown */}
+                              <div className="bg-white border rounded p-3">
+                                <label className="text-sm text-gray-500 block mb-2">
+                                  Page Breakdown ({pages.length} page
+                                  {pages.length !== 1 ? "s" : ""})
+                                </label>
+                                <div className="space-y-2">
+                                  {pages.map((page, idx) => {
+                                    const words = getPageWordCount(page);
+                                    const complexity =
                                       getValue(
                                         analysis.quote_file_id,
                                         "complexity_multiplier",
                                         analysis.complexity_multiplier,
-                                      ) || 1.0,
-                                    ),
-                                  0,
-                                ) < 1.0 && (
-                                  <div className="text-xs text-orange-600 mt-1">
-                                    * Minimum 1.00 applied
-                                  </div>
-                                )}
-                            </div>
+                                      ) || 1.0;
+                                    const pageBillable = calculatePageBillable(
+                                      words,
+                                      complexity,
+                                    );
 
-                            {/* CERTIFICATION SECTION */}
-                            <div className="bg-white border rounded p-3">
-                              <label className="text-sm text-gray-500 block mb-2">
-                                Certification
-                              </label>
-
-                              {/* Primary Certification */}
-                              <div className="flex items-center justify-between mb-3">
-                                <span className="text-sm font-medium">
-                                  Primary:
-                                </span>
-                                <div className="flex items-center gap-2 flex-1 ml-4">
-                                  {claimedByMe ? (
-                                    <select
-                                      value={
-                                        getValue(
-                                          analysis.quote_file_id,
-                                          "certification_type_id",
-                                          analysis.certification_type_id,
-                                        ) || ""
-                                      }
-                                      onChange={(e) =>
-                                        handleCertificationChange(
-                                          analysis.quote_file_id,
-                                          e.target.value,
-                                        )
-                                      }
-                                      className="flex-1 border rounded px-3 py-1 text-sm"
-                                    >
-                                      {certificationTypes.map((cert) => (
-                                        <option key={cert.id} value={cert.id}>
-                                          {cert.name} (${cert.price.toFixed(2)})
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <span className="text-sm flex-1">
-                                      {certificationTypes.find(
-                                        (c) =>
-                                          c.id ===
-                                          analysis.certification_type_id,
-                                      )?.name || "Not set"}
-                                    </span>
-                                  )}
-                                  <span className="text-sm font-medium w-20 text-right">
-                                    $
-                                    {(
-                                      certificationTypes.find(
-                                        (c) =>
-                                          c.id ===
-                                          getValue(
-                                            analysis.quote_file_id,
-                                            "certification_type_id",
-                                            analysis.certification_type_id,
-                                          ),
-                                      )?.price || 0
-                                    ).toFixed(2)}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Additional Certifications */}
-                              <div className="border-t pt-2">
-                                <div className="text-xs text-gray-500 mb-2">
-                                  Additional Certifications:
-                                </div>
-
-                                {(additionalCerts[analysis.quote_file_id] || [])
-                                  .length === 0 ? (
-                                  <p className="text-xs text-gray-400 italic">
-                                    None added
-                                  </p>
-                                ) : (
-                                  <div className="space-y-1">
-                                    {(
-                                      additionalCerts[analysis.quote_file_id] ||
-                                      []
-                                    ).map((cert) => (
+                                    return (
                                       <div
-                                        key={cert.id}
-                                        className="flex items-center justify-between py-1 px-2 bg-gray-50 rounded"
+                                        key={page.id}
+                                        className={`flex items-center justify-between p-2 rounded ${
+                                          selectedPages.has(page.id)
+                                            ? "bg-blue-50 border border-blue-200"
+                                            : "bg-gray-50"
+                                        }`}
                                       >
-                                        <span className="text-sm">
-                                          {cert.name}
-                                        </span>
                                         <div className="flex items-center gap-2">
-                                          <span className="text-sm">
-                                            ${cert.price.toFixed(2)}
+                                          {splitMode && (
+                                            <input
+                                              type="checkbox"
+                                              checked={selectedPages.has(
+                                                page.id,
+                                              )}
+                                              onChange={() =>
+                                                togglePageSelection(page.id)
+                                              }
+                                              className="w-4 h-4 text-blue-600 rounded cursor-pointer"
+                                            />
+                                          )}
+                                          <span className="text-sm font-medium">
+                                            Page {idx + 1}
                                           </span>
-                                          {claimedByMe && (
-                                            <button
-                                              onClick={() =>
-                                                removeAdditionalCert(
-                                                  analysis.quote_file_id,
-                                                  cert.id,
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                          {claimedByMe ? (
+                                            <input
+                                              type="number"
+                                              value={words}
+                                              onChange={(e) =>
+                                                updatePageWordCount(
+                                                  page,
+                                                  parseInt(e.target.value) || 0,
                                                 )
                                               }
-                                              className="text-red-500 text-xs hover:text-red-700"
-                                            >
-                                              ✕
-                                            </button>
+                                              onBlur={(e) => {
+                                                const newValue =
+                                                  parseInt(e.target.value) || 0;
+                                                if (
+                                                  newValue !== page.word_count
+                                                ) {
+                                                  handleFieldEdit(
+                                                    "page_word_count",
+                                                    page.word_count,
+                                                    newValue,
+                                                    page.quote_file_id,
+                                                    undefined,
+                                                    page.id,
+                                                  );
+                                                }
+                                              }}
+                                              className="w-20 text-right border rounded px-2 py-1 text-sm"
+                                              min="0"
+                                            />
+                                          ) : (
+                                            <span className="text-sm">
+                                              {words}
+                                            </span>
                                           )}
+                                          <span className="text-xs text-gray-500">
+                                            words
+                                          </span>
+                                          <span className="text-xs text-blue-600 font-medium">
+                                            = {pageBillable.toFixed(2)} bp
+                                          </span>
                                         </div>
                                       </div>
-                                    ))}
-                                  </div>
-                                )}
+                                    );
+                                  })}
+                                </div>
 
-                                {claimedByMe && (
-                                  <button
-                                    onClick={() =>
-                                      setShowAddCertModal(
-                                        analysis.quote_file_id,
-                                      )
-                                    }
-                                    className="text-blue-600 text-sm mt-2 hover:underline"
-                                  >
-                                    + Add Certification
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* Certification Total */}
-                              <div className="border-t pt-2 mt-3 flex justify-between">
-                                <span className="text-sm font-medium">
-                                  Certification Total:
-                                </span>
-                                <span className="text-sm font-bold">
-                                  $
-                                  {calculateCertificationTotal(
-                                    analysis.quote_file_id,
-                                    analysis,
-                                  ).toFixed(2)}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* PRICING SUMMARY */}
-                            <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                              <h4 className="text-sm font-semibold text-blue-800 mb-2">
-                                Document Total
-                              </h4>
-                              <div className="space-y-1 text-sm">
-                                <div className="flex justify-between">
-                                  <span>Billable Pages:</span>
+                                {/* Document Billable Total */}
+                                <div className="flex justify-between mt-3 pt-2 border-t font-medium">
+                                  <span>Document Billable:</span>
                                   <span>
                                     {calculateDocumentBillable(
                                       analysis.quote_file_id,
                                       analysis,
-                                    ).toFixed(2)}
+                                    ).toFixed(2)}{" "}
+                                    pages
                                   </span>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span>Translation:</span>
-                                  <span>
-                                    $
-                                    {calculateTranslationCost(
-                                      analysis.quote_file_id,
-                                      analysis,
-                                    ).toFixed(2)}
+                                {calculateDocumentBillable(
+                                  analysis.quote_file_id,
+                                  analysis,
+                                ) === 1.0 &&
+                                  pages.reduce(
+                                    (sum, p) =>
+                                      sum +
+                                      calculatePageBillable(
+                                        getPageWordCount(p),
+                                        getValue(
+                                          analysis.quote_file_id,
+                                          "complexity_multiplier",
+                                          analysis.complexity_multiplier,
+                                        ) || 1.0,
+                                      ),
+                                    0,
+                                  ) < 1.0 && (
+                                    <div className="text-xs text-orange-600 mt-1">
+                                      * Minimum 1.00 applied
+                                    </div>
+                                  )}
+                              </div>
+
+                              {/* CERTIFICATION SECTION */}
+                              <div className="bg-white border rounded p-3">
+                                <label className="text-sm text-gray-500 block mb-2">
+                                  Certification
+                                </label>
+
+                                {/* Primary Certification */}
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="text-sm font-medium">
+                                    Primary:
                                   </span>
+                                  <div className="flex items-center gap-2 flex-1 ml-4">
+                                    {claimedByMe ? (
+                                      <select
+                                        value={
+                                          getValue(
+                                            analysis.quote_file_id,
+                                            "certification_type_id",
+                                            analysis.certification_type_id,
+                                          ) || ""
+                                        }
+                                        onChange={(e) =>
+                                          handleCertificationChange(
+                                            analysis.quote_file_id,
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="flex-1 border rounded px-3 py-1 text-sm"
+                                      >
+                                        {certificationTypes.map((cert) => (
+                                          <option key={cert.id} value={cert.id}>
+                                            {cert.name} ($
+                                            {cert.price.toFixed(2)})
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span className="text-sm flex-1">
+                                        {certificationTypes.find(
+                                          (c) =>
+                                            c.id ===
+                                            analysis.certification_type_id,
+                                        )?.name || "Not set"}
+                                      </span>
+                                    )}
+                                    <span className="text-sm font-medium w-20 text-right">
+                                      $
+                                      {(
+                                        certificationTypes.find(
+                                          (c) =>
+                                            c.id ===
+                                            getValue(
+                                              analysis.quote_file_id,
+                                              "certification_type_id",
+                                              analysis.certification_type_id,
+                                            ),
+                                        )?.price || 0
+                                      ).toFixed(2)}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span>Certification:</span>
-                                  <span>
+
+                                {/* Additional Certifications */}
+                                <div className="border-t pt-2">
+                                  <div className="text-xs text-gray-500 mb-2">
+                                    Additional Certifications:
+                                  </div>
+
+                                  {(
+                                    additionalCerts[analysis.quote_file_id] ||
+                                    []
+                                  ).length === 0 ? (
+                                    <p className="text-xs text-gray-400 italic">
+                                      None added
+                                    </p>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      {(
+                                        additionalCerts[
+                                          analysis.quote_file_id
+                                        ] || []
+                                      ).map((cert) => (
+                                        <div
+                                          key={cert.id}
+                                          className="flex items-center justify-between py-1 px-2 bg-gray-50 rounded"
+                                        >
+                                          <span className="text-sm">
+                                            {cert.name}
+                                          </span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-sm">
+                                              ${cert.price.toFixed(2)}
+                                            </span>
+                                            {claimedByMe && (
+                                              <button
+                                                onClick={() =>
+                                                  removeAdditionalCert(
+                                                    analysis.quote_file_id,
+                                                    cert.id,
+                                                  )
+                                                }
+                                                className="text-red-500 text-xs hover:text-red-700"
+                                              >
+                                                ✕
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {claimedByMe && (
+                                    <button
+                                      onClick={() =>
+                                        setShowAddCertModal(
+                                          analysis.quote_file_id,
+                                        )
+                                      }
+                                      className="text-blue-600 text-sm mt-2 hover:underline"
+                                    >
+                                      + Add Certification
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Certification Total */}
+                                <div className="border-t pt-2 mt-3 flex justify-between">
+                                  <span className="text-sm font-medium">
+                                    Certification Total:
+                                  </span>
+                                  <span className="text-sm font-bold">
                                     $
                                     {calculateCertificationTotal(
                                       analysis.quote_file_id,
@@ -3093,232 +3075,273 @@ const HITLReviewDetail: React.FC = () => {
                                     ).toFixed(2)}
                                   </span>
                                 </div>
-                                <div className="flex justify-between font-bold border-t pt-1 mt-1 text-blue-800">
-                                  <span>Line Total:</span>
-                                  <span>
-                                    $
-                                    {calculateLineTotal(
-                                      analysis.quote_file_id,
-                                      analysis,
-                                    ).toFixed(2)}
-                                  </span>
+                              </div>
+
+                              {/* PRICING SUMMARY */}
+                              <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                                <h4 className="text-sm font-semibold text-blue-800 mb-2">
+                                  Document Total
+                                </h4>
+                                <div className="space-y-1 text-sm">
+                                  <div className="flex justify-between">
+                                    <span>Billable Pages:</span>
+                                    <span>
+                                      {calculateDocumentBillable(
+                                        analysis.quote_file_id,
+                                        analysis,
+                                      ).toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Translation:</span>
+                                    <span>
+                                      $
+                                      {calculateTranslationCost(
+                                        analysis.quote_file_id,
+                                        analysis,
+                                      ).toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Certification:</span>
+                                    <span>
+                                      $
+                                      {calculateCertificationTotal(
+                                        analysis.quote_file_id,
+                                        analysis,
+                                      ).toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between font-bold border-t pt-1 mt-1 text-blue-800">
+                                    <span>Line Total:</span>
+                                    <span>
+                                      $
+                                      {calculateLineTotal(
+                                        analysis.quote_file_id,
+                                        analysis,
+                                      ).toFixed(2)}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* AI Processing Details - Collapsible */}
-                        <div className="bg-gray-50 rounded-lg border mt-6">
-                          <button
-                            onClick={() =>
-                              setShowAiDetails((prev) => ({
-                                ...prev,
-                                [analysis.id]: !prev[analysis.id],
-                              }))
-                            }
-                            className="w-full flex justify-between items-center p-4 text-left hover:bg-gray-100"
-                          >
-                            <span className="font-medium text-gray-700">
-                              🤖 AI Processing Details
-                            </span>
-                            <span className="text-gray-400 text-lg">
-                              {showAiDetails[analysis.id] ? "−" : "+"}
-                            </span>
-                          </button>
+                          {/* AI Processing Details - Collapsible */}
+                          <div className="bg-gray-50 rounded-lg border mt-6">
+                            <button
+                              onClick={() =>
+                                setShowAiDetails((prev) => ({
+                                  ...prev,
+                                  [analysis.id]: !prev[analysis.id],
+                                }))
+                              }
+                              className="w-full flex justify-between items-center p-4 text-left hover:bg-gray-100"
+                            >
+                              <span className="font-medium text-gray-700">
+                                🤖 AI Processing Details
+                              </span>
+                              <span className="text-gray-400 text-lg">
+                                {showAiDetails[analysis.id] ? "−" : "+"}
+                              </span>
+                            </button>
 
-                          {showAiDetails[analysis.id] && (
-                            <div className="px-4 pb-4 border-t">
-                              {/* Processing Info Grid */}
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                                <div className="bg-white p-3 rounded border">
-                                  <p className="text-xs text-gray-500 uppercase">
-                                    OCR Provider
-                                  </p>
-                                  <p className="font-medium">
-                                    {analysis?.ocr_provider ||
-                                      "Google Document AI"}
-                                  </p>
-                                </div>
-
-                                <div className="bg-white p-3 rounded border">
-                                  <p className="text-xs text-gray-500 uppercase">
-                                    OCR Confidence
-                                  </p>
-                                  <p
-                                    className={`font-medium ${
-                                      (analysis?.ocr_confidence || 0) > 0.8
-                                        ? "text-green-600"
-                                        : (analysis?.ocr_confidence || 0) > 0.6
-                                          ? "text-yellow-600"
-                                          : "text-red-600"
-                                    }`}
-                                  >
-                                    {analysis?.ocr_confidence
-                                      ? `${(analysis.ocr_confidence * 100).toFixed(1)}%`
-                                      : "N/A"}
-                                  </p>
-                                </div>
-
-                                <div className="bg-white p-3 rounded border">
-                                  <p className="text-xs text-gray-500 uppercase">
-                                    AI Model
-                                  </p>
-                                  <p className="font-medium">
-                                    {analysis?.llm_model || "Claude Sonnet"}
-                                  </p>
-                                </div>
-
-                                <div className="bg-white p-3 rounded border">
-                                  <p className="text-xs text-gray-500 uppercase">
-                                    Processing Time
-                                  </p>
-                                  <p className="font-medium">
-                                    {analysis?.processing_time_ms
-                                      ? `${(analysis.processing_time_ms / 1000).toFixed(1)}s`
-                                      : "N/A"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Confidence Scores */}
-                              <div className="mt-4">
-                                <p className="text-sm font-medium text-gray-700 mb-2">
-                                  AI Confidence Scores
-                                </p>
-                                <div className="grid grid-cols-3 gap-3">
+                            {showAiDetails[analysis.id] && (
+                              <div className="px-4 pb-4 border-t">
+                                {/* Processing Info Grid */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
                                   <div className="bg-white p-3 rounded border">
-                                    <div className="flex justify-between">
-                                      <span className="text-sm text-gray-600">
-                                        Language
-                                      </span>
-                                      <span
-                                        className={`text-sm font-medium ${
-                                          (analysis?.language_confidence || 0) >
-                                          0.9
-                                            ? "text-green-600"
-                                            : (analysis?.language_confidence ||
-                                                  0) > 0.8
-                                              ? "text-yellow-600"
-                                              : "text-red-600"
-                                        }`}
-                                      >
-                                        {analysis?.language_confidence
-                                          ? `${(analysis.language_confidence * 100).toFixed(0)}%`
-                                          : "N/A"}
-                                      </span>
-                                    </div>
+                                    <p className="text-xs text-gray-500 uppercase">
+                                      OCR Provider
+                                    </p>
+                                    <p className="font-medium">
+                                      {analysis?.ocr_provider ||
+                                        "Google Document AI"}
+                                    </p>
                                   </div>
 
                                   <div className="bg-white p-3 rounded border">
-                                    <div className="flex justify-between">
-                                      <span className="text-sm text-gray-600">
-                                        Document Type
-                                      </span>
-                                      <span
-                                        className={`text-sm font-medium ${
-                                          (analysis?.document_type_confidence ||
-                                            0) > 0.85
-                                            ? "text-green-600"
-                                            : (analysis?.document_type_confidence ||
-                                                  0) > 0.7
-                                              ? "text-yellow-600"
-                                              : "text-red-600"
-                                        }`}
-                                      >
-                                        {analysis?.document_type_confidence
-                                          ? `${(analysis.document_type_confidence * 100).toFixed(0)}%`
-                                          : "N/A"}
-                                      </span>
-                                    </div>
+                                    <p className="text-xs text-gray-500 uppercase">
+                                      OCR Confidence
+                                    </p>
+                                    <p
+                                      className={`font-medium ${
+                                        (analysis?.ocr_confidence || 0) > 0.8
+                                          ? "text-green-600"
+                                          : (analysis?.ocr_confidence || 0) >
+                                              0.6
+                                            ? "text-yellow-600"
+                                            : "text-red-600"
+                                      }`}
+                                    >
+                                      {analysis?.ocr_confidence
+                                        ? `${(analysis.ocr_confidence * 100).toFixed(1)}%`
+                                        : "N/A"}
+                                    </p>
                                   </div>
 
                                   <div className="bg-white p-3 rounded border">
-                                    <div className="flex justify-between">
-                                      <span className="text-sm text-gray-600">
-                                        Complexity
-                                      </span>
-                                      <span
-                                        className={`text-sm font-medium ${
-                                          (analysis?.complexity_confidence ||
-                                            0) > 0.8
-                                            ? "text-green-600"
-                                            : (analysis?.complexity_confidence ||
-                                                  0) > 0.6
-                                              ? "text-yellow-600"
-                                              : "text-red-600"
-                                        }`}
-                                      >
-                                        {analysis?.complexity_confidence
-                                          ? `${(analysis.complexity_confidence * 100).toFixed(0)}%`
-                                          : "N/A"}
-                                      </span>
-                                    </div>
+                                    <p className="text-xs text-gray-500 uppercase">
+                                      AI Model
+                                    </p>
+                                    <p className="font-medium">
+                                      {analysis?.llm_model || "Claude Sonnet"}
+                                    </p>
+                                  </div>
+
+                                  <div className="bg-white p-3 rounded border">
+                                    <p className="text-xs text-gray-500 uppercase">
+                                      Processing Time
+                                    </p>
+                                    <p className="font-medium">
+                                      {analysis?.processing_time_ms
+                                        ? `${(analysis.processing_time_ms / 1000).toFixed(1)}s`
+                                        : "N/A"}
+                                    </p>
                                   </div>
                                 </div>
-                              </div>
 
-                              {/* HITL Trigger Reasons */}
-                              {reviewData?.trigger_reasons?.length > 0 && (
+                                {/* Confidence Scores */}
                                 <div className="mt-4">
                                   <p className="text-sm font-medium text-gray-700 mb-2">
-                                    Why HITL Was Triggered
+                                    AI Confidence Scores
                                   </p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {reviewData.trigger_reasons.map(
-                                      (reason: string, idx: number) => (
-                                        <span
-                                          key={idx}
-                                          className="px-3 py-1 bg-amber-100 text-amber-800 text-sm rounded-full"
-                                        >
-                                          {reason
-                                            .replace(/_/g, " ")
-                                            .replace(/\b\w/g, (l) =>
-                                              l.toUpperCase(),
-                                            )}
+                                  <div className="grid grid-cols-3 gap-3">
+                                    <div className="bg-white p-3 rounded border">
+                                      <div className="flex justify-between">
+                                        <span className="text-sm text-gray-600">
+                                          Language
                                         </span>
-                                      ),
-                                    )}
+                                        <span
+                                          className={`text-sm font-medium ${
+                                            (analysis?.language_confidence ||
+                                              0) > 0.9
+                                              ? "text-green-600"
+                                              : (analysis?.language_confidence ||
+                                                    0) > 0.8
+                                                ? "text-yellow-600"
+                                                : "text-red-600"
+                                          }`}
+                                        >
+                                          {analysis?.language_confidence
+                                            ? `${(analysis.language_confidence * 100).toFixed(0)}%`
+                                            : "N/A"}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div className="bg-white p-3 rounded border">
+                                      <div className="flex justify-between">
+                                        <span className="text-sm text-gray-600">
+                                          Document Type
+                                        </span>
+                                        <span
+                                          className={`text-sm font-medium ${
+                                            (analysis?.document_type_confidence ||
+                                              0) > 0.85
+                                              ? "text-green-600"
+                                              : (analysis?.document_type_confidence ||
+                                                    0) > 0.7
+                                                ? "text-yellow-600"
+                                                : "text-red-600"
+                                          }`}
+                                        >
+                                          {analysis?.document_type_confidence
+                                            ? `${(analysis.document_type_confidence * 100).toFixed(0)}%`
+                                            : "N/A"}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div className="bg-white p-3 rounded border">
+                                      <div className="flex justify-between">
+                                        <span className="text-sm text-gray-600">
+                                          Complexity
+                                        </span>
+                                        <span
+                                          className={`text-sm font-medium ${
+                                            (analysis?.complexity_confidence ||
+                                              0) > 0.8
+                                              ? "text-green-600"
+                                              : (analysis?.complexity_confidence ||
+                                                    0) > 0.6
+                                                ? "text-yellow-600"
+                                                : "text-red-600"
+                                          }`}
+                                        >
+                                          {analysis?.complexity_confidence
+                                            ? `${(analysis.complexity_confidence * 100).toFixed(0)}%`
+                                            : "N/A"}
+                                        </span>
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
-                              )}
-                            </div>
-                          )}
+
+                                {/* HITL Trigger Reasons */}
+                                {reviewData?.trigger_reasons?.length > 0 && (
+                                  <div className="mt-4">
+                                    <p className="text-sm font-medium text-gray-700 mb-2">
+                                      Why HITL Was Triggered
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {reviewData.trigger_reasons.map(
+                                        (reason: string, idx: number) => (
+                                          <span
+                                            key={idx}
+                                            className="px-3 py-1 bg-amber-100 text-amber-800 text-sm rounded-full"
+                                          >
+                                            {reason
+                                              .replace(/_/g, " ")
+                                              .replace(/\b\w/g, (l) =>
+                                                l.toUpperCase(),
+                                              )}
+                                          </span>
+                                        ),
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </HITLPanelLayout>
+          )}
+
+          {/* Messages Panel - Now integrated in HITLPanelLayout */}
+          {false &&
+            reviewData &&
+            reviewData.quotes &&
+            staffSession?.staffId && (
+              <div className="mt-6">
+                <MessagePanel
+                  quoteId={reviewData.quotes.id}
+                  staffId={staffSession.staffId}
+                  staffName={staffSession.name || "Staff"}
+                />
+              </div>
+            )}
+
+          {/* Save Button */}
+          {claimedByMe && hasAnyChanges() && (
+            <div className="fixed bottom-6 right-6">
+              <button
+                onClick={saveAllCorrections}
+                disabled={isSaving}
+                className={`px-6 py-3 rounded-lg shadow-lg text-white font-medium ${
+                  isSaving ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+              >
+                {isSaving ? "Saving..." : "Save All Corrections"}
+              </button>
             </div>
-          </HITLPanelLayout>
-        )}
-
-        {/* Messages Panel - Now integrated in HITLPanelLayout */}
-        {false && reviewData && reviewData.quotes && staffSession?.staffId && (
-          <div className="mt-6">
-            <MessagePanel
-              quoteId={reviewData.quotes.id}
-              staffId={staffSession.staffId}
-              staffName={staffSession.name || "Staff"}
-            />
-          </div>
-        )}
-
-        {/* Save Button */}
-        {claimedByMe && hasAnyChanges() && (
-          <div className="fixed bottom-6 right-6">
-            <button
-              onClick={saveAllCorrections}
-              disabled={isSaving}
-              className={`px-6 py-3 rounded-lg shadow-lg text-white font-medium ${
-                isSaving ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
-              }`}
-            >
-              {isSaving ? "Saving..." : "Save All Corrections"}
-            </button>
-          </div>
-        )}
+          )}
         </div>
 
         {/* Right Sidebar - Summary Info */}
@@ -3338,27 +3361,37 @@ const HITLReviewDetail: React.FC = () => {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Certification</span>
-                    <span>${(reviewData.quotes.certification_total || 0).toFixed(2)}</span>
+                    <span>
+                      ${(reviewData.quotes.certification_total || 0).toFixed(2)}
+                    </span>
                   </div>
                   {reviewData.quotes.rush_fee > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Rush Fee</span>
-                      <span>${(reviewData.quotes.rush_fee || 0).toFixed(2)}</span>
+                      <span>
+                        ${(reviewData.quotes.rush_fee || 0).toFixed(2)}
+                      </span>
                     </div>
                   )}
                   {reviewData.quotes.delivery_fee > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Delivery</span>
-                      <span>${(reviewData.quotes.delivery_fee || 0).toFixed(2)}</span>
+                      <span>
+                        ${(reviewData.quotes.delivery_fee || 0).toFixed(2)}
+                      </span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Tax</span>
-                    <span>${(reviewData.quotes.tax_amount || 0).toFixed(2)}</span>
+                    <span>
+                      ${(reviewData.quotes.tax_amount || 0).toFixed(2)}
+                    </span>
                   </div>
                   <div className="border-t pt-2 mt-2 flex justify-between font-semibold">
                     <span>Total</span>
-                    <span className="text-lg">${(reviewData.quotes.total || 0).toFixed(2)} CAD</span>
+                    <span className="text-lg">
+                      ${(reviewData.quotes.total || 0).toFixed(2)} CAD
+                    </span>
                   </div>
                 </div>
               </div>
@@ -3402,12 +3435,18 @@ const HITLReviewDetail: React.FC = () => {
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-500">Created</span>
-                    <span>{reviewData.created_at ? new Date(reviewData.created_at).toLocaleString() : "—"}</span>
+                    <span>
+                      {reviewData.created_at
+                        ? new Date(reviewData.created_at).toLocaleString()
+                        : "—"}
+                    </span>
                   </div>
                   {reviewData.assigned_at && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">Claimed</span>
-                      <span>{new Date(reviewData.assigned_at).toLocaleString()}</span>
+                      <span>
+                        {new Date(reviewData.assigned_at).toLocaleString()}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -3492,56 +3531,56 @@ const HITLReviewDetail: React.FC = () => {
       {claimedByMe && reviewData?.status === "in_review" && (
         <div className="mt-8 bg-white border rounded-lg p-6 flex flex-wrap items-center justify-end gap-3">
           {/* Action Buttons */}
-              <button
-                onClick={() => setShowRejectQuoteModal(true)}
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-              >
-                <XCircle className="w-4 h-4" />
-                Reject Quote
-              </button>
+          <button
+            onClick={() => setShowRejectQuoteModal(true)}
+            disabled={isSubmitting}
+            className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+          >
+            <XCircle className="w-4 h-4" />
+            Reject Quote
+          </button>
 
-              <button
-                onClick={() => setShowRejectModal(true)}
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-red-100 text-red-700 border border-red-300 rounded-lg hover:bg-red-200 font-medium disabled:opacity-50"
-              >
-                Request Better Scan
-              </button>
+          <button
+            onClick={() => setShowRejectModal(true)}
+            disabled={isSubmitting}
+            className="px-4 py-2 bg-red-100 text-red-700 border border-red-300 rounded-lg hover:bg-red-200 font-medium disabled:opacity-50"
+          >
+            Request Better Scan
+          </button>
 
-              <button
-                onClick={() => setShowUpdateModal(true)}
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
-              >
-                <Send className="w-4 h-4" />
-                Update & Send Payment Link
-              </button>
+          <button
+            onClick={() => setShowUpdateModal(true)}
+            disabled={isSubmitting}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
+          >
+            <Send className="w-4 h-4" />
+            Update & Send Payment Link
+          </button>
 
-              <button
-                onClick={() => setShowPaymentModal(true)}
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium disabled:opacity-50"
-              >
-                <CreditCard className="w-4 h-4" />
-                Manual Payment
-              </button>
+          <button
+            onClick={() => setShowPaymentModal(true)}
+            disabled={isSubmitting}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium disabled:opacity-50"
+          >
+            <CreditCard className="w-4 h-4" />
+            Manual Payment
+          </button>
 
-              <button
-                onClick={handleEscalateReview}
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-200 font-medium disabled:opacity-50"
-              >
-                Escalate to Admin
-              </button>
+          <button
+            onClick={handleEscalateReview}
+            disabled={isSubmitting}
+            className="px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-200 font-medium disabled:opacity-50"
+          >
+            Escalate to Admin
+          </button>
 
-              <button
-                onClick={handleApproveReview}
-                disabled={isSubmitting}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50"
-              >
-                {isSubmitting ? "Processing..." : "Update Quote ✓"}
-              </button>
+          <button
+            onClick={handleApproveReview}
+            disabled={isSubmitting}
+            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50"
+          >
+            {isSubmitting ? "Processing..." : "Update Quote ✓"}
+          </button>
         </div>
       )}
 
