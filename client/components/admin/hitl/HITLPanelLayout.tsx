@@ -77,7 +77,7 @@ interface HITLPanelLayoutProps {
   staffName?: string;
   loading?: boolean;
   onSaveInternalNotes?: (notes: string) => Promise<void>;
-  onRefreshFiles?: () => void;
+  onRefreshFiles?: () => void | Promise<void>;
   children?: React.ReactNode; // Document analysis content
 }
 
