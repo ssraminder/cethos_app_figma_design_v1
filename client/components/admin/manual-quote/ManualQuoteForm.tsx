@@ -318,9 +318,44 @@ export default function ManualQuoteForm({
             />
           )}
 
-          {currentStep === 4 && <StaffPricingForm />}
+          {currentStep === 4 && quoteId && (
+            <StaffPricingForm
+              quoteId={quoteId}
+              files={files}
+              value={pricing}
+              onChange={setPricing}
+            />
+          )}
 
-          {currentStep === 5 && <StaffPaymentReviewForm />}
+          {currentStep === 5 && (
+            <StaffReviewForm
+              customer={customer}
+              quote={quote}
+              files={files}
+              pricing={pricing}
+              staffNotes={staffNotes}
+              onStaffNotesChange={setStaffNotes}
+              onEditSection={(section) => {
+                switch (section) {
+                  case "customer":
+                    setCurrentStep(1);
+                    break;
+                  case "translation":
+                    setCurrentStep(2);
+                    break;
+                  case "files":
+                    setCurrentStep(3);
+                    break;
+                  case "pricing":
+                    setCurrentStep(4);
+                    break;
+                }
+              }}
+              onPrevious={() => setCurrentStep(4)}
+              onSubmit={handleFinalSubmit}
+              submitting={isSubmitting}
+            />
+          )}
         </div>
 
         {/* Action Buttons */}
