@@ -107,6 +107,131 @@ export default function EditablePricingSummaryPanel({
     }
   };
 
+  const fetchCertificationTypes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("certification_types")
+        .select("*")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+
+      if (error) throw error;
+      setCertificationTypes(data || []);
+    } catch (error) {
+      console.error("Error fetching certification types:", error);
+    }
+  };
+
+  const handleCertificationChange = async (certificationTypeId: string) => {
+    if (!pricingData?.quote_id || !certificationTypeId) return;
+
+    const selectedCert = certificationTypes.find((c) => c.id === certificationTypeId);
+    if (!selectedCert) return;
+
+    const documentCount = pricingData.document_count || 0;
+    if (documentCount === 0) {
+      alert("No documents found in this quote");
+      return;
+    }
+
+    if (
+      !confirm(
+        `Apply "${selectedCert.name}" certification to all ${documentCount} document(s)?\n\nCost: $${selectedCert.price.toFixed(2)} × ${documentCount} = $${(selectedCert.price * documentCount).toFixed(2)}`
+      )
+    ) {
+      // Reset to previous value if cancelled
+      setSelectedCertificationId(pricingData.current_certification_type_id || "");
+      return;
+    }
+
+    setIsSavingCertification(true);
+    try {
+      // Get all quote files for this quote
+      const { data: quoteFiles, error: filesError } = await supabase
+        .from("quote_files")
+        .select("id")
+        .eq("quote_id", pricingData.quote_id);
+
+      if (filesError) throw filesError;
+
+      if (!quoteFiles || quoteFiles.length === 0) {
+        alert("No documents found in this quote");
+        setIsSavingCertification(false);
+        return;
+      }
+
+      // For each quote file, update or insert the primary certification
+      for (const file of quoteFiles) {
+        const { data: existing } = await supabase
+          .from("document_certifications")
+          .select("id")
+          .eq("quote_file_id", file.id)
+          .eq("is_primary", true)
+          .single();
+
+        if (existing) {
+          await supabase
+            .from("document_certifications")
+            .update({
+              certification_type_id: certificationTypeId,
+              price: selectedCert.price,
+              added_by: staffId || null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existing.id);
+        } else {
+          await supabase
+            .from("document_certifications")
+            .insert({
+              quote_file_id: file.id,
+              certification_type_id: certificationTypeId,
+              is_primary: true,
+              price: selectedCert.price,
+              added_by: staffId || null,
+              added_at: new Date().toISOString(),
+            });
+        }
+      }
+
+      // Recalculate certification total
+      const totalCertificationCost = quoteFiles.length * Number(selectedCert.price);
+
+      await supabase
+        .from("quotes")
+        .update({
+          certification_total: totalCertificationCost,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", pricingData.quote_id);
+
+      // Log activity
+      if (staffId) {
+        await supabase.from("staff_activity_log").insert({
+          staff_id: staffId,
+          activity_type: "quote_certification_updated",
+          details: {
+            quote_id: pricingData.quote_id,
+            certification_type: selectedCert.name,
+            certification_id: selectedCert.id,
+            document_count: quoteFiles.length,
+            total_cost: totalCertificationCost,
+          },
+        });
+      }
+
+      setSelectedCertificationId(certificationTypeId);
+      alert(`✅ Certification applied to ${quoteFiles.length} document(s)!`);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error("Failed to update certification:", error);
+      alert("Failed to update certification: " + (error as Error).message);
+      // Reset to previous value on error
+      setSelectedCertificationId(pricingData.current_certification_type_id || "");
+    } finally {
+      setIsSavingCertification(false);
+    }
+  };
+
   const calculateAdjustmentAmount = (
     type: "discount" | "surcharge",
     valueType: "percentage" | "fixed",
