@@ -44,9 +44,15 @@ export default function Index() {
       const token = searchParams.get("token");
 
       // Skip if no identifier or quote already loaded
-      if ((!quoteId && !quoteNumber) || (quoteId && state.quoteId === quoteId)) return;
+      if ((!quoteId && !quoteNumber) || (quoteId && state.quoteId === quoteId))
+        return;
 
-      console.log("📥 Loading existing quote from URL:", { quoteId, quoteNumber, step: stepParam, hasToken: !!token });
+      console.log("📥 Loading existing quote from URL:", {
+        quoteId,
+        quoteNumber,
+        step: stepParam,
+        hasToken: !!token,
+      });
       setIsLoadingQuote(true);
 
       try {
@@ -76,14 +82,12 @@ export default function Index() {
         }
 
         // Fetch the quote with all related data
-        let query = supabase
-          .from("quotes")
-          .select(
-            `
+        let query = supabase.from("quotes").select(
+          `
             *,
             customer:customers(*)
           `,
-          );
+        );
 
         // Use quote_id or quote_number to fetch
         if (quoteId) {

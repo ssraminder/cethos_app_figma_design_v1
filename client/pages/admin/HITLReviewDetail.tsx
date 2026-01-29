@@ -2720,8 +2720,8 @@ const HITLReviewDetail: React.FC = () => {
                   updateReason.includes(":")
                     ? updateReason.split(":")[0]
                     : updateReason
-                    ? "other"
-                    : ""
+                      ? "other"
+                      : ""
                 }
                 onChange={(e) => {
                   const reasons = {
@@ -2768,7 +2768,9 @@ const HITLReviewDetail: React.FC = () => {
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <span className="text-gray-600">Version:</span>{" "}
-                    <span className="font-medium">{reviewData.version || 1}</span>
+                    <span className="font-medium">
+                      {reviewData.version || 1}
+                    </span>
                   </div>
                   <div>
                     <span className="text-gray-600">Total:</span>{" "}

@@ -21,7 +21,7 @@ serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
     const body: ResendQuoteEmailRequest = await req.json();
@@ -46,7 +46,7 @@ serve(async (req) => {
           full_name,
           email
         )
-      `
+      `,
       )
       .eq("id", quoteId)
       .single();
@@ -58,7 +58,7 @@ serve(async (req) => {
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -69,11 +69,16 @@ serve(async (req) => {
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
-    console.log("Quote found:", quote.quote_number, "Customer:", customer.email);
+    console.log(
+      "Quote found:",
+      quote.quote_number,
+      "Customer:",
+      customer.email,
+    );
 
     // 2. Invalidate old magic links for this customer
     const { error: invalidateError } = await supabase
@@ -120,7 +125,7 @@ serve(async (req) => {
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -157,17 +162,21 @@ serve(async (req) => {
               
               <p>We're resending your translation quote for your review and payment.</p>
               
-              ${customMessage ? `
+              ${
+                customMessage
+                  ? `
               <div class="custom-message">
                 <strong>Message from our team:</strong><br/>
                 ${customMessage}
               </div>
-              ` : ''}
+              `
+                  : ""
+              }
               
               <div class="quote-box">
                 <strong>Quote Number:</strong> ${quote.quote_number}<br/>
                 <strong>Version:</strong> ${quote.version}<br/>
-                <strong>Total Amount:</strong> $${quote.total?.toFixed(2) || '0.00'}
+                <strong>Total Amount:</strong> $${quote.total?.toFixed(2) || "0.00"}
               </div>
               
               <p>Please click the button below to review your quote and proceed with payment:</p>
@@ -194,27 +203,30 @@ serve(async (req) => {
       `;
 
       try {
-        const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "api-key": brevoApiKey,
-          },
-          body: JSON.stringify({
-            sender: {
-              name: "Cethos Translation Services",
-              email: "noreply@cethos.com",
+        const brevoResponse = await fetch(
+          "https://api.brevo.com/v3/smtp/email",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "api-key": brevoApiKey,
             },
-            to: [
-              {
-                email: customer.email,
-                name: customer.full_name,
+            body: JSON.stringify({
+              sender: {
+                name: "Cethos Translation Services",
+                email: "noreply@cethos.com",
               },
-            ],
-            subject: `Your Cethos Quote ${quote.quote_number} - Ready for Review`,
-            htmlContent: emailHtml,
-          }),
-        });
+              to: [
+                {
+                  email: customer.email,
+                  name: customer.full_name,
+                },
+              ],
+              subject: `Your Cethos Quote ${quote.quote_number} - Ready for Review`,
+              htmlContent: emailHtml,
+            }),
+          },
+        );
 
         if (!brevoResponse.ok) {
           const errorText = await brevoResponse.text();
@@ -231,18 +243,20 @@ serve(async (req) => {
     }
 
     // 5. Log staff activity
-    const { error: logError } = await supabase.from("staff_activity_log").insert({
-      staff_id: staffId,
-      action: "resend_quote_email",
-      resource_type: "quote",
-      resource_id: quoteId,
-      details: {
-        quote_number: quote.quote_number,
-        customer_email: customer.email,
-        custom_message: customMessage || null,
-        email_sent: emailSent,
-      },
-    });
+    const { error: logError } = await supabase
+      .from("staff_activity_log")
+      .insert({
+        staff_id: staffId,
+        action: "resend_quote_email",
+        resource_type: "quote",
+        resource_id: quoteId,
+        details: {
+          quote_number: quote.quote_number,
+          customer_email: customer.email,
+          custom_message: customMessage || null,
+          email_sent: emailSent,
+        },
+      });
 
     if (logError) {
       console.error("Error logging activity:", logError);
@@ -262,7 +276,7 @@ serve(async (req) => {
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error) {
     console.error("Unexpected error:", error);
@@ -274,7 +288,7 @@ serve(async (req) => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });
