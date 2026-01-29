@@ -112,12 +112,12 @@ export default function ManualQuoteForm({
 
   const createInitialQuote = async () => {
     console.log("📝 [QUOTE CREATION] createInitialQuote called");
-    console.log("  - staffUser?.id:", staffUser?.id);
+    console.log("  - staffId:", staffId);
     console.log("  - customer:", customer);
 
-    if (!staffUser?.id || !customer) {
+    if (!staffId || !customer) {
       console.log(
-        "⏸️ [QUOTE CREATION] Missing staffUser or customer - skipping",
+        "⏸️ [QUOTE CREATION] Missing staffId or customer - skipping",
       );
       return;
     }
@@ -136,7 +136,7 @@ export default function ManualQuoteForm({
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
-            staffId: staffUser.id,
+            staffId: staffId,
             customerData: {
               email: customer.email,
               phone: customer.phone,
@@ -216,7 +216,7 @@ export default function ManualQuoteForm({
     paymentMethodId: string,
     sendPaymentLink: boolean,
   ) => {
-    if (!staffUser?.id || !customer || !quoteId) {
+    if (!staffId || !customer || !quoteId) {
       toast.error("Missing required information");
       return;
     }
@@ -236,7 +236,7 @@ export default function ManualQuoteForm({
             },
             body: JSON.stringify({
               quoteId: quoteId,
-              staffId: staffUser.id,
+              staffId: staffId,
               pricingData: pricing,
               manualOverride: true,
               useAutoCalculation: false,
@@ -410,7 +410,7 @@ export default function ManualQuoteForm({
         {currentStep === 3 && (
           <StaffFileUploadForm
             quoteId={quoteId}
-            staffId={staffUser?.id || ""}
+            staffId={staffId || ""}
             onFilesChange={setFiles}
             processWithAI={processWithAI}
             onProcessWithAIChange={setProcessWithAI}
@@ -496,7 +496,7 @@ export default function ManualQuoteForm({
             <strong>Current Step:</strong> {currentStep}
           </p>
           <p>
-            <strong>Staff ID:</strong> {staffUser?.id}
+            <strong>Staff ID:</strong> {staffId}
           </p>
           <p>
             <strong>Can Proceed:</strong> {canProceed() ? "Yes" : "No"}
