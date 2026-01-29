@@ -138,56 +138,57 @@ export default function AnalyzeDocumentModal({
       // Call the analyze-document edge function with 60 second timeout
       setProcessingStep("Running OCR analysis...");
 
-      // Create abort controller for timeout
-      const abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController.abort(), 60000); // 60 seconds
+      // Create timeout promise
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Analysis timed out after 60 seconds. Please try again or use a smaller file.",
+              ),
+            ),
+          60000,
+        ),
+      );
 
-      try {
-        const { data, error } = await supabase.functions.invoke(
-          "analyze-document",
-          {
-            body: {
-              fileId: file.id,
-              quoteId: quoteId,
-              analysisType: analysisType,
-              ocrProvider: selectedOcrProvider,
-              aiModel:
-                analysisType === "ocr_and_ai" ? selectedAiModel : undefined,
-            },
-          },
-        );
+      // Create the analysis promise
+      const analysisPromise = supabase.functions.invoke("analyze-document", {
+        body: {
+          fileId: file.id,
+          quoteId: quoteId,
+          analysisType: analysisType,
+          ocrProvider: selectedOcrProvider,
+          aiModel:
+            analysisType === "ocr_and_ai" ? selectedAiModel : undefined,
+        },
+      });
 
-        clearTimeout(timeoutId);
+      // Race between timeout and analysis
+      const { data, error } = (await Promise.race([
+        analysisPromise,
+        timeoutPromise,
+      ])) as any;
 
-        if (error) throw error;
+      if (error) throw error;
 
-        if (!data.success) {
-          throw new Error(data.error || "Analysis failed");
-        }
-
-        // Store results
-        if (data.ocrResult) {
-          setOcrResult(data.ocrResult);
-        }
-
-        if (data.aiResult && analysisType === "ocr_and_ai") {
-          setProcessingStep("Running AI analysis...");
-          setAiResult(data.aiResult);
-        }
-
-        setShowResults(true);
-        toast.success(
-          `Analysis completed! Processed ${data.ocrResult?.total_pages || 0} pages`,
-        );
-      } catch (invokeError) {
-        clearTimeout(timeoutId);
-        if (abortController.signal.aborted) {
-          throw new Error(
-            "Analysis timed out after 60 seconds. Please try again or use a smaller file.",
-          );
-        }
-        throw invokeError;
+      if (!data.success) {
+        throw new Error(data.error || "Analysis failed");
       }
+
+      // Store results
+      if (data.ocrResult) {
+        setOcrResult(data.ocrResult);
+      }
+
+      if (data.aiResult && analysisType === "ocr_and_ai") {
+        setProcessingStep("Running AI analysis...");
+        setAiResult(data.aiResult);
+      }
+
+      setShowResults(true);
+      toast.success(
+        `Analysis completed! Processed ${data.ocrResult?.total_pages || 0} pages`,
+      );
     } catch (error) {
       console.error("Analysis error:", error);
       toast.error("Analysis failed: " + (error as Error).message);
