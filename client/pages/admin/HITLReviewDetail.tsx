@@ -884,7 +884,7 @@ const HITLReviewDetail: React.FC = () => {
         throw new Error("Failed to delete analysis results");
       }
 
-      // 2. Reset quote_files status to 'pending'
+      // 2. Reset quote_files status to 'skipped' (not 'pending' to avoid auto-processing)
       const updateResponse = await fetch(
         `${SUPABASE_URL}/rest/v1/quote_files?id=eq.${fileId}`,
         {
@@ -896,7 +896,7 @@ const HITLReviewDetail: React.FC = () => {
             Prefer: "return=minimal",
           },
           body: JSON.stringify({
-            ai_processing_status: "pending",
+            ai_processing_status: "skipped",
           }),
         }
       );

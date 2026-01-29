@@ -17,7 +17,7 @@ interface QuoteFile {
   original_filename: string;
   file_size: number;
   created_at: string;
-  processing_status?: string;
+  ai_processing_status?: string;
   storage_path?: string;
   mime_type: string;
 }
