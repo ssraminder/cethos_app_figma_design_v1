@@ -49,7 +49,7 @@ serve(async (req) => {
       },
     );
 
-    // 1. Verify quote exists and belongs to staff (or is a manual quote)
+    // 1. Verify quote exists
     const { data: quote, error: quoteError } = await supabaseAdmin
       .from("quotes")
       .select("id, created_by_staff_id, is_manual_quote")
@@ -69,8 +69,23 @@ serve(async (req) => {
       );
     }
 
-    // Verify staff owns the quote or it's a manual quote
-    if (quote.created_by_staff_id !== staffId && !quote.is_manual_quote) {
+    // Verify authorization: staff owns the quote, it's a manual quote, OR staff has it in HITL queue
+    const isOwner = quote.created_by_staff_id === staffId;
+    const isManualQuote = quote.is_manual_quote;
+
+    // Check if quote is in HITL queue assigned to this staff
+    const { data: hitlReview } = await supabaseAdmin
+      .from("hitl_reviews")
+      .select("id, assigned_to")
+      .eq("quote_id", quoteId)
+      .maybeSingle();
+
+    const isInHITLQueue = hitlReview && (
+      !hitlReview.assigned_to || // Unassigned - any staff can work on it
+      hitlReview.assigned_to === staffId // Assigned to this staff
+    );
+
+    if (!isOwner && !isManualQuote && !isInHITLQueue) {
       return new Response(
         JSON.stringify({
           success: false,
