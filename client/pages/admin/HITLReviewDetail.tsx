@@ -226,6 +226,23 @@ const HITLReviewDetail: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Billing, Shipping, and Rush Options state
+  const [showAddressSection, setShowAddressSection] = useState(false);
+  const [billingAddress, setBillingAddress] = useState<any>(null);
+  const [shippingAddress, setShippingAddress] = useState<any>(null);
+  const [turnaroundType, setTurnaroundType] = useState<'standard' | 'rush' | 'same_day'>('standard');
+  const [rushFee, setRushFee] = useState(0);
+  const [rushMultiplierValue, setRushMultiplierValue] = useState(1.3);
+  const [sameDayMultiplierValue, setSameDayMultiplierValue] = useState(2.0);
+  const [turnaroundOptions, setTurnaroundOptions] = useState<Array<{
+    id: string;
+    code: string;
+    name: string;
+    description: string;
+    multiplier: number;
+    is_rush: boolean;
+  }>>([]);
+
   // Page splitting/combining
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
   const [splitMode, setSplitMode] = useState(false);
