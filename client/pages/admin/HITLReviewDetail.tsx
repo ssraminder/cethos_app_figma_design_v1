@@ -19,6 +19,7 @@ import {
   DollarSign,
   Clock,
   User,
+  Check,
 } from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -208,6 +209,7 @@ const HITLReviewDetail: React.FC = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
   const [paymentRemarks, setPaymentRemarks] = useState("");
+  const [amountPaid, setAmountPaid] = useState("");
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<
     Array<{ id: string; name: string; code: string }>
@@ -1107,19 +1109,39 @@ const HITLReviewDetail: React.FC = () => {
       return;
     }
 
+    // Validate amount paid
+    const parsedAmountPaid = parseFloat(amountPaid);
+    if (isNaN(parsedAmountPaid) || parsedAmountPaid < 0) {
+      alert("Please enter a valid amount paid (must be 0 or greater).");
+      return;
+    }
+
     if (!staffSession?.staffId || !reviewData?.quote_id) {
       alert("Missing required data. Please refresh the page.");
       return;
     }
 
+    const quote = reviewData.quotes || reviewData;
+    const totalAmount = quote.total || 0;
+    const calculatedBalanceDue = Math.max(0, totalAmount - parsedAmountPaid);
+
+    // Warning for zero payment
+    if (parsedAmountPaid === 0) {
+      if (!confirm("Are you sure? This will create an order with full balance due.")) {
+        return;
+      }
+    }
+
     const confirmMsg =
-      `Are you sure you want to manually mark this quote as PAID?\n\n` +
+      `Are you sure you want to record this manual payment?\n\n` +
       `Quote: ${reviewData.quote_number}\n` +
-      `Total: $${reviewData.total?.toFixed(2) || "0.00"}\n` +
+      `Total Amount: $${totalAmount.toFixed(2)}\n` +
+      `Amount Paid: $${parsedAmountPaid.toFixed(2)}\n` +
+      `Balance Due: $${calculatedBalanceDue.toFixed(2)}\n` +
       `Payment Method: ${paymentMethods.find((pm) => pm.id === selectedPaymentMethod)?.name}\n\n` +
       `This will:\n` +
       `- Convert the quote to an order\n` +
-      `- Mark it as paid\n` +
+      `- Record the payment\n` +
       `- Cannot be undone`;
 
     if (!confirm(confirmMsg)) {
@@ -1129,8 +1151,6 @@ const HITLReviewDetail: React.FC = () => {
     setIsProcessingPayment(true);
 
     try {
-      const quote = reviewData.quotes || reviewData;
-
       // Generate order number
       const orderNumber = `ORD-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
 
@@ -1141,7 +1161,7 @@ const HITLReviewDetail: React.FC = () => {
           order_number: orderNumber,
           quote_id: reviewData.quote_id,
           customer_id: quote.customer_id,
-          status: "paid",
+          status: calculatedBalanceDue > 0 ? "partial" : "paid",
           work_status: "pending",
           subtotal: quote.subtotal || 0,
           certification_total: quote.certification_total || 0,
@@ -1149,12 +1169,12 @@ const HITLReviewDetail: React.FC = () => {
           delivery_fee: quote.delivery_fee || 0,
           tax_rate: quote.tax_rate || 0.05,
           tax_amount: quote.tax_amount || 0,
-          total_amount: quote.total || 0,
-          amount_paid: quote.total || 0,
-          balance_due: 0,
+          total_amount: totalAmount,
+          amount_paid: parsedAmountPaid,
+          balance_due: calculatedBalanceDue,
           currency: "CAD",
           is_rush: quote.is_rush || false,
-          paid_at: new Date().toISOString(),
+          paid_at: parsedAmountPaid > 0 ? new Date().toISOString() : null,
           service_province: quote.service_province,
         })
         .select()
@@ -1193,15 +1213,23 @@ const HITLReviewDetail: React.FC = () => {
           payment_method: paymentMethods.find(
             (pm) => pm.id === selectedPaymentMethod,
           )?.name,
-          amount: quote.total,
+          total_amount: totalAmount,
+          amount_paid: parsedAmountPaid,
+          balance_due: calculatedBalanceDue,
           remarks: paymentRemarks || null,
         },
       });
 
+      const balanceMsg = calculatedBalanceDue > 0
+        ? `Balance Due: $${calculatedBalanceDue.toFixed(2)}`
+        : `Paid in Full`;
+
       alert(
         `✅ Payment recorded successfully!\n\n` +
           `Order Number: ${orderNumber}\n` +
-          `Amount: $${quote.total?.toFixed(2) || "0.00"}\n` +
+          `Total Amount: $${totalAmount.toFixed(2)}\n` +
+          `Amount Paid: $${parsedAmountPaid.toFixed(2)}\n` +
+          `${balanceMsg}\n` +
           `Payment Method: ${paymentMethods.find((pm) => pm.id === selectedPaymentMethod)?.name}\n\n` +
           `The quote has been converted to an order.`,
       );
@@ -1209,6 +1237,7 @@ const HITLReviewDetail: React.FC = () => {
       setShowPaymentModal(false);
       setSelectedPaymentMethod("");
       setPaymentRemarks("");
+      setAmountPaid("");
 
       // Navigate to order or refresh
       navigate("/admin/hitl");
@@ -3455,7 +3484,11 @@ const HITLReviewDetail: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setShowPaymentModal(true)}
+            onClick={() => {
+              const total = reviewData?.total || reviewData?.quotes?.total || 0;
+              setAmountPaid(total.toFixed(2));
+              setShowPaymentModal(true);
+            }}
             disabled={isSubmitting}
             className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium disabled:opacity-50"
           >
@@ -3901,6 +3934,69 @@ const HITLReviewDetail: React.FC = () => {
               </select>
             </div>
 
+            {/* Amount Paid */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Amount Paid <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                  $
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={amountPaid}
+                  onChange={(e) => setAmountPaid(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  disabled={isProcessingPayment}
+                />
+              </div>
+            </div>
+
+            {/* Balance Display */}
+            {reviewData && (
+              <div className="mb-4">
+                {(() => {
+                  const totalAmount = reviewData.total || reviewData.quotes?.total || 0;
+                  const paid = parseFloat(amountPaid) || 0;
+                  const balanceDue = Math.max(0, totalAmount - paid);
+                  const isPaidInFull = paid >= totalAmount;
+                  const isZeroPayment = paid === 0 && amountPaid !== "";
+
+                  return (
+                    <div className={`p-3 rounded-lg ${isPaidInFull ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                      {isZeroPayment && (
+                        <div className="flex items-start gap-2 mb-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                          <p className="text-sm text-amber-800">
+                            This will create an order with full balance due.
+                          </p>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-medium ${isPaidInFull ? 'text-green-700' : 'text-amber-700'}`}>
+                          {isPaidInFull ? 'Paid in Full' : 'Balance Due:'}
+                        </span>
+                        <span className={`font-bold ${isPaidInFull ? 'text-green-700' : 'text-amber-700'}`}>
+                          {isPaidInFull ? (
+                            <span className="flex items-center gap-1">
+                              <Check className="w-4 h-4" />
+                              ${paid.toFixed(2)}
+                            </span>
+                          ) : (
+                            `$${balanceDue.toFixed(2)}`
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Optional Remarks */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -3923,6 +4019,7 @@ const HITLReviewDetail: React.FC = () => {
                   setShowPaymentModal(false);
                   setSelectedPaymentMethod("");
                   setPaymentRemarks("");
+                  setAmountPaid("");
                 }}
                 disabled={isProcessingPayment}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
@@ -3931,7 +4028,13 @@ const HITLReviewDetail: React.FC = () => {
               </button>
               <button
                 onClick={handleManualPayment}
-                disabled={isProcessingPayment || !selectedPaymentMethod}
+                disabled={
+                  isProcessingPayment ||
+                  !selectedPaymentMethod ||
+                  amountPaid === "" ||
+                  isNaN(parseFloat(amountPaid)) ||
+                  parseFloat(amountPaid) < 0
+                }
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <CreditCard className="w-4 h-4" />
