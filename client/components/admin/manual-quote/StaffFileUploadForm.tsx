@@ -305,7 +305,7 @@ export default function StaffFileUploadForm({
                 </div>
                 <button
                   onClick={() => removeFile(file.id)}
-                  disabled={isAnalyzing}
+                  disabled={uploadStatus[file.id] === "uploading"}
                   className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Remove file"
                 >
