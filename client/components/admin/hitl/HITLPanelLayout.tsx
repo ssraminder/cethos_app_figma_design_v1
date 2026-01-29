@@ -227,37 +227,7 @@ export default function HITLPanelLayout({
         />
       </CollapsibleSection>
 
-      {/* Quote Certification - Global certification for all documents */}
-      {reviewData?.id && (
-        <CollapsibleSection id="certification" title="Quote Certification">
-          {(() => {
-            const certData = reviewData
-              ? {
-                  quote_id: reviewData.id,
-                  current_certification_type_id:
-                    (reviewData as any).certification_type_id || undefined,
-                  current_certification_name:
-                    (reviewData as any).certification_name || undefined,
-                  document_count: quoteFiles.length || 0,
-                }
-              : null;
-            console.log(
-              "🎖️ Rendering certification section with data:",
-              certData,
-            );
-            return (
-              <EditableQuoteCertificationPanel
-                certificationData={certData}
-                staffId={staffId}
-                loading={loading}
-                onUpdate={onRefreshFiles}
-              />
-            );
-          })()}
-        </CollapsibleSection>
-      )}
-
-      {/* Pricing Summary - Editable with Discounts/Surcharges */}
+      {/* Pricing Summary - Editable with Discounts/Surcharges and Quote Certification */}
       <CollapsibleSection id="pricing" title="Pricing Summary">
         <EditablePricingSummaryPanel
           pricingData={
