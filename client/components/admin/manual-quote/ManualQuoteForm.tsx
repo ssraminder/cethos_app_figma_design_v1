@@ -185,9 +185,6 @@ export default function ManualQuoteForm({
     // Move to next step
     if (currentStep < steps.length) {
       setCurrentStep(currentStep + 1);
-    } else {
-      // Final submission (Step 5)
-      await handleFinalSubmit();
     }
   };
 
