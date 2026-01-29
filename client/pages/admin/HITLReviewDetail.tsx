@@ -2447,6 +2447,15 @@ const HITLReviewDetail: React.FC = () => {
               </button>
 
               <button
+                onClick={() => setShowUpdateModal(true)}
+                disabled={isSubmitting}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                Update & Send Payment Link
+              </button>
+
+              <button
                 onClick={handleEscalateReview}
                 disabled={isSubmitting}
                 className="px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-200 font-medium disabled:opacity-50"
