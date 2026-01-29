@@ -19,7 +19,7 @@ export interface FileWithAnalysis {
   file: File;
   uploadStatus: "pending" | "uploading" | "success" | "failed";
   uploadedFileId?: string; // quote_files.id from database
-  
+
   // AI Analysis
   analysisStatus: "idle" | "analyzing" | "completed" | "failed" | "timeout";
   detectedLanguage?: string;
@@ -86,7 +86,9 @@ export default function StaffFileUploadForm({
 
     // Upload immediately if we have a quoteId
     if (quoteId) {
-      console.log("✅ [FILE UPLOAD] QuoteId exists - starting immediate upload");
+      console.log(
+        "✅ [FILE UPLOAD] QuoteId exists - starting immediate upload",
+      );
       for (const fileItem of fileData) {
         await uploadFile(fileItem);
       }
@@ -99,12 +101,12 @@ export default function StaffFileUploadForm({
     if (!quoteId) return;
 
     console.log(`📤 [FILE UPLOAD] Uploading ${fileItem.name}`);
-    
+
     // Update status to uploading
     setFiles((prev) =>
       prev.map((f) =>
-        f.id === fileItem.id ? { ...f, uploadStatus: "uploading" } : f
-      )
+        f.id === fileItem.id ? { ...f, uploadStatus: "uploading" } : f,
+      ),
     );
 
     try {
@@ -122,7 +124,7 @@ export default function StaffFileUploadForm({
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: formData,
-        }
+        },
       );
 
       if (!uploadResponse.ok) {
@@ -143,15 +145,15 @@ export default function StaffFileUploadForm({
                 uploadStatus: "success",
                 uploadedFileId: result.fileId,
               }
-            : f
-        )
+            : f,
+        ),
       );
     } catch (error) {
       console.error(`❌ [FILE UPLOAD] Failed to upload:`, error);
       setFiles((prev) =>
         prev.map((f) =>
-          f.id === fileItem.id ? { ...f, uploadStatus: "failed" } : f
-        )
+          f.id === fileItem.id ? { ...f, uploadStatus: "failed" } : f,
+        ),
       );
     }
   };
@@ -163,15 +165,18 @@ export default function StaffFileUploadForm({
     setIsAnalyzing(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke("process-document", {
-        body: { quoteId },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        "process-document",
+        {
+          body: { quoteId },
+        },
+      );
 
       if (error) {
         console.error("❌ [AI ANALYSIS] Error:", error);
         // Mark all files as failed
         setFiles((prev) =>
-          prev.map((f) => ({ ...f, analysisStatus: "failed" }))
+          prev.map((f) => ({ ...f, analysisStatus: "failed" })),
         );
         return;
       }
@@ -183,7 +188,7 @@ export default function StaffFileUploadForm({
         setFiles((prev) =>
           prev.map((file) => {
             const result = data.results.find(
-              (r: any) => r.fileId === file.uploadedFileId
+              (r: any) => r.fileId === file.uploadedFileId,
             );
             if (result && result.success) {
               return {
@@ -193,24 +198,28 @@ export default function StaffFileUploadForm({
                 detectedDocumentType: result.documentType,
                 pageCount: result.pageCount,
                 wordCount: result.wordCount,
-                complexity: determineComplexity(result.wordCount, result.pageCount),
+                complexity: determineComplexity(
+                  result.wordCount,
+                  result.pageCount,
+                ),
               };
             }
             return file;
-          })
+          }),
         );
       }
     } catch (error) {
       console.error("❌ [AI ANALYSIS] Error:", error);
-      setFiles((prev) =>
-        prev.map((f) => ({ ...f, analysisStatus: "failed" }))
-      );
+      setFiles((prev) => prev.map((f) => ({ ...f, analysisStatus: "failed" })));
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const determineComplexity = (wordCount?: number, pageCount?: number): "low" | "medium" | "high" => {
+  const determineComplexity = (
+    wordCount?: number,
+    pageCount?: number,
+  ): "low" | "medium" | "high" => {
     if (!wordCount && !pageCount) return "low";
     if ((wordCount || 0) > 5000 || (pageCount || 0) > 10) return "high";
     if ((wordCount || 0) > 2000 || (pageCount || 0) > 5) return "medium";
@@ -238,7 +247,7 @@ export default function StaffFileUploadForm({
     files.some(
       (f) =>
         f.uploadStatus === "success" &&
-        (f.analysisStatus === "idle" || f.analysisStatus === "failed")
+        (f.analysisStatus === "idle" || f.analysisStatus === "failed"),
     );
 
   const allFilesAnalyzed =
@@ -362,7 +371,9 @@ export default function StaffFileUploadForm({
                       <p className="text-sm font-medium text-gray-900 truncate">
                         {file.name}
                       </p>
-                      <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+                      <p className="text-xs text-gray-500">
+                        {formatFileSize(file.size)}
+                      </p>
                     </div>
                   </div>
                   <button
@@ -408,33 +419,45 @@ export default function StaffFileUploadForm({
                         Analyzing with AI...
                       </div>
                     )}
-                    
+
                     {file.analysisStatus === "completed" && (
                       <div className="space-y-1 text-sm">
                         <div className="flex items-center gap-1 text-green-600 mb-2">
                           <CheckCircle className="w-4 h-4" />
-                          <span className="font-medium">AI Analysis Complete</span>
+                          <span className="font-medium">
+                            AI Analysis Complete
+                          </span>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
                             <span className="text-gray-600">Language:</span>
-                            <span className="ml-2 font-medium">{file.detectedLanguage}</span>
+                            <span className="ml-2 font-medium">
+                              {file.detectedLanguage}
+                            </span>
                           </div>
                           <div>
                             <span className="text-gray-600">Type:</span>
-                            <span className="ml-2 font-medium">{file.detectedDocumentType}</span>
+                            <span className="ml-2 font-medium">
+                              {file.detectedDocumentType}
+                            </span>
                           </div>
                           <div>
                             <span className="text-gray-600">Pages:</span>
-                            <span className="ml-2 font-medium">{file.pageCount}</span>
+                            <span className="ml-2 font-medium">
+                              {file.pageCount}
+                            </span>
                           </div>
                           <div>
                             <span className="text-gray-600">Words:</span>
-                            <span className="ml-2 font-medium">~{file.wordCount}</span>
+                            <span className="ml-2 font-medium">
+                              ~{file.wordCount}
+                            </span>
                           </div>
                           <div>
                             <span className="text-gray-600">Complexity:</span>
-                            <span className="ml-2 font-medium capitalize">{file.complexity}</span>
+                            <span className="ml-2 font-medium capitalize">
+                              {file.complexity}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -464,9 +487,12 @@ export default function StaffFileUploadForm({
         <div className="bg-amber-50 border border-amber-200 rounded-md p-4 flex gap-3">
           <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-amber-800">
-            <p className="font-medium">Files will be uploaded when you continue</p>
+            <p className="font-medium">
+              Files will be uploaded when you continue
+            </p>
             <p className="mt-1">
-              Files will be uploaded to the server when you move to the next step.
+              Files will be uploaded to the server when you move to the next
+              step.
             </p>
           </div>
         </div>
@@ -475,12 +501,16 @@ export default function StaffFileUploadForm({
       <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
         <p className="font-medium text-gray-700 mb-1">Note:</p>
         <ul className="list-disc list-inside space-y-1">
-          <li>Files are optional - you can create a quote without uploading files</li>
+          <li>
+            Files are optional - you can create a quote without uploading files
+          </li>
           {quoteId ? (
             <>
               <li>Files upload immediately when selected</li>
               {processWithAI && (
-                <li>Click "Analyze Files with AI" to extract document details</li>
+                <li>
+                  Click "Analyze Files with AI" to extract document details
+                </li>
               )}
             </>
           ) : (

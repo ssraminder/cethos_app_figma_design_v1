@@ -49,7 +49,9 @@ export default function StaffTranslationDetailsForm({
       // Load languages
       const { data: languagesData } = await supabase
         .from("languages")
-        .select("id, code, name, native_name, is_source_available, is_target_available")
+        .select(
+          "id, code, name, native_name, is_source_available, is_target_available",
+        )
         .eq("is_active", true)
         .order("sort_order")
         .order("name");
@@ -59,7 +61,7 @@ export default function StaffTranslationDetailsForm({
           languagesData.map((lang) => ({
             value: lang.id,
             label: `${lang.native_name || lang.name} (${lang.name})`,
-          }))
+          })),
         );
       }
 
@@ -78,7 +80,7 @@ export default function StaffTranslationDetailsForm({
             label: use.subcategory
               ? `${use.name} - ${use.subcategory}`
               : use.name,
-          }))
+          })),
         );
       }
 
@@ -96,7 +98,7 @@ export default function StaffTranslationDetailsForm({
           countriesData.map((country) => ({
             value: country.code,
             label: `${country.name} (${country.code})`,
-          }))
+          })),
         );
       }
     } catch (error) {
@@ -140,7 +142,7 @@ export default function StaffTranslationDetailsForm({
   };
 
   const handleTextChange = (
-    e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>
+    e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>,
   ) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
@@ -176,19 +178,25 @@ export default function StaffTranslationDetailsForm({
           <Select
             options={languages}
             value={languages.find((l) => l.value === formData.sourceLanguageId)}
-            onChange={(option) => handleSelectChange("sourceLanguageId", option)}
+            onChange={(option) =>
+              handleSelectChange("sourceLanguageId", option)
+            }
             placeholder="Select source language..."
             isClearable
             className={errors.sourceLanguageId ? "border-red-300" : ""}
             styles={{
               control: (base) => ({
                 ...base,
-                borderColor: errors.sourceLanguageId ? "#fca5a5" : base.borderColor,
+                borderColor: errors.sourceLanguageId
+                  ? "#fca5a5"
+                  : base.borderColor,
               }),
             }}
           />
           {errors.sourceLanguageId && (
-            <p className="mt-1 text-sm text-red-600">{errors.sourceLanguageId}</p>
+            <p className="mt-1 text-sm text-red-600">
+              {errors.sourceLanguageId}
+            </p>
           )}
           <p className="mt-1 text-xs text-gray-500">
             The language of the original document
@@ -204,19 +212,25 @@ export default function StaffTranslationDetailsForm({
           <Select
             options={languages}
             value={languages.find((l) => l.value === formData.targetLanguageId)}
-            onChange={(option) => handleSelectChange("targetLanguageId", option)}
+            onChange={(option) =>
+              handleSelectChange("targetLanguageId", option)
+            }
             placeholder="Select target language..."
             isClearable
             className={errors.targetLanguageId ? "border-red-300" : ""}
             styles={{
               control: (base) => ({
                 ...base,
-                borderColor: errors.targetLanguageId ? "#fca5a5" : base.borderColor,
+                borderColor: errors.targetLanguageId
+                  ? "#fca5a5"
+                  : base.borderColor,
               }),
             }}
           />
           {errors.targetLanguageId && (
-            <p className="mt-1 text-sm text-red-600">{errors.targetLanguageId}</p>
+            <p className="mt-1 text-sm text-red-600">
+              {errors.targetLanguageId}
+            </p>
           )}
           <p className="mt-1 text-xs text-gray-500">
             The language to translate the document into
@@ -228,8 +242,15 @@ export default function StaffTranslationDetailsForm({
           <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
             <p className="text-sm text-blue-800">
               <span className="font-medium">Translation:</span>{" "}
-              {languages.find((l) => l.value === formData.sourceLanguageId)?.label}{" "}
-              → {languages.find((l) => l.value === formData.targetLanguageId)?.label}
+              {
+                languages.find((l) => l.value === formData.sourceLanguageId)
+                  ?.label
+              }{" "}
+              →{" "}
+              {
+                languages.find((l) => l.value === formData.targetLanguageId)
+                  ?.label
+              }
             </p>
           </div>
         )}
@@ -250,7 +271,9 @@ export default function StaffTranslationDetailsForm({
             styles={{
               control: (base) => ({
                 ...base,
-                borderColor: errors.intendedUseId ? "#fca5a5" : base.borderColor,
+                borderColor: errors.intendedUseId
+                  ? "#fca5a5"
+                  : base.borderColor,
               }),
             }}
           />
@@ -304,7 +327,9 @@ export default function StaffTranslationDetailsForm({
         <p className="font-medium text-gray-700 mb-1">Note:</p>
         <ul className="list-disc list-inside space-y-1">
           <li>Source and target languages cannot be the same</li>
-          <li>Intended use may affect certification requirements and pricing</li>
+          <li>
+            Intended use may affect certification requirements and pricing
+          </li>
           <li>Special instructions help ensure accurate translation</li>
         </ul>
       </div>

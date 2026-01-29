@@ -101,7 +101,8 @@ export default function StaffCustomerForm({
         break;
       case "companyName":
         if (formData.customerType === "business" && !value) {
-          newErrors.companyName = "Company name is required for business customers";
+          newErrors.companyName =
+            "Company name is required for business customers";
         } else {
           delete newErrors.companyName;
         }
@@ -112,7 +113,7 @@ export default function StaffCustomerForm({
   };
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
@@ -145,7 +146,8 @@ export default function StaffCustomerForm({
           <div className="text-sm text-green-800">
             <p className="font-medium">Existing Customer Found</p>
             <p className="mt-1">
-              Customer information has been automatically filled from previous records.
+              Customer information has been automatically filled from previous
+              records.
             </p>
           </div>
         </div>
@@ -297,7 +299,9 @@ export default function StaffCustomerForm({
         <p className="font-medium text-gray-700 mb-1">Note:</p>
         <ul className="list-disc list-inside space-y-1">
           <li>All fields marked with * are required</li>
-          <li>Entering an email will automatically check for existing customers</li>
+          <li>
+            Entering an email will automatically check for existing customers
+          </li>
           <li>Existing customer details will be pre-filled automatically</li>
         </ul>
       </div>
