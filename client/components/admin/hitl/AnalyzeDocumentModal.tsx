@@ -189,7 +189,7 @@ export default function AnalyzeDocumentModal({
           page_number,
           word_count,
           ocr_confidence,
-          extracted_text
+          ocr_raw_text
         `)
         .eq("quote_file_id", file.id)
         .order("page_number", { ascending: true });
@@ -208,7 +208,7 @@ export default function AnalyzeDocumentModal({
       const pages = pageData && pageData.length > 0
         ? pageData.map((page) => ({
             page_number: page.page_number,
-            text: page.extracted_text
+            text: page.ocr_raw_text
               ? `Page ${page.page_number} – ${page.word_count} words`
               : `Page ${page.page_number} – No text extracted`,
             word_count: page.word_count || 0,

@@ -148,7 +148,7 @@ export default function EditableQuoteCertificationPanel({
           .select("id")
           .eq("quote_file_id", file.id)
           .eq("is_primary", true)
-          .single();
+          .maybeSingle();
 
         if (existing) {
           // Update existing primary certification
