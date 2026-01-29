@@ -181,27 +181,56 @@ export default function AnalyzeDocumentModal({
         );
       }
 
-      // Create OCR result structure from process-document data
-      const pageCount = result.pageCount || 1;
-      const totalWords = result.wordCount || 0;
-      const wordsPerPage = Math.ceil(totalWords / pageCount);
+      // Fetch REAL per-page data from quote_pages table
+      setProcessingStep("Fetching per-page data...");
+      const { data: pageData, error: pageError } = await supabase
+        .from("quote_pages")
+        .select(`
+          page_number,
+          word_count,
+          ocr_confidence,
+          extracted_text
+        `)
+        .eq("quote_file_id", file.id)
+        .order("page_number", { ascending: true });
 
-      // Create per-page breakdown
-      const pages = [];
-      for (let i = 1; i <= pageCount; i++) {
-        pages.push({
-          page_number: i,
-          text: `Page ${i} - ${wordsPerPage} words (analyzed by ${selectedOcrProvider})`,
-          word_count: wordsPerPage,
-        });
+      if (pageError) {
+        console.error("Error fetching page data:", pageError);
       }
+
+      // Use real page data if available, otherwise fall back to estimate
+      const pageCount = pageData?.length || result.pageCount || 1;
+      const totalWords = pageData
+        ? pageData.reduce((sum, p) => sum + (p.word_count || 0), 0)
+        : result.wordCount || 0;
+
+      // Create per-page breakdown from real data
+      const pages = pageData && pageData.length > 0
+        ? pageData.map((page) => ({
+            page_number: page.page_number,
+            text: page.extracted_text
+              ? `Page ${page.page_number} – ${page.word_count} words`
+              : `Page ${page.page_number} – No text extracted`,
+            word_count: page.word_count || 0,
+          }))
+        : // Fallback to estimated data if quote_pages doesn't have data
+          Array.from({ length: result.pageCount || 1 }, (_, i) => ({
+            page_number: i + 1,
+            text: `Page ${i + 1} – Estimated`,
+            word_count: Math.ceil((result.wordCount || 0) / (result.pageCount || 1)),
+          }));
+
+      // Calculate average confidence from page data if available
+      const avgConfidence = pageData && pageData.length > 0
+        ? pageData.reduce((sum, p) => sum + (p.ocr_confidence || 0), 0) / pageData.length
+        : 85.5;
 
       const ocrData = {
         ocr_provider: selectedOcrProvider,
         total_pages: pageCount,
         total_words: totalWords,
         pages: pages,
-        confidence_score: 85.5,
+        confidence_score: avgConfidence,
         processing_time_ms: result.processingTime || 0,
       };
 
