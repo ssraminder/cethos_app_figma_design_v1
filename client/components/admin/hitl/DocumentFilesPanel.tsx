@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { FileText, Download, Eye, Brain } from "lucide-react";
+import { FileText, Download, Eye, Brain, Pencil } from "lucide-react";
 import DocumentPreviewModal from "../../admin/DocumentPreviewModal";
 import AnalyzeDocumentModal from "./AnalyzeDocumentModal";
+import ManualEntryModal from "./ManualEntryModal";
 
 interface QuoteFile {
   id: string;
@@ -28,6 +29,7 @@ export default function DocumentFilesPanel({
 }: DocumentFilesPanelProps) {
   const [previewFile, setPreviewFile] = useState<QuoteFile | null>(null);
   const [analyzeFile, setAnalyzeFile] = useState<QuoteFile | null>(null);
+  const [manualEntryFile, setManualEntryFile] = useState<QuoteFile | null>(null);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 B";
@@ -144,6 +146,15 @@ export default function DocumentFilesPanel({
                   <Brain className="w-4 h-4" />
                 </button>
 
+                {/* Manual Entry Button */}
+                <button
+                  onClick={() => setManualEntryFile(file)}
+                  className="p-1 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors"
+                  title="Manual Entry"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+
                 {/* Preview Button */}
                 <button
                   onClick={() => setPreviewFile(file)}
@@ -210,6 +221,31 @@ export default function DocumentFilesPanel({
 
             // Close modal state after refresh completes
             setAnalyzeFile(null);
+          }}
+        />
+      )}
+
+      {/* Manual Entry Modal */}
+      {manualEntryFile && (
+        <ManualEntryModal
+          isOpen={true}
+          onClose={() => setManualEntryFile(null)}
+          file={manualEntryFile}
+          quoteId={quoteId}
+          onSaveComplete={async () => {
+            console.log(
+              "🟠 [DocumentFilesPanel] onSaveComplete callback triggered!",
+            );
+
+            // Refresh data FIRST, then close modal
+            if (onRefresh) {
+              console.log("🟠 [DocumentFilesPanel] Calling onRefresh...");
+              await onRefresh();
+              console.log("🟠 [DocumentFilesPanel] onRefresh completed!");
+            }
+
+            // Close modal state after refresh completes
+            setManualEntryFile(null);
           }}
         />
       )}
