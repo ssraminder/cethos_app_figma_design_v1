@@ -2,10 +2,6 @@ import React, { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import CustomerInfoPanel from "./CustomerInfoPanel";
 import DocumentFilesPanel from "./DocumentFilesPanel";
-import QuoteDetailsPanel from "./QuoteDetailsPanel";
-import EditableTranslationDetailsPanel from "./EditableTranslationDetailsPanel";
-import ContactInfoPanel from "./ContactInfoPanel";
-import EditablePricingSummaryPanel from "./EditablePricingSummaryPanel";
 import EditableBillingAddressPanel from "./EditableBillingAddressPanel";
 import EditableShippingAddressPanel from "./EditableShippingAddressPanel";
 import InternalNotesPanel from "./InternalNotesPanel";
@@ -97,7 +93,6 @@ export default function HITLPanelLayout({
       "customer",
       "documents",
       "analysis",
-      "pricing",
       "billing",
       "shipping",
     ]),
@@ -196,73 +191,6 @@ export default function HITLPanelLayout({
       {/* Document Analysis & Pricing */}
       <CollapsibleSection id="analysis" title="Document Analysis & Pricing">
         {children}
-      </CollapsibleSection>
-
-      {/* Translation Details - Editable */}
-      <CollapsibleSection id="translation" title="Translation Details">
-        <EditableTranslationDetailsPanel
-          translationData={
-            reviewData
-              ? {
-                  quote_id: reviewData.id,
-                  source_language_id:
-                    (reviewData as any).source_language_id || "",
-                  source_language_name:
-                    (reviewData as any).source_language?.name || "",
-                  source_language_code:
-                    (reviewData as any).source_language?.code || "",
-                  target_language_id:
-                    (reviewData as any).target_language_id || "",
-                  target_language_name:
-                    (reviewData as any).target_language?.name || "",
-                  target_language_code:
-                    (reviewData as any).target_language?.code || "",
-                  intended_use_id: (reviewData as any).intended_use_id || "",
-                  intended_use_name:
-                    (reviewData as any).intended_use?.name || "",
-                  country_of_issue: (reviewData as any).country_of_issue || "",
-                  service_province: (reviewData as any).service_province,
-                  special_instructions: (reviewData as any)
-                    .special_instructions,
-                }
-              : null
-          }
-          loading={loading}
-          onUpdate={onRefreshFiles}
-        />
-      </CollapsibleSection>
-
-      {/* Pricing Summary - Editable with Discounts/Surcharges and Quote Certification */}
-      <CollapsibleSection id="pricing" title="Pricing Summary">
-        <EditablePricingSummaryPanel
-          pricingData={
-            reviewData
-              ? {
-                  quote_id: reviewData.id,
-                  subtotal:
-                    (reviewData as any).subtotal || reviewData.subtotal || 0,
-                  certification_total:
-                    (reviewData as any).certification_total ||
-                    reviewData.certification_total ||
-                    0,
-                  rush_fee: (reviewData as any).rush_fee || 0,
-                  delivery_fee: (reviewData as any).delivery_fee || 0,
-                  tax_amount:
-                    (reviewData as any).tax_amount ||
-                    reviewData.tax_amount ||
-                    0,
-                  tax_rate: (reviewData as any).tax_rate || 0,
-                  total: (reviewData as any).total || reviewData.total || 0,
-                  document_count: quoteFiles.length || 0,
-                  current_certification_type_id:
-                    (reviewData as any).certification_type_id || undefined,
-                }
-              : null
-          }
-          staffId={staffId}
-          loading={loading}
-          onUpdate={onRefreshFiles}
-        />
       </CollapsibleSection>
 
       {/* Billing Address - Editable */}
