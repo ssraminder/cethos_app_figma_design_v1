@@ -98,7 +98,7 @@ export default function HITLPanelLayout({
       "customer",
       "documents",
       "analysis",
-      "certification",
+      "pricing",
       "billing",
       "shipping",
     ]),
