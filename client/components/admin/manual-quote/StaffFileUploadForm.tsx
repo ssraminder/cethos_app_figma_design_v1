@@ -42,6 +42,12 @@ export default function StaffFileUploadForm({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   useEffect(() => {
+    console.log("=".repeat(80));
+    console.log("🚀 STAFFFILEUPLOADFORM LOADED - VERSION 2.0 - UPDATED CODE");
+    console.log("=".repeat(80));
+  }, []);
+
+  useEffect(() => {
     console.log("📋 [COMPONENT STATE] StaffFileUploadForm rendered/updated");
     console.log("  - quoteId:", quoteId);
     console.log("  - staffId:", staffId);
