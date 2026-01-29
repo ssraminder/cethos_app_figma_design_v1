@@ -304,35 +304,67 @@ async function simpleTextExtraction(
   const startTime = Date.now();
   const fileName = fileInfo.original_filename.toLowerCase();
   const buffer = await fileData.arrayBuffer();
-  const text = new TextDecoder().decode(buffer);
+  const text = new TextDecoder("latin1").decode(buffer); // Use latin1 to preserve all bytes
 
   let pageCount = 1;
   const pages: OCRPageResult[] = [];
 
   // Detect document type and estimate pages
   if (fileName.endsWith(".pdf") || fileInfo.mime_type.includes("pdf")) {
-    // Use same page counting logic as process-document (counting endstream markers)
-    pageCount = (text.match(/endstream/g) || []).length;
+    // Count actual pages by looking for /Type /Page in the PDF structure
+    const pageMatches = text.match(/\/Type\s*\/Page[^s]/g);
+    pageCount = pageMatches ? pageMatches.length : 1;
+
+    // Alternative: look for /Count in Pages object which tells total pages
+    const countMatch = text.match(/\/Type\s*\/Pages.*?\/Count\s+(\d+)/s);
+    if (countMatch && countMatch[1]) {
+      pageCount = parseInt(countMatch[1], 10);
+    }
+
     pageCount = Math.max(1, pageCount); // At least 1 page
 
-    // Extract visible text from PDF (rough extraction)
-    // Remove binary data and extract readable text
-    const cleanedText = text
-      .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]/g, "") // Remove control chars
-      .replace(/stream[\s\S]*?endstream/g, "") // Remove binary streams
-      .replace(/\/[A-Z][a-zA-Z0-9]*/g, "") // Remove PDF commands
-      .replace(/\s+/g, " ") // Normalize whitespace
-      .trim();
+    // Extract text content from PDF text objects
+    // Text in PDFs is between BT (BeginText) and ET (EndText) operators
+    // Text strings are in parentheses () or angle brackets <>
+    const textObjects = text.match(/BT[\s\S]*?ET/g) || [];
 
-    // Count total words in cleaned text
-    const allWords = cleanedText.split(/\s+/).filter((w) => w.length > 2); // Filter short fragments
+    let allExtractedText: string[] = [];
+
+    for (const textObj of textObjects) {
+      // Extract strings from text object
+      // Match text in parentheses: (text) or <hex>
+      const strings = textObj.match(/\(([^)]*)\)/g) || [];
+
+      for (const str of strings) {
+        // Remove parentheses and unescape
+        let extractedText = str.slice(1, -1);
+        // Handle PDF escape sequences
+        extractedText = extractedText
+          .replace(/\\n/g, "\n")
+          .replace(/\\r/g, "\r")
+          .replace(/\\t/g, "\t")
+          .replace(/\\b/g, "\b")
+          .replace(/\\f/g, "\f")
+          .replace(/\\\\/g, "\\")
+          .replace(/\\([()])/g, "$1");
+
+        if (extractedText.trim().length > 0) {
+          allExtractedText.push(extractedText);
+        }
+      }
+    }
+
+    // Combine all extracted text
+    const fullText = allExtractedText.join(" ");
+    const allWords = fullText.split(/\s+/).filter((w) => w.trim().length > 0);
     const totalWords = allWords.length;
-    const estimatedWordsPerPage = Math.floor(totalWords / pageCount);
 
-    // Create per-page breakdown with actual text snippets
+    // Distribute words across pages
+    const wordsPerPage = Math.ceil(totalWords / pageCount);
+
     for (let i = 1; i <= pageCount; i++) {
-      const startIdx = Math.floor((i - 1) * (allWords.length / pageCount));
-      const endIdx = Math.floor(i * (allWords.length / pageCount));
+      const startIdx = (i - 1) * wordsPerPage;
+      const endIdx = Math.min(i * wordsPerPage, allWords.length);
       const pageWords = allWords.slice(startIdx, endIdx);
       const pageText = pageWords.join(" ");
 
