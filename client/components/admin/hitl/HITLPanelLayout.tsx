@@ -192,7 +192,7 @@ export default function HITLPanelLayout({
           translationData={
             reviewData
               ? {
-                  quote_id: reviewData.quote_id,
+                  quote_id: reviewData.id,
                   source_language_id:
                     (reviewData as any).source_language_id || "",
                   source_language_name:
