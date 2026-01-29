@@ -1,6 +1,6 @@
 // HITLReviewDetail.tsx - Complete implementation with certification management
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import {
@@ -25,7 +25,6 @@ import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
 import { HITLPanelLayout } from "../../components/admin/hitl";
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
-import HITLDocumentCard from "./HITLDocumentCard";
 
 interface PageData {
   id: string;
@@ -280,6 +279,93 @@ const HITLReviewDetail: React.FC = () => {
     fetchAllData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffSession, authLoading, reviewId]);
+
+  // ============================================
+  // POLLING FOR PROCESSING DOCUMENTS
+  // ============================================
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollCountRef = useRef<number>(0);
+  const MAX_POLL_COUNT = 9; // 9 polls × 10 seconds = 90 seconds max
+
+  useEffect(() => {
+    // Check if any files are currently processing (from database status)
+    const hasProcessingFiles = quoteFiles.some(
+      (f) => f.ai_processing_status === 'processing'
+    );
+
+    // Clean up existing interval
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+
+    if (!hasProcessingFiles) {
+      // Reset poll count when no files are processing
+      pollCountRef.current = 0;
+      return;
+    }
+
+    console.log("🔄 [HITL Polling] Starting - documents are processing");
+
+    pollIntervalRef.current = setInterval(async () => {
+      pollCountRef.current += 1;
+      console.log(`🔄 [HITL Polling] Poll #${pollCountRef.current}/${MAX_POLL_COUNT}...`);
+
+      // Timeout after max attempts - mark stuck files as failed
+      if (pollCountRef.current >= MAX_POLL_COUNT) {
+        console.log("⏱️ [HITL Polling] Timeout - marking stuck files as failed");
+
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+
+        // Mark stuck processing files as failed
+        for (const file of quoteFiles) {
+          if (file.ai_processing_status === 'processing') {
+            try {
+              await fetch(
+                `${SUPABASE_URL}/rest/v1/quote_files?id=eq.${file.id}`,
+                {
+                  method: "PATCH",
+                  headers: {
+                    apikey: SUPABASE_ANON_KEY,
+                    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+                    "Content-Type": "application/json",
+                    Prefer: "return=minimal",
+                  },
+                  body: JSON.stringify({
+                    ai_processing_status: "failed",
+                    error_message: "Processing timed out after 90 seconds",
+                  }),
+                }
+              );
+            } catch (error) {
+              console.error("Error marking file as failed:", error);
+            }
+          }
+        }
+
+        // Refresh to show failed status
+        await fetchReviewData();
+        return;
+      }
+
+      // Refresh data from database
+      await fetchReviewData();
+
+      // Check if still processing after refresh (using latest data)
+      // The next useEffect run will handle cleanup if no longer processing
+    }, 10000); // 10 seconds
+
+    return () => {
+      if (pollIntervalRef.current) {
+        console.log("🔄 [HITL Polling] Cleanup");
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [quoteFiles.map(f => f.ai_processing_status).join(',')]); // Re-run when any file status changes
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -2390,40 +2476,33 @@ const HITLReviewDetail: React.FC = () => {
                 </div>
               )}
 
-              {/* Document List - SURGICAL FIX: Show ALL files, not just those with successful AI analysis */}
+              {/* Document List - Only show files that HAVE analysis records */}
+              {/* Files without analysis should only appear in Document Management panel */}
               <div className="space-y-4">
-                {quoteFiles.map((file, index) => {
-                  // Find matching analysis result if it exists
-                  const analysis = analysisResults.find(
-                    (a) => a.quote_file_id === file.id,
-                  );
-                  const pages = analysis
-                    ? pageData[analysis.quote_file_id] || []
-                    : [];
+                {analysisResults.length === 0 ? (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+                    <p className="text-gray-500">No analyzed documents yet.</p>
+                    <p className="text-sm text-gray-400 mt-2">
+                      Use the Document Management panel to analyze files or add manual entries.
+                    </p>
+                  </div>
+                ) : analysisResults.map((analysis, index) => {
+                  // Get the file data from analysis.quote_file or from quoteFiles
+                  const file = quoteFiles.find((f) => f.id === analysis.quote_file_id) || {
+                    id: analysis.quote_file_id,
+                    original_filename: analysis.quote_file?.original_filename || 'Unknown',
+                    storage_path: analysis.quote_file?.storage_path,
+                    file_size: analysis.quote_file?.file_size || 0,
+                    mime_type: analysis.quote_file?.mime_type || '',
+                    ai_processing_status: 'completed',
+                  };
+                  const pages = pageData[analysis.quote_file_id] || [];
                   const totalWords = pages.reduce(
                     (sum, p) => sum + getPageWordCount(p),
                     0,
                   );
-                  const fileId = file.id;
+                  const fileId = analysis.quote_file_id;
                   const isExpanded = expandedFile === fileId;
-                  const hasAnalysis = !!analysis;
-
-                  // SURGICAL FIX: Use new component for files without analysis
-                  if (!hasAnalysis) {
-                    return (
-                      <HITLDocumentCard
-                        key={fileId}
-                        file={file}
-                        index={index}
-                        analysis={null}
-                        isExpanded={isExpanded}
-                        hasChanges={false}
-                        onToggle={() =>
-                          setExpandedFile(isExpanded ? null : fileId)
-                        }
-                      />
-                    );
-                  }
 
                   // Original code for files WITH analysis - keep unchanged
                   return (
