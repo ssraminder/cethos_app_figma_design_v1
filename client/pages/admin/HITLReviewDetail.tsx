@@ -1824,14 +1824,20 @@ const HITLReviewDetail: React.FC = () => {
       ) || 1.0;
     const pages = pageData[fileId] || [];
 
-    let totalBillable = 0;
-    pages.forEach((page) => {
-      const words = getPageWordCount(page);
-      totalBillable += calculatePageBillable(words, complexity);
-    });
+    // If pageData is available, calculate from individual pages
+    // Otherwise fall back to analysis.billable_pages from the database
+    if (pages.length > 0) {
+      let totalBillable = 0;
+      pages.forEach((page) => {
+        const words = getPageWordCount(page);
+        totalBillable += calculatePageBillable(words, complexity);
+      });
+      // Minimum 1.00 per document
+      return Math.max(totalBillable, 1.0);
+    }
 
-    // Minimum 1.00 per document
-    return Math.max(totalBillable, 1.0);
+    // Fall back to analysis.billable_pages when pageData is not available
+    return analysis.billable_pages || 1.0;
   };
 
   const calculateTranslationCost = (
@@ -2510,10 +2516,11 @@ const HITLReviewDetail: React.FC = () => {
                     ai_processing_status: 'completed',
                   };
                   const pages = pageData[analysis.quote_file_id] || [];
-                  const totalWords = pages.reduce(
-                    (sum, p) => sum + getPageWordCount(p),
-                    0,
-                  );
+                  // Use pageData if available, otherwise fall back to analysis values
+                  const totalWords = pages.length > 0
+                    ? pages.reduce((sum, p) => sum + getPageWordCount(p), 0)
+                    : analysis.word_count || 0;
+                  const displayPageCount = pages.length > 0 ? pages.length : (analysis.page_count || 0);
                   const fileId = analysis.quote_file_id;
                   const isExpanded = expandedFile === fileId;
 
@@ -2537,7 +2544,7 @@ const HITLReviewDetail: React.FC = () => {
                               analysis.quote_file?.original_filename}
                           </span>
                           <span className="text-sm text-gray-500">
-                            {totalWords} words • {pages.length} page(s)
+                            {totalWords} words • {displayPageCount} page(s)
                           </span>
                           {hasChanges(analysis.quote_file_id) && (
                             <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
