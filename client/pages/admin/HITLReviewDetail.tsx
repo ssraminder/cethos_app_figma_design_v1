@@ -3490,10 +3490,8 @@ const HITLReviewDetail: React.FC = () => {
 
       {/* Action Footer - Only show when claimed by me */}
       {claimedByMe && reviewData?.status === "in_review" && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-40">
-          <div className="max-w-7xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-end gap-3">
-              {/* Action Buttons */}
+        <div className="mt-8 bg-white border rounded-lg p-6 flex flex-wrap items-center justify-end gap-3">
+          {/* Action Buttons */}
               <button
                 onClick={() => setShowRejectQuoteModal(true)}
                 disabled={isSubmitting}
@@ -3544,14 +3542,7 @@ const HITLReviewDetail: React.FC = () => {
               >
                 {isSubmitting ? "Processing..." : "Update Quote ✓"}
               </button>
-            </div>
-          </div>
         </div>
-      )}
-
-      {/* Add padding at bottom for fixed footer */}
-      {claimedByMe && reviewData?.status === "in_review" && (
-        <div className="h-20"></div>
       )}
 
       {/* Reject Modal */}
