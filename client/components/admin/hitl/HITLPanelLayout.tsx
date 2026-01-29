@@ -184,22 +184,27 @@ export default function HITLPanelLayout({
         {children}
       </CollapsibleSection>
 
-      {/* Translation Details */}
+      {/* Translation Details - Editable */}
       <CollapsibleSection id="translation" title="Translation Details">
-        <TranslationDetailsPanel
+        <EditableTranslationDetailsPanel
           translationData={
             reviewData
               ? {
+                  quote_id: reviewData.quote_id,
+                  source_language_id:
+                    (reviewData as any).source_language_id || "",
                   source_language_name:
                     (reviewData as any).source_language?.name || "",
                   source_language_code:
                     (reviewData as any).source_language?.code || "",
+                  target_language_id:
+                    (reviewData as any).target_language_id || "",
                   target_language_name:
                     (reviewData as any).target_language?.name || "",
                   target_language_code:
                     (reviewData as any).target_language?.code || "",
-                  intended_use_name:
-                    (reviewData as any).intended_use?.name || "",
+                  intended_use_id: (reviewData as any).intended_use_id || "",
+                  intended_use_name: (reviewData as any).intended_use?.name || "",
                   country_of_issue: (reviewData as any).country_of_issue || "",
                   service_province: (reviewData as any).service_province,
                   special_instructions: (reviewData as any)
@@ -208,32 +213,69 @@ export default function HITLPanelLayout({
               : null
           }
           loading={loading}
+          onUpdate={onRefreshFiles}
         />
       </CollapsibleSection>
 
-      {/* Pricing Summary */}
+      {/* Pricing Summary - Editable with Discounts/Surcharges */}
       <CollapsibleSection id="pricing" title="Pricing Summary">
-        <PricingSummaryPanel
+        <EditablePricingSummaryPanel
           pricingData={
             reviewData
               ? {
+                  quote_id: reviewData.quote_id,
                   subtotal:
                     (reviewData as any).subtotal || reviewData.subtotal || 0,
                   certification_total:
                     (reviewData as any).certification_total ||
                     reviewData.certification_total ||
                     0,
+                  rush_fee: (reviewData as any).rush_fee || 0,
+                  delivery_fee: (reviewData as any).delivery_fee || 0,
                   tax_amount:
                     (reviewData as any).tax_amount ||
                     reviewData.tax_amount ||
                     0,
+                  tax_rate: (reviewData as any).tax_rate || 0,
                   total: (reviewData as any).total || reviewData.total || 0,
                 }
               : null
           }
+          staffId={staffId}
           loading={loading}
+          onUpdate={onRefreshFiles}
         />
       </CollapsibleSection>
+
+      {/* Billing Address - Editable */}
+      {reviewData?.quote_id && (
+        <CollapsibleSection id="billing" title="Billing Address">
+          <EditableBillingAddressPanel
+            quoteId={reviewData.quote_id}
+            billingAddress={(reviewData as any).billing_address || null}
+            customerName={reviewData.customer_name}
+            customerEmail={reviewData.customer_email}
+            loading={loading}
+            onUpdate={onRefreshFiles}
+          />
+        </CollapsibleSection>
+      )}
+
+      {/* Shipping Address & Delivery - Editable */}
+      {reviewData?.quote_id && (
+        <CollapsibleSection id="shipping" title="Shipping & Delivery">
+          <EditableShippingAddressPanel
+            quoteId={reviewData.quote_id}
+            shippingAddress={(reviewData as any).shipping_address || null}
+            physicalDeliveryOptionId={
+              (reviewData as any).physical_delivery_option_id || null
+            }
+            customerName={reviewData.customer_name}
+            loading={loading}
+            onUpdate={onRefreshFiles}
+          />
+        </CollapsibleSection>
+      )}
 
       {/* Internal Notes */}
       <CollapsibleSection id="notes" title="Internal Notes">
