@@ -1161,7 +1161,7 @@ const HITLReviewDetail: React.FC = () => {
           order_number: orderNumber,
           quote_id: reviewData.quote_id,
           customer_id: quote.customer_id,
-          status: calculatedBalanceDue > 0 ? "partial" : "paid",
+          status: calculatedBalanceDue > 0 ? "balance_due" : "paid",
           work_status: "pending",
           subtotal: quote.subtotal || 0,
           certification_total: quote.certification_total || 0,
