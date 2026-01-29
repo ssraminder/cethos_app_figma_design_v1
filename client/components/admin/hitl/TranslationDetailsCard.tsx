@@ -18,7 +18,7 @@ interface Language {
   name: string;
   native_name: string | null;
   tier: number;
-  price_multiplier: number;
+  multiplier: number;
 }
 
 interface IntendedUse {
@@ -313,7 +313,7 @@ export default function TranslationDetailsCard({
           country_of_issue,
           language_multiplier_override,
           source_language:languages!quotes_source_language_id_fkey (
-            id, code, name, native_name, tier, price_multiplier
+            id, code, name, native_name, tier, multiplier
           )
         `
         )
@@ -325,7 +325,7 @@ export default function TranslationDetailsCard({
       // Fetch all languages
       const { data: langData, error: langError } = await supabase
         .from("languages")
-        .select("id, code, name, native_name, tier, price_multiplier")
+        .select("id, code, name, native_name, tier, multiplier")
         .eq("is_active", true)
         .order("name");
 
@@ -354,7 +354,7 @@ export default function TranslationDetailsCard({
         languageTier: sourceLang?.tier || 1,
         languageMultiplier:
           quoteData?.language_multiplier_override ??
-          sourceLang?.price_multiplier ??
+          sourceLang?.multiplier ??
           1.0,
         languageMultiplierOverride: quoteData?.language_multiplier_override,
       });
@@ -405,7 +405,7 @@ export default function TranslationDetailsCard({
                   ...prev,
                   sourceLanguageId: value,
                   languageTier: newLang.tier || 1,
-                  languageMultiplier: newLang.price_multiplier || 1.0,
+                  languageMultiplier: newLang.multiplier || 1.0,
                   languageMultiplierOverride: null,
                 }
               : null
@@ -476,7 +476,7 @@ export default function TranslationDetailsCard({
           prev
             ? {
                 ...prev,
-                languageMultiplier: sourceLang.price_multiplier || 1.0,
+                languageMultiplier: sourceLang.multiplier || 1.0,
                 languageMultiplierOverride: null,
               }
             : null
@@ -652,7 +652,7 @@ export default function TranslationDetailsCard({
               <p className="text-xs text-orange-600 mt-1">
                 Custom override (Tier default:{" "}
                 {languages.find((l) => l.id === details?.sourceLanguageId)
-                  ?.price_multiplier || "1.00"}
+                  ?.multiplier || "1.00"}
                 x)
               </p>
             )}
