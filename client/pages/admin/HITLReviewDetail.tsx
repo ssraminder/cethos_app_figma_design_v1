@@ -195,6 +195,21 @@ const HITLReviewDetail: React.FC = () => {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<Array<{id: string; name: string; code: string}>>([]);
 
+  // File upload state
+  const [showUploadSection, setShowUploadSection] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{
+    id: string;
+    name: string;
+    size: number;
+    file: File;
+    uploadStatus: "pending" | "uploading" | "success" | "failed";
+    uploadedFileId?: string;
+  }>>([]);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [processWithAI, setProcessWithAI] = useState(true);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
   // Page splitting/combining
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
   const [splitMode, setSplitMode] = useState(false);
