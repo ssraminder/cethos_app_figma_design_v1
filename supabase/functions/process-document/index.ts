@@ -63,7 +63,7 @@ serve(async (req) => {
     let filesToProcess: any[] = [];
 
     if (fileId) {
-      // Process single file
+      // Process single file - process regardless of current status
       const { data: file, error: fileError } = await supabaseAdmin
         .from("quote_files")
         .select(
@@ -86,6 +86,7 @@ serve(async (req) => {
       }
 
       filesToProcess = [file];
+      console.log(`🎯 [PROCESS-DOCUMENT] Processing specific file: ${file.original_filename}`);
     } else if (quoteId) {
       // Process all files for quote
       const { data: files, error: filesError } = await supabaseAdmin
