@@ -6,6 +6,7 @@ import {
   AlertCircle,
   CheckCircle,
   Loader2,
+  Brain,
 } from "lucide-react";
 
 interface FileData {
