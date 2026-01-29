@@ -1944,45 +1944,59 @@ const HITLReviewDetail: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate("/admin/hitl")}
-              className="text-gray-600 hover:text-gray-900"
-            >
-              ← Back to Queue
-            </button>
-            <h1 className="text-xl font-semibold">
+    <div className="p-6 max-w-6xl mx-auto">
+      {/* Header Section */}
+      <div className="mb-6">
+        <button
+          onClick={() => navigate("/admin/hitl")}
+          className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 mb-4"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Queue
+        </button>
+
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
               Review: {reviewData?.quotes?.quote_number}
             </h1>
+            <div className="flex items-center gap-3 mt-2">
+              {claimedByMe ? (
+                <span className="inline-flex px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800">
+                  ✓ Claimed by you
+                </span>
+              ) : claimedByOther ? (
+                <span className="inline-flex px-3 py-1 text-sm font-medium rounded-full bg-gray-100 text-gray-600">
+                  Claimed by {assignedStaffName || "another staff"}
+                </span>
+              ) : (
+                <span className="inline-flex px-3 py-1 text-sm font-medium rounded-full bg-amber-100 text-amber-700">
+                  Unclaimed
+                </span>
+              )}
+              <span className="text-gray-500 text-sm">
+                Status: {reviewData?.status?.replace(/_/g, " ") || "Pending"}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {claimedByMe ? (
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                ✓ Claimed by you
-              </span>
-            ) : claimedByOther ? (
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
-                Claimed by {assignedStaffName || "another staff"}
-              </span>
-            ) : (
+          <div className="flex items-center gap-3">
+            {!claimedByMe && !claimedByOther && (
               <button
                 onClick={handleClaimReview}
-                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium"
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium transition-colors"
               >
                 Claim Review
               </button>
             )}
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
-      <main className="flex-1 mx-auto w-full px-4 py-6 overflow-hidden">
+      {/* Main Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column - Main Content */}
+        <div className="lg:col-span-2 space-y-6">
         {/* No Data Warning */}
         {!reviewData && !loading && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center max-w-2xl mx-auto mt-12">
@@ -3301,7 +3315,103 @@ const HITLReviewDetail: React.FC = () => {
             </button>
           </div>
         )}
-      </main>
+        </div>
+
+        {/* Right Sidebar - Summary Info */}
+        <div className="space-y-6">
+          {reviewData && reviewData.quotes && (
+            <>
+              {/* Pricing Summary */}
+              <div className="bg-white rounded-lg border p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-gray-400" />
+                  Pricing Summary
+                </h2>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Subtotal</span>
+                    <span>${(reviewData.quotes.subtotal || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Certification</span>
+                    <span>${(reviewData.quotes.certification_total || 0).toFixed(2)}</span>
+                  </div>
+                  {reviewData.quotes.rush_fee > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Rush Fee</span>
+                      <span>${(reviewData.quotes.rush_fee || 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {reviewData.quotes.delivery_fee > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Delivery</span>
+                      <span>${(reviewData.quotes.delivery_fee || 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Tax</span>
+                    <span>${(reviewData.quotes.tax_amount || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="border-t pt-2 mt-2 flex justify-between font-semibold">
+                    <span>Total</span>
+                    <span className="text-lg">${(reviewData.quotes.total || 0).toFixed(2)} CAD</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Review Status */}
+              <div className="bg-white rounded-lg border p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <User className="w-5 h-5 text-gray-400" />
+                  Review Status
+                </h2>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Assigned To</span>
+                    <span className="font-medium">
+                      {claimedByMe
+                        ? "You"
+                        : claimedByOther
+                          ? assignedStaffName || "Staff Member"
+                          : "Unassigned"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Status</span>
+                    <span className="font-medium capitalize">
+                      {reviewData.status?.replace(/_/g, " ") || "Pending"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Documents</span>
+                    <span className="font-medium">{quoteFiles.length}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline */}
+              <div className="bg-white rounded-lg border p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-gray-400" />
+                  Timeline
+                </h2>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Created</span>
+                    <span>{reviewData.created_at ? new Date(reviewData.created_at).toLocaleString() : "—"}</span>
+                  </div>
+                  {reviewData.assigned_at && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Claimed</span>
+                      <span>{new Date(reviewData.assigned_at).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Add Certification Modal */}
       {showAddCertModal && (
