@@ -2677,6 +2677,142 @@ const HITLReviewDetail: React.FC = () => {
         </div>
       )}
 
+      {/* Update & Send Payment Link Modal */}
+      {showUpdateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                <Send className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Update Quote & Send Payment Link
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {reviewData?.quote_number}
+                </p>
+              </div>
+            </div>
+
+            {/* Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-start gap-2">
+              <Mail className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-blue-800">
+                <p className="font-medium mb-1">This will:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Save all your corrections and pricing changes</li>
+                  <li>Increment the quote version number</li>
+                  <li>Generate a fresh 30-day magic link</li>
+                  <li>Send payment link email to customer</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Update Reason */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Update Reason <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={
+                  updateReason.includes(":")
+                    ? updateReason.split(":")[0]
+                    : updateReason
+                    ? "other"
+                    : ""
+                }
+                onChange={(e) => {
+                  const reasons = {
+                    pricing: "Pricing corrections applied",
+                    language: "Language detection corrected",
+                    complexity: "Complexity assessment updated",
+                    certification: "Certification requirements changed",
+                    pages: "Page count adjusted",
+                    other: "",
+                  };
+                  setUpdateReason(
+                    reasons[e.target.value as keyof typeof reasons] || "",
+                  );
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-2"
+              >
+                <option value="">Select a reason...</option>
+                <option value="pricing">Pricing corrections applied</option>
+                <option value="language">Language detection corrected</option>
+                <option value="complexity">
+                  Complexity assessment updated
+                </option>
+                <option value="certification">
+                  Certification requirements changed
+                </option>
+                <option value="pages">Page count adjusted</option>
+                <option value="other">Other (specify below)</option>
+              </select>
+              <textarea
+                value={updateReason}
+                onChange={(e) => setUpdateReason(e.target.value)}
+                placeholder="Explain what was changed and why..."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              />
+            </div>
+
+            {/* Current Quote Summary */}
+            {reviewData && (
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs font-medium text-gray-500 mb-2">
+                  Current Quote Summary
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-gray-600">Version:</span>{" "}
+                    <span className="font-medium">{reviewData.version || 1}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Total:</span>{" "}
+                    <span className="font-medium">
+                      ${reviewData.total?.toFixed(2) || "0.00"}
+                    </span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-gray-600">Customer:</span>{" "}
+                    <span className="font-medium">
+                      {reviewData.customer_email ||
+                        reviewData.customer?.email ||
+                        "Unknown"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowUpdateModal(false);
+                  setUpdateReason("");
+                }}
+                disabled={isUpdating}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateAndNotify}
+                disabled={isUpdating || !updateReason.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                {isUpdating ? "Updating..." : "Update & Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Split Modal */}
       {showSplitModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
