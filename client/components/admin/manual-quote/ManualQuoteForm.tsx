@@ -73,7 +73,11 @@ export default function ManualQuoteForm({
         return true;
 
       case 2:
-        if (!quote.sourceLanguageId || !quote.targetLanguageId || !quote.intendedUseId) {
+        if (
+          !quote.sourceLanguageId ||
+          !quote.targetLanguageId ||
+          !quote.intendedUseId
+        ) {
           toast.error("Please fill in all required translation details");
           return false;
         }
@@ -125,7 +129,7 @@ export default function ManualQuoteForm({
             quoteData: quote,
             entryPoint: "staff_manual",
           }),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -200,9 +204,15 @@ export default function ManualQuoteForm({
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        return customer && customer.email && customer.fullName && customer.phone;
+        return (
+          customer && customer.email && customer.fullName && customer.phone
+        );
       case 2:
-        return quote.sourceLanguageId && quote.targetLanguageId && quote.intendedUseId;
+        return (
+          quote.sourceLanguageId &&
+          quote.targetLanguageId &&
+          quote.intendedUseId
+        );
       case 3:
         return true; // Files are optional
       case 4:
@@ -219,7 +229,9 @@ export default function ManualQuoteForm({
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Create Manual Quote</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Create Manual Quote
+          </h1>
           <p className="text-gray-600 mt-2">
             Follow the steps below to create a new quote for a customer
           </p>
@@ -273,11 +285,11 @@ export default function ManualQuoteForm({
           {currentStep === 1 && (
             <StaffCustomerForm value={customer} onChange={setCustomer} />
           )}
-          
+
           {currentStep === 2 && (
             <StaffTranslationDetailsForm value={quote} onChange={setQuote} />
           )}
-          
+
           {currentStep === 3 && staffId && (
             <StaffFileUploadForm
               quoteId={quoteId}
@@ -288,14 +300,10 @@ export default function ManualQuoteForm({
               onProcessWithAIChange={setProcessWithAI}
             />
           )}
-          
-          {currentStep === 4 && (
-            <StaffPricingForm />
-          )}
-          
-          {currentStep === 5 && (
-            <StaffPaymentReviewForm />
-          )}
+
+          {currentStep === 4 && <StaffPricingForm />}
+
+          {currentStep === 5 && <StaffPaymentReviewForm />}
         </div>
 
         {/* Action Buttons */}
@@ -323,7 +331,9 @@ export default function ManualQuoteForm({
               className="inline-flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {currentStep === steps.length ? "Create Quote" : "Next"}
-              {currentStep < steps.length && <ChevronRight className="w-4 h-4" />}
+              {currentStep < steps.length && (
+                <ChevronRight className="w-4 h-4" />
+              )}
               {isSubmitting && (
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white ml-2"></div>
               )}
