@@ -12,6 +12,7 @@ import {
   FileText,
   Languages,
   Mail,
+  MapPin,
   MessageSquare,
   Phone,
   RefreshCw,
@@ -23,7 +24,6 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
-import MessagePanel from "../../components/messaging/MessagePanel";
 import MessageCustomerModal from "../../components/admin/MessageCustomerModal";
 
 interface QuoteDetail {
@@ -79,6 +79,7 @@ interface QuoteFile {
 
 interface AIAnalysis {
   id: string;
+  quote_file_id: string;
   detected_document_type: string | null;
   detected_language: string | null;
   word_count: number | null;
@@ -86,24 +87,15 @@ interface AIAnalysis {
   assessed_complexity: string | null;
   ocr_confidence: number | null;
   document_type_confidence: number | null;
+  language_confidence: number | null;
   complexity_confidence: number | null;
+  complexity_multiplier: number | null;
+  billable_pages: number | null;
+  base_rate: number | null;
+  line_total: number | null;
   translation_cost: number | null;
   certification_cost: number | null;
 }
-
-interface DocumentTypeOption {
-  id: string;
-  name: string;
-  code: string;
-}
-
-interface LanguageOption {
-  id: string;
-  name: string;
-  code: string;
-}
-
-type EditField = "document_type" | "language" | "complexity" | "word_count";
 
 interface HITLReview {
   id: string;
@@ -124,6 +116,46 @@ interface Message {
   message_text: string;
   created_at: string;
   sender_name: string;
+}
+
+interface DocumentCertification {
+  id: string;
+  quote_file_id: string;
+  certification_type_id: string;
+  is_primary: boolean;
+  price: number;
+  certification_types?: {
+    id: string;
+    code: string;
+    name: string;
+    price: number;
+  };
+}
+
+interface QuoteAddress {
+  id: string;
+  quote_id: string;
+  address_type: "billing" | "shipping";
+  full_name: string;
+  company_name?: string;
+  address_line1: string;
+  address_line2?: string;
+  city: string;
+  province: string;
+  postal_code: string;
+  country: string;
+  phone?: string;
+}
+
+interface QuoteAdjustment {
+  id: string;
+  quote_id: string;
+  adjustment_type: "discount" | "surcharge";
+  value_type: "fixed" | "percentage";
+  value: number;
+  calculated_amount: number;
+  reason?: string;
+  created_at: string;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -195,18 +227,13 @@ export default function AdminQuoteDetail() {
   const [analysis, setAnalysis] = useState<AIAnalysis[]>([]);
   const [hitlReviews, setHitlReviews] = useState<HITLReview[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [certifications, setCertifications] = useState<DocumentCertification[]>([]);
+  const [addresses, setAddresses] = useState<QuoteAddress[]>([]);
+  const [adjustments, setAdjustments] = useState<QuoteAdjustment[]>([]);
+  const [selectedAnalysisId, setSelectedAnalysisId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [orderId, setOrderId] = useState<string | null>(null);
-  const [documentTypes, setDocumentTypes] = useState<DocumentTypeOption[]>([]);
-  const [languages, setLanguages] = useState<LanguageOption[]>([]);
-  const [editModal, setEditModal] = useState<{
-    field: EditField;
-    currentValue: string | number;
-    analysisId: string;
-    aiValue: string | number;
-  } | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -220,29 +247,8 @@ export default function AdminQuoteDetail() {
   useEffect(() => {
     if (id) {
       fetchQuoteDetails();
-      fetchReferenceData();
     }
   }, [id]);
-
-  const fetchReferenceData = async () => {
-    try {
-      const [typesResult, languagesResult] = await Promise.all([
-        supabase
-          .from("document_types")
-          .select("id, name, code")
-          .order("sort_order"),
-        supabase.from("languages").select("id, name, code").order("name"),
-      ]);
-
-      if (typesResult.error) throw typesResult.error;
-      if (languagesResult.error) throw languagesResult.error;
-
-      setDocumentTypes(typesResult.data || []);
-      setLanguages(languagesResult.data || []);
-    } catch (err) {
-      console.error("Error loading reference data:", err);
-    }
-  };
 
   const fetchQuoteDetails = async () => {
     setLoading(true);
@@ -335,6 +341,37 @@ export default function AdminQuoteDetail() {
         })),
       );
 
+      // Fetch document certifications
+      const { data: certificationsData } = await supabase
+        .from("document_certifications")
+        .select(
+          `
+          id,
+          quote_file_id,
+          certification_type_id,
+          is_primary,
+          price,
+          certification_types(id, code, name, price)
+        `,
+        )
+        .eq("quote_id", id);
+      setCertifications(certificationsData || []);
+
+      // Fetch addresses
+      const { data: addressesData } = await supabase
+        .from("quote_addresses")
+        .select("*")
+        .eq("quote_id", id);
+      setAddresses(addressesData || []);
+
+      // Fetch quote adjustments
+      const { data: adjustmentsData } = await supabase
+        .from("quote_adjustments")
+        .select("*")
+        .eq("quote_id", id)
+        .order("created_at");
+      setAdjustments(adjustmentsData || []);
+
       if (quoteData?.status === "converted") {
         const { data: orderData } = await supabase
           .from("orders")
@@ -369,47 +406,6 @@ export default function AdminQuoteDetail() {
           : segment,
       )
       .join(" ");
-  };
-
-  const formatConfidence = (value?: number | null) => {
-    if (typeof value !== "number") return "—";
-    return `${Math.round(value * 100)}%`;
-  };
-
-  const saveCorrection = async (
-    analysisId: string,
-    field: EditField,
-    aiValue: string | number,
-    correctedValue: string | number,
-  ) => {
-    if (!currentStaff?.staffId || !id) return;
-    setIsSaving(true);
-    try {
-      await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reviewId: hitlReview?.id || null,
-            analysisId,
-            staffId: currentStaff.staffId,
-            field,
-            aiValue,
-            correctedValue,
-            reason: "Admin correction",
-          }),
-        },
-      );
-
-      await supabase.rpc("recalculate_quote_totals", { p_quote_id: id });
-      await fetchQuoteDetails();
-    } catch (err) {
-      console.error("Failed to save correction:", err);
-    } finally {
-      setIsSaving(false);
-      setEditModal(null);
-    }
   };
 
   const startReview = async () => {
@@ -654,26 +650,6 @@ export default function AdminQuoteDetail() {
     } finally {
       setIsResending(false);
     }
-  };
-
-  const openEditModal = (field: EditField, item: AIAnalysis) => {
-    let value: string | number = "";
-    if (field === "document_type") {
-      value = item.detected_document_type || "";
-    } else if (field === "language") {
-      value = item.detected_language || "";
-    } else if (field === "complexity") {
-      value = item.assessed_complexity || "";
-    } else {
-      value = item.word_count || 0;
-    }
-
-    setEditModal({
-      field,
-      currentValue: value,
-      analysisId: item.id,
-      aiValue: value,
-    });
   };
 
   if (loading) {
@@ -956,86 +932,233 @@ export default function AdminQuoteDetail() {
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Zap className="w-5 h-5 text-gray-400" />
-                AI Analysis
+                Document Analysis
               </h2>
 
-              <div className="space-y-4">
-                {analysis.map((item, index) => (
-                  <div key={item.id} className="p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">Document {index + 1}</span>
-                      <span className="text-sm text-gray-500">
-                        Confidence:{" "}
-                        {formatConfidence(
-                          item.ocr_confidence ?? item.document_type_confidence,
-                        )}
-                      </span>
+              {/* Document Tabs */}
+              {analysis.length > 1 && (
+                <div className="flex border-b mb-4 overflow-x-auto">
+                  {analysis.map((item, index) => {
+                    const file = files.find((f) => f.id === item.quote_file_id);
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setSelectedAnalysisId(item.id)}
+                        className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                          (selectedAnalysisId || analysis[0]?.id) === item.id
+                            ? "border-teal-600 text-teal-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        {file?.file_name || `Document ${index + 1}`}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Selected Document Analysis */}
+              {(() => {
+                const currentAnalysis =
+                  analysis.find(
+                    (a) => a.id === (selectedAnalysisId || analysis[0]?.id),
+                  ) || analysis[0];
+                if (!currentAnalysis) return null;
+
+                const docCerts = certifications.filter(
+                  (c) => c.quote_file_id === currentAnalysis.quote_file_id,
+                );
+                const primaryCert = docCerts.find((c) => c.is_primary);
+
+                return (
+                  <div className="space-y-4">
+                    {/* Analysis Summary */}
+                    <div className="border border-gray-200 rounded-lg">
+                      <div className="px-4 py-3 bg-gray-50 border-b font-medium text-sm text-gray-700">
+                        Analysis Summary
+                      </div>
+                      <div className="p-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1">
+                              Detected Language
+                            </p>
+                            <p className="font-medium">
+                              {currentAnalysis.detected_language || "—"}
+                            </p>
+                            {currentAnalysis.language_confidence && (
+                              <p className="text-xs text-gray-400">
+                                {Math.round(
+                                  currentAnalysis.language_confidence * 100,
+                                )}
+                                % confidence
+                              </p>
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1">
+                              Document Type
+                            </p>
+                            <p className="font-medium">
+                              {formatLabel(
+                                currentAnalysis.detected_document_type,
+                              )}
+                            </p>
+                            {currentAnalysis.document_type_confidence && (
+                              <p className="text-xs text-gray-400">
+                                {Math.round(
+                                  currentAnalysis.document_type_confidence * 100,
+                                )}
+                                % confidence
+                              </p>
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1">
+                              Complexity
+                            </p>
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                                currentAnalysis.assessed_complexity === "easy"
+                                  ? "bg-green-100 text-green-700"
+                                  : currentAnalysis.assessed_complexity ===
+                                      "medium"
+                                    ? "bg-yellow-100 text-yellow-700"
+                                    : currentAnalysis.assessed_complexity ===
+                                        "hard"
+                                      ? "bg-red-100 text-red-700"
+                                      : "bg-gray-100 text-gray-700"
+                              }`}
+                            >
+                              {formatLabel(currentAnalysis.assessed_complexity)}
+                            </span>
+                            {currentAnalysis.complexity_confidence && (
+                              <p className="text-xs text-gray-400 mt-1">
+                                {Math.round(
+                                  currentAnalysis.complexity_confidence * 100,
+                                )}
+                                % confidence
+                              </p>
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1">
+                              Multiplier
+                            </p>
+                            <p className="font-medium">
+                              {currentAnalysis.complexity_multiplier?.toFixed(
+                                2,
+                              ) || "1.00"}
+                              x
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1">
+                              Word Count
+                            </p>
+                            <p className="font-medium">
+                              {currentAnalysis.word_count?.toLocaleString() ||
+                                "—"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1">
+                              Page Count
+                            </p>
+                            <p className="font-medium">
+                              {currentAnalysis.page_count || "—"}
+                            </p>
+                          </div>
+
+                          <div className="col-span-2 md:col-span-3 pt-2 border-t">
+                            <p className="text-gray-500 text-xs mb-1">
+                              Billable Pages
+                            </p>
+                            <p className="font-semibold text-lg">
+                              {currentAnalysis.billable_pages?.toFixed(2) ||
+                                "—"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      <div>
-                        <div className="flex items-center justify-between text-gray-500">
-                          <span>Type</span>
-                          <button
-                            onClick={() => openEditModal("document_type", item)}
-                            disabled={!currentStaff}
-                            className="text-teal-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Edit
-                          </button>
-                        </div>
-                        <p className="font-medium">
-                          {formatLabel(item.detected_document_type)}
-                        </p>
+
+                    {/* Document Certification */}
+                    <div className="border border-gray-200 rounded-lg">
+                      <div className="px-4 py-3 bg-gray-50 border-b font-medium text-sm text-gray-700">
+                        Certification
                       </div>
-                      <div>
-                        <div className="flex items-center justify-between text-gray-500">
-                          <span>Language</span>
-                          <button
-                            onClick={() => openEditModal("language", item)}
-                            disabled={!currentStaff}
-                            className="text-teal-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Edit
-                          </button>
-                        </div>
-                        <p className="font-medium">
-                          {item.detected_language || "—"}
-                        </p>
+                      <div className="p-4">
+                        {primaryCert ? (
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Type:</span>
+                              <span className="font-medium">
+                                {primaryCert.certification_types?.name || "—"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Code:</span>
+                              <span className="font-medium">
+                                {primaryCert.certification_types?.code || "—"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between border-t pt-2">
+                              <span className="text-gray-700 font-medium">
+                                Price:
+                              </span>
+                              <span className="font-semibold text-green-600">
+                                ${Number(primaryCert.price || 0).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-gray-500 text-sm">
+                            No certification assigned
+                          </p>
+                        )}
                       </div>
-                      <div>
-                        <div className="flex items-center justify-between text-gray-500">
-                          <span>Words</span>
-                          <button
-                            onClick={() => openEditModal("word_count", item)}
-                            disabled={!currentStaff}
-                            className="text-teal-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Edit
-                          </button>
-                        </div>
-                        <p className="font-medium">
-                          {item.word_count?.toLocaleString() || "—"}
-                        </p>
+                    </div>
+
+                    {/* Document Pricing */}
+                    <div className="border border-gray-200 rounded-lg">
+                      <div className="px-4 py-3 bg-gray-50 border-b font-medium text-sm text-gray-700">
+                        Document Pricing
                       </div>
-                      <div>
-                        <div className="flex items-center justify-between text-gray-500">
-                          <span>Complexity</span>
-                          <button
-                            onClick={() => openEditModal("complexity", item)}
-                            disabled={!currentStaff}
-                            className="text-teal-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Edit
-                          </button>
+                      <div className="p-4 space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Base Rate:</span>
+                          <span className="font-medium">
+                            $
+                            {Number(currentAnalysis.base_rate || 65).toFixed(2)}
+                            /page
+                          </span>
                         </div>
-                        <p className="font-medium">
-                          {formatLabel(item.assessed_complexity)}
-                        </p>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Billable Pages:</span>
+                          <span className="font-medium">
+                            {currentAnalysis.billable_pages?.toFixed(2) || "—"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-t pt-2">
+                          <span className="text-gray-700 font-medium">
+                            Line Total:
+                          </span>
+                          <span className="font-semibold text-green-600">
+                            $
+                            {Number(currentAnalysis.line_total || 0).toFixed(2)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1149,19 +1272,97 @@ export default function AdminQuoteDetail() {
           <div className="bg-white rounded-lg border p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-gray-400" />
-              Pricing
+              Pricing Summary
             </h2>
 
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Subtotal</span>
-                <span>${quote.subtotal?.toFixed(2) || "0.00"}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Certification</span>
-                <span>${quote.certification_total?.toFixed(2) || "0.00"}</span>
-              </div>
-              {quote.is_rush && (
+            <div className="space-y-4">
+              {/* Per-Document Breakdown */}
+              {analysis.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Documents
+                  </p>
+                  {analysis.map((item, index) => {
+                    const file = files.find(
+                      (f) => f.id === item.quote_file_id,
+                    );
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex justify-between text-sm py-1"
+                      >
+                        <span
+                          className="text-gray-600 truncate max-w-[60%]"
+                          title={file?.file_name}
+                        >
+                          {file?.file_name || `Document ${index + 1}`}
+                        </span>
+                        <span className="font-medium">
+                          ${Number(item.line_total || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  <div className="flex justify-between text-sm pt-1 border-t">
+                    <span className="text-gray-700 font-medium">Subtotal</span>
+                    <span className="font-medium">
+                      ${quote.subtotal?.toFixed(2) || "0.00"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Certifications Total */}
+              {quote.certification_total > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Certification Total</span>
+                  <span>
+                    ${quote.certification_total?.toFixed(2) || "0.00"}
+                  </span>
+                </div>
+              )}
+
+              {/* Adjustments */}
+              {adjustments.length > 0 && (
+                <div className="space-y-1 py-2 border-t border-b">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                    Adjustments
+                  </p>
+                  {adjustments.map((adj) => (
+                    <div key={adj.id} className="flex justify-between text-sm">
+                      <span
+                        className={
+                          adj.adjustment_type === "discount"
+                            ? "text-green-600"
+                            : "text-orange-600"
+                        }
+                      >
+                        {adj.adjustment_type === "discount"
+                          ? "Discount"
+                          : "Surcharge"}
+                        {adj.reason && (
+                          <span className="text-gray-400 text-xs ml-1">
+                            ({adj.reason})
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={
+                          adj.adjustment_type === "discount"
+                            ? "text-green-600"
+                            : "text-orange-600"
+                        }
+                      >
+                        {adj.adjustment_type === "discount" ? "-" : "+"}$
+                        {Math.abs(adj.calculated_amount).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Rush Fee */}
+              {quote.is_rush && quote.rush_fee > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500 flex items-center gap-1">
                     <Zap className="w-3 h-3 text-amber-500" />
@@ -1170,19 +1371,29 @@ export default function AdminQuoteDetail() {
                   <span>${quote.rush_fee?.toFixed(2) || "0.00"}</span>
                 </div>
               )}
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Delivery</span>
-                <span>${quote.delivery_fee?.toFixed(2) || "0.00"}</span>
-              </div>
+
+              {/* Delivery Fee */}
+              {quote.delivery_fee > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">
+                    Delivery ({quote.delivery_option?.name || "Standard"})
+                  </span>
+                  <span>${quote.delivery_fee?.toFixed(2) || "0.00"}</span>
+                </div>
+              )}
+
+              {/* Tax */}
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">
                   Tax ({((quote.tax_rate || 0) * 100).toFixed(0)}%)
                 </span>
                 <span>${quote.tax_amount?.toFixed(2) || "0.00"}</span>
               </div>
-              <div className="border-t pt-2 mt-2 flex justify-between font-semibold">
-                <span>Total</span>
-                <span className="text-lg">
+
+              {/* Total */}
+              <div className="border-t pt-3 mt-3 flex justify-between">
+                <span className="font-semibold text-gray-900">Total</span>
+                <span className="text-xl font-bold text-teal-600">
                   ${quote.total?.toFixed(2) || "0.00"} CAD
                 </span>
               </div>
@@ -1237,6 +1448,91 @@ export default function AdminQuoteDetail() {
               </div>
             </div>
           </div>
+
+          {/* Addresses */}
+          {addresses.length > 0 && (
+            <div className="bg-white rounded-lg border p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-gray-400" />
+                Addresses
+              </h2>
+
+              <div className="space-y-4">
+                {/* Billing Address */}
+                {(() => {
+                  const billing = addresses.find(
+                    (a) => a.address_type === "billing",
+                  );
+                  if (!billing) return null;
+                  return (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                        Billing Address
+                      </p>
+                      <div className="text-sm space-y-1">
+                        <p className="font-medium">{billing.full_name}</p>
+                        {billing.company_name && (
+                          <p className="text-gray-600">{billing.company_name}</p>
+                        )}
+                        <p className="text-gray-600">{billing.address_line1}</p>
+                        {billing.address_line2 && (
+                          <p className="text-gray-600">{billing.address_line2}</p>
+                        )}
+                        <p className="text-gray-600">
+                          {billing.city}, {billing.province} {billing.postal_code}
+                        </p>
+                        <p className="text-gray-600">{billing.country}</p>
+                        {billing.phone && (
+                          <p className="text-gray-500 text-xs mt-1">
+                            {billing.phone}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Shipping Address */}
+                {(() => {
+                  const shipping = addresses.find(
+                    (a) => a.address_type === "shipping",
+                  );
+                  if (!shipping) return null;
+                  return (
+                    <div className="pt-4 border-t">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                        Shipping Address
+                      </p>
+                      <div className="text-sm space-y-1">
+                        <p className="font-medium">{shipping.full_name}</p>
+                        {shipping.company_name && (
+                          <p className="text-gray-600">
+                            {shipping.company_name}
+                          </p>
+                        )}
+                        <p className="text-gray-600">{shipping.address_line1}</p>
+                        {shipping.address_line2 && (
+                          <p className="text-gray-600">
+                            {shipping.address_line2}
+                          </p>
+                        )}
+                        <p className="text-gray-600">
+                          {shipping.city}, {shipping.province}{" "}
+                          {shipping.postal_code}
+                        </p>
+                        <p className="text-gray-600">{shipping.country}</p>
+                        {shipping.phone && (
+                          <p className="text-gray-500 text-xs mt-1">
+                            {shipping.phone}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
 
           <div className="bg-white rounded-lg border p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -1309,26 +1605,6 @@ export default function AdminQuoteDetail() {
           Message Customer
         </button>
       </div>
-
-      {editModal && (
-        <EditFieldModal
-          field={editModal.field}
-          currentValue={editModal.currentValue}
-          analysisId={editModal.analysisId}
-          onClose={() => setEditModal(null)}
-          onSave={(value) =>
-            saveCorrection(
-              editModal.analysisId,
-              editModal.field,
-              editModal.aiValue,
-              value,
-            )
-          }
-          documentTypes={documentTypes}
-          languages={languages}
-          isSaving={isSaving}
-        />
-      )}
 
       <MessageCustomerModal
         isOpen={showMessageModal}
@@ -1480,141 +1756,3 @@ export default function AdminQuoteDetail() {
   );
 }
 
-interface EditFieldModalProps {
-  field: EditField;
-  currentValue: string | number;
-  analysisId: string;
-  onSave: (value: string | number) => void;
-  onClose: () => void;
-  documentTypes: DocumentTypeOption[];
-  languages: LanguageOption[];
-  isSaving: boolean;
-}
-
-function EditFieldModal({
-  field,
-  currentValue,
-  analysisId: _analysisId,
-  onSave,
-  onClose,
-  documentTypes,
-  languages,
-  isSaving,
-}: EditFieldModalProps) {
-  const [value, setValue] = useState<string | number>(currentValue);
-
-  useEffect(() => {
-    setValue(currentValue);
-  }, [currentValue, field]);
-
-  const stringValue = typeof value === "string" ? value : "";
-  const numberValue = typeof value === "number" ? value : Number(value);
-
-  const renderFieldInput = () => {
-    if (field === "document_type") {
-      const hasValue = documentTypes.some(
-        (type) => type.code === stringValue || type.name === stringValue,
-      );
-
-      return (
-        <select
-          value={stringValue}
-          onChange={(event) => setValue(event.target.value)}
-          className="w-full border rounded-lg px-3 py-2"
-        >
-          {!hasValue && stringValue && (
-            <option value={stringValue}>{stringValue}</option>
-          )}
-          {documentTypes.map((type) => (
-            <option key={type.id} value={type.code}>
-              {type.name}
-            </option>
-          ))}
-        </select>
-      );
-    }
-
-    if (field === "language") {
-      const hasValue = languages.some(
-        (lang) => lang.code === stringValue || lang.name === stringValue,
-      );
-
-      return (
-        <select
-          value={stringValue}
-          onChange={(event) => setValue(event.target.value)}
-          className="w-full border rounded-lg px-3 py-2"
-        >
-          {!hasValue && stringValue && (
-            <option value={stringValue}>{stringValue}</option>
-          )}
-          {languages.map((lang) => (
-            <option key={lang.id} value={lang.code}>
-              {lang.name} ({lang.code})
-            </option>
-          ))}
-        </select>
-      );
-    }
-
-    if (field === "complexity") {
-      return (
-        <select
-          value={stringValue}
-          onChange={(event) => setValue(event.target.value)}
-          className="w-full border rounded-lg px-3 py-2"
-        >
-          <option value="easy">Easy</option>
-          <option value="medium">Medium</option>
-          <option value="hard">Hard</option>
-        </select>
-      );
-    }
-
-    return (
-      <input
-        type="number"
-        min={0}
-        value={Number.isNaN(numberValue) ? 0 : numberValue}
-        onChange={(event) => setValue(Number(event.target.value))}
-        className="w-full border rounded-lg px-3 py-2"
-      />
-    );
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="px-5 py-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Edit {field.replace(/_/g, " ")}
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            Close
-          </button>
-        </div>
-        <div className="px-5 py-4 space-y-4">
-          {renderFieldInput()}
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => onSave(value)}
-              disabled={isSaving}
-              className="px-4 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
-            >
-              {isSaving ? "Saving..." : "Save"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
