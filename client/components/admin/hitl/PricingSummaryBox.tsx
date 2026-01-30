@@ -70,6 +70,7 @@ interface DeliveryOption {
   is_always_selected: boolean;
   category: string;
   delivery_type: string;
+  is_physical: boolean;
 }
 
 interface PricingData {
@@ -233,11 +234,10 @@ export default function PricingSummaryBox({
         console.warn("Error fetching turnaround options:", turnaroundError);
       }
 
-      // Fetch delivery options
+      // Fetch delivery options (both digital and physical)
       const { data: deliveryData, error: deliveryError } = await supabase
         .from("delivery_options")
-        .select("id, code, name, description, price, estimated_days, requires_address, is_always_selected, category, delivery_type")
-        .eq("category", "delivery")
+        .select("id, code, name, description, price, estimated_days, requires_address, is_always_selected, category, delivery_type, is_physical")
         .eq("is_active", true)
         .order("sort_order");
 
@@ -558,10 +558,8 @@ export default function PricingSummaryBox({
     return total;
   };
 
-  // Get physical delivery options (excluding digital-only options)
-  const physicalDeliveryOptions = deliveryOptions.filter(
-    d => d.delivery_type === "ship" || d.delivery_type === "pickup" || d.code === "none"
-  );
+  // Get physical delivery options (using is_physical flag from database)
+  const physicalDeliveryOptions = deliveryOptions.filter(d => d.is_physical === true);
 
   // Format currency
   const formatCurrency = (amount: number) => {
