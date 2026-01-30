@@ -25,7 +25,7 @@ import {
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
-import { HITLPanelLayout, PricingSummaryBox, TranslationDetailsCard } from "../../components/admin/hitl";
+import { HITLPanelLayout, PricingSummaryBox, TranslationDetailsCard, DocumentCardV2 } from "../../components/admin/hitl";
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
 
 interface PageData {
@@ -2304,221 +2304,83 @@ const HITLReviewDetail: React.FC = () => {
                 }}
               />
 
-              {/* Billing, Delivery & Rush Options Section */}
+              {/* Addresses Section - Compact 2-column layout */}
               {claimedByMe && reviewData?.quotes && (
-                <div className="mb-6">
-                  {!showAddressSection ? (
-                    <button
-                      onClick={() => setShowAddressSection(true)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"
-                    >
-                      <Mail className="w-5 h-5" />
-                      Manage Billing, Delivery & Rush Options
-                    </button>
-                  ) : (
-                    <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          Billing, Delivery & Rush Options
-                        </h3>
-                        <button
-                          onClick={() => setShowAddressSection(false)}
-                          className="text-gray-400 hover:text-gray-600"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      </div>
-
-                      {/* Turnaround Type Selection */}
-                      <div className="border-b pb-6">
-                        <h4 className="font-semibold text-gray-800 mb-3">
-                          Rush Options
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          {turnaroundOptions.map((option) => {
-                            const isSelected = turnaroundType === option.code;
-                            const multiplier =
-                              option.code === "rush"
-                                ? rushMultiplierValue
-                                : option.code === "same_day"
-                                  ? sameDayMultiplierValue
-                                  : 1.0;
-                            const calculatedFee = option.is_rush
-                              ? (reviewData.quotes.subtotal || 0) *
-                                (multiplier - 1)
-                              : 0;
-
-                            return (
-                              <button
-                                key={option.id}
-                                onClick={() =>
-                                  handleUpdateTurnaroundType(
-                                    option.code as
-                                      | "standard"
-                                      | "rush"
-                                      | "same_day",
-                                  )
-                                }
-                                className={`p-4 rounded-lg border-2 transition-all text-left ${
-                                  isSelected
-                                    ? "border-green-500 bg-green-50"
-                                    : "border-gray-200 hover:border-gray-300"
-                                }`}
-                              >
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <h5 className="font-medium text-gray-900">
-                                      {option.name}
-                                    </h5>
-                                    <p className="text-xs text-gray-600 mt-1">
-                                      {option.description}
-                                    </p>
-                                    {option.is_rush && (
-                                      <p className="text-sm font-semibold text-green-600 mt-2">
-                                        +${calculatedFee.toFixed(2)}
-                                      </p>
-                                    )}
-                                  </div>
-                                  {isSelected && (
-                                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                                  )}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
+                <div className="mb-6 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+                    <h3 className="font-semibold text-gray-900">Addresses</h3>
+                  </div>
+                  <div className="p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Billing Address */}
-                      <div>
-                        <h4 className="font-semibold text-gray-800 mb-3">
-                          Billing Address
-                        </h4>
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            Billing Address
+                          </h4>
+                        </div>
                         {billingAddress ? (
-                          <div className="p-4 bg-gray-50 rounded-lg border">
-                            <p className="text-sm text-gray-900">
-                              {billingAddress.name ||
-                                reviewData.quotes.customer?.full_name}
+                          <div className="text-sm text-gray-700 space-y-0.5">
+                            <p className="font-medium text-gray-900">
+                              {billingAddress.name || reviewData.quotes.customer?.full_name}
                             </p>
-                            <p className="text-sm text-gray-600">
-                              {billingAddress.address_line1}
-                            </p>
-                            {billingAddress.address_line2 && (
-                              <p className="text-sm text-gray-600">
-                                {billingAddress.address_line2}
-                              </p>
-                            )}
-                            <p className="text-sm text-gray-600">
-                              {billingAddress.city},{" "}
-                              {billingAddress.province || billingAddress.state}{" "}
+                            <p>{billingAddress.address_line1}</p>
+                            {billingAddress.address_line2 && <p>{billingAddress.address_line2}</p>}
+                            <p>
+                              {billingAddress.city}, {billingAddress.province || billingAddress.state}{" "}
                               {billingAddress.postal_code}
                             </p>
-                            <p className="text-sm text-gray-600">
-                              {billingAddress.country || "Canada"}
-                            </p>
+                            <p>{billingAddress.country || "Canada"}</p>
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-500 italic">
-                            No billing address on file
-                          </p>
+                          <div className="text-center py-4">
+                            <p className="text-sm text-gray-500 italic mb-2">No billing address on file</p>
+                            <button
+                              onClick={() => setShowAddressSection(true)}
+                              className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+                            >
+                              Add Address
+                            </button>
+                          </div>
                         )}
                       </div>
 
-                      {/* Shipping/Delivery Address */}
-                      <div>
-                        <h4 className="font-semibold text-gray-800 mb-3">
-                          Delivery Address
-                        </h4>
+                      {/* Shipping Address */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            Shipping Address
+                          </h4>
+                        </div>
                         {shippingAddress ? (
-                          <div className="p-4 bg-gray-50 rounded-lg border">
-                            <p className="text-sm text-gray-900">
-                              {shippingAddress.name ||
-                                reviewData.quotes.customer?.full_name}
+                          <div className="text-sm text-gray-700 space-y-0.5">
+                            <p className="font-medium text-gray-900">
+                              {shippingAddress.name || reviewData.quotes.customer?.full_name}
                             </p>
-                            <p className="text-sm text-gray-600">
-                              {shippingAddress.address_line1}
-                            </p>
-                            {shippingAddress.address_line2 && (
-                              <p className="text-sm text-gray-600">
-                                {shippingAddress.address_line2}
-                              </p>
-                            )}
-                            <p className="text-sm text-gray-600">
-                              {shippingAddress.city},{" "}
-                              {shippingAddress.province ||
-                                shippingAddress.state}{" "}
+                            <p>{shippingAddress.address_line1}</p>
+                            {shippingAddress.address_line2 && <p>{shippingAddress.address_line2}</p>}
+                            <p>
+                              {shippingAddress.city}, {shippingAddress.province || shippingAddress.state}{" "}
                               {shippingAddress.postal_code}
                             </p>
-                            <p className="text-sm text-gray-600">
-                              {shippingAddress.country || "Canada"}
-                            </p>
+                            <p>{shippingAddress.country || "Canada"}</p>
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-500 italic">
-                            No delivery address on file (digital delivery only)
-                          </p>
+                          <div className="text-center py-4">
+                            <p className="text-sm text-gray-500 italic mb-2">
+                              No shipping address (Digital delivery only)
+                            </p>
+                            <button
+                              onClick={() => setShowAddressSection(true)}
+                              className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+                            >
+                              Add Address
+                            </button>
+                          </div>
                         )}
                       </div>
-
-                      {/* Summary */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <h4 className="font-semibold text-blue-900 mb-2">
-                          Pricing Summary
-                        </h4>
-                        <div className="space-y-1 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-gray-700">Subtotal:</span>
-                            <span className="font-medium">
-                              ${(reviewData.quotes.subtotal || 0).toFixed(2)}
-                            </span>
-                          </div>
-                          {rushFee > 0 && (
-                            <div className="flex justify-between text-green-700">
-                              <span>
-                                {turnaroundType === "same_day"
-                                  ? "Same-Day"
-                                  : "Rush"}{" "}
-                                Fee:
-                              </span>
-                              <span className="font-medium">
-                                +${rushFee.toFixed(2)}
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex justify-between">
-                            <span className="text-gray-700">
-                              Certification:
-                            </span>
-                            <span className="font-medium">
-                              $
-                              {(
-                                reviewData.quotes.certification_total || 0
-                              ).toFixed(2)}
-                            </span>
-                          </div>
-                          {reviewData.quotes.delivery_fee > 0 && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-700">Delivery:</span>
-                              <span className="font-medium">
-                                $
-                                {(reviewData.quotes.delivery_fee || 0).toFixed(
-                                  2,
-                                )}
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex justify-between border-t pt-1 mt-2">
-                            <span className="font-semibold text-gray-900">
-                              Total:
-                            </span>
-                            <span className="font-bold text-lg">
-                              ${(reviewData.quotes.total || 0).toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
 

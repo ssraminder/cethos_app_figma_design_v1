@@ -17,6 +17,7 @@ export { default as ManualEntryModal } from "./ManualEntryModal";
 export { default as AnalyzeDocumentModal } from "./AnalyzeDocumentModal";
 export { default as PricingSummaryBox } from "./PricingSummaryBox";
 export { default as TranslationDetailsCard } from "./TranslationDetailsCard";
+export { default as DocumentCardV2 } from "./DocumentCardV2";
 export {
   default as HITLPanelLayout,
   useResponsiveLayout,

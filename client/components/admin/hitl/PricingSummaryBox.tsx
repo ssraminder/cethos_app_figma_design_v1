@@ -9,6 +9,12 @@ import {
   AlertCircle,
   Send,
   CreditCard,
+  Clock,
+  Truck,
+  Globe,
+  Mail,
+  Check,
+  Package,
 } from "lucide-react";
 
 // Types
@@ -44,6 +50,28 @@ interface QuoteAdjustment {
   reason: string;
 }
 
+interface TurnaroundOption {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  multiplier: number;
+  is_rush: boolean;
+}
+
+interface DeliveryOption {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  price: number;
+  estimated_days: number | null;
+  requires_address: boolean;
+  is_always_selected: boolean;
+  category: string;
+  delivery_type: string;
+}
+
 interface PricingData {
   subtotal: number;
   certifications: QuoteCertification[];
@@ -54,6 +82,9 @@ interface PricingData {
   total: number;
   rushFee: number;
   deliveryFee: number;
+  turnaroundType: string;
+  selectedDeliveryOptions: string[];
+  physicalDeliveryOptionId: string | null;
 }
 
 interface Props {
@@ -65,6 +96,8 @@ interface Props {
   isSubmitting?: boolean;
   onUpdateAndSendPaymentLink?: () => void;
   onManualPayment?: () => void;
+  hasShippingAddress?: boolean;
+  onAddAddress?: () => void;
 }
 
 export default function PricingSummaryBox({
@@ -75,6 +108,8 @@ export default function PricingSummaryBox({
   isSubmitting = false,
   onUpdateAndSendPaymentLink,
   onManualPayment,
+  hasShippingAddress = false,
+  onAddAddress,
 }: Props) {
   // State
   const [pricing, setPricing] = useState<PricingData | null>(null);
@@ -82,6 +117,8 @@ export default function PricingSummaryBox({
     CertificationType[]
   >([]);
   const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
+  const [turnaroundOptions, setTurnaroundOptions] = useState<TurnaroundOption[]>([]);
+  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +126,11 @@ export default function PricingSummaryBox({
   // Dropdown states
   const [showCertDropdown, setShowCertDropdown] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+
+  // Turnaround and Delivery state
+  const [selectedTurnaround, setSelectedTurnaround] = useState<string>("standard");
+  const [emailDeliveryEnabled, setEmailDeliveryEnabled] = useState(false);
+  const [selectedPhysicalDelivery, setSelectedPhysicalDelivery] = useState<string>("");
 
   // Adjustment form state
   const [adjustmentForm, setAdjustmentForm] = useState({
@@ -108,7 +150,7 @@ export default function PricingSummaryBox({
     setError(null);
 
     try {
-      // Fetch quote pricing data
+      // Fetch quote pricing data including turnaround and delivery info
       const { data: quoteData, error: quoteError } = await supabase
         .from("quotes")
         .select(
@@ -121,7 +163,10 @@ export default function PricingSummaryBox({
           tax_rate,
           tax_amount,
           total,
-          calculated_totals
+          calculated_totals,
+          turnaround_type,
+          digital_delivery_options,
+          physical_delivery_option_id
         `
         )
         .eq("id", quoteId)
@@ -176,9 +221,47 @@ export default function PricingSummaryBox({
 
       if (taxError) throw taxError;
 
+      // Fetch turnaround options
+      const { data: turnaroundData, error: turnaroundError } = await supabase
+        .from("delivery_options")
+        .select("id, code, name, description, multiplier, is_rush")
+        .eq("category", "turnaround")
+        .eq("is_active", true)
+        .order("sort_order");
+
+      if (turnaroundError) {
+        console.warn("Error fetching turnaround options:", turnaroundError);
+      }
+
+      // Fetch delivery options
+      const { data: deliveryData, error: deliveryError } = await supabase
+        .from("delivery_options")
+        .select("id, code, name, description, price, estimated_days, requires_address, is_always_selected, category, delivery_type")
+        .eq("category", "delivery")
+        .eq("is_active", true)
+        .order("sort_order");
+
+      if (deliveryError) {
+        console.warn("Error fetching delivery options:", deliveryError);
+      }
+
       // Set state
       setCertificationTypes(certTypes || []);
       setTaxRates(taxes || []);
+      setTurnaroundOptions(turnaroundData || []);
+      setDeliveryOptions(deliveryData || []);
+
+      // Set selected values from quote data
+      setSelectedTurnaround(quoteData?.turnaround_type || "standard");
+
+      // Check if email delivery is enabled in digital_delivery_options
+      const digitalOptions = quoteData?.digital_delivery_options || [];
+      const emailOption = deliveryData?.find((d: DeliveryOption) => d.code === "email");
+      if (emailOption && digitalOptions.includes(emailOption.id)) {
+        setEmailDeliveryEnabled(true);
+      }
+
+      setSelectedPhysicalDelivery(quoteData?.physical_delivery_option_id || "");
 
       setPricing({
         subtotal:
@@ -201,6 +284,9 @@ export default function PricingSummaryBox({
         rushFee:
           quoteData?.rush_fee || quoteData?.calculated_totals?.rush_fee || 0,
         deliveryFee: quoteData?.delivery_fee || 0,
+        turnaroundType: quoteData?.turnaround_type || "standard",
+        selectedDeliveryOptions: quoteData?.digital_delivery_options || [],
+        physicalDeliveryOptionId: quoteData?.physical_delivery_option_id || null,
       });
     } catch (err: any) {
       console.error("Error fetching pricing data:", err);
@@ -339,6 +425,143 @@ export default function PricingSummaryBox({
       setRecalculating(false);
     }
   };
+
+  // Handle turnaround change
+  const handleTurnaroundChange = async (turnaroundCode: string) => {
+    try {
+      setSelectedTurnaround(turnaroundCode);
+
+      const selectedOption = turnaroundOptions.find(t => t.code === turnaroundCode);
+      const isRush = selectedOption?.is_rush || false;
+      const multiplier = selectedOption?.multiplier || 1.0;
+
+      // Calculate rush fee based on subtotal
+      const subtotal = pricing?.subtotal || 0;
+      const newRushFee = isRush ? subtotal * (multiplier - 1) : 0;
+
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          turnaround_type: turnaroundCode,
+          is_rush: isRush,
+          rush_fee: newRushFee
+        })
+        .eq("id", quoteId);
+
+      if (error) throw error;
+
+      await handleRecalculate();
+    } catch (err: any) {
+      console.error("Error updating turnaround:", err);
+      setError(err.message);
+      // Revert optimistic update
+      setSelectedTurnaround(pricing?.turnaroundType || "standard");
+    }
+  };
+
+  // Handle email delivery toggle
+  const handleEmailDeliveryToggle = async (enabled: boolean) => {
+    try {
+      setEmailDeliveryEnabled(enabled);
+
+      const emailOption = deliveryOptions.find(d => d.code === "email");
+      if (!emailOption) return;
+
+      let newDigitalOptions = pricing?.selectedDeliveryOptions || [];
+
+      if (enabled) {
+        // Add email option if not already present
+        if (!newDigitalOptions.includes(emailOption.id)) {
+          newDigitalOptions = [...newDigitalOptions, emailOption.id];
+        }
+      } else {
+        // Remove email option
+        newDigitalOptions = newDigitalOptions.filter(id => id !== emailOption.id);
+      }
+
+      const { error } = await supabase
+        .from("quotes")
+        .update({ digital_delivery_options: newDigitalOptions })
+        .eq("id", quoteId);
+
+      if (error) throw error;
+
+      await handleRecalculate();
+    } catch (err: any) {
+      console.error("Error updating email delivery:", err);
+      setError(err.message);
+      // Revert optimistic update
+      setEmailDeliveryEnabled(!enabled);
+    }
+  };
+
+  // Handle physical delivery change
+  const handlePhysicalDeliveryChange = async (optionId: string) => {
+    const selectedOption = deliveryOptions.find(d => d.id === optionId);
+
+    // Check if shipping address is required but not available
+    if (selectedOption?.requires_address && !hasShippingAddress) {
+      if (onAddAddress) {
+        onAddAddress();
+      }
+      return;
+    }
+
+    try {
+      setSelectedPhysicalDelivery(optionId);
+
+      // Calculate delivery fee
+      const deliveryFee = selectedOption?.price || 0;
+
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          physical_delivery_option_id: optionId || null,
+          delivery_fee: deliveryFee
+        })
+        .eq("id", quoteId);
+
+      if (error) throw error;
+
+      await handleRecalculate();
+    } catch (err: any) {
+      console.error("Error updating physical delivery:", err);
+      setError(err.message);
+      // Revert optimistic update
+      setSelectedPhysicalDelivery(pricing?.physicalDeliveryOptionId || "");
+    }
+  };
+
+  // Calculate rush fee for display
+  const calculateRushFee = () => {
+    const selectedOption = turnaroundOptions.find(t => t.code === selectedTurnaround);
+    if (!selectedOption?.is_rush) return 0;
+    return (pricing?.subtotal || 0) * (selectedOption.multiplier - 1);
+  };
+
+  // Calculate delivery fee for display
+  const calculateDeliveryFee = () => {
+    let total = 0;
+
+    // Email delivery fee
+    if (emailDeliveryEnabled) {
+      const emailOption = deliveryOptions.find(d => d.code === "email");
+      total += emailOption?.price || 0;
+    }
+
+    // Physical delivery fee
+    if (selectedPhysicalDelivery) {
+      const physicalOption = deliveryOptions.find(d => d.id === selectedPhysicalDelivery);
+      total += physicalOption?.price || 0;
+    }
+
+    return total;
+  };
+
+  // Get physical delivery options (excluding digital-only options)
+  const physicalDeliveryOptions = deliveryOptions.filter(
+    d => d.delivery_type === "ship" || d.delivery_type === "pickup" || d.code === "none"
+  );
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -526,31 +749,133 @@ export default function PricingSummaryBox({
 
         <hr className="border-gray-200" />
 
-        {/* Rush Fee (if applicable) */}
-        {pricing && pricing.rushFee > 0 && (
-          <>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Rush Fee (30%):</span>
-              <span className="font-medium text-orange-600">
-                +{formatCurrency(pricing.rushFee)}
-              </span>
-            </div>
-            <hr className="border-gray-200" />
-          </>
-        )}
+        {/* TURNAROUND Section */}
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            Turnaround
+          </p>
 
-        {/* Delivery Fee (if applicable) */}
-        {pricing && pricing.deliveryFee > 0 && (
-          <>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Delivery:</span>
-              <span className="font-medium">
-                {formatCurrency(pricing.deliveryFee)}
+          <select
+            value={selectedTurnaround}
+            onChange={(e) => handleTurnaroundChange(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+          >
+            {turnaroundOptions.map((option) => (
+              <option key={option.id} value={option.code}>
+                {option.name} {option.is_rush ? `(+${((option.multiplier - 1) * 100).toFixed(0)}%)` : ""}
+              </option>
+            ))}
+          </select>
+
+          <div className="flex justify-between items-center mt-2">
+            <span className="text-gray-600 text-sm">Rush Fee:</span>
+            <span className={`font-medium text-sm ${calculateRushFee() > 0 ? "text-orange-600" : "text-gray-500"}`}>
+              {calculateRushFee() > 0 ? `+${formatCurrency(calculateRushFee())}` : formatCurrency(0)}
+            </span>
+          </div>
+        </div>
+
+        <hr className="border-gray-200" />
+
+        {/* DELIVERY OPTIONS Section */}
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+            <Truck className="w-3 h-3" />
+            Delivery Options
+          </p>
+
+          <div className="space-y-3">
+            {/* Online Portal - Always on */}
+            <div className="flex items-center justify-between py-2 px-3 bg-green-50 rounded-md border border-green-200">
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 bg-green-500 rounded flex items-center justify-center">
+                  <Check className="w-3 h-3 text-white" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-green-600" />
+                  <span className="text-sm text-gray-700">Online Portal</span>
+                </div>
+              </div>
+              <span className="text-sm text-gray-500">included</span>
+            </div>
+
+            {/* Email Delivery - Toggle */}
+            <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-md border border-gray-200">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleEmailDeliveryToggle(!emailDeliveryEnabled)}
+                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                    emailDeliveryEnabled
+                      ? "bg-teal-500 border-teal-500"
+                      : "border-gray-300 hover:border-gray-400"
+                  }`}
+                >
+                  {emailDeliveryEnabled && <Check className="w-3 h-3 text-white" />}
+                </button>
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm text-gray-700">Email Delivery</span>
+                </div>
+              </div>
+              <span className="text-sm text-gray-500">
+                {formatCurrency(deliveryOptions.find(d => d.code === "email")?.price || 0)}
               </span>
             </div>
-            <hr className="border-gray-200" />
-          </>
-        )}
+
+            {/* Physical Delivery - Dropdown */}
+            <div className="py-2 px-3 bg-gray-50 rounded-md border border-gray-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Package className="w-4 h-4 text-gray-500" />
+                <span className="text-sm text-gray-700">Physical:</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <select
+                  value={selectedPhysicalDelivery}
+                  onChange={(e) => handlePhysicalDeliveryChange(e.target.value)}
+                  className="flex-1 px-2 py-1.5 border border-gray-200 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                >
+                  <option value="">None - Digital Only</option>
+                  {physicalDeliveryOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name} {option.estimated_days ? `(${option.estimated_days} days)` : ""}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-sm text-gray-500 w-20 text-right">
+                  {formatCurrency(
+                    deliveryOptions.find(d => d.id === selectedPhysicalDelivery)?.price || 0
+                  )}
+                </span>
+              </div>
+              {selectedPhysicalDelivery &&
+                deliveryOptions.find(d => d.id === selectedPhysicalDelivery)?.requires_address &&
+                !hasShippingAddress && (
+                  <div className="mt-2 p-2 bg-amber-50 rounded border border-amber-200 text-sm text-amber-700">
+                    Physical delivery requires a shipping address.{" "}
+                    {onAddAddress && (
+                      <button
+                        onClick={onAddAddress}
+                        className="text-amber-800 underline hover:text-amber-900"
+                      >
+                        Add Address
+                      </button>
+                    )}
+                  </div>
+                )}
+            </div>
+
+            {/* Delivery Fee Total */}
+            <div className="flex justify-between items-center pt-2">
+              <span className="text-gray-600 text-sm">Delivery Fee:</span>
+              <span className="font-medium text-sm">
+                {formatCurrency(calculateDeliveryFee())}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <hr className="border-gray-200" />
 
         {/* Tax Section */}
         <div>
