@@ -927,8 +927,8 @@ export default function PricingSummaryBox({
           {recalculating ? "Recalculating..." : "Recalculate Totals"}
         </button>
 
-        {/* Action Buttons - Manual Payment (only for quote_ready or quote_sent) */}
-        {showActions && ['quote_ready', 'quote_sent'].includes(quoteStatus || '') && (
+        {/* Action Buttons - Manual Payment (only for approved or awaiting_payment) */}
+        {showActions && ['approved', 'awaiting_payment'].includes(quoteStatus || '') && (
           <div className="mt-4 pt-4 border-t border-gray-200">
             <button
               onClick={onManualPayment}

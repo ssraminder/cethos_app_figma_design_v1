@@ -25,7 +25,6 @@ import {
   Save,
   RefreshCw,
   Zap,
-  ClipboardList,
 } from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -1161,17 +1160,8 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
-  // Send Checkout Email - saves changes, updates status, sends checkout link email
-  const handleSendCheckoutEmail = async () => {
-    const customerEmail =
-      reviewData?.customer_email ||
-      reviewData?.quotes?.customer?.email;
-
-    if (!customerEmail) {
-      toast.error("Customer email is required");
-      return;
-    }
-
+  // Approve Quote - saves changes, sets quote status to 'approved'
+  const handleApprove = async () => {
     if (!staffSession?.staffId || !reviewData?.quote_id) {
       toast.error("Missing required data. Please refresh the page.");
       return;
@@ -1183,15 +1173,15 @@ const HITLReviewDetail: React.FC = () => {
       // 1. Save all changes first
       await handleSave();
 
-      // Update quote status to quote_ready
-      const { error } = await supabase
+      // 2. Update quote status to 'approved'
+      const { error: quoteError } = await supabase
         .from("quotes")
-        .update({ status: "quote_ready" })
+        .update({ status: "approved" })
         .eq("id", reviewData.quote_id);
 
-      if (error) throw error;
+      if (quoteError) throw quoteError;
 
-      // Update HITL review status to approved
+      // 3. Update HITL review status to 'approved'
       const accessToken = await getAccessToken();
       await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
         method: "PATCH",
@@ -1209,61 +1199,18 @@ const HITLReviewDetail: React.FC = () => {
         }),
       });
 
-      // 3. Update quote status to quote_ready
-      const { error: quoteError } = await supabase
-        .from("quotes")
-        .update({ status: "quote_ready" })
-        .eq("id", reviewData.quote_id);
-
-      if (quoteError) throw quoteError;
-
-      // 4. Send checkout email via Edge Function
-      const checkoutUrl = `${window.location.origin}/quote/step5/${reviewData.quote_id}`;
-      const quoteNumber = reviewData?.quotes?.quote_number || reviewData?.quote_number;
-      const customerName = reviewData?.quotes?.customer?.full_name || reviewData?.customer_name || "Customer";
-      const total = reviewData?.total || reviewData?.quotes?.total || 0;
-
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/send-checkout-email`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            quoteId: reviewData.quote_id,
-            customerEmail,
-            customerName,
-            quoteNumber,
-            total,
-            checkoutUrl,
-          }),
-        },
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        // Even if email fails, the status updates succeeded
-        console.error("Email send error:", result.error);
-        toast.warning("Quote approved but email failed to send");
-      } else {
-        toast.success("Checkout email sent to customer!");
-      }
-
-      // 5. Refresh page - will show as read-only
+      toast.success("Quote approved");
       await fetchAllData();
     } catch (error) {
-      console.error("Send checkout email error:", error);
-      toast.error("Failed to send checkout email");
+      console.error("Approve error:", error);
+      toast.error("Failed to approve quote");
     } finally {
       setIsSending(false);
     }
   };
 
-  // Send Payment Email - saves changes, creates Stripe payment link, updates status, sends email
-  const handleSendPaymentEmail = async () => {
+  // Send to Customer - creates Stripe payment link, sends email, updates status to awaiting_payment
+  const handleSendToCustomer = async () => {
     const customerEmail =
       reviewData?.customer_email ||
       reviewData?.quotes?.customer?.email;
@@ -1310,28 +1257,11 @@ const HITLReviewDetail: React.FC = () => {
         throw new Error(result.error || "Failed to create payment link");
       }
 
-      // 3. Update HITL status to approved
-      await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
-        method: "PATCH",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({
-          status: "approved",
-          completed_at: new Date().toISOString(),
-          completed_by: staffSession.staffId,
-          updated_at: new Date().toISOString(),
-        }),
-      });
-
-      // 4. Update quote status to quote_sent and store payment link
+      // 3. Update quote status to awaiting_payment and store payment link
       const { error: quoteError } = await supabase
         .from("quotes")
         .update({
-          status: "quote_sent",
+          status: "awaiting_payment",
           payment_link: result.url,
           quote_sent_at: new Date().toISOString(),
         })
@@ -1339,13 +1269,79 @@ const HITLReviewDetail: React.FC = () => {
 
       if (quoteError) throw quoteError;
 
-      toast.success("Payment email sent to customer!");
+      toast.success("Quote sent to customer!");
 
-      // 5. Refresh page - will show as read-only
+      // 4. Refresh data
       await fetchAllData();
     } catch (error) {
-      console.error("Send payment email error:", error);
-      toast.error("Failed to send payment email");
+      console.error("Send to customer error:", error);
+      toast.error("Failed to send quote to customer");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Resend Quote - resends payment email to customer (for awaiting_payment status)
+  const handleResendQuote = async () => {
+    const customerEmail =
+      reviewData?.customer_email ||
+      reviewData?.quotes?.customer?.email;
+
+    if (!customerEmail) {
+      toast.error("Customer email is required");
+      return;
+    }
+
+    if (!staffSession?.staffId || !reviewData?.quote_id) {
+      toast.error("Missing required data. Please refresh the page.");
+      return;
+    }
+
+    setIsSending(true);
+
+    try {
+      // Call Edge Function to create/refresh payment link and resend email
+      const accessToken = await getAccessToken();
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/update-quote-and-notify`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            quote_id: reviewData.quote_id,
+            amount: total,
+            customer_email: customerEmail,
+            customer_name: customerName,
+            quote_number: quoteNumber,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.url) {
+        throw new Error(result.error || "Failed to resend quote");
+      }
+
+      // Update payment link if it changed
+      const { error: quoteError } = await supabase
+        .from("quotes")
+        .update({
+          payment_link: result.url,
+          quote_sent_at: new Date().toISOString(),
+        })
+        .eq("id", reviewData.quote_id);
+
+      if (quoteError) throw quoteError;
+
+      toast.success("Quote resent to customer!");
+      await fetchAllData();
+    } catch (error) {
+      console.error("Resend quote error:", error);
+      toast.error("Failed to resend quote");
     } finally {
       setIsSending(false);
     }
@@ -2578,10 +2574,10 @@ const HITLReviewDetail: React.FC = () => {
                   <div className="border-l border-gray-300 h-8"></div>
                 )}
 
-                {/* Right Group: Save + Send Email buttons - only when in_review and not read-only */}
-                {reviewData?.status === "in_review" && !isReadOnly && (
+                {/* Right Group: Save + Action buttons based on quote status */}
+                {!isReadOnly && (
                   <div className="flex items-center gap-2">
-                    {/* Save Button - gray outline */}
+                    {/* Save Button - always visible when not read-only */}
                     <button
                       onClick={handleSave}
                       disabled={isSaving || isSending}
@@ -2591,25 +2587,41 @@ const HITLReviewDetail: React.FC = () => {
                       <span className="hidden sm:inline">{isSaving ? "Saving..." : "Save"}</span>
                     </button>
 
-                    {/* Send Checkout Email Button - blue solid */}
-                    <button
-                      onClick={handleSendCheckoutEmail}
-                      disabled={isSaving || isSending}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm font-medium"
-                    >
-                      <ClipboardList className="w-4 h-4" />
-                      <span className="hidden sm:inline">{isSending ? "Sending..." : "Send Checkout Email"}</span>
-                    </button>
+                    {/* Approve Button - for in_review or processing quote status */}
+                    {['in_review', 'processing'].includes(reviewData?.quotes?.status || '') && (
+                      <button
+                        onClick={handleApprove}
+                        disabled={isSaving || isSending}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm font-medium"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span className="hidden sm:inline">{isSending ? "Approving..." : "Approve"}</span>
+                      </button>
+                    )}
 
-                    {/* Send Payment Email Button - green solid */}
-                    <button
-                      onClick={handleSendPaymentEmail}
-                      disabled={isSaving || isSending}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm font-medium"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      <span className="hidden sm:inline">{isSending ? "Sending..." : "Send Payment Email"}</span>
-                    </button>
+                    {/* Send to Customer Button - for approved quote status */}
+                    {reviewData?.quotes?.status === 'approved' && (
+                      <button
+                        onClick={handleSendToCustomer}
+                        disabled={isSaving || isSending}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 text-sm font-medium"
+                      >
+                        <Mail className="w-4 h-4" />
+                        <span className="hidden sm:inline">{isSending ? "Sending..." : "Send to Customer"}</span>
+                      </button>
+                    )}
+
+                    {/* Resend Quote Button - for awaiting_payment quote status */}
+                    {reviewData?.quotes?.status === 'awaiting_payment' && (
+                      <button
+                        onClick={handleResendQuote}
+                        disabled={isSaving || isSending}
+                        className="flex items-center gap-1.5 px-4 py-2 border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-50 text-sm font-medium"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        <span className="hidden sm:inline">{isSending ? "Resending..." : "Resend Quote"}</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </>
@@ -3697,9 +3709,9 @@ const HITLReviewDetail: React.FC = () => {
                   // Refresh review data when pricing changes
                   fetchReviewData();
                 }}
-                showActions={claimedByMe && ['in_review', 'quote_ready', 'quote_sent'].includes(reviewData?.status || '')}
+                showActions={claimedByMe && ['approved', 'awaiting_payment'].includes(reviewData?.quotes?.status || '')}
                 isSubmitting={isSubmitting}
-                quoteStatus={reviewData?.status}
+                quoteStatus={reviewData?.quotes?.status}
                 onManualPayment={() => {
                   const total = reviewData?.total || reviewData?.quotes?.total || 0;
                   setAmountPaid(total.toFixed(2));
@@ -3782,8 +3794,8 @@ const HITLReviewDetail: React.FC = () => {
         />
       )}
 
-      {/* Note: Main action buttons (Reject, Escalate, Save, Mark Ready, Send to Customer, Resend Quote) are now in the sticky header */}
-      {/* Manual Payment button is in PricingSummaryBox (shown only for quote_ready and quote_sent status) */}
+      {/* Note: Main action buttons (Reject, Escalate, Save, Approve, Send to Customer, Resend Quote) are now in the sticky header */}
+      {/* Manual Payment button is in PricingSummaryBox (shown only for approved and awaiting_payment status) */}
 
       {/* Reject Modal */}
       {showRejectModal && (
