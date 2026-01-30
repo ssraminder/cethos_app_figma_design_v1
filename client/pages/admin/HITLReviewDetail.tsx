@@ -1284,7 +1284,7 @@ const HITLReviewDetail: React.FC = () => {
       // 1. Save all changes first
       await handleSave();
 
-      // Call Edge Function to send payment link email
+      // 2. Call Edge Function to create payment link and send email
       const accessToken = await getAccessToken();
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/update-quote-and-notify`,
@@ -1304,10 +1304,10 @@ const HITLReviewDetail: React.FC = () => {
         },
       );
 
-      const paymentLinkResult = await paymentLinkResponse.json();
+      const result = await response.json();
 
-      if (!paymentLinkResponse.ok || !paymentLinkResult.url) {
-        throw new Error(paymentLinkResult.error || "Failed to create payment link");
+      if (!response.ok || !result.url) {
+        throw new Error(result.error || "Failed to create payment link");
       }
 
       // 3. Update HITL status to approved
@@ -1332,56 +1332,16 @@ const HITLReviewDetail: React.FC = () => {
         .from("quotes")
         .update({
           status: "quote_sent",
-          payment_link: paymentLinkResult.url,
+          payment_link: result.url,
           quote_sent_at: new Date().toISOString(),
         })
         .eq("id", reviewData.quote_id);
 
       if (quoteError) throw quoteError;
 
-    if (!staffSession?.staffId || !reviewData?.quote_id) {
-      alert("Missing required data. Please refresh the page.");
-      return;
-    }
+      toast.success("Payment email sent to customer!");
 
-    if (!confirm(`Resend quote to ${customerEmail}?`)) {
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      // Call Edge Function to resend payment link email
-      const accessToken = await getAccessToken();
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/update-quote-and-notify`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            quoteId: reviewData.quote_id,
-            customerEmail,
-            customerName,
-            quoteNumber,
-            total,
-            paymentUrl: paymentLinkResult.url,
-          }),
-        },
-      );
-
-      const emailResult = await emailResponse.json();
-
-      if (!emailResponse.ok || !emailResult.success) {
-        console.error("Email send error:", emailResult.error);
-        toast.warning("Quote approved but email failed to send");
-      } else {
-        toast.success("Payment email sent to customer!");
-      }
-
-      // 6. Refresh page - will show as read-only
+      // 5. Refresh page - will show as read-only
       await fetchAllData();
     } catch (error) {
       console.error("Send payment email error:", error);
