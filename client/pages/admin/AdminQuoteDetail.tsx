@@ -341,28 +341,65 @@ export default function AdminQuoteDetail() {
         })),
       );
 
-      // Fetch document certifications
-      const { data: certificationsData } = await supabase
-        .from("document_certifications")
-        .select(
-          `
-          id,
-          quote_file_id,
-          certification_type_id,
-          is_primary,
-          price,
-          certification_types(id, code, name, price)
-        `,
-        )
-        .eq("quote_id", id);
-      setCertifications(certificationsData || []);
+      // Fetch document certifications by quote_file_id (document_certifications doesn't have quote_id column)
+      const fileIds = (filesData || []).map((f: any) => f.id);
+      let certificationsData: any[] = [];
+      if (fileIds.length > 0) {
+        const { data } = await supabase
+          .from("document_certifications")
+          .select(
+            `
+            id,
+            quote_file_id,
+            certification_type_id,
+            is_primary,
+            price,
+            certification_types(id, code, name, price)
+          `,
+          )
+          .in("quote_file_id", fileIds);
+        certificationsData = data || [];
+      }
+      setCertifications(certificationsData);
 
-      // Fetch addresses
-      const { data: addressesData } = await supabase
-        .from("quote_addresses")
-        .select("*")
-        .eq("quote_id", id);
-      setAddresses(addressesData || []);
+      // Addresses are stored as JSONB columns in quotes table, not in a separate table
+      // Parse billing_address and shipping_address from quote data
+      const addressesFromQuote: QuoteAddress[] = [];
+      if (quoteData?.billing_address) {
+        const billing = quoteData.billing_address;
+        addressesFromQuote.push({
+          id: 'billing',
+          quote_id: id!,
+          address_type: 'billing',
+          full_name: billing.name || billing.full_name || '',
+          company_name: billing.company_name,
+          address_line1: billing.address_line1 || '',
+          address_line2: billing.address_line2,
+          city: billing.city || '',
+          province: billing.province || billing.state || '',
+          postal_code: billing.postal_code || '',
+          country: billing.country || 'Canada',
+          phone: billing.phone,
+        });
+      }
+      if (quoteData?.shipping_address) {
+        const shipping = quoteData.shipping_address;
+        addressesFromQuote.push({
+          id: 'shipping',
+          quote_id: id!,
+          address_type: 'shipping',
+          full_name: shipping.name || shipping.full_name || '',
+          company_name: shipping.company_name,
+          address_line1: shipping.address_line1 || '',
+          address_line2: shipping.address_line2,
+          city: shipping.city || '',
+          province: shipping.province || shipping.state || '',
+          postal_code: shipping.postal_code || '',
+          country: shipping.country || 'Canada',
+          phone: shipping.phone,
+        });
+      }
+      setAddresses(addressesFromQuote);
 
       // Fetch quote adjustments
       const { data: adjustmentsData } = await supabase
