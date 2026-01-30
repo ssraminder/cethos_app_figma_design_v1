@@ -508,7 +508,7 @@ export default function Step4ReviewRush() {
           "id, quote_file_id, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status, ocr_confidence, language_confidence, document_type_confidence, complexity_confidence",
         )
         .eq("quote_id", quoteId)
-        .eq("processing_status", "complete");
+        .eq("processing_status", "completed");
 
       if (analysisError) throw analysisError;
 
