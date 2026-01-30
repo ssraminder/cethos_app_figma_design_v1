@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Check, Mail, Loader2 } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { Check, Mail, Loader2, Clock, CheckCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 interface ProcessingStatusProps {
@@ -20,6 +20,8 @@ type QuoteStatus =
   | "hitl_pending"
   | "error";
 
+const TIMEOUT_SECONDS = 45;
+
 export default function ProcessingStatus({
   quoteId,
   onComplete,
@@ -34,6 +36,80 @@ export default function ProcessingStatus({
     { label: "Calculating pricing", status: "pending" },
   ]);
 
+  // Timeout states
+  const [hasTimedOut, setHasTimedOut] = useState(false);
+  const [isCreatingHitl, setIsCreatingHitl] = useState(false);
+  const [hitlCreated, setHitlCreated] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(TIMEOUT_SECONDS);
+
+  // Create HITL review
+  const createHitlReview = useCallback(async () => {
+    if (isCreatingHitl || hitlCreated) return;
+
+    setIsCreatingHitl(true);
+    console.log("⏱️ Processing timeout - creating HITL review...");
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-hitl-review`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: quoteId,
+            triggerReasons: ["processing_timeout"],
+            priority: 4, // Higher priority for timeout cases
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        console.log("✅ HITL review created:", result.reviewId);
+        setHitlCreated(true);
+      } else {
+        console.error("❌ Failed to create HITL review:", result.error);
+        // Still show the HITL UI even if creation failed
+        setHitlCreated(true);
+      }
+    } catch (error) {
+      console.error("❌ Error creating HITL review:", error);
+      // Still show the HITL UI even if creation failed
+      setHitlCreated(true);
+    } finally {
+      setIsCreatingHitl(false);
+    }
+  }, [quoteId, isCreatingHitl, hitlCreated]);
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (!quoteId || hitlCreated || quoteStatus === "quote_ready") return;
+
+    const countdownInterval = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          setHasTimedOut(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(countdownInterval);
+  }, [quoteId, hitlCreated, quoteStatus]);
+
+  // Trigger HITL when timeout occurs
+  useEffect(() => {
+    if (hasTimedOut && !hitlCreated && !isCreatingHitl) {
+      createHitlReview();
+    }
+  }, [hasTimedOut, hitlCreated, isCreatingHitl, createHitlReview]);
+
   // Fetch current status and subscribe to realtime updates
   useEffect(() => {
     if (!quoteId || !supabase) return;
@@ -44,12 +120,18 @@ export default function ProcessingStatus({
 
       const { data: quote } = await supabase
         .from("quotes")
-        .select("processing_status")
+        .select("processing_status, status")
         .eq("id", quoteId)
         .single();
 
       if (quote) {
         setQuoteStatus(quote.processing_status);
+        
+        // If already in HITL, show that state
+        if (quote.status === "hitl_pending") {
+          setHitlCreated(true);
+          setHasTimedOut(true);
+        }
       }
 
       // Fetch file progress
@@ -60,7 +142,7 @@ export default function ProcessingStatus({
 
       if (files) {
         const completed = files.filter(
-          (f) => f.processing_status === "complete",
+          (f) => f.processing_status === "complete"
         ).length;
         const total = files.length;
         const progressPercent =
@@ -114,7 +196,13 @@ export default function ProcessingStatus({
               { label: "Calculating pricing", status: "completed" },
             ]);
           }
-        },
+          
+          // Check if HITL was triggered externally
+          if (payload.new.status === "hitl_pending") {
+            setHitlCreated(true);
+            setHasTimedOut(true);
+          }
+        }
       )
       .on(
         "postgres_changes",
@@ -127,7 +215,7 @@ export default function ProcessingStatus({
         () => {
           // Refresh progress when file status changes
           fetchStatus();
-        },
+        }
       )
       .subscribe();
 
@@ -140,7 +228,7 @@ export default function ProcessingStatus({
 
   // Check if processing is complete
   useEffect(() => {
-    if (quoteStatus === "quote_ready" || progress >= 100) {
+    if ((quoteStatus === "quote_ready" || progress >= 100) && !hitlCreated) {
       // Wait 500ms before auto-navigating
       const timeout = setTimeout(() => {
         onComplete();
@@ -148,8 +236,97 @@ export default function ProcessingStatus({
 
       return () => clearTimeout(timeout);
     }
-  }, [quoteStatus, progress, onComplete]);
+  }, [quoteStatus, progress, onComplete, hitlCreated]);
 
+  // HITL Created - Show confirmation
+  if (hitlCreated) {
+    return (
+      <div className="max-w-[600px] mx-auto">
+        <div className="bg-white border-2 border-cethos-border rounded-xl p-8 sm:p-10">
+          {/* Success Icon */}
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Clock className="w-8 h-8 text-amber-600" />
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-cethos-navy mb-2">
+              Additional Review Required
+            </h2>
+            <p className="text-cethos-slate">
+              Your documents need a bit more attention from our team
+            </p>
+          </div>
+
+          {/* Info Box */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-amber-800 font-medium mb-1">
+                  Your quote request has been received
+                </p>
+                <p className="text-sm text-amber-700">
+                  Our team will review your documents and email you a confirmed quote within <strong>4 working hours</strong>.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* What Happens Next */}
+          <div className="bg-gray-50 rounded-lg p-4 mb-6">
+            <h3 className="font-semibold text-cethos-navy mb-3">What happens next?</h3>
+            <ol className="space-y-2 text-sm text-cethos-slate">
+              <li className="flex gap-2">
+                <span className="font-semibold text-cethos-navy">1.</span>
+                Our team reviews your documents for accuracy
+              </li>
+              <li className="flex gap-2">
+                <span className="font-semibold text-cethos-navy">2.</span>
+                We'll email you a confirmed quote
+              </li>
+              <li className="flex gap-2">
+                <span className="font-semibold text-cethos-navy">3.</span>
+                You can then proceed to payment online
+              </li>
+            </ol>
+          </div>
+
+          {/* Action Button */}
+          <div className="text-center">
+            <button
+              onClick={() => (window.location.href = "/")}
+              className="px-8 py-3 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light font-semibold transition-colors"
+            >
+              Return to Home
+            </button>
+            <p className="text-xs text-cethos-slate mt-3">
+              We'll email you when your quote is ready
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Creating HITL - Show loading
+  if (isCreatingHitl) {
+    return (
+      <div className="max-w-[600px] mx-auto">
+        <div className="bg-white border-2 border-cethos-border rounded-xl p-8 sm:p-10">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 animate-spin text-amber-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-cethos-navy mb-2">
+              Processing taking longer than expected...
+            </h2>
+            <p className="text-cethos-slate">
+              Transferring to our review team
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Normal processing state
   return (
     <div className="max-w-[600px] mx-auto">
       {/* Main Card */}
@@ -214,7 +391,11 @@ export default function ProcessingStatus({
         {/* Time Estimate */}
         <div className="text-center mb-8">
           <p className="text-sm text-cethos-slate">
-            Usually just a few more seconds
+            {timeRemaining > 30
+              ? "Usually just a few more seconds"
+              : timeRemaining > 10
+                ? "Almost there..."
+                : "Just a moment longer..."}
           </p>
         </div>
 
