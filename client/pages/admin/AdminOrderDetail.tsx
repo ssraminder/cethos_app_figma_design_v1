@@ -14,11 +14,14 @@ import {
   MapPin,
   Phone,
   RefreshCw,
+  Trash2,
   Truck,
   User,
   Zap,
 } from "lucide-react";
 import { format } from "date-fns";
+import CancelOrderModal from "@/components/admin/CancelOrderModal";
+import { useAdminAuthContext } from "@/context/AdminAuthContext";
 
 interface OrderDetail {
   id: string;
@@ -61,6 +64,7 @@ interface OrderDetail {
   };
   created_at: string;
   updated_at: string;
+  cancelled_at?: string;
 }
 
 interface Payment {
@@ -117,12 +121,14 @@ const WORK_STATUS_LABELS: Record<string, string> = {
 
 export default function AdminOrderDetail() {
   const { id } = useParams<{ id: string }>();
+  const { session: currentStaff } = useAdminAuthContext();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -268,8 +274,42 @@ export default function AdminOrderDetail() {
               <ExternalLink className="w-4 h-4" />
             </Link>
           )}
+
+          {/* Cancel Order Button */}
+          {order.status !== "cancelled" && (
+            <button
+              onClick={() => setShowCancelModal(true)}
+              className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Cancel Order
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Cancelled Banner */}
+      {order.status === "cancelled" && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
+            <div>
+              <p className="font-medium text-red-800">
+                This order has been cancelled
+              </p>
+              {order.cancelled_at && (
+                <p className="text-sm text-red-600 mt-1">
+                  Cancelled on{" "}
+                  {format(
+                    new Date(order.cancelled_at),
+                    "MMMM d, yyyy 'at' h:mm a"
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -593,6 +633,25 @@ export default function AdminOrderDetail() {
           </div>
         </div>
       </div>
+
+      {/* Cancel Order Modal */}
+      {order && (
+        <CancelOrderModal
+          isOpen={showCancelModal}
+          onClose={() => setShowCancelModal(false)}
+          order={{
+            id: order.id,
+            order_number: order.order_number,
+            total_amount: order.total_amount,
+            amount_paid: payments
+              .filter((p) => p.status === "succeeded")
+              .reduce((sum, p) => sum + p.amount, 0),
+            customer: order.customer,
+          }}
+          staffId={currentStaff?.staffId || ""}
+          onSuccess={fetchOrderDetails}
+        />
+      )}
     </div>
   );
 }
