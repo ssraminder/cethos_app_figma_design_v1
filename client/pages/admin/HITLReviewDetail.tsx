@@ -88,20 +88,32 @@ const HITLReviewDetail: React.FC = () => {
   const navigate = useNavigate();
 
   // ============================================
-  // SUPABASE HELPER (Raw fetch to bypass RLS)
+  // SUPABASE HELPER (Raw fetch with auth)
   // ============================================
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+  // Helper to get the access token from Supabase session
+  const getAccessToken = async (): Promise<string> => {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error || !session) {
+      console.error("Failed to get session for auth token:", error);
+      throw new Error("Not authenticated. Please log in again.");
+    }
+    return session.access_token;
+  };
+
   const fetchFromSupabase = async (endpoint: string) => {
     const url = `${SUPABASE_URL}/rest/v1/${endpoint}`;
     console.log(`🌐 Fetching: ${url}`);
-    console.log(`🔑 Using anon key: ${SUPABASE_ANON_KEY?.substring(0, 20)}...`);
+
+    const accessToken = await getAccessToken();
+    console.log(`🔑 Using access token: ${accessToken?.substring(0, 20)}...`);
 
     const response = await fetch(url, {
       headers: {
         apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -333,13 +345,14 @@ const HITLReviewDetail: React.FC = () => {
         for (const file of quoteFiles) {
           if (file.ai_processing_status === 'processing') {
             try {
+              const accessToken = await getAccessToken();
               await fetch(
                 `${SUPABASE_URL}/rest/v1/quote_files?id=eq.${file.id}`,
                 {
                   method: "PATCH",
                   headers: {
                     apikey: SUPABASE_ANON_KEY,
-                    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+                    Authorization: `Bearer ${accessToken}`,
                     "Content-Type": "application/json",
                     Prefer: "return=minimal",
                   },
@@ -730,13 +743,14 @@ const HITLReviewDetail: React.FC = () => {
     }
 
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/claim-hitl-review`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             reviewId: reviewId,
@@ -790,13 +804,14 @@ const HITLReviewDetail: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/approve-hitl-review`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             reviewId: reviewId,
@@ -834,6 +849,7 @@ const HITLReviewDetail: React.FC = () => {
 
     try {
       const fileIds = analysisResults.map((a) => a.quote_file_id);
+      const accessToken = await getAccessToken();
 
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/reject-hitl-review`,
@@ -841,7 +857,7 @@ const HITLReviewDetail: React.FC = () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             reviewId: reviewId,
@@ -888,11 +904,12 @@ const HITLReviewDetail: React.FC = () => {
       );
 
       // Update HITL review status to escalated
+      const accessToken = await getAccessToken();
       await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
         method: "PATCH",
         headers: {
           apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
           Prefer: "return=minimal",
         },
@@ -936,13 +953,14 @@ const HITLReviewDetail: React.FC = () => {
 
     try {
       // Call Edge Function to reject quote permanently
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/reject-quote-permanent`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             reviewId: reviewId,
@@ -984,6 +1002,8 @@ const HITLReviewDetail: React.FC = () => {
     if (!confirmed) return;
 
     try {
+      const accessToken = await getAccessToken();
+
       // 1. Delete from ai_analysis_results
       const deleteResponse = await fetch(
         `${SUPABASE_URL}/rest/v1/ai_analysis_results?id=eq.${analysisId}`,
@@ -991,7 +1011,7 @@ const HITLReviewDetail: React.FC = () => {
           method: "DELETE",
           headers: {
             apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
           },
         }
@@ -1008,7 +1028,7 @@ const HITLReviewDetail: React.FC = () => {
           method: "PATCH",
           headers: {
             apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
             Prefer: "return=minimal",
           },
@@ -1051,6 +1071,8 @@ const HITLReviewDetail: React.FC = () => {
       const hasPageEdits = Object.keys(localPageEdits).length > 0;
 
       if (hasFileEdits || hasPageEdits) {
+        const accessToken = await getAccessToken();
+
         // Save file-level edits
         for (const [fileId, edits] of Object.entries(localEdits)) {
           const analysis = analysisResults.find(
@@ -1081,7 +1103,7 @@ const HITLReviewDetail: React.FC = () => {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                  Authorization: `Bearer ${accessToken}`,
                 },
                 body: JSON.stringify({
                   reviewId,
@@ -1105,7 +1127,7 @@ const HITLReviewDetail: React.FC = () => {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                Authorization: `Bearer ${accessToken}`,
               },
               body: JSON.stringify({
                 reviewId,
@@ -1161,12 +1183,21 @@ const HITLReviewDetail: React.FC = () => {
       // 1. Save all changes first
       await handleSave();
 
-      // 2. Update HITL status to approved
+      // Update quote status to quote_ready
+      const { error } = await supabase
+        .from("quotes")
+        .update({ status: "quote_ready" })
+        .eq("id", reviewData.quote_id);
+
+      if (error) throw error;
+
+      // Update HITL review status to approved
+      const accessToken = await getAccessToken();
       await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
         method: "PATCH",
         headers: {
           apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
           Prefer: "return=minimal",
         },
@@ -1253,18 +1284,15 @@ const HITLReviewDetail: React.FC = () => {
       // 1. Save all changes first
       await handleSave();
 
-      const quoteNumber = reviewData?.quotes?.quote_number || reviewData?.quote_number;
-      const customerName = reviewData?.quotes?.customer?.full_name || reviewData?.customer_name || "Customer";
-      const total = reviewData?.total || reviewData?.quotes?.total || 0;
-
-      // 2. Generate Stripe payment link
-      const paymentLinkResponse = await fetch(
-        `${SUPABASE_URL}/functions/v1/create-payment-link`,
+      // Call Edge Function to send payment link email
+      const accessToken = await getAccessToken();
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/update-quote-and-notify`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             quote_id: reviewData.quote_id,
@@ -1311,14 +1339,27 @@ const HITLReviewDetail: React.FC = () => {
 
       if (quoteError) throw quoteError;
 
-      // 5. Send payment email via Edge Function
-      const emailResponse = await fetch(
-        `${SUPABASE_URL}/functions/v1/send-payment-email`,
+    if (!staffSession?.staffId || !reviewData?.quote_id) {
+      alert("Missing required data. Please refresh the page.");
+      return;
+    }
+
+    if (!confirm(`Resend quote to ${customerEmail}?`)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Call Edge Function to resend payment link email
+      const accessToken = await getAccessToken();
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/update-quote-and-notify`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             quoteId: reviewData.quote_id,
@@ -1379,13 +1420,14 @@ const HITLReviewDetail: React.FC = () => {
       }
 
       // Call Edge Function to update quote and notify customer
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/update-quote-and-notify`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             quoteId: reviewData.quote_id,
@@ -1635,6 +1677,7 @@ const HITLReviewDetail: React.FC = () => {
     setIsUploadingFiles(true);
 
     try {
+      const accessToken = await getAccessToken();
       const formData = new FormData();
       formData.append("file", fileItem.file);
       formData.append("quoteId", reviewData.quote_id);
@@ -1646,7 +1689,7 @@ const HITLReviewDetail: React.FC = () => {
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: formData,
         },
@@ -1955,13 +1998,14 @@ const HITLReviewDetail: React.FC = () => {
     if (!cert) return;
 
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             reviewId,
@@ -2002,13 +2046,14 @@ const HITLReviewDetail: React.FC = () => {
 
   const removeAdditionalCert = async (fileId: string, certId: string) => {
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             reviewId,
@@ -2073,13 +2118,14 @@ const HITLReviewDetail: React.FC = () => {
     }
 
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             reviewId: reviewId,
@@ -2123,13 +2169,14 @@ const HITLReviewDetail: React.FC = () => {
     const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
 
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             reviewId: reviewId,
@@ -2263,13 +2310,14 @@ const HITLReviewDetail: React.FC = () => {
     setIsSaving(true);
 
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             reviewId,
@@ -2316,6 +2364,8 @@ const HITLReviewDetail: React.FC = () => {
     setIsSaving(true);
 
     try {
+      const accessToken = await getAccessToken();
+
       // Save file-level edits
       for (const [fileId, edits] of Object.entries(localEdits)) {
         const analysis = analysisResults.find(
@@ -2347,7 +2397,7 @@ const HITLReviewDetail: React.FC = () => {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                Authorization: `Bearer ${accessToken}`,
               },
               body: JSON.stringify({
                 reviewId,
@@ -2371,7 +2421,7 @@ const HITLReviewDetail: React.FC = () => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              Authorization: `Bearer ${accessToken}`,
             },
             body: JSON.stringify({
               reviewId,
@@ -2410,13 +2460,14 @@ const HITLReviewDetail: React.FC = () => {
 
   const handleSaveInternalNotes = async (notes: string) => {
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewData?.id}`,
         {
           method: "PATCH",
           headers: {
             apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ internal_notes: notes }),
@@ -2437,13 +2488,14 @@ const HITLReviewDetail: React.FC = () => {
 
   const claimReview = async () => {
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/claim-hitl-review`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             reviewId,
