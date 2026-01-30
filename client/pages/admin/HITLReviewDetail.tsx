@@ -1420,9 +1420,23 @@ const HITLReviewDetail: React.FC = () => {
     const customerEmail =
       reviewData?.customer_email ||
       reviewData?.quotes?.customer?.email;
+    const customerName =
+      reviewData?.customer_name ||
+      reviewData?.quotes?.customer?.full_name ||
+      "";
+    const quoteNumber =
+      reviewData?.quote_number ||
+      reviewData?.quotes?.quote_number ||
+      "";
+    const total = reviewData?.total || reviewData?.quotes?.total || 0;
 
     if (!customerEmail) {
       toast.error("Customer email is required");
+      return;
+    }
+
+    if (!total) {
+      toast.error("Quote total not found");
       return;
     }
 
