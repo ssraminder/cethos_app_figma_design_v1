@@ -85,6 +85,18 @@ interface Adjustment {
   created_by_name: string;
 }
 
+interface Cancellation {
+  id: string;
+  order_id: string;
+  reason: string;
+  refund_amount: number;
+  refund_method: string;
+  refund_status: string;
+  refund_reference: string;
+  created_at: string;
+  created_by: string;
+}
+
 const STATUS_STYLES: Record<string, string> = {
   paid: "bg-green-100 text-green-700",
   balance_due: "bg-amber-100 text-amber-700",
@@ -126,6 +138,7 @@ export default function AdminOrderDetail() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+  const [cancellation, setCancellation] = useState<Cancellation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -180,6 +193,21 @@ export default function AdminOrderDetail() {
           created_by_name: adjustment.created_by?.full_name || "System",
         })),
       );
+
+      // Fetch cancellation data if order is cancelled
+      if (orderData.status === 'cancelled') {
+        const { data: cancellationData } = await supabase
+          .from('order_cancellations')
+          .select('*')
+          .eq('order_id', id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        setCancellation(cancellationData);
+      } else {
+        setCancellation(null);
+      }
     } catch (err: any) {
       console.error("Error fetching order:", err);
       setError(err.message || "Failed to load order");
@@ -553,10 +581,81 @@ export default function AdminOrderDetail() {
                 <span className="text-green-600">${(order.amount_paid ?? 0).toFixed(2)}</span>
               </div>
 
-              {(order.balance_due ?? 0) > 0 && (
+              {/* Refund Section - Only for cancelled orders */}
+              {order.status === 'cancelled' && cancellation && cancellation.refund_amount > 0 && (
+                <>
+                  <div className="border-t pt-2 mt-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Refund Amount</span>
+                      <span className="text-red-600 font-medium">
+                        -${cancellation.refund_amount?.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Refund Method</span>
+                      <span className="capitalize">{cancellation.refund_method?.replace('_', ' ') || '—'}</span>
+                    </div>
+                    <div className="flex justify-between text-sm items-center">
+                      <span className="text-gray-500">Refund Status</span>
+                      <span className={`px-2 py-0.5 text-xs rounded-full ${
+                        cancellation.refund_status === 'completed'
+                          ? 'bg-green-100 text-green-700'
+                          : cancellation.refund_status === 'pending'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {cancellation.refund_status}
+                      </span>
+                    </div>
+                    {cancellation.refund_reference && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Reference</span>
+                        <span className="font-mono text-xs">{cancellation.refund_reference}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Final Balance After Refund */}
+                  <div className="border-t pt-2 mt-2">
+                    <div className="flex justify-between font-semibold">
+                      <span>Final Balance</span>
+                      <span className={
+                        ((order.amount_paid || 0) - (cancellation.refund_amount || 0)) === 0
+                          ? 'text-gray-500'
+                          : 'text-amber-600'
+                      }>
+                        ${Math.max(0, (order.amount_paid || 0) - (cancellation.refund_amount || 0)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Balance Due - Only show for non-cancelled orders */}
+              {order.status !== 'cancelled' && (order.balance_due ?? 0) > 0 && (
                 <div className="flex justify-between font-semibold text-amber-600 bg-amber-50 -mx-2 px-2 py-2 rounded">
                   <span>Balance Due</span>
                   <span>${(order.balance_due ?? 0).toFixed(2)}</span>
+                </div>
+              )}
+
+              {/* Cancelled Notice */}
+              {order.status === 'cancelled' && (
+                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700 font-medium text-center">
+                    Order Cancelled
+                  </p>
+                  {cancellation?.created_at && (
+                    <p className="text-xs text-red-600 text-center mt-1">
+                      {new Date(cancellation.created_at).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
