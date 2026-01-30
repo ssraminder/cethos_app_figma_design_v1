@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { ChevronDown, ChevronUp, AlertCircle, DollarSign } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { ChevronDown, ChevronUp, AlertCircle, FileText, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { FileWithAnalysis } from "./StaffFileUploadForm";
 
@@ -43,21 +43,6 @@ export interface QuotePricing {
   total: number;
 }
 
-interface Language {
-  id: string;
-  code: string;
-  name: string;
-  native_name: string;
-  multiplier: number;
-}
-
-interface CertificationType {
-  id: string;
-  code: string;
-  name: string;
-  price: number;
-}
-
 interface DeliveryOption {
   id: string;
   code: string;
@@ -66,10 +51,29 @@ interface DeliveryOption {
   estimated_days: number;
 }
 
-interface DocumentType {
+interface AnalysisResultRaw {
   id: string;
-  code: string;
-  name: string;
+  quote_file_id: string;
+  detected_language: string;
+  detected_document_type: string;
+  assessed_complexity: string;
+  complexity_multiplier: number;
+  word_count: number;
+  page_count: number;
+  billable_pages: number;
+  base_rate: number;
+  line_total: number;
+  certification_type_id: string | null;
+  certification_price: number | null;
+  quote_files: {
+    original_filename: string;
+  };
+}
+
+interface AnalysisResult extends Omit<AnalysisResultRaw, 'quote_files'> {
+  quote_files: {
+    original_filename: string;
+  } | null;
 }
 
 interface StaffPricingFormProps {
@@ -79,14 +83,7 @@ interface StaffPricingFormProps {
   onChange: (pricing: QuotePricing) => void;
 }
 
-const BASE_RATE = 65.0;
-const DEFAULT_TAX_RATE = 0.05; // 5% GST for Alberta
-
-const COMPLEXITY_MULTIPLIERS = {
-  low: 1.0,
-  medium: 1.15,
-  high: 1.3,
-};
+const DEFAULT_TAX_RATE = 0.05; // 5% GST fallback
 
 export default function StaffPricingForm({
   quoteId,
@@ -94,288 +91,212 @@ export default function StaffPricingForm({
   value,
   onChange,
 }: StaffPricingFormProps) {
-  const [languages, setLanguages] = useState<Language[]>([]);
-  const [certifications, setCertifications] = useState<CertificationType[]>([]);
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
-  const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
-  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
+  const [taxRate, setTaxRate] = useState(DEFAULT_TAX_RATE);
   const [loading, setLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
 
-  // Load reference data
+  // Load delivery options
   useEffect(() => {
-    const loadData = async () => {
-      const [langsRes, certRes, deliveryRes, docTypesRes] = await Promise.all([
-        supabase
-          .from("languages")
-          .select("*")
-          .eq("is_active", true)
-          .order("sort_order"),
-        supabase
-          .from("certification_types")
-          .select("*")
-          .eq("is_active", true)
-          .order("sort_order"),
-        supabase
-          .from("delivery_options")
-          .select("*")
-          .eq("is_active", true)
-          .order("sort_order"),
-        supabase
-          .from("document_types")
-          .select("*")
-          .eq("is_active", true)
-          .order("sort_order"),
-      ]);
+    const loadDeliveryOptions = async () => {
+      const { data } = await supabase
+        .from("delivery_options")
+        .select("*")
+        .eq("is_active", true)
+        .order("sort_order");
 
-      if (langsRes.data) setLanguages(langsRes.data);
-      if (certRes.data) setCertifications(certRes.data);
-      if (deliveryRes.data) setDeliveryOptions(deliveryRes.data);
-      if (docTypesRes.data) setDocumentTypes(docTypesRes.data);
+      if (data) setDeliveryOptions(data);
       setLoading(false);
     };
 
-    loadData();
+    loadDeliveryOptions();
   }, []);
 
-  // Initialize pricing for files
+  // Load analysis results and settings
   useEffect(() => {
-    if (files.length > 0 && value.filePrices.length === 0) {
-      const initialFilePrices = files.map((file) => {
-        const language =
-          languages.find((l) => l.code === file.detectedLanguageCode) ||
-          languages[0];
-        const complexity = file.complexity || "low";
-        const pageCount = file.pageCount || 1;
+    const loadData = async () => {
+      setSettingsLoading(true);
 
-        return calculateFilePrice({
-          fileId: file.id,
-          fileName: file.name,
-          languageId: language?.id || "",
-          documentTypeId: "",
-          pageCount,
-          billablePages: pageCount,
-          complexity,
-          certificationTypeId: certifications[0]?.id || "",
-          language: language,
-        });
-      });
+      // Fetch analysis results for this quote
+      const { data: analysisData } = await supabase
+        .from("ai_analysis_results")
+        .select(
+          `
+          id,
+          quote_file_id,
+          detected_language,
+          detected_document_type,
+          assessed_complexity,
+          complexity_multiplier,
+          word_count,
+          page_count,
+          billable_pages,
+          base_rate,
+          line_total,
+          certification_type_id,
+          certification_price,
+          quote_files!inner(original_filename)
+        `
+        )
+        .eq("quote_id", quoteId);
 
-      const newPricing = { ...value, filePrices: initialFilePrices };
-      recalculateTotals(newPricing);
-    }
-  }, [files, languages, certifications]);
+      if (analysisData) {
+        // Supabase !inner join returns quote_files as single object, not array
+        setAnalysisResults(analysisData as unknown as AnalysisResult[]);
+      }
 
-  const calculateFilePrice = ({
-    fileId,
-    fileName,
-    languageId,
-    documentTypeId,
-    pageCount,
-    billablePages,
-    complexity,
-    certificationTypeId,
-    language: langOverride,
-  }: {
-    fileId: string;
-    fileName: string;
-    languageId: string;
-    documentTypeId?: string;
-    pageCount: number;
-    billablePages: number;
-    complexity: "low" | "medium" | "high";
-    certificationTypeId?: string;
-    language?: Language;
-  }): FilePrice => {
-    const language = langOverride || languages.find((l) => l.id === languageId);
-    const languageMultiplier = language?.multiplier
-      ? parseFloat(language.multiplier as any)
-      : 1.0;
-    const complexityMultiplier =
-      COMPLEXITY_MULTIPLIERS[complexity] || COMPLEXITY_MULTIPLIERS.low;
-    const certification = certifications.find(
-      (c) => c.id === certificationTypeId,
-    );
-    const certificationCost = certification?.price
-      ? parseFloat(certification.price as any)
-      : 0;
+      // Fetch tax rate from app_settings
+      const { data: settingsData } = await supabase
+        .from("app_settings")
+        .select("setting_key, setting_value")
+        .eq("setting_key", "default_tax_rate")
+        .single();
 
-    const translationCost =
-      BASE_RATE * billablePages * languageMultiplier * complexityMultiplier;
-    const lineTotal = translationCost + certificationCost;
+      if (settingsData) {
+        setTaxRate(parseFloat(settingsData.setting_value) || DEFAULT_TAX_RATE);
+      }
 
-    return {
-      fileId,
-      fileName,
-      languageId,
-      documentTypeId,
-      pageCount,
-      billablePages,
-      complexity,
-      certificationTypeId: certificationTypeId || certifications[0]?.id || "",
-      baseRate: BASE_RATE,
-      languageMultiplier,
-      complexityMultiplier,
-      translationCost: Math.round(translationCost * 100) / 100,
-      certificationCost,
-      lineTotal: Math.round(lineTotal * 100) / 100,
+      setSettingsLoading(false);
     };
-  };
 
-  const handleFileFieldChange = (
-    fileId: string,
-    field: keyof Omit<
-      FilePrice,
-      | "baseRate"
-      | "translationCost"
-      | "certificationCost"
-      | "lineTotal"
-      | "languageMultiplier"
-      | "complexityMultiplier"
-    >,
-    fieldValue: any,
-  ) => {
-    const newFilePrices = value.filePrices.map((fp) => {
-      if (fp.fileId !== fileId) return fp;
+    if (quoteId) {
+      loadData();
+    }
+  }, [quoteId]);
 
-      const updated: any = { ...fp, [field]: fieldValue };
+  // Calculate document subtotal from ai_analysis_results (already calculated correctly)
+  const documentSubtotal = useMemo(() => {
+    return analysisResults.reduce((sum, result) => {
+      return sum + (parseFloat(result.line_total as any) || 0);
+    }, 0);
+  }, [analysisResults]);
 
-      // Recalculate costs when relevant fields change
-      const language = languages.find((l) => l.id === updated.languageId);
-      const languageMultiplier = language?.multiplier
-        ? parseFloat(language.multiplier as any)
-        : 1.0;
-      const complexityMultiplier =
-        COMPLEXITY_MULTIPLIERS[updated.complexity] || 1.0;
-      const certification = certifications.find(
-        (c) => c.id === updated.certificationTypeId,
-      );
-      const certificationCost = certification?.price
-        ? parseFloat(certification.price as any)
-        : 0;
-
-      updated.languageMultiplier = languageMultiplier;
-      updated.complexityMultiplier = complexityMultiplier;
-      updated.translationCost =
-        Math.round(
-          BASE_RATE *
-            updated.billablePages *
-            languageMultiplier *
-            complexityMultiplier *
-            100,
-        ) / 100;
-      updated.certificationCost = certificationCost;
-      updated.lineTotal =
-        Math.round(
-          (updated.translationCost + updated.certificationCost) * 100,
-        ) / 100;
-
-      return updated;
-    });
-
-    const newPricing = { ...value, filePrices: newFilePrices };
-    recalculateTotals(newPricing);
-  };
+  // Recalculate quote-level totals when subtotal or adjustments change
+  useEffect(() => {
+    if (!settingsLoading) {
+      recalculateTotals(value);
+    }
+  }, [documentSubtotal, settingsLoading]);
 
   const handleQuoteLevelChange = (
     field: keyof Omit<QuotePricing, "filePrices">,
-    fieldValue: any,
+    fieldValue: any
   ) => {
     const newPricing = { ...value, [field]: fieldValue };
     recalculateTotals(newPricing);
   };
 
-  const recalculateTotals = (pricing: QuotePricing) => {
-    // Calculate document subtotal
-    const documentSubtotal = pricing.filePrices.reduce(
-      (sum, fp) => sum + fp.lineTotal,
-      0,
-    );
+  const recalculateTotals = (pricing: Partial<QuotePricing>) => {
+    const subtotal = documentSubtotal;
 
-    // Calculate rush fee
+    // Rush fee (30% of subtotal)
     const rushFee = pricing.isRush
-      ? Math.round(documentSubtotal * 0.3 * 100) / 100
+      ? Math.round(subtotal * 0.3 * 100) / 100
       : 0;
 
-    // Calculate delivery fee
+    // Delivery fee
     const deliveryOption = deliveryOptions.find(
-      (d) => d.id === pricing.deliveryOptionId,
+      (d) => d.id === pricing.deliveryOptionId
     );
-    const deliveryFee = deliveryOption?.price
+    const deliveryFee = deliveryOption
       ? parseFloat(deliveryOption.price as any)
       : 0;
 
-    // Calculate discount
+    // Discount
     let discountAmount = 0;
     if (pricing.hasDiscount && pricing.discountValue) {
       if (pricing.discountType === "percentage") {
         discountAmount =
-          Math.round(((documentSubtotal * pricing.discountValue) / 100) * 100) /
-          100;
+          Math.round(subtotal * (pricing.discountValue / 100) * 100) / 100;
       } else {
         discountAmount = pricing.discountValue;
       }
     }
 
-    // Calculate surcharge
+    // Surcharge
     let surchargeAmount = 0;
     if (pricing.hasSurcharge && pricing.surchargeValue) {
       if (pricing.surchargeType === "percentage") {
         surchargeAmount =
-          Math.round(
-            ((documentSubtotal * pricing.surchargeValue) / 100) * 100,
-          ) / 100;
+          Math.round(subtotal * (pricing.surchargeValue / 100) * 100) / 100;
       } else {
         surchargeAmount = pricing.surchargeValue;
       }
     }
 
-    // Calculate pre-tax total
+    // Pre-tax total
     const preTaxTotal =
       Math.round(
-        (documentSubtotal +
-          rushFee +
-          deliveryFee +
-          surchargeAmount -
-          discountAmount) *
-          100,
+        (subtotal + rushFee + deliveryFee - discountAmount + surchargeAmount) *
+          100
       ) / 100;
 
-    // Calculate tax
-    const taxRate = pricing.taxRate || DEFAULT_TAX_RATE;
-    const taxAmount = Math.round(preTaxTotal * taxRate * 100) / 100;
+    // Tax
+    const currentTaxRate = pricing.taxRate ?? taxRate;
+    const taxAmount = Math.round(preTaxTotal * currentTaxRate * 100) / 100;
 
-    // Calculate final total
+    // Total
     const total = Math.round((preTaxTotal + taxAmount) * 100) / 100;
 
-    const updated: QuotePricing = {
+    const newPricing: QuotePricing = {
+      ...value,
       ...pricing,
-      documentSubtotal: Math.round(documentSubtotal * 100) / 100,
+      documentSubtotal: Math.round(subtotal * 100) / 100,
       rushFee,
       deliveryFee,
       discountAmount,
       surchargeAmount,
       preTaxTotal,
-      taxRate,
+      taxRate: currentTaxRate,
       taxAmount,
       total,
+      // Map analysis results to filePrices for compatibility
+      filePrices: analysisResults.map((r) => ({
+        fileId: r.quote_file_id,
+        fileName: r.quote_files?.original_filename || "Unknown",
+        languageId: "",
+        pageCount: r.page_count,
+        billablePages: r.billable_pages,
+        complexity: (r.assessed_complexity?.toLowerCase() || "low") as
+          | "low"
+          | "medium"
+          | "high",
+        certificationTypeId: r.certification_type_id || undefined,
+        baseRate: parseFloat(r.base_rate as any),
+        languageMultiplier: 1,
+        complexityMultiplier: parseFloat(r.complexity_multiplier as any),
+        translationCost:
+          parseFloat(r.line_total as any) -
+          (parseFloat(r.certification_price as any) || 0),
+        certificationCost: parseFloat(r.certification_price as any) || 0,
+        lineTotal: parseFloat(r.line_total as any),
+      })),
     };
 
-    onChange(updated);
+    onChange(newPricing);
   };
 
-  const toggleFileExpanded = (fileId: string) => {
-    const newExpanded = new Set(expandedFiles);
-    if (newExpanded.has(fileId)) {
-      newExpanded.delete(fileId);
-    } else {
-      newExpanded.add(fileId);
+  const getComplexityColor = (complexity: string) => {
+    switch (complexity?.toLowerCase()) {
+      case "low":
+      case "easy":
+        return "bg-green-100 text-green-800";
+      case "medium":
+      case "moderate":
+        return "bg-yellow-100 text-yellow-800";
+      case "high":
+      case "hard":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
-    setExpandedFiles(newExpanded);
   };
 
-  if (loading) {
+  if (loading || settingsLoading) {
     return (
       <div className="flex items-center justify-center p-8">
+        <Loader2 className="w-6 h-6 text-blue-600 animate-spin mr-2" />
         <p className="text-gray-600">Loading pricing data...</p>
       </div>
     );
@@ -383,192 +304,98 @@ export default function StaffPricingForm({
 
   return (
     <div className="space-y-8">
-      {/* Per-File Pricing Cards */}
+      {/* Per-File Pricing - NOW READ-ONLY */}
       <div className="space-y-4">
-        <h3 className="font-semibold text-gray-900">
-          Document Pricing ({value.filePrices.length} files)
-        </h3>
+        <h3 className="font-semibold text-gray-900">Document Pricing</h3>
 
-        {value.filePrices.map((filePrice) => {
-          const isExpanded = expandedFiles.has(filePrice.fileId);
-
-          return (
-            <div
-              key={filePrice.fileId}
-              className="border border-gray-200 rounded-lg overflow-hidden"
-            >
-              {/* File Header */}
-              <button
-                onClick={() => toggleFileExpanded(filePrice.fileId)}
-                className="w-full p-4 bg-gray-50 hover:bg-gray-100 flex items-center justify-between text-left"
-              >
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">
-                    {filePrice.fileName}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    ${filePrice.lineTotal.toFixed(2)}
-                  </p>
-                </div>
-                {isExpanded ? (
-                  <ChevronUp className="w-5 h-5 text-gray-600" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-600" />
-                )}
-              </button>
-
-              {/* Expanded Content */}
-              {isExpanded && (
-                <div className="p-4 space-y-4 border-t border-gray-200">
-                  {/* Language */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Language (Editable)
-                    </label>
-                    <select
-                      value={filePrice.languageId}
-                      onChange={(e) =>
-                        handleFileFieldChange(
-                          filePrice.fileId,
-                          "languageId",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {languages.map((lang) => (
-                        <option key={lang.id} value={lang.id}>
-                          {lang.name} ({lang.code})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Page Count */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Page Count
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="999"
-                        value={filePrice.pageCount}
-                        onChange={(e) =>
-                          handleFileFieldChange(
-                            filePrice.fileId,
-                            "pageCount",
-                            parseInt(e.target.value) || 1,
-                          )
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Billable Pages
-                      </label>
-                      <input
-                        type="number"
-                        min="0.5"
-                        max="999.99"
-                        step="0.5"
-                        value={filePrice.billablePages}
-                        onChange={(e) =>
-                          handleFileFieldChange(
-                            filePrice.fileId,
-                            "billablePages",
-                            parseFloat(e.target.value) || 1,
-                          )
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Complexity & Certification */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Complexity
-                      </label>
-                      <select
-                        value={filePrice.complexity}
-                        onChange={(e) =>
-                          handleFileFieldChange(
-                            filePrice.fileId,
-                            "complexity",
-                            e.target.value as "low" | "medium" | "high",
-                          )
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="low">Low (1.0x)</option>
-                        <option value="medium">Medium (1.15x)</option>
-                        <option value="high">High (1.30x)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Certification
-                      </label>
-                      <select
-                        value={filePrice.certificationTypeId}
-                        onChange={(e) =>
-                          handleFileFieldChange(
-                            filePrice.fileId,
-                            "certificationTypeId",
-                            e.target.value,
-                          )
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {certifications.map((cert) => (
-                          <option key={cert.id} value={cert.id}>
-                            {cert.name} (${cert.price.toFixed(2)})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Price Breakdown */}
-                  <div className="bg-blue-50 p-3 rounded-md space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-700">Base Rate:</span>
-                      <span>${filePrice.baseRate.toFixed(2)}/page</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-700">× Billable Pages:</span>
-                      <span>{filePrice.billablePages}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-700">× Language Tier:</span>
-                      <span>{filePrice.languageMultiplier.toFixed(2)}x</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-700">× Complexity:</span>
-                      <span>{filePrice.complexityMultiplier.toFixed(2)}x</span>
-                    </div>
-                    <div className="border-t border-blue-200 pt-2 flex justify-between font-medium text-sm">
-                      <span>Translation Cost:</span>
-                      <span>${filePrice.translationCost.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-700">Certification:</span>
-                      <span>${filePrice.certificationCost.toFixed(2)}</span>
-                    </div>
-                    <div className="border-t border-blue-200 pt-2 flex justify-between font-semibold text-sm text-blue-900">
-                      <span>File Total:</span>
-                      <span>${filePrice.lineTotal.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+        {analysisResults.length === 0 ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-md p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">
+                  No document analysis found
+                </p>
+                <p className="text-sm text-amber-700 mt-1">
+                  Go back to Step 3 to upload and analyze documents, or continue
+                  with quote-level pricing adjustments only.
+                </p>
+              </div>
             </div>
-          );
-        })}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {analysisResults.map((result) => (
+              <div
+                key={result.id}
+                className="border border-gray-200 rounded-lg p-4 bg-white"
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-start gap-3">
+                    <FileText className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {result.quote_files?.original_filename || "Unknown file"}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {result.detected_language} •{" "}
+                        {result.detected_document_type} •{" "}
+                        <span
+                          className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${getComplexityColor(
+                            result.assessed_complexity
+                          )}`}
+                        >
+                          {result.assessed_complexity}
+                        </span>{" "}
+                        complexity
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-lg font-semibold text-green-600">
+                    ${parseFloat(result.line_total as any).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-4 text-sm bg-gray-50 rounded p-3">
+                  <div>
+                    <span className="text-gray-500 block text-xs">Pages</span>
+                    <span className="font-medium">{result.page_count}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block text-xs">Billable</span>
+                    <span className="font-medium">{result.billable_pages}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block text-xs">Rate</span>
+                    <span className="font-medium">
+                      ${parseFloat(result.base_rate as any).toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block text-xs">Cert</span>
+                    <span className="font-medium">
+                      $
+                      {(parseFloat(result.certification_price as any) || 0).toFixed(
+                        2
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Document Subtotal */}
+            <div className="flex justify-between items-center pt-3 border-t border-gray-200">
+              <span className="font-medium text-gray-700">
+                Document Subtotal ({analysisResults.length}{" "}
+                {analysisResults.length === 1 ? "file" : "files"}):
+              </span>
+              <span className="text-xl font-bold text-gray-900">
+                ${documentSubtotal.toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Quote-Level Adjustments */}
@@ -578,7 +405,10 @@ export default function StaffPricingForm({
         {/* Document Subtotal */}
         <div className="bg-white p-4 rounded-md border border-gray-200">
           <div className="flex justify-between text-lg font-semibold">
-            <span>Documents Subtotal ({value.filePrices.length} files):</span>
+            <span>
+              Documents Subtotal ({analysisResults.length}{" "}
+              {analysisResults.length === 1 ? "file" : "files"}):
+            </span>
             <span>${value.documentSubtotal.toFixed(2)}</span>
           </div>
         </div>
@@ -625,7 +455,8 @@ export default function StaffPricingForm({
             <option value="">Select delivery option...</option>
             {deliveryOptions.map((opt) => (
               <option key={opt.id} value={opt.id}>
-                {opt.name} (${opt.price.toFixed(2)}, {opt.estimated_days} days)
+                {opt.name} (${parseFloat(opt.price as any).toFixed(2)},{" "}
+                {opt.estimated_days} days)
               </option>
             ))}
           </select>
@@ -690,7 +521,7 @@ export default function StaffPricingForm({
                 onChange={(e) =>
                   handleQuoteLevelChange(
                     "discountValue",
-                    e.target.value ? parseFloat(e.target.value) : undefined,
+                    e.target.value ? parseFloat(e.target.value) : undefined
                   )
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -764,7 +595,7 @@ export default function StaffPricingForm({
                 onChange={(e) =>
                   handleQuoteLevelChange(
                     "surchargeValue",
-                    e.target.value ? parseFloat(e.target.value) : undefined,
+                    e.target.value ? parseFloat(e.target.value) : undefined
                   )
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -803,7 +634,7 @@ export default function StaffPricingForm({
             onChange={(e) =>
               handleQuoteLevelChange(
                 "taxRate",
-                parseFloat(e.target.value) / 100,
+                parseFloat(e.target.value) / 100
               )
             }
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
