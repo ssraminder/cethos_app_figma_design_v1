@@ -231,34 +231,24 @@ export default function Index() {
             {/* Show Email Quote Confirmation */}
             {state.emailQuoteSent && <EmailQuoteConfirmation />}
 
-            {/* Show Processing Status */}
+            {/* Processing Modal - Shows OVER current step */}
             {!state.emailQuoteSent && state.isProcessing && (
-              <ProcessingStatus
-                quoteId={state.quoteId}
-                onComplete={completeProcessing}
-                onEmailInstead={skipToEmail}
-              />
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <ProcessingStatus
+                  quoteId={state.quoteId}
+                  onComplete={completeProcessing}
+                  onEmailInstead={skipToEmail}
+                />
+              </div>
             )}
 
-            {/* Conditional Step Rendering */}
-            {!state.emailQuoteSent &&
-              !state.isProcessing &&
-              state.currentStep === 1 && <Step1Upload />}
-            {!state.emailQuoteSent &&
-              !state.isProcessing &&
-              state.currentStep === 2 && <Step2Details />}
-            {!state.emailQuoteSent &&
-              !state.isProcessing &&
-              state.currentStep === 3 && <Step3Contact />}
-            {!state.emailQuoteSent &&
-              !state.isProcessing &&
-              state.currentStep === 4 && <Step4ReviewRush />}
-            {!state.emailQuoteSent &&
-              !state.isProcessing &&
-              state.currentStep === 5 && <Step5BillingDelivery />}
-            {!state.emailQuoteSent &&
-              !state.isProcessing &&
-              state.currentStep === 6 && <Step6Payment />}
+            {/* Conditional Step Rendering - Steps 1-3 render even during processing */}
+            {!state.emailQuoteSent && state.currentStep === 1 && <Step1Upload />}
+            {!state.emailQuoteSent && state.currentStep === 2 && <Step2Details />}
+            {!state.emailQuoteSent && state.currentStep === 3 && <Step3Contact />}
+            {!state.emailQuoteSent && !state.isProcessing && state.currentStep === 4 && <Step4ReviewRush />}
+            {!state.emailQuoteSent && !state.isProcessing && state.currentStep === 5 && <Step5BillingDelivery />}
+            {!state.emailQuoteSent && !state.isProcessing && state.currentStep === 6 && <Step6Payment />}
           </div>
         </div>
       </main>

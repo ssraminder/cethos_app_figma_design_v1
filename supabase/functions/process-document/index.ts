@@ -5,6 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
 };
 
 interface ProcessingResult {
@@ -255,11 +256,51 @@ serve(async (req) => {
     }
 
     const processingTime = Date.now() - startTime;
+    const successfulResults = results.filter((r) => r.success);
+
+    // Auto-update quote status to quote_ready after successful processing
+    // Only update if called with quoteId (customer flow), not fileId (HITL re-analysis)
+    if (quoteId && successfulResults.length > 0) {
+      try {
+        // Check current status - don't override hitl_pending, awaiting_payment, etc.
+        const { data: currentQuote } = await supabaseAdmin
+          .from("quotes")
+          .select("status, processing_status")
+          .eq("id", quoteId)
+          .single();
+
+        const allowedStatuses = ["draft", "pending", "processing", null, undefined];
+        const allowedProcessingStatuses = ["pending", "processing", null, undefined];
+
+        const canAutoUpdate =
+          allowedStatuses.includes(currentQuote?.status) &&
+          allowedProcessingStatuses.includes(currentQuote?.processing_status);
+
+        if (canAutoUpdate) {
+          console.log(`📊 [PROCESS-DOCUMENT] Auto-updating quote ${quoteId} to quote_ready`);
+          await supabaseAdmin
+            .from("quotes")
+            .update({
+              processing_status: "quote_ready",
+              status: "quote_ready",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", quoteId);
+        } else {
+          console.log(
+            `⏭️ [PROCESS-DOCUMENT] Skipping status update - quote has status: ${currentQuote?.status}, processing_status: ${currentQuote?.processing_status}`
+          );
+        }
+      } catch (statusError) {
+        console.error("❌ [PROCESS-DOCUMENT] Failed to update quote status:", statusError);
+        // Don't fail the whole operation if status update fails
+      }
+    }
 
     return new Response(
       JSON.stringify({
         success: results.length > 0 && results.every((r) => r.success),
-        documentsProcessed: results.filter((r) => r.success).length,
+        documentsProcessed: successfulResults.length,
         results,
         processingTime,
       }),
