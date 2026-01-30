@@ -546,7 +546,10 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
   };
 
   const skipToEmail = () => {
-    updateState({ isProcessing: false, currentStep: 3, emailQuoteMode: true });
+    updateState({
+      isProcessing: false,
+      emailQuoteSent: true  // Show EmailQuoteConfirmation instead of going back to Step 3
+    });
   };
 
   return (

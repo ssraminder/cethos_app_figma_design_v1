@@ -42,12 +42,12 @@ export default function ProcessingStatus({
   const [hitlCreated, setHitlCreated] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(TIMEOUT_SECONDS);
 
-  // Create HITL review
-  const createHitlReview = useCallback(async () => {
+  // Create HITL review with specified reason
+  const createHitlReview = useCallback(async (triggerReason: string = "processing_timeout") => {
     if (isCreatingHitl || hitlCreated) return;
 
     setIsCreatingHitl(true);
-    console.log("⏱️ Processing timeout - creating HITL review...");
+    console.log(`⏱️ Creating HITL review (reason: ${triggerReason})...`);
 
     try {
       const response = await fetch(
@@ -60,8 +60,8 @@ export default function ProcessingStatus({
           },
           body: JSON.stringify({
             quoteId: quoteId,
-            triggerReasons: ["processing_timeout"],
-            priority: 4, // Higher priority for timeout cases
+            triggerReasons: [triggerReason],
+            priority: triggerReason === "processing_timeout" ? 4 : 3, // Higher priority for timeout cases
           }),
         }
       );
@@ -85,6 +85,14 @@ export default function ProcessingStatus({
     }
   }, [quoteId, isCreatingHitl, hitlCreated]);
 
+  // Handle "Email me instead" button click
+  const handleEmailInstead = useCallback(async () => {
+    // Create HITL review with customer requested reason
+    await createHitlReview("customer_requested_email");
+    // Then trigger the email confirmation flow
+    onEmailInstead();
+  }, [createHitlReview, onEmailInstead]);
+
   // Countdown timer effect
   useEffect(() => {
     if (!quoteId || hitlCreated || quoteStatus === "quote_ready") return;
@@ -106,7 +114,7 @@ export default function ProcessingStatus({
   // Trigger HITL when timeout occurs
   useEffect(() => {
     if (hasTimedOut && !hitlCreated && !isCreatingHitl) {
-      createHitlReview();
+      createHitlReview("processing_timeout");
     }
   }, [hasTimedOut, hitlCreated, isCreatingHitl, createHitlReview]);
 
@@ -406,7 +414,7 @@ export default function ProcessingStatus({
         <div className="text-center">
           <p className="text-sm text-cethos-slate mb-3">Don't want to wait?</p>
           <button
-            onClick={onEmailInstead}
+            onClick={handleEmailInstead}
             className="inline-flex items-center gap-2 px-6 py-3 bg-white border-2 border-cethos-blue text-cethos-blue rounded-lg hover:bg-blue-50 transition-colors font-semibold text-sm"
           >
             <Mail className="w-4 h-4" />
