@@ -519,7 +519,7 @@ export default function Step4ReviewRush() {
           .from("quote_files")
           .select("processing_status, id")
           .eq("quote_id", quoteId)
-          .neq("processing_status", "complete");
+          .neq("processing_status", "completed");
 
         if (pendingFiles && pendingFiles.length > 0) {
           setProcessingState("processing");
