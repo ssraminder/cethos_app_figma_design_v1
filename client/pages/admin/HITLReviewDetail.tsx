@@ -2474,7 +2474,11 @@ const HITLReviewDetail: React.FC = () => {
   // ============================================
 
   // Check if review is in a read-only state
-  const isReadOnly = ['approved', 'rejected', 'escalated'].includes(reviewData?.status || '');
+  // Note: 'approved' is NOT read-only - it means "ready to send to customer" and staff can still edit and send
+  const isReadOnly = ['rejected', 'escalated'].includes(reviewData?.status || '');
+
+  // Check if review is approved (ready to send to customer)
+  const isApproved = reviewData?.status === 'approved';
 
   // ============================================
   // RENDER
@@ -2630,17 +2634,31 @@ const HITLReviewDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Read-Only Status Banner */}
-      {isReadOnly && (
+      {/* Approved Status Banner - Ready to send to customer */}
+      {isApproved && (
         <div className="bg-green-50 border border-green-200 p-4 rounded-lg mb-6">
           <div className="flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-green-600" />
             <p className="text-green-800 font-medium">
-              This review has been completed
+              Approved - Ready to send to customer
             </p>
           </div>
           <p className="text-green-600 text-sm mt-1 ml-7">
-            Status: {reviewData?.status?.replace(/_/g, " ")} |
+            This quote has been approved. You can still make edits before sending to the customer.
+          </p>
+        </div>
+      )}
+
+      {/* Read-Only Status Banner (rejected/escalated only) */}
+      {isReadOnly && (
+        <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg mb-6">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-gray-600" />
+            <p className="text-gray-800 font-medium">
+              This review has been {reviewData?.status?.replace(/_/g, " ")}
+            </p>
+          </div>
+          <p className="text-gray-600 text-sm mt-1 ml-7">
             Completed: {reviewData?.completed_at ? new Date(reviewData.completed_at).toLocaleString() : "N/A"}
           </p>
         </div>
