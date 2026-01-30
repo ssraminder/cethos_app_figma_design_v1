@@ -42,6 +42,10 @@ export default function ProcessingStatus({
   const [hitlCreated, setHitlCreated] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(TIMEOUT_SECONDS);
 
+  // Threshold checking states
+  const [isCheckingThresholds, setIsCheckingThresholds] = useState(false);
+  const [thresholdsChecked, setThresholdsChecked] = useState(false);
+
   // Create HITL review with specified reason
   const createHitlReview = useCallback(async (triggerReason: string = "processing_timeout") => {
     if (isCreatingHitl || hitlCreated) return;
@@ -84,6 +88,57 @@ export default function ProcessingStatus({
       setIsCreatingHitl(false);
     }
   }, [quoteId, isCreatingHitl, hitlCreated]);
+
+  // Check HITL thresholds after processing completes
+  const checkHitlThresholds = useCallback(async (): Promise<boolean> => {
+    if (isCheckingThresholds || thresholdsChecked || hitlCreated) {
+      return !hitlCreated;
+    }
+
+    setIsCheckingThresholds(true);
+    console.log("🔍 Checking HITL thresholds...");
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-hitl-thresholds`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ quoteId: quoteId }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setThresholdsChecked(true);
+
+        if (result.passed) {
+          console.log("✅ All thresholds passed");
+          return true;
+        } else {
+          console.log("⚠️ Thresholds failed, HITL created:", result.triggerReasons);
+          setHitlCreated(true);
+          return false;
+        }
+      }
+
+      // Default to passing if error (don't block customer)
+      console.warn("⚠️ Threshold check returned error, defaulting to pass");
+      setThresholdsChecked(true);
+      return true;
+    } catch (error) {
+      console.error("❌ Error checking thresholds:", error);
+      // Default to passing if error (don't block customer)
+      setThresholdsChecked(true);
+      return true;
+    } finally {
+      setIsCheckingThresholds(false);
+    }
+  }, [quoteId, isCheckingThresholds, thresholdsChecked, hitlCreated]);
 
   // Handle "Email me instead" button click
   const handleEmailInstead = useCallback(async () => {
@@ -234,17 +289,23 @@ export default function ProcessingStatus({
     };
   }, [quoteId]);
 
-  // Check if processing is complete
+  // Check if processing is complete - then check thresholds
   useEffect(() => {
-    if ((quoteStatus === "quote_ready" || progress >= 100) && !hitlCreated) {
-      // Wait 500ms before auto-navigating
-      const timeout = setTimeout(() => {
-        onComplete();
-      }, 500);
-
-      return () => clearTimeout(timeout);
+    if ((quoteStatus === "quote_ready" || progress >= 100) && !hitlCreated && !isCheckingThresholds && !thresholdsChecked) {
+      // Processing complete - check thresholds before proceeding
+      const checkAndProceed = async () => {
+        const passed = await checkHitlThresholds();
+        if (passed) {
+          // Small delay before navigating for smooth transition
+          setTimeout(() => {
+            onComplete();
+          }, 300);
+        }
+        // If not passed, hitlCreated state will be set by checkHitlThresholds
+      };
+      checkAndProceed();
     }
-  }, [quoteStatus, progress, onComplete, hitlCreated]);
+  }, [quoteStatus, progress, hitlCreated, isCheckingThresholds, thresholdsChecked, checkHitlThresholds, onComplete]);
 
   // HITL Created - Show confirmation
   if (hitlCreated) {
@@ -327,6 +388,25 @@ export default function ProcessingStatus({
             </h2>
             <p className="text-cethos-slate">
               Transferring to our review team
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Checking thresholds - Show loading
+  if (isCheckingThresholds) {
+    return (
+      <div className="max-w-[600px] mx-auto">
+        <div className="bg-white border-2 border-cethos-border rounded-xl p-8 sm:p-10">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 animate-spin text-cethos-teal mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-cethos-navy mb-2">
+              Finalizing your quote...
+            </h2>
+            <p className="text-cethos-slate">
+              Just a moment while we verify everything
             </p>
           </div>
         </div>
