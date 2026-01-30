@@ -34,6 +34,8 @@ interface OrderDetail {
   delivery_fee: number;
   tax_amount: number;
   total_amount: number;
+  amount_paid: number;
+  balance_due: number;
   is_rush: boolean;
   delivery_option: string;
   estimated_delivery_date: string;
@@ -209,18 +211,12 @@ export default function AdminOrderDetail() {
     );
   }
 
-  const totalPaid = payments
-    .filter((payment) => payment.status === "succeeded")
-    .reduce((sum, payment) => sum + payment.amount, 0);
-
   const totalAdjustments = adjustments.reduce(
     (sum, adjustment) =>
       sum +
       (adjustment.type === "refund" ? -adjustment.amount : adjustment.amount),
     0,
   );
-
-  const balanceDue = order.total_amount + totalAdjustments - totalPaid;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -514,13 +510,13 @@ export default function AdminOrderDetail() {
 
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Total Paid</span>
-                <span className="text-green-600">${totalPaid.toFixed(2)}</span>
+                <span className="text-green-600">${(order.amount_paid ?? 0).toFixed(2)}</span>
               </div>
 
-              {balanceDue > 0 && (
+              {(order.balance_due ?? 0) > 0 && (
                 <div className="flex justify-between font-semibold text-amber-600 bg-amber-50 -mx-2 px-2 py-2 rounded">
                   <span>Balance Due</span>
-                  <span>${balanceDue.toFixed(2)}</span>
+                  <span>${(order.balance_due ?? 0).toFixed(2)}</span>
                 </div>
               )}
             </div>
