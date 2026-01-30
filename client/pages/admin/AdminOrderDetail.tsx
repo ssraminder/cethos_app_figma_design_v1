@@ -643,9 +643,7 @@ export default function AdminOrderDetail() {
             id: order.id,
             order_number: order.order_number,
             total_amount: order.total_amount,
-            amount_paid: payments
-              .filter((p) => p.status === "succeeded")
-              .reduce((sum, p) => sum + p.amount, 0),
+            amount_paid: order.amount_paid || 0,
             customer: order.customer,
           }}
           staffId={currentStaff?.staffId || ""}
