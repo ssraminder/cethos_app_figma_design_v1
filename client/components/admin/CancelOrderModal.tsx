@@ -110,35 +110,41 @@ export default function CancelOrderModal({
   useEffect(() => {
     if (isOpen && order.id) {
       setIsLoadingPayment(true);
+
       supabase
         .from("payments")
-        .select("payment_method, stripe_payment_intent_id")
+        .select("*")
         .eq("order_id", order.id)
         .eq("status", "succeeded")
         .order("created_at", { ascending: false })
         .limit(1)
-        .single()
-        .then(({ data }) => {
+        .maybeSingle()
+        .then(({ data, error }) => {
+          if (error) {
+            console.warn("Payment fetch error (non-critical):", error);
+          }
+
           if (data) {
             setPaymentInfo({
-              method: data.payment_method || "unknown",
+              method: data.payment_method || "stripe",
               hasStripe: !!data.stripe_payment_intent_id,
-              stripePaymentIntentId: data.stripe_payment_intent_id,
+              stripePaymentIntentId: data.stripe_payment_intent_id || null,
             });
-            // Default refund method based on payment
             if (data.stripe_payment_intent_id) {
               setRefundMethod("stripe");
             } else {
               setRefundMethod("cash");
             }
           } else {
+            // No payment record found - default to no Stripe
             setPaymentInfo({
               method: "unknown",
               hasStripe: false,
-              stripePaymentIntentId: null,
+              stripePaymentIntentId: null
             });
             setRefundMethod("cash");
           }
+
           setIsLoadingPayment(false);
         });
     }
