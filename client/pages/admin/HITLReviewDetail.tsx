@@ -21,6 +21,9 @@ import {
   User,
   Check,
   Camera,
+  Save,
+  RefreshCw,
+  Zap,
 } from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -1014,6 +1017,301 @@ const HITLReviewDetail: React.FC = () => {
     } catch (error) {
       console.error("Error removing analysis:", error);
       alert("Failed to remove analysis: " + (error as Error).message);
+    }
+  };
+
+  // ============================================
+  // NEW WORKFLOW HANDLERS
+  // ============================================
+
+  // Save - saves all form changes without status change
+  const handleSave = async () => {
+    if (!staffSession?.staffId || !reviewData?.quote_id) {
+      alert("Missing required data. Please refresh the page.");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      // Save any local edits (document-level and page-level corrections)
+      const hasFileEdits = Object.keys(localEdits).length > 0;
+      const hasPageEdits = Object.keys(localPageEdits).length > 0;
+
+      if (hasFileEdits || hasPageEdits) {
+        // Save file-level edits
+        for (const [fileId, edits] of Object.entries(localEdits)) {
+          const analysis = analysisResults.find(
+            (a) => a.quote_file_id === fileId,
+          );
+
+          for (const [field, value] of Object.entries(edits)) {
+            let originalValue = "";
+            if (field === "assessed_complexity") {
+              originalValue = analysis?.assessed_complexity || "";
+            } else if (field === "detected_language") {
+              originalValue = analysis?.detected_language || "";
+            } else if (field === "detected_document_type") {
+              originalValue = analysis?.detected_document_type || "";
+            } else if (field === "complexity_multiplier") {
+              originalValue = String(analysis?.complexity_multiplier || 1.0);
+            } else if (field === "certification_type_id") {
+              originalValue = analysis?.certification_type_id || "";
+            } else if (field === "certification_price") {
+              originalValue = String(analysis?.certification_price || 0);
+            } else {
+              originalValue = String((analysis as any)?.[field] || "");
+            }
+
+            await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({
+                  reviewId,
+                  staffId: staffSession.staffId,
+                  field,
+                  originalValue: String(originalValue),
+                  correctedValue: String(value),
+                  fileId,
+                  analysisId: analysis?.id,
+                }),
+              },
+            );
+          }
+        }
+
+        // Save page-level edits
+        for (const [pageId, editData] of Object.entries(localPageEdits)) {
+          await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                reviewId,
+                staffId: staffSession.staffId,
+                field: "page_word_count",
+                originalValue: String(editData.originalWordCount),
+                correctedValue: String(editData.wordCount),
+                fileId: editData.fileId,
+                pageId,
+              }),
+            },
+          );
+        }
+
+        setLocalEdits({});
+        setLocalPageEdits({});
+      }
+
+      // Recalculate quote totals
+      await supabase.rpc("recalculate_quote_totals", {
+        p_quote_id: reviewData.quote_id,
+      });
+
+      alert("Quote saved successfully!");
+      await fetchReviewData();
+    } catch (error) {
+      console.error("Save error:", error);
+      alert("Error saving quote: " + (error as Error).message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Mark Ready - saves changes and updates status to quote_ready
+  const handleMarkReady = async () => {
+    if (!staffSession?.staffId || !reviewData?.quote_id) {
+      alert("Missing required data. Please refresh the page.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // First save any pending changes
+      await handleSave();
+
+      // Update quote status to quote_ready
+      const { error } = await supabase
+        .from("quotes")
+        .update({ status: "quote_ready" })
+        .eq("id", reviewData.quote_id);
+
+      if (error) throw error;
+
+      // Update HITL review status
+      await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          status: "quote_ready",
+          updated_at: new Date().toISOString(),
+        }),
+      });
+
+      alert("Quote marked as ready!");
+      await fetchAllData();
+    } catch (error) {
+      console.error("Mark ready error:", error);
+      alert("Error marking quote as ready: " + (error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Send to Customer - validates email, saves, sends payment link, updates status to quote_sent
+  const handleSendToCustomer = async () => {
+    const customerEmail =
+      reviewData?.customer_email ||
+      reviewData?.quotes?.customer?.email;
+
+    if (!customerEmail) {
+      alert("Customer email is required. Please add an email address before sending.");
+      return;
+    }
+
+    if (!staffSession?.staffId || !reviewData?.quote_id) {
+      alert("Missing required data. Please refresh the page.");
+      return;
+    }
+
+    if (!confirm(`Send quote to ${customerEmail}?\n\nThis will send a payment link email to the customer.`)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // First save any pending changes
+      await handleSave();
+
+      // Call Edge Function to send payment link email
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/update-quote-and-notify`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: reviewData.quote_id,
+            staffId: staffSession.staffId,
+            updateReason: "Quote sent to customer",
+            sendToCustomer: true,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to send quote");
+      }
+
+      // Update quote status to quote_sent
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          status: "quote_sent",
+          quote_sent_at: new Date().toISOString(),
+        })
+        .eq("id", reviewData.quote_id);
+
+      if (error) throw error;
+
+      // Update HITL review status
+      await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          status: "quote_sent",
+          updated_at: new Date().toISOString(),
+        }),
+      });
+
+      alert(`Quote sent to customer!\n\nEmail: ${customerEmail}\nMagic Link: ${result.magicLink || "Generated"}`);
+      await fetchAllData();
+    } catch (error) {
+      console.error("Send to customer error:", error);
+      alert("Error sending quote: " + (error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Resend Quote - resends payment link email without status change
+  const handleResendQuote = async () => {
+    const customerEmail =
+      reviewData?.customer_email ||
+      reviewData?.quotes?.customer?.email;
+
+    if (!customerEmail) {
+      alert("Customer email is required.");
+      return;
+    }
+
+    if (!staffSession?.staffId || !reviewData?.quote_id) {
+      alert("Missing required data. Please refresh the page.");
+      return;
+    }
+
+    if (!confirm(`Resend quote to ${customerEmail}?`)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Call Edge Function to resend payment link email
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/update-quote-and-notify`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: reviewData.quote_id,
+            staffId: staffSession.staffId,
+            updateReason: "Quote resent to customer",
+            sendToCustomer: true,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to resend quote");
+      }
+
+      alert(`Quote resent to customer!\n\nEmail: ${customerEmail}`);
+    } catch (error) {
+      console.error("Resend quote error:", error);
+      alert("Error resending quote: " + (error as Error).message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -2184,7 +2482,8 @@ const HITLReviewDetail: React.FC = () => {
           </div>
 
           {/* Right: Action Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
+            {/* Claim Review - for unclaimed */}
             {!claimedByMe && !claimedByOther && (
               <button
                 onClick={handleClaimReview}
@@ -2194,34 +2493,85 @@ const HITLReviewDetail: React.FC = () => {
               </button>
             )}
 
-            {claimedByMe && reviewData?.status === "in_review" && (
+            {/* When claimed by me - show workflow buttons */}
+            {claimedByMe && (
               <>
-                <button
-                  onClick={() => setShowRejectQuoteModal(true)}
-                  disabled={isSubmitting}
-                  className="flex items-center gap-1.5 px-3 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 text-sm font-medium"
-                >
-                  <XCircle className="w-4 h-4" />
-                  <span className="hidden sm:inline">Reject</span>
-                </button>
+                {/* Left Group: Reject & Escalate (only in_review status) */}
+                {reviewData?.status === "in_review" && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowRejectQuoteModal(true)}
+                      disabled={isSubmitting || isSaving}
+                      className="flex items-center gap-1.5 px-3 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 text-sm font-medium"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span className="hidden sm:inline">Reject</span>
+                    </button>
 
-                <button
-                  onClick={handleEscalateReview}
-                  disabled={isSubmitting}
-                  className="flex items-center gap-1.5 px-3 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm font-medium"
-                >
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="hidden sm:inline">Escalate</span>
-                </button>
+                    <button
+                      onClick={handleEscalateReview}
+                      disabled={isSubmitting || isSaving}
+                      className="flex items-center gap-1.5 px-3 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm font-medium"
+                    >
+                      <Zap className="w-4 h-4" />
+                      <span className="hidden sm:inline">Escalate</span>
+                    </button>
+                  </div>
+                )}
 
-                <button
-                  onClick={handleApproveReview}
-                  disabled={isSubmitting}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm font-medium"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  {isSubmitting ? "Processing..." : "Update Quote"}
-                </button>
+                {/* Divider between left and right groups */}
+                {reviewData?.status === "in_review" && (
+                  <div className="border-l border-gray-300 h-8"></div>
+                )}
+
+                {/* Right Group: Save + Status-based action */}
+                <div className="flex items-center gap-2">
+                  {/* Save Button - always visible when claimed */}
+                  <button
+                    onClick={handleSave}
+                    disabled={isSubmitting || isSaving}
+                    className="flex items-center gap-1.5 px-3 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm font-medium"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span className="hidden sm:inline">{isSaving ? "Saving..." : "Save"}</span>
+                  </button>
+
+                  {/* Mark Ready - when status is in_review */}
+                  {reviewData?.status === "in_review" && (
+                    <button
+                      onClick={handleMarkReady}
+                      disabled={isSubmitting || isSaving}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm font-medium"
+                    >
+                      <Check className="w-4 h-4" />
+                      {isSubmitting ? "Processing..." : "Mark Ready"}
+                    </button>
+                  )}
+
+                  {/* Send to Customer - when status is quote_ready */}
+                  {reviewData?.status === "quote_ready" && (
+                    <button
+                      onClick={handleSendToCustomer}
+                      disabled={isSubmitting || isSaving}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 text-sm font-medium"
+                    >
+                      <Send className="w-4 h-4" />
+                      {isSubmitting ? "Sending..." : "Send to Customer"}
+                    </button>
+                  )}
+
+                  {/* Resend Quote - when status is quote_sent */}
+                  {reviewData?.status === "quote_sent" && (
+                    <button
+                      onClick={handleResendQuote}
+                      disabled={isSubmitting || isSaving}
+                      className="flex items-center gap-1.5 px-4 py-2 text-purple-600 border border-purple-300 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-50 text-sm font-medium"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      {isSubmitting ? "Sending..." : "Resend Quote"}
+                    </button>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -3291,9 +3641,9 @@ const HITLReviewDetail: React.FC = () => {
                   // Refresh review data when pricing changes
                   fetchReviewData();
                 }}
-                showActions={claimedByMe && reviewData?.status === "in_review"}
+                showActions={claimedByMe && ['in_review', 'quote_ready', 'quote_sent'].includes(reviewData?.status || '')}
                 isSubmitting={isSubmitting}
-                onUpdateAndSendPaymentLink={() => setShowUpdateModal(true)}
+                quoteStatus={reviewData?.status}
                 onManualPayment={() => {
                   const total = reviewData?.total || reviewData?.quotes?.total || 0;
                   setAmountPaid(total.toFixed(2));
@@ -3376,8 +3726,8 @@ const HITLReviewDetail: React.FC = () => {
         />
       )}
 
-      {/* Note: Main action buttons (Reject, Escalate, Update Quote) are now in the sticky header */}
-      {/* Payment buttons (Update & Send Payment Link, Manual Payment) are now in PricingSummaryBox */}
+      {/* Note: Main action buttons (Reject, Escalate, Save, Mark Ready, Send to Customer, Resend Quote) are now in the sticky header */}
+      {/* Manual Payment button is in PricingSummaryBox (shown only for quote_ready and quote_sent status) */}
 
       {/* Reject Modal */}
       {showRejectModal && (
