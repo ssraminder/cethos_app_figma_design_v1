@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 import {
   RefreshCw,
   Plus,
@@ -499,16 +500,17 @@ export default function PricingSummaryBox({
   const handlePhysicalDeliveryChange = async (optionId: string) => {
     const selectedOption = deliveryOptions.find(d => d.id === optionId);
 
-    // Check if shipping address is required but not available
-    if (selectedOption?.requires_address && !hasShippingAddress) {
-      if (onAddAddress) {
-        onAddAddress();
-      }
-      return;
-    }
-
     try {
+      // Always update state first - don't block selection
       setSelectedPhysicalDelivery(optionId);
+
+      // Show warning if address is required but not available (don't block selection)
+      if (selectedOption?.requires_address && !hasShippingAddress) {
+        toast.warning(
+          "This delivery method requires a shipping address. Please add one in the Addresses section.",
+          { duration: 5000 }
+        );
+      }
 
       // Calculate delivery fee
       const deliveryFee = selectedOption?.price || 0;
