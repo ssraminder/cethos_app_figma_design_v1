@@ -126,15 +126,28 @@ const defaultContext: QuoteContextType = {
   completeProcessing: () => {},
   skipToEmail: () => {},
 };
-
+// New change
 const QuoteContext = createContext<QuoteContextType>(defaultContext);
-
 const STORAGE_KEY = "cethos_quote_draft";
 const UPLOAD_STORAGE_KEY = "cethos_upload_draft";
 
 export function QuoteProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<QuoteState>(() => {
-    // Load from localStorage on mount
+    // Check for quote_id in URL FIRST - takes priority over localStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlQuoteId = urlParams.get('quote_id');
+    
+    if (urlQuoteId) {
+      console.log('🔗 Quote link detected in URL - clearing localStorage');
+      // Clear old quote data from localStorage BEFORE loading
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(UPLOAD_STORAGE_KEY);
+      // Return initial state with the URL quote ID
+      // The useEffect will load full quote data from DB
+      return { ...initialState, quoteId: urlQuoteId };
+    }
+
+    // No URL quote_id - load from localStorage as usual
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -147,7 +160,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     }
     return initialState;
   });
-
+// new change ends
   const supabaseHook = useSupabase();
   const filesQueuedForUpload = useRef<UploadedFile[]>([]);
   const urlQuoteLoadedRef = useRef<boolean>(false);
