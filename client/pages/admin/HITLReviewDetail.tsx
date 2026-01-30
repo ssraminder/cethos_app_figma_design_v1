@@ -884,6 +884,7 @@ const HITLReviewDetail: React.FC = () => {
         `hitl_reviews?id=eq.${reviewId}`,
       );
 
+      // Update HITL review status to escalated
       await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
         method: "PATCH",
         headers: {
@@ -898,6 +899,14 @@ const HITLReviewDetail: React.FC = () => {
           updated_at: new Date().toISOString(),
         }),
       });
+
+      // Update quote status to escalated
+      if (reviewData?.quote_id) {
+        await supabase
+          .from("quotes")
+          .update({ status: "escalated" })
+          .eq("id", reviewData.quote_id);
+      }
 
       alert("⚠️ Review escalated to admin.");
       navigate("/admin/hitl");
@@ -1148,7 +1157,7 @@ const HITLReviewDetail: React.FC = () => {
 
       if (error) throw error;
 
-      // Update HITL review status
+      // Update HITL review status to approved
       await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
         method: "PATCH",
         headers: {
@@ -1158,7 +1167,9 @@ const HITLReviewDetail: React.FC = () => {
           Prefer: "return=minimal",
         },
         body: JSON.stringify({
-          status: "quote_ready",
+          status: "approved",
+          completed_at: new Date().toISOString(),
+          completed_by: staffSession.staffId,
           updated_at: new Date().toISOString(),
         }),
       });
@@ -1234,20 +1245,7 @@ const HITLReviewDetail: React.FC = () => {
 
       if (error) throw error;
 
-      // Update HITL review status
-      await fetch(`${SUPABASE_URL}/rest/v1/hitl_reviews?id=eq.${reviewId}`, {
-        method: "PATCH",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({
-          status: "quote_sent",
-          updated_at: new Date().toISOString(),
-        }),
-      });
+      // Note: hitl_reviews status remains 'approved' - no update needed for send to customer
 
       alert(`Quote sent to customer!\n\nEmail: ${customerEmail}\nMagic Link: ${result.magicLink || "Generated"}`);
       await fetchAllData();
