@@ -8,8 +8,25 @@ import {
   Loader2,
   Brain,
   File,
+  Edit2,
+  RefreshCw,
+  PenTool,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import {
+  DocumentAnalysisPanel,
+  AnalyzeDocumentModal,
+  ManualEntryModal,
+  EditableDocumentAnalysisPanel,
+} from "@/components/shared/analysis";
+import type { AnalysisResult } from "@/components/shared/analysis/DocumentAnalysisPanel";
+
+interface QuoteFile {
+  id: string;
+  original_filename: string;
+  storage_path?: string;
+  mime_type: string;
+}
 
 export interface FileWithAnalysis {
   // File info
@@ -51,9 +68,56 @@ export default function StaffFileUploadForm({
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  // Analysis modal states
+  const [analyzeModalOpen, setAnalyzeModalOpen] = useState(false);
+  const [manualEntryModalOpen, setManualEntryModalOpen] = useState(false);
+  const [editPanelOpen, setEditPanelOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<QuoteFile | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
+
   useEffect(() => {
     onChange(files);
   }, [files]);
+
+  // Fetch analysis results from database
+  const fetchAnalysisResults = async () => {
+    if (!quoteId) return;
+
+    const { data, error } = await supabase
+      .from("ai_analysis_results")
+      .select(
+        `
+        id,
+        quote_file_id,
+        detected_language,
+        detected_document_type,
+        assessed_complexity,
+        complexity_multiplier,
+        word_count,
+        page_count,
+        billable_pages,
+        base_rate,
+        line_total,
+        certification_type_id,
+        certification_price,
+        quote_files!inner(original_filename)
+      `
+      )
+      .eq("quote_id", quoteId);
+
+    if (data && !error) {
+      setAnalysisResults(
+        data.map((r: any) => ({
+          ...r,
+          original_filename: r.quote_files?.original_filename || "Unknown",
+        }))
+      );
+    }
+  };
+
+  useEffect(() => {
+    fetchAnalysisResults();
+  }, [quoteId]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
@@ -410,9 +474,80 @@ export default function StaffFileUploadForm({
                   )}
                 </div>
 
-                {/* AI Analysis Status */}
+                {/* Analysis Action Buttons */}
+                {file.uploadStatus === "success" && file.uploadedFileId && (
+                  <div className="mt-3 flex gap-2">
+                    {analysisResults.find(
+                      (a) => a.quote_file_id === file.uploadedFileId
+                    ) ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setSelectedFile({
+                              id: file.uploadedFileId!,
+                              original_filename: file.name,
+                              mime_type: "",
+                            });
+                            setEditPanelOpen(true);
+                          }}
+                          className="px-3 py-1.5 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100 flex items-center gap-1"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          Edit Analysis
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedFile({
+                              id: file.uploadedFileId!,
+                              original_filename: file.name,
+                              mime_type: "",
+                            });
+                            setAnalyzeModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 text-xs bg-gray-50 text-gray-700 rounded hover:bg-gray-100 flex items-center gap-1"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Re-analyze
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => {
+                            setSelectedFile({
+                              id: file.uploadedFileId!,
+                              original_filename: file.name,
+                              mime_type: "",
+                            });
+                            setAnalyzeModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100 flex items-center gap-1"
+                        >
+                          <Brain className="w-3 h-3" />
+                          Analyze with AI
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedFile({
+                              id: file.uploadedFileId!,
+                              original_filename: file.name,
+                              mime_type: "",
+                            });
+                            setManualEntryModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 text-xs bg-orange-50 text-orange-700 rounded hover:bg-orange-100 flex items-center gap-1"
+                        >
+                          <PenTool className="w-3 h-3" />
+                          Manual Entry
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* AI Analysis Status (legacy - showing local state) */}
                 {processWithAI && file.uploadStatus === "success" && (
-                  <div className="bg-gray-50 rounded p-3 space-y-2">
+                  <div className="bg-gray-50 rounded p-3 space-y-2 mt-2">
                     {file.analysisStatus === "analyzing" && (
                       <div className="flex items-center gap-2 text-sm text-blue-600">
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -498,6 +633,56 @@ export default function StaffFileUploadForm({
         </div>
       )}
 
+      {/* Analysis Results Summary Section */}
+      {analysisResults.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">
+            Analysis Results
+          </h3>
+          <DocumentAnalysisPanel
+            analysisResults={analysisResults}
+            loading={false}
+            onEdit={(analysisId) => {
+              const result = analysisResults.find((a) => a.id === analysisId);
+              if (result) {
+                setSelectedFile({
+                  id: result.quote_file_id,
+                  original_filename: result.original_filename,
+                  mime_type: "",
+                });
+                setEditPanelOpen(true);
+              }
+            }}
+            onReanalyze={(fileId) => {
+              const result = analysisResults.find(
+                (a) => a.quote_file_id === fileId
+              );
+              if (result) {
+                setSelectedFile({
+                  id: fileId,
+                  original_filename: result.original_filename,
+                  mime_type: "",
+                });
+                setAnalyzeModalOpen(true);
+              }
+            }}
+            onManualEntry={(fileId) => {
+              const result = analysisResults.find(
+                (a) => a.quote_file_id === fileId
+              );
+              if (result) {
+                setSelectedFile({
+                  id: fileId,
+                  original_filename: result.original_filename,
+                  mime_type: "",
+                });
+                setManualEntryModalOpen(true);
+              }
+            }}
+          />
+        </div>
+      )}
+
       <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
         <p className="font-medium text-gray-700 mb-1">Note:</p>
         <ul className="list-disc list-inside space-y-1">
@@ -518,6 +703,65 @@ export default function StaffFileUploadForm({
           )}
         </ul>
       </div>
+
+      {/* Analysis Modals */}
+      {selectedFile && (
+        <>
+          <AnalyzeDocumentModal
+            isOpen={analyzeModalOpen}
+            onClose={() => {
+              setAnalyzeModalOpen(false);
+              setSelectedFile(null);
+            }}
+            file={selectedFile}
+            quoteId={quoteId!}
+            onAnalysisComplete={fetchAnalysisResults}
+          />
+
+          <ManualEntryModal
+            isOpen={manualEntryModalOpen}
+            onClose={() => {
+              setManualEntryModalOpen(false);
+              setSelectedFile(null);
+            }}
+            file={selectedFile}
+            quoteId={quoteId!}
+            onSaveComplete={fetchAnalysisResults}
+          />
+        </>
+      )}
+
+      {/* Edit Panel Modal */}
+      {editPanelOpen && selectedFile && quoteId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Edit Analysis</h2>
+              <button
+                onClick={() => {
+                  setEditPanelOpen(false);
+                  setSelectedFile(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <EditableDocumentAnalysisPanel
+              analysisResults={analysisResults.filter(
+                (a) => a.quote_file_id === selectedFile?.id
+              )}
+              quoteId={quoteId}
+              staffId={staffId}
+              onUpdate={() => {
+                fetchAnalysisResults();
+                setEditPanelOpen(false);
+                setSelectedFile(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
