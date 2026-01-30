@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Building,
   Clock,
+  CreditCard,
   DollarSign,
   Download,
   ExternalLink,
@@ -241,6 +242,7 @@ export default function AdminQuoteDetail() {
   const [showResendModal, setShowResendModal] = useState(false);
   const [resendCustomMessage, setResendCustomMessage] = useState("");
   const [isResending, setIsResending] = useState(false);
+  const [isSendingLink, setIsSendingLink] = useState(false);
 
   const { session: currentStaff } = useAdminAuthContext();
 
@@ -689,6 +691,158 @@ export default function AdminQuoteDetail() {
     }
   };
 
+  // Send Quote Link - sends email with quote review page link
+  const handleSendQuoteLink = async () => {
+    if (!currentStaff?.staffId || !id || !quote) return;
+
+    const customerEmail = quote.customer?.email;
+    if (!customerEmail) {
+      alert("Customer email is required");
+      return;
+    }
+
+    setIsSendingLink(true);
+
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      // Call send-quote-link-email Edge Function
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/send-quote-link-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: id,
+            staffId: currentStaff.staffId,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to send quote link");
+      }
+
+      // Update quote status to awaiting_payment
+      const { error: quoteError } = await supabase
+        .from("quotes")
+        .update({
+          status: "awaiting_payment",
+          quote_sent_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (quoteError) throw quoteError;
+
+      alert("Quote link sent to customer!");
+      await fetchQuoteDetails();
+    } catch (error) {
+      console.error("Failed to send quote link:", error);
+      alert("Failed to send quote link: " + (error as Error).message);
+    } finally {
+      setIsSendingLink(false);
+    }
+  };
+
+  // Send Payment Link - creates Stripe checkout and sends direct payment link
+  const handleSendPaymentLink = async () => {
+    if (!currentStaff?.staffId || !id || !quote) return;
+
+    const customerEmail = quote.customer?.email;
+    if (!customerEmail) {
+      alert("Customer email is required");
+      return;
+    }
+
+    setIsSendingLink(true);
+
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      // 1. Create Stripe payment link
+      const paymentResponse = await fetch(
+        `${SUPABASE_URL}/functions/v1/create-payment-link`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quote_id: id,
+            amount: quote.total,
+            customer_email: customerEmail,
+            customer_name: quote.customer?.full_name || "",
+            quote_number: quote.quote_number,
+          }),
+        },
+      );
+
+      const paymentResult = await paymentResponse.json();
+
+      if (!paymentResponse.ok || !paymentResult.url) {
+        throw new Error(paymentResult.error || "Failed to create payment link");
+      }
+
+      // 2. Send payment email with Stripe URL
+      const emailResponse = await fetch(
+        `${SUPABASE_URL}/functions/v1/send-payment-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: id,
+            customerEmail: customerEmail,
+            customerName: quote.customer?.full_name || "",
+            quoteNumber: quote.quote_number,
+            total: quote.total,
+            paymentUrl: paymentResult.url,
+          }),
+        },
+      );
+
+      const emailResult = await emailResponse.json();
+
+      if (!emailResponse.ok || !emailResult.success) {
+        console.warn("Email send warning:", emailResult);
+        // Continue anyway - payment link was created
+      }
+
+      // 3. Update quote status and store payment link
+      const { error: quoteError } = await supabase
+        .from("quotes")
+        .update({
+          status: "awaiting_payment",
+          payment_link: paymentResult.url,
+          payment_link_sent_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (quoteError) throw quoteError;
+
+      alert("Payment link sent to customer!");
+      await fetchQuoteDetails();
+    } catch (error) {
+      console.error("Failed to send payment link:", error);
+      alert("Failed to send payment link: " + (error as Error).message);
+    } finally {
+      setIsSendingLink(false);
+    }
+  };
+
+  // Check if quote has been converted to an order (hide send buttons)
+  const isConvertedToOrder = quote && ['paid', 'converted'].includes(quote.status);
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -760,15 +914,29 @@ export default function AdminQuoteDetail() {
               </Link>
             )}
 
-            {/* Send Quote Again Button - show for quote_ready status */}
-            {quote.status === "quote_ready" && (
-              <button
-                onClick={() => setShowResendModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Send className="w-4 h-4" />
-                Send Quote Again
-              </button>
+            {/* Send Quote Link & Send Payment Link - hidden when paid or converted */}
+            {!isConvertedToOrder && (
+              <>
+                {/* Send Quote Link Button - purple outline */}
+                <button
+                  onClick={handleSendQuoteLink}
+                  disabled={isSendingLink}
+                  className="flex items-center gap-2 px-4 py-2 border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-50"
+                >
+                  <Mail className="w-4 h-4" />
+                  {isSendingLink ? "Sending..." : "Send Quote Link"}
+                </button>
+
+                {/* Send Payment Link Button - purple solid */}
+                <button
+                  onClick={handleSendPaymentLink}
+                  disabled={isSendingLink}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  {isSendingLink ? "Sending..." : "Send Payment Link"}
+                </button>
+              </>
             )}
 
             {/* Delete Quote Button */}
