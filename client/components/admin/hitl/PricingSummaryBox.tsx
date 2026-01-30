@@ -8,7 +8,6 @@ import {
   ChevronDown,
   DollarSign,
   AlertCircle,
-  Send,
   CreditCard,
   Clock,
   Truck,
@@ -96,10 +95,11 @@ interface Props {
   // Action button handlers
   showActions?: boolean;
   isSubmitting?: boolean;
-  onUpdateAndSendPaymentLink?: () => void;
   onManualPayment?: () => void;
   hasShippingAddress?: boolean;
   onAddAddress?: () => void;
+  // Quote status for conditional rendering
+  quoteStatus?: string;
 }
 
 export default function PricingSummaryBox({
@@ -108,10 +108,10 @@ export default function PricingSummaryBox({
   onPricingChange,
   showActions = false,
   isSubmitting = false,
-  onUpdateAndSendPaymentLink,
   onManualPayment,
   hasShippingAddress = false,
   onAddAddress,
+  quoteStatus,
 }: Props) {
   // State
   const [pricing, setPricing] = useState<PricingData | null>(null);
@@ -927,17 +927,9 @@ export default function PricingSummaryBox({
           {recalculating ? "Recalculating..." : "Recalculate Totals"}
         </button>
 
-        {/* Action Buttons - Payment Actions */}
-        {showActions && (
-          <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
-            <button
-              onClick={onUpdateAndSendPaymentLink}
-              disabled={isSubmitting}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Send className="w-4 h-4" />
-              Update & Send Payment Link
-            </button>
+        {/* Action Buttons - Manual Payment (only for quote_ready or quote_sent) */}
+        {showActions && ['quote_ready', 'quote_sent'].includes(quoteStatus || '') && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
             <button
               onClick={onManualPayment}
               disabled={isSubmitting}
