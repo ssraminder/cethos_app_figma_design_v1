@@ -5,8 +5,10 @@ import React, {
   useEffect,
   ReactNode,
   useRef,
+  useCallback,
 } from "react";
 import { useSupabase } from "@/hooks/useSupabase";
+import { supabase, isSupabaseEnabled } from "@/lib/supabase";
 
 // Types
 export interface UploadedFile {
@@ -128,6 +130,7 @@ const defaultContext: QuoteContextType = {
 const QuoteContext = createContext<QuoteContextType>(defaultContext);
 
 const STORAGE_KEY = "cethos_quote_draft";
+const UPLOAD_STORAGE_KEY = "cethos_upload_draft";
 
 export function QuoteProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<QuoteState>(() => {
@@ -145,8 +148,170 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     return initialState;
   });
 
-  const supabase = useSupabase();
+  const supabaseHook = useSupabase();
   const filesQueuedForUpload = useRef<UploadedFile[]>([]);
+  const urlQuoteLoadedRef = useRef<boolean>(false);
+
+  // Helper to determine which step to show based on quote status
+  const determineStepFromQuote = useCallback((quote: any): number => {
+    // If quote is ready for payment, go to step 5 (billing)
+    if (quote.status === 'quote_ready' || quote.status === 'awaiting_payment') {
+      return 5;
+    }
+    // If processing or pending, go to step 4 (review)
+    if (quote.processing_status === 'processing' || quote.processing_status === 'pending') {
+      return 4;
+    }
+    // If has customer info, go to step 4
+    if (quote.customer_email || quote.customer_id) {
+      return 4;
+    }
+    // If has language selection, go to step 3
+    if (quote.source_language_id && quote.target_language_id) {
+      return 3;
+    }
+    // Default to step 2
+    return 2;
+  }, []);
+
+  // Load quote from database when URL has quote_id parameter
+  const loadQuoteFromDatabase = useCallback(async (quoteId: string, token?: string | null) => {
+    if (!isSupabaseEnabled() || !supabase) {
+      console.log('📝 Supabase not configured - cannot load quote from URL');
+      return;
+    }
+
+    try {
+      // If token is provided, validate it first
+      if (token) {
+        const { data: magicLink, error: tokenError } = await supabase
+          .from('customer_magic_links')
+          .select('*')
+          .eq('quote_id', quoteId)
+          .eq('token', token)
+          .eq('is_used', false)
+          .gt('expires_at', new Date().toISOString())
+          .single();
+
+        if (tokenError || !magicLink) {
+          console.error('❌ Invalid or expired token');
+          // Still try to load the quote - they might be able to view it
+        } else {
+          console.log('✅ Valid magic link token');
+          // Mark token as used (optional - depends on business logic)
+        }
+      }
+
+      // Fetch quote data with related files and customer info
+      const { data: quote, error: quoteError } = await supabase
+        .from('quotes')
+        .select(`
+          *,
+          quote_files (
+            id,
+            original_filename,
+            file_size,
+            mime_type,
+            storage_path,
+            ai_processing_status
+          ),
+          customers (
+            id,
+            email,
+            full_name,
+            phone,
+            company_name,
+            customer_type
+          )
+        `)
+        .eq('id', quoteId)
+        .single();
+
+      if (quoteError || !quote) {
+        console.error('❌ Failed to load quote:', quoteError);
+        return;
+      }
+
+      console.log('✅ Quote loaded from database:', quote.quote_number);
+
+      // Parse customer name into first/last name if available
+      let firstName = '';
+      let lastName = '';
+      if (quote.customers?.full_name) {
+        const nameParts = quote.customers.full_name.split(' ');
+        firstName = nameParts[0] || '';
+        lastName = nameParts.slice(1).join(' ') || '';
+      }
+
+      // Determine the current step based on quote status
+      const currentStep = determineStepFromQuote(quote);
+
+      // Update context state with quote data
+      setState(prev => ({
+        ...prev,
+        quoteId: quote.id,
+        quoteNumber: quote.quote_number || '',
+        sourceLanguageId: quote.source_language_id || '',
+        targetLanguageId: quote.target_language_id || '',
+        intendedUseId: quote.intended_use_id || '',
+        serviceProvince: quote.service_province || '',
+        countryOfIssue: quote.country_of_issue || '',
+        countryId: quote.country_id || '',
+        certificationTypeId: quote.certification_type_id || '',
+        specialInstructions: quote.special_instructions || '',
+        // Customer info
+        email: quote.customers?.email || '',
+        firstName: firstName,
+        lastName: lastName,
+        phone: quote.customers?.phone || '',
+        companyName: quote.customers?.company_name || '',
+        customerType: quote.customers?.customer_type || 'individual',
+        // Files - map to expected format (without actual File objects)
+        files: quote.quote_files?.map((f: any) => ({
+          id: f.id,
+          name: f.original_filename,
+          size: f.file_size,
+          type: f.mime_type,
+          file: null as any, // File objects can't be restored from DB
+        })) || [],
+        // Turnaround and delivery options from quote
+        turnaroundType: quote.turnaround_type || 'standard',
+        turnaroundFee: quote.turnaround_fee || 0,
+        deliveryFee: quote.delivery_fee || 0,
+        // Set the determined step
+        currentStep: currentStep,
+        // If quote is in processing status, show processing screen
+        isProcessing: quote.processing_status === 'processing' || quote.processing_status === 'pending',
+      }));
+
+    } catch (error) {
+      console.error('❌ Error loading quote from URL:', error);
+    }
+  }, [determineStepFromQuote]);
+
+  // Check for quote_id in URL - this takes priority over localStorage
+  useEffect(() => {
+    // Only run once on mount
+    if (urlQuoteLoadedRef.current) {
+      return;
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlQuoteId = urlParams.get('quote_id');
+    const urlToken = urlParams.get('token');
+
+    if (urlQuoteId) {
+      urlQuoteLoadedRef.current = true;
+      console.log('🔗 Quote link detected - clearing localStorage and loading quote:', urlQuoteId);
+
+      // Clear old quote data from localStorage
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(UPLOAD_STORAGE_KEY);
+
+      // Load the quote from database
+      loadQuoteFromDatabase(urlQuoteId, urlToken);
+    }
+  }, [loadQuoteFromDatabase]);
 
   // Save to localStorage whenever state changes
   useEffect(() => {
@@ -241,7 +406,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     // Step 1 -> 2: Create quote and upload files
     if (state.currentStep === 1) {
       if (filesQueuedForUpload.current.length > 0) {
-        const result = await supabase.createQuoteWithFiles(
+        const result = await supabaseHook.createQuoteWithFiles(
           filesQueuedForUpload.current,
         );
         if (result) {
@@ -266,7 +431,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     // Step 2 -> 3: Update quote details, navigate to Contact
     if (state.currentStep === 2) {
       if (state.quoteId) {
-        await supabase.updateQuoteDetails(state.quoteId, {
+        await supabaseHook.updateQuoteDetails(state.quoteId, {
           sourceLanguageId: state.sourceLanguageId,
           targetLanguageId: state.targetLanguageId,
           intendedUseId: state.intendedUseId,
@@ -284,7 +449,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     // Step 3 (Contact) -> 4 (Review & Rush): Save contact info and enable processing screen
     if (state.currentStep === 3) {
       if (state.quoteId) {
-        await supabase.createOrUpdateCustomer(state.quoteId, {
+        await supabaseHook.createOrUpdateCustomer(state.quoteId, {
           email: state.email,
           firstName: state.firstName,
           lastName: state.lastName,
@@ -317,7 +482,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     if (state.currentStep === 6) {
       // For now, just finalize the quote
       if (state.quoteId) {
-        await supabase.finalizeQuote(state.quoteId, state.files.length);
+        await supabaseHook.finalizeQuote(state.quoteId, state.files.length);
       }
       // Could navigate to success page or show confirmation
       return { success: true };
