@@ -1347,6 +1347,173 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
+  // Send Quote Link - sends email with quote review page link
+  const handleSendQuoteLink = async () => {
+    const customerEmail =
+      reviewData?.customer_email ||
+      reviewData?.quotes?.customer?.email;
+
+    if (!customerEmail) {
+      toast.error("Customer email is required");
+      return;
+    }
+
+    if (!reviewData?.quote_id) {
+      toast.error("Missing quote data. Please refresh the page.");
+      return;
+    }
+
+    setIsSending(true);
+
+    try {
+      // 1. Save all changes first
+      await handleSave();
+
+      // 2. Call Edge Function to send quote link email
+      const accessToken = await getAccessToken();
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/send-quote-link-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            quoteId: reviewData.quote_id,
+            staffId: staffSession?.staffId,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to send quote link");
+      }
+
+      // 3. Update quote status to awaiting_payment
+      const { error: quoteError } = await supabase
+        .from("quotes")
+        .update({
+          status: "awaiting_payment",
+          quote_sent_at: new Date().toISOString(),
+        })
+        .eq("id", reviewData.quote_id);
+
+      if (quoteError) throw quoteError;
+
+      toast.success("Quote link sent to customer!");
+
+      // 4. Refresh data
+      await fetchAllData();
+    } catch (error) {
+      console.error("Send quote link error:", error);
+      toast.error("Failed to send quote link");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Send Payment Link - creates Stripe checkout and sends direct payment link
+  const handleSendPaymentLink = async () => {
+    const customerEmail =
+      reviewData?.customer_email ||
+      reviewData?.quotes?.customer?.email;
+
+    if (!customerEmail) {
+      toast.error("Customer email is required");
+      return;
+    }
+
+    if (!staffSession?.staffId || !reviewData?.quote_id) {
+      toast.error("Missing required data. Please refresh the page.");
+      return;
+    }
+
+    setIsSending(true);
+
+    try {
+      // 1. Save all changes first
+      await handleSave();
+
+      // 2. Create Stripe payment link
+      const accessToken = await getAccessToken();
+      const paymentResponse = await fetch(
+        `${SUPABASE_URL}/functions/v1/create-payment-link`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            quote_id: reviewData.quote_id,
+            amount: total,
+            customer_email: customerEmail,
+            customer_name: customerName,
+            quote_number: quoteNumber,
+          }),
+        },
+      );
+
+      const paymentResult = await paymentResponse.json();
+
+      if (!paymentResponse.ok || !paymentResult.url) {
+        throw new Error(paymentResult.error || "Failed to create payment link");
+      }
+
+      // 3. Send payment email with Stripe URL
+      const emailResponse = await fetch(
+        `${SUPABASE_URL}/functions/v1/send-payment-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            quoteId: reviewData.quote_id,
+            customerEmail: customerEmail,
+            customerName: customerName,
+            quoteNumber: quoteNumber,
+            total: total,
+            paymentUrl: paymentResult.url,
+          }),
+        },
+      );
+
+      const emailResult = await emailResponse.json();
+
+      if (!emailResponse.ok || !emailResult.success) {
+        console.warn("Email send warning:", emailResult);
+        // Continue anyway - payment link was created
+      }
+
+      // 4. Update quote status and store payment link
+      const { error: quoteError } = await supabase
+        .from("quotes")
+        .update({
+          status: "awaiting_payment",
+          payment_link: paymentResult.url,
+          payment_link_sent_at: new Date().toISOString(),
+        })
+        .eq("id", reviewData.quote_id);
+
+      if (quoteError) throw quoteError;
+
+      toast.success("Payment link sent to customer!");
+
+      // 5. Refresh data
+      await fetchAllData();
+    } catch (error) {
+      console.error("Send payment link error:", error);
+      toast.error("Failed to send payment link");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const handleUpdateAndNotify = async () => {
     if (!updateReason.trim()) {
       alert("Please provide a reason for the update.");
@@ -2480,6 +2647,9 @@ const HITLReviewDetail: React.FC = () => {
   // Check if review is approved (ready to send to customer)
   const isApproved = reviewData?.status === 'approved';
 
+  // Check if quote has been converted to an order (hide send buttons)
+  const isConvertedToOrder = ['paid', 'converted'].includes(reviewData?.quotes?.status || '');
+
   // ============================================
   // RENDER
   // ============================================
@@ -2578,7 +2748,7 @@ const HITLReviewDetail: React.FC = () => {
                   <div className="border-l border-gray-300 h-8"></div>
                 )}
 
-                {/* Right Group: Save + Action buttons based on quote status */}
+                {/* Right Group: Save + Send Quote Link + Send Payment Link */}
                 {!isReadOnly && (
                   <div className="flex items-center gap-2">
                     {/* Save Button - always visible when not read-only */}
@@ -2591,40 +2761,29 @@ const HITLReviewDetail: React.FC = () => {
                       <span className="hidden sm:inline">{isSaving ? "Saving..." : "Save"}</span>
                     </button>
 
-                    {/* Approve Button - for in_review or processing quote status */}
-                    {['in_review', 'processing'].includes(reviewData?.quotes?.status || '') && (
-                      <button
-                        onClick={handleApprove}
-                        disabled={isSaving || isSending}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm font-medium"
-                      >
-                        <Check className="w-4 h-4" />
-                        <span className="hidden sm:inline">{isSending ? "Approving..." : "Approve"}</span>
-                      </button>
-                    )}
+                    {/* Send Quote Link & Send Payment Link - hidden when paid or converted */}
+                    {!isConvertedToOrder && (
+                      <>
+                        {/* Send Quote Link Button - purple outline */}
+                        <button
+                          onClick={handleSendQuoteLink}
+                          disabled={isSaving || isSending}
+                          className="flex items-center gap-1.5 px-4 py-2 border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-50 text-sm font-medium"
+                        >
+                          <Mail className="w-4 h-4" />
+                          <span className="hidden sm:inline">{isSending ? "Sending..." : "Send Quote Link"}</span>
+                        </button>
 
-                    {/* Send to Customer Button - for approved quote status */}
-                    {reviewData?.quotes?.status === 'approved' && (
-                      <button
-                        onClick={handleSendToCustomer}
-                        disabled={isSaving || isSending}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 text-sm font-medium"
-                      >
-                        <Mail className="w-4 h-4" />
-                        <span className="hidden sm:inline">{isSending ? "Sending..." : "Send to Customer"}</span>
-                      </button>
-                    )}
-
-                    {/* Resend Quote Button - for awaiting_payment quote status */}
-                    {reviewData?.quotes?.status === 'awaiting_payment' && (
-                      <button
-                        onClick={handleResendQuote}
-                        disabled={isSaving || isSending}
-                        className="flex items-center gap-1.5 px-4 py-2 border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-50 text-sm font-medium"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                        <span className="hidden sm:inline">{isSending ? "Resending..." : "Resend Quote"}</span>
-                      </button>
+                        {/* Send Payment Link Button - purple solid */}
+                        <button
+                          onClick={handleSendPaymentLink}
+                          disabled={isSaving || isSending}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 text-sm font-medium"
+                        >
+                          <CreditCard className="w-4 h-4" />
+                          <span className="hidden sm:inline">{isSending ? "Sending..." : "Send Payment Link"}</span>
+                        </button>
+                      </>
                     )}
                   </div>
                 )}
