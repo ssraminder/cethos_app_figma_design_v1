@@ -155,4 +155,24 @@
     overflow-x: auto;
     white-space: pre;
   }
+
+  /* ============================================
+     iOS ZOOM PREVENTION
+     Prevent iOS from zooming on input focus
+     iOS zooms when input font-size < 16px
+     ============================================ */
+  @media screen and (max-width: 768px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Prevent horizontal overflow that can cause zoom issues */
+  html,
+  body {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
 }
