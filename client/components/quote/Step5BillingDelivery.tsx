@@ -3,15 +3,11 @@ import { useQuote } from "@/context/QuoteContext";
 import { supabase } from "@/lib/supabase";
 import {
   CheckCircle2,
-  X,
-  Mail,
-  Send,
-  Zap,
-  MapPin,
   ChevronRight,
   Loader2,
   Globe,
-  Truck,
+  Mail,
+  MapPin,
 } from "lucide-react";
 import StartOverLink from "@/components/StartOverLink";
 import { toast } from "sonner";
@@ -31,6 +27,61 @@ const CANADIAN_PROVINCES = [
   { code: "QC", name: "Quebec" },
   { code: "SK", name: "Saskatchewan" },
   { code: "YT", name: "Yukon" },
+];
+
+// US States Data
+const US_STATES = [
+  { code: "AL", name: "Alabama" },
+  { code: "AK", name: "Alaska" },
+  { code: "AZ", name: "Arizona" },
+  { code: "AR", name: "Arkansas" },
+  { code: "CA", name: "California" },
+  { code: "CO", name: "Colorado" },
+  { code: "CT", name: "Connecticut" },
+  { code: "DE", name: "Delaware" },
+  { code: "FL", name: "Florida" },
+  { code: "GA", name: "Georgia" },
+  { code: "HI", name: "Hawaii" },
+  { code: "ID", name: "Idaho" },
+  { code: "IL", name: "Illinois" },
+  { code: "IN", name: "Indiana" },
+  { code: "IA", name: "Iowa" },
+  { code: "KS", name: "Kansas" },
+  { code: "KY", name: "Kentucky" },
+  { code: "LA", name: "Louisiana" },
+  { code: "ME", name: "Maine" },
+  { code: "MD", name: "Maryland" },
+  { code: "MA", name: "Massachusetts" },
+  { code: "MI", name: "Michigan" },
+  { code: "MN", name: "Minnesota" },
+  { code: "MS", name: "Mississippi" },
+  { code: "MO", name: "Missouri" },
+  { code: "MT", name: "Montana" },
+  { code: "NE", name: "Nebraska" },
+  { code: "NV", name: "Nevada" },
+  { code: "NH", name: "New Hampshire" },
+  { code: "NJ", name: "New Jersey" },
+  { code: "NM", name: "New Mexico" },
+  { code: "NY", name: "New York" },
+  { code: "NC", name: "North Carolina" },
+  { code: "ND", name: "North Dakota" },
+  { code: "OH", name: "Ohio" },
+  { code: "OK", name: "Oklahoma" },
+  { code: "OR", name: "Oregon" },
+  { code: "PA", name: "Pennsylvania" },
+  { code: "RI", name: "Rhode Island" },
+  { code: "SC", name: "South Carolina" },
+  { code: "SD", name: "South Dakota" },
+  { code: "TN", name: "Tennessee" },
+  { code: "TX", name: "Texas" },
+  { code: "UT", name: "Utah" },
+  { code: "VT", name: "Vermont" },
+  { code: "VA", name: "Virginia" },
+  { code: "WA", name: "Washington" },
+  { code: "WV", name: "West Virginia" },
+  { code: "WI", name: "Wisconsin" },
+  { code: "WY", name: "Wyoming" },
+  { code: "DC", name: "District of Columbia" },
 ];
 
 interface DeliveryOption {
@@ -78,6 +129,13 @@ interface PricingSummary {
   total: number;
 }
 
+interface GeoLocationData {
+  country_code: string;
+  region_code: string;
+  city: string;
+  postal: string;
+}
+
 export default function Step5BillingDelivery() {
   const { state, updateState, goToNextStep, goToPreviousStep } = useQuote();
 
@@ -105,7 +163,7 @@ export default function Step5BillingDelivery() {
         : "",
     streetAddress: "",
     city: "",
-    province: "AB",
+    province: "",
     postalCode: "",
     country: "CA",
   });
@@ -114,12 +172,13 @@ export default function Step5BillingDelivery() {
     fullName: "",
     streetAddress: "",
     city: "",
-    province: "AB",
+    province: "",
     postalCode: "",
     country: "CA",
   });
 
   const [sameAsBilling, setSameAsBilling] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(true);
 
   const [pricing, setPricing] = useState<PricingSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,10 +211,56 @@ export default function Step5BillingDelivery() {
 
   const isPickupSelected = selectedPhysicalOption === "pickup";
 
+  // Helper functions for labels
+  const getPostalCodeLabel = (country: string): string => {
+    if (country === "US") return "ZIP Code";
+    if (country === "CA") return "Postal Code";
+    return "Postal/ZIP Code";
+  };
+
+  const getProvinceLabel = (country: string): string => {
+    if (country === "US") return "State";
+    if (country === "CA") return "Province";
+    return "Province/State/Region";
+  };
+
+  // Fetch visitor's location from IP
+  const fetchGeoLocation = async (): Promise<GeoLocationData | null> => {
+    try {
+      // Using ipapi.co - free tier: 1000 requests/day, no API key needed
+      const response = await fetch("https://ipapi.co/json/", {
+        headers: { Accept: "application/json" },
+      });
+      
+      if (!response.ok) {
+        console.warn("Geolocation fetch failed:", response.status);
+        return null;
+      }
+      
+      const data = await response.json();
+      
+      return {
+        country_code: data.country_code || "CA",
+        region_code: data.region_code || "",
+        city: data.city || "",
+        postal: data.postal || "",
+      };
+    } catch (error) {
+      console.warn("Geolocation error:", error);
+      return null;
+    }
+  };
+
   // Fetch tax rate function
   const fetchTaxRate = async (
     provinceCode: string,
+    countryCode: string,
   ): Promise<{ rate: number; name: string }> => {
+    // Only apply Canadian taxes
+    if (countryCode !== "CA") {
+      return { rate: 0, name: "No Tax" };
+    }
+    
     try {
       const normalizedCode = provinceCode.includes("-")
         ? provinceCode.toUpperCase()
@@ -167,7 +272,6 @@ export default function Step5BillingDelivery() {
         .eq("is_active", true);
 
       if (error || !data || data.length === 0) {
-        // Fallback to GST
         return { rate: 0.05, name: "GST" };
       }
 
@@ -175,15 +279,65 @@ export default function Step5BillingDelivery() {
         (sum, row) => sum + Number(row.rate || 0),
         0,
       );
-      const taxName = Array.from(new Set(data.map((row) => row.tax_name)))
+      const combinedTaxName = Array.from(new Set(data.map((row) => row.tax_name)))
         .filter(Boolean)
         .join(" + ");
 
-      return { rate: totalRate, name: taxName || "GST" };
+      return { rate: totalRate, name: combinedTaxName || "GST" };
     } catch {
       return { rate: 0.05, name: "GST" };
     }
   };
+
+  // Initialize with geolocation
+  useEffect(() => {
+    const initializeWithGeoLocation = async () => {
+      setGeoLoading(true);
+      
+      // Check if user already has billing address saved (went back from Step 6)
+      if (state.billingAddress?.addressLine1) {
+        setGeoLoading(false);
+        return;
+      }
+      
+      const geo = await fetchGeoLocation();
+      
+      if (geo) {
+        // Determine default province based on country
+        let defaultProvince = geo.region_code || "";
+        
+        // Validate province/state code exists in our lists
+        if (geo.country_code === "CA") {
+          const validProvince = CANADIAN_PROVINCES.find(
+            (p) => p.code === geo.region_code
+          );
+          defaultProvince = validProvince ? geo.region_code : "AB";
+        } else if (geo.country_code === "US") {
+          const validState = US_STATES.find((s) => s.code === geo.region_code);
+          defaultProvince = validState ? geo.region_code : "";
+        }
+        
+        setBillingAddress((prev) => ({
+          ...prev,
+          country: geo.country_code,
+          province: defaultProvince,
+          city: geo.city || prev.city,
+          postalCode: geo.postal || prev.postalCode,
+        }));
+        
+        // Also set shipping defaults
+        setShippingAddress((prev) => ({
+          ...prev,
+          country: geo.country_code,
+          province: defaultProvince,
+        }));
+      }
+      
+      setGeoLoading(false);
+    };
+    
+    initializeWithGeoLocation();
+  }, []);
 
   useEffect(() => {
     fetchDeliveryData();
@@ -195,17 +349,18 @@ export default function Step5BillingDelivery() {
     }
   }, [selectedPhysicalOption, pricing, taxRate]);
 
-  // Fetch tax rate when province changes
+  // Fetch tax rate when province or country changes
   useEffect(() => {
     const updateTaxRate = async () => {
-      if (billingAddress.province) {
-        const { rate, name } = await fetchTaxRate(billingAddress.province);
-        setTaxRate(rate);
-        setTaxName(name);
-      }
+      const { rate, name } = await fetchTaxRate(
+        billingAddress.province,
+        billingAddress.country
+      );
+      setTaxRate(rate);
+      setTaxName(name);
     };
     updateTaxRate();
-  }, [billingAddress.province]);
+  }, [billingAddress.province, billingAddress.country]);
 
   const fetchDeliveryData = async () => {
     setLoading(true);
@@ -242,7 +397,6 @@ export default function Step5BillingDelivery() {
       if (locationsError) throw locationsError;
       setPickupLocations(locations || []);
 
-      // If only one pickup location, auto-select it
       if (locations && locations.length === 1) {
         setSelectedPickupLocation(locations[0].id);
       }
@@ -307,7 +461,6 @@ export default function Step5BillingDelivery() {
           });
         }
 
-        // Pre-fill pickup location if user went back
         if (state.pickupLocationId) {
           setSelectedPickupLocation(state.pickupLocationId);
         }
@@ -328,7 +481,6 @@ export default function Step5BillingDelivery() {
     );
     const deliveryFee = selectedOption?.price || 0;
 
-    // Subtotal already includes rush fee from Step 4
     const baseSubtotal =
       pricing.translation_total + pricing.certification_total;
     const subtotalWithRushAndDelivery =
@@ -346,7 +498,11 @@ export default function Step5BillingDelivery() {
     });
   };
 
-  const validateField = (name: string, value: string): string => {
+  const validateField = (
+    name: string,
+    value: string,
+    country?: string
+  ): string => {
     switch (name) {
       case "fullName":
         return value.trim().length < 2 ? "Name is required" : "";
@@ -355,21 +511,54 @@ export default function Step5BillingDelivery() {
       case "city":
         return value.trim().length < 2 ? "City is required" : "";
       case "postalCode":
-        const postalRegex = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
-        return !postalRegex.test(value.trim())
-          ? "Valid postal code required (e.g., T2P 1J9)"
-          : "";
+        if (country === "CA") {
+          const caPostalRegex = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
+          return !caPostalRegex.test(value.trim())
+            ? "Valid postal code required (e.g., T2P 1J9)"
+            : "";
+        }
+        if (country === "US") {
+          const usZipRegex = /^\d{5}(-\d{4})?$/;
+          return !usZipRegex.test(value.trim())
+            ? "Valid ZIP code required (e.g., 12345)"
+            : "";
+        }
+        return value.trim().length < 2 ? "Postal/ZIP code required" : "";
+      case "province":
+        if (country === "CA" || country === "US") {
+          return value.trim().length < 2 ? "Province/State is required" : "";
+        }
+        return "";
       default:
         return "";
     }
   };
 
   const handleBillingFieldChange = (field: keyof Address, value: string) => {
-    setBillingAddress((prev) => ({ ...prev, [field]: value }));
+    if (field === "country") {
+      let newProvince = "";
+      if (value === "CA") newProvince = "AB";
+      else if (value === "US") newProvince = "AL";
 
-    // If same as billing is checked, update shipping too
-    if (sameAsBilling) {
-      setShippingAddress((prev) => ({ ...prev, [field]: value }));
+      setBillingAddress((prev) => ({
+        ...prev,
+        [field]: value,
+        province: newProvince,
+      }));
+
+      if (sameAsBilling) {
+        setShippingAddress((prev) => ({
+          ...prev,
+          [field]: value,
+          province: newProvince,
+        }));
+      }
+    } else {
+      setBillingAddress((prev) => ({ ...prev, [field]: value }));
+
+      if (sameAsBilling) {
+        setShippingAddress((prev) => ({ ...prev, [field]: value }));
+      }
     }
 
     if (errors[`billing_${field}`]) {
@@ -382,7 +571,19 @@ export default function Step5BillingDelivery() {
   };
 
   const handleShippingFieldChange = (field: keyof Address, value: string) => {
-    setShippingAddress((prev) => ({ ...prev, [field]: value }));
+    if (field === "country") {
+      let newProvince = "";
+      if (value === "CA") newProvince = "AB";
+      else if (value === "US") newProvince = "AL";
+
+      setShippingAddress((prev) => ({
+        ...prev,
+        [field]: value,
+        province: newProvince,
+      }));
+    } else {
+      setShippingAddress((prev) => ({ ...prev, [field]: value }));
+    }
 
     if (errors[`shipping_${field}`]) {
       setErrors((prev) => {
@@ -395,7 +596,11 @@ export default function Step5BillingDelivery() {
 
   const handleBillingFieldBlur = (field: keyof Address) => {
     setTouched((prev) => ({ ...prev, [`billing_${field}`]: true }));
-    const error = validateField(field, billingAddress[field]);
+    const error = validateField(
+      field,
+      billingAddress[field],
+      billingAddress.country
+    );
     if (error) {
       setErrors((prev) => ({ ...prev, [`billing_${field}`]: error }));
     }
@@ -403,7 +608,11 @@ export default function Step5BillingDelivery() {
 
   const handleShippingFieldBlur = (field: keyof Address) => {
     setTouched((prev) => ({ ...prev, [`shipping_${field}`]: true }));
-    const error = validateField(field, shippingAddress[field]);
+    const error = validateField(
+      field,
+      shippingAddress[field],
+      shippingAddress.country
+    );
     if (error) {
       setErrors((prev) => ({ ...prev, [`shipping_${field}`]: error }));
     }
@@ -412,9 +621,7 @@ export default function Step5BillingDelivery() {
   const handleSameAsBillingChange = (checked: boolean) => {
     setSameAsBilling(checked);
     if (checked) {
-      // Copy all billing fields to shipping
       setShippingAddress({ ...billingAddress });
-      // Clear shipping errors since we're copying valid billing data
       setErrors((prev) => {
         const newErrors = { ...prev };
         Object.keys(newErrors).forEach((key) => {
@@ -430,34 +637,50 @@ export default function Step5BillingDelivery() {
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    // Always validate billing address (all fields)
     const billingFullNameError = validateField(
       "fullName",
       billingAddress.fullName,
+      billingAddress.country
     );
     if (billingFullNameError) newErrors.billing_fullName = billingFullNameError;
 
     const billingStreetError = validateField(
       "streetAddress",
       billingAddress.streetAddress,
+      billingAddress.country
     );
     if (billingStreetError)
       newErrors.billing_streetAddress = billingStreetError;
 
-    const billingCityError = validateField("city", billingAddress.city);
+    const billingCityError = validateField(
+      "city",
+      billingAddress.city,
+      billingAddress.country
+    );
     if (billingCityError) newErrors.billing_city = billingCityError;
 
     const billingPostalError = validateField(
       "postalCode",
       billingAddress.postalCode,
+      billingAddress.country
     );
     if (billingPostalError) newErrors.billing_postalCode = billingPostalError;
 
-    // Only validate shipping address if physical delivery requires it
+    if (billingAddress.country === "CA" || billingAddress.country === "US") {
+      const billingProvinceError = validateField(
+        "province",
+        billingAddress.province,
+        billingAddress.country
+      );
+      if (billingProvinceError)
+        newErrors.billing_province = billingProvinceError;
+    }
+
     if (needsShippingAddress) {
       const shippingFullNameError = validateField(
         "fullName",
         shippingAddress.fullName,
+        shippingAddress.country
       );
       if (shippingFullNameError)
         newErrors.shipping_fullName = shippingFullNameError;
@@ -465,22 +688,37 @@ export default function Step5BillingDelivery() {
       const shippingStreetError = validateField(
         "streetAddress",
         shippingAddress.streetAddress,
+        shippingAddress.country
       );
       if (shippingStreetError)
         newErrors.shipping_streetAddress = shippingStreetError;
 
-      const shippingCityError = validateField("city", shippingAddress.city);
+      const shippingCityError = validateField(
+        "city",
+        shippingAddress.city,
+        shippingAddress.country
+      );
       if (shippingCityError) newErrors.shipping_city = shippingCityError;
 
       const shippingPostalError = validateField(
         "postalCode",
         shippingAddress.postalCode,
+        shippingAddress.country
       );
       if (shippingPostalError)
         newErrors.shipping_postalCode = shippingPostalError;
+
+      if (shippingAddress.country === "CA" || shippingAddress.country === "US") {
+        const shippingProvinceError = validateField(
+          "province",
+          shippingAddress.province,
+          shippingAddress.country
+        );
+        if (shippingProvinceError)
+          newErrors.shipping_province = shippingProvinceError;
+      }
     }
 
-    // If pickup selected and multiple locations exist, must select one
     if (
       isPickupSelected &&
       pickupLocations.length > 1 &&
@@ -491,7 +729,6 @@ export default function Step5BillingDelivery() {
 
     setErrors(newErrors);
 
-    // Mark all required fields as touched
     const touchedFields: Record<string, boolean> = {
       billing_fullName: true,
       billing_streetAddress: true,
@@ -521,10 +758,9 @@ export default function Step5BillingDelivery() {
 
     setSaving(true);
     try {
-      // Save billing address and delivery selection to database
       if (state.quoteId && pricing) {
         const selectedPhysicalOptionObj = physicalOptions.find(
-          (opt) => opt.code === selectedPhysicalOption,
+          (opt) => opt.code === selectedPhysicalOption
         );
 
         const { error } = await supabase
@@ -578,7 +814,6 @@ export default function Step5BillingDelivery() {
         if (error) throw error;
       }
 
-      // Update context state
       updateState({
         physicalDeliveryOption: selectedPhysicalOption,
         pickupLocationId: isPickupSelected ? selectedPickupLocation : null,
@@ -586,7 +821,8 @@ export default function Step5BillingDelivery() {
         billingAddress: {
           firstName:
             billingAddress.fullName.split(" ")[0] || billingAddress.fullName,
-          lastName: billingAddress.fullName.split(" ").slice(1).join(" ") || "",
+          lastName:
+            billingAddress.fullName.split(" ").slice(1).join(" ") || "",
           company: state.companyName || "",
           addressLine1: billingAddress.streetAddress,
           addressLine2: "",
@@ -624,16 +860,6 @@ export default function Step5BillingDelivery() {
     }
   };
 
-  const getDeliveryIcon = (deliveryType: string, code: string) => {
-    if (code === "pickup") return <MapPin className="w-5 h-5" />;
-    if (deliveryType === "online") return <Globe className="w-5 h-5" />;
-    if (code === "email") return <Mail className="w-5 h-5" />;
-    if (code === "priority_mail") return <Send className="w-5 h-5" />;
-    if (code.includes("express") || code.includes("courier"))
-      return <Zap className="w-5 h-5" />;
-    return <Truck className="w-5 h-5" />;
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -660,6 +886,13 @@ export default function Step5BillingDelivery() {
           Billing Information
         </h3>
 
+        {geoLoading && (
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Detecting your location...</span>
+          </div>
+        )}
+
         <div className="space-y-4">
           {/* Full Name */}
           <div>
@@ -683,109 +916,6 @@ export default function Step5BillingDelivery() {
             {touched.billing_fullName && errors.billing_fullName && (
               <p className="text-xs text-red-600 mt-1">
                 {errors.billing_fullName}
-              </p>
-            )}
-          </div>
-
-          {/* Street Address */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Street Address <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={billingAddress.streetAddress}
-              onChange={(e) =>
-                handleBillingFieldChange("streetAddress", e.target.value)
-              }
-              onBlur={() => handleBillingFieldBlur("streetAddress")}
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
-                touched.billing_streetAddress && errors.billing_streetAddress
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
-              placeholder="123 Main Street"
-            />
-            {touched.billing_streetAddress && errors.billing_streetAddress && (
-              <p className="text-xs text-red-600 mt-1">
-                {errors.billing_streetAddress}
-              </p>
-            )}
-          </div>
-
-          {/* City and Province */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                City <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={billingAddress.city}
-                onChange={(e) =>
-                  handleBillingFieldChange("city", e.target.value)
-                }
-                onBlur={() => handleBillingFieldBlur("city")}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
-                  touched.billing_city && errors.billing_city
-                    ? "border-red-500"
-                    : "border-gray-300"
-                }`}
-                placeholder="Calgary"
-              />
-              {touched.billing_city && errors.billing_city && (
-                <p className="text-xs text-red-600 mt-1">
-                  {errors.billing_city}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Province <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={billingAddress.province}
-                onChange={(e) =>
-                  handleBillingFieldChange("province", e.target.value)
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
-              >
-                {CANADIAN_PROVINCES.map((province) => (
-                  <option key={province.code} value={province.code}>
-                    {province.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Postal Code */}
-          <div className="sm:w-1/2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Postal Code <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={billingAddress.postalCode}
-              onChange={(e) =>
-                handleBillingFieldChange(
-                  "postalCode",
-                  e.target.value.toUpperCase(),
-                )
-              }
-              onBlur={() => handleBillingFieldBlur("postalCode")}
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
-                touched.billing_postalCode && errors.billing_postalCode
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
-              placeholder="T2P 1J9"
-              maxLength={7}
-            />
-            {touched.billing_postalCode && errors.billing_postalCode && (
-              <p className="text-xs text-red-600 mt-1">
-                {errors.billing_postalCode}
               </p>
             )}
           </div>
@@ -823,6 +953,162 @@ export default function Step5BillingDelivery() {
               )}
             </select>
           </div>
+
+          {/* Street Address */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Street Address <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={billingAddress.streetAddress}
+              onChange={(e) =>
+                handleBillingFieldChange("streetAddress", e.target.value)
+              }
+              onBlur={() => handleBillingFieldBlur("streetAddress")}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                touched.billing_streetAddress && errors.billing_streetAddress
+                  ? "border-red-500"
+                  : "border-gray-300"
+              }`}
+              placeholder="123 Main Street"
+            />
+            {touched.billing_streetAddress && errors.billing_streetAddress && (
+              <p className="text-xs text-red-600 mt-1">
+                {errors.billing_streetAddress}
+              </p>
+            )}
+          </div>
+
+          {/* City and Province/State */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                City <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={billingAddress.city}
+                onChange={(e) =>
+                  handleBillingFieldChange("city", e.target.value)
+                }
+                onBlur={() => handleBillingFieldBlur("city")}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                  touched.billing_city && errors.billing_city
+                    ? "border-red-500"
+                    : "border-gray-300"
+                }`}
+                placeholder="Calgary"
+              />
+              {touched.billing_city && errors.billing_city && (
+                <p className="text-xs text-red-600 mt-1">
+                  {errors.billing_city}
+                </p>
+              )}
+            </div>
+
+            {/* Province/State - Conditional */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {getProvinceLabel(billingAddress.country)}{" "}
+                {(billingAddress.country === "CA" ||
+                  billingAddress.country === "US") && (
+                  <span className="text-red-500">*</span>
+                )}
+              </label>
+              {billingAddress.country === "CA" ? (
+                <select
+                  value={billingAddress.province}
+                  onChange={(e) =>
+                    handleBillingFieldChange("province", e.target.value)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
+                >
+                  {CANADIAN_PROVINCES.map((province) => (
+                    <option key={province.code} value={province.code}>
+                      {province.name}
+                    </option>
+                  ))}
+                </select>
+              ) : billingAddress.country === "US" ? (
+                <select
+                  value={billingAddress.province}
+                  onChange={(e) =>
+                    handleBillingFieldChange("province", e.target.value)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
+                >
+                  <option value="">Select state...</option>
+                  {US_STATES.map((state) => (
+                    <option key={state.code} value={state.code}>
+                      {state.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={billingAddress.province}
+                  onChange={(e) =>
+                    handleBillingFieldChange("province", e.target.value)
+                  }
+                  onBlur={() => handleBillingFieldBlur("province")}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
+                  placeholder="Province/State (optional)"
+                />
+              )}
+              {touched.billing_province && errors.billing_province && (
+                <p className="text-xs text-red-600 mt-1">
+                  {errors.billing_province}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Postal Code */}
+          <div className="sm:w-1/2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {getPostalCodeLabel(billingAddress.country)}{" "}
+              <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={billingAddress.postalCode}
+              onChange={(e) =>
+                handleBillingFieldChange(
+                  "postalCode",
+                  billingAddress.country === "CA"
+                    ? e.target.value.toUpperCase()
+                    : e.target.value
+                )
+              }
+              onBlur={() => handleBillingFieldBlur("postalCode")}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                touched.billing_postalCode && errors.billing_postalCode
+                  ? "border-red-500"
+                  : "border-gray-300"
+              }`}
+              placeholder={
+                billingAddress.country === "CA"
+                  ? "T2P 1J9"
+                  : billingAddress.country === "US"
+                  ? "12345"
+                  : "Postal code"
+              }
+              maxLength={
+                billingAddress.country === "CA"
+                  ? 7
+                  : billingAddress.country === "US"
+                  ? 10
+                  : 20
+              }
+            />
+            {touched.billing_postalCode && errors.billing_postalCode && (
+              <p className="text-xs text-red-600 mt-1">
+                {errors.billing_postalCode}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -841,8 +1127,8 @@ export default function Step5BillingDelivery() {
                 option.is_always_selected
                   ? "border-green-200 bg-green-50 cursor-not-allowed"
                   : selectedDigitalOptions.includes(option.code)
-                    ? "border-cethos-teal bg-cethos-teal-50 cursor-pointer"
-                    : "border-gray-200 hover:border-gray-300 cursor-pointer"
+                  ? "border-cethos-teal bg-cethos-teal-50 cursor-pointer"
+                  : "border-gray-200 hover:border-gray-300 cursor-pointer"
               }`}
             >
               <input
@@ -856,7 +1142,7 @@ export default function Step5BillingDelivery() {
                   setSelectedDigitalOptions((prev) =>
                     prev.includes(option.code)
                       ? prev.filter((c) => c !== option.code)
-                      : [...prev, option.code],
+                      : [...prev, option.code]
                   );
                 }}
                 disabled={option.is_always_selected}
@@ -870,7 +1156,11 @@ export default function Step5BillingDelivery() {
                     : "bg-gray-100 text-gray-600"
                 }`}
               >
-                {getDeliveryIcon(option.delivery_type, option.code)}
+                {option.code === "email" ? (
+                  <Mail className="w-5 h-5" />
+                ) : (
+                  <Globe className="w-5 h-5" />
+                )}
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
@@ -895,98 +1185,39 @@ export default function Step5BillingDelivery() {
         </div>
       </div>
 
-      {/* Physical Delivery Section */}
+      {/* Physical Delivery Section - DROPDOWN */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Physical Delivery
         </h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Choose how you'd like to receive certified hard copies
+        </p>
 
-        <div className="space-y-3">
-          {/* None Option */}
-          <label
-            className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all ${
-              selectedPhysicalOption === "none"
-                ? "border-cethos-teal bg-cethos-teal-50"
-                : "border-gray-200 hover:border-cethos-teal"
-            }`}
-          >
-            <input
-              type="radio"
-              name="physicalDelivery"
-              value="none"
-              checked={selectedPhysicalOption === "none"}
-              onChange={(e) => setSelectedPhysicalOption(e.target.value)}
-              className="mt-1"
-            />
-            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-100 text-gray-600">
-              <X className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-medium text-gray-900">
-                  No physical copy needed
-                </span>
-                <span className="text-green-600 font-semibold whitespace-nowrap flex-shrink-0 ml-2">
-                  FREE
-                </span>
-              </div>
-              <p className="text-sm text-gray-600">Digital delivery only</p>
-            </div>
-            {selectedPhysicalOption === "none" && (
-              <CheckCircle2 className="w-5 h-5 text-cethos-teal flex-shrink-0 mt-1" />
-            )}
-          </label>
-
-          {/* Physical Options from Database */}
+        <select
+          value={selectedPhysicalOption}
+          onChange={(e) => setSelectedPhysicalOption(e.target.value)}
+          className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal text-gray-900"
+        >
+          <option value="none">No physical copy needed (Digital only) - FREE</option>
           {physicalOptions.map((option) => (
-            <label
-              key={option.id}
-              className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                selectedPhysicalOption === option.code
-                  ? "border-cethos-teal bg-cethos-teal-50"
-                  : "border-gray-200 hover:border-cethos-teal"
-              }`}
-            >
-              <input
-                type="radio"
-                name="physicalDelivery"
-                value={option.code}
-                checked={selectedPhysicalOption === option.code}
-                onChange={(e) => setSelectedPhysicalOption(e.target.value)}
-                className="mt-1"
-              />
-              <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  selectedPhysicalOption === option.code
-                    ? "bg-cethos-teal text-white"
-                    : "bg-gray-100 text-gray-600"
-                }`}
-              >
-                {getDeliveryIcon(option.delivery_type, option.code)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-gray-900">
-                    {option.name}
-                  </span>
-                  <span
-                    className={`font-semibold whitespace-nowrap flex-shrink-0 ml-2 ${
-                      option.price === 0 ? "text-green-600" : "text-gray-900"
-                    }`}
-                  >
-                    {option.price === 0
-                      ? "FREE"
-                      : `$${option.price.toFixed(2)}`}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600">{option.description}</p>
-              </div>
-              {selectedPhysicalOption === option.code && (
-                <CheckCircle2 className="w-5 h-5 text-cethos-teal flex-shrink-0 mt-1" />
-              )}
-            </label>
+            <option key={option.id} value={option.code}>
+              {option.name} -{" "}
+              {option.price === 0 ? "FREE" : `$${option.price.toFixed(2)}`}
+            </option>
           ))}
-        </div>
+        </select>
+
+        {/* Show description for selected option */}
+        {selectedPhysicalOption !== "none" && (
+          <p className="text-sm text-gray-500 mt-2">
+            {
+              physicalOptions.find(
+                (opt) => opt.code === selectedPhysicalOption
+              )?.description
+            }
+          </p>
+        )}
       </div>
 
       {/* Shipping Address Form - Show when mail/courier selected */}
@@ -1041,6 +1272,43 @@ export default function Step5BillingDelivery() {
               )}
             </div>
 
+            {/* Country */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Country <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={shippingAddress.country}
+                onChange={(e) =>
+                  handleShippingFieldChange("country", e.target.value)
+                }
+                disabled={sameAsBilling}
+                className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                  sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
+                }`}
+              >
+                <option value="">Select country...</option>
+                {commonCountries.length > 0 && (
+                  <optgroup label="Common Countries">
+                    {commonCountries.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {otherCountries.length > 0 && (
+                  <optgroup label="All Countries">
+                    {otherCountries.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+
             {/* Street Address */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1072,7 +1340,7 @@ export default function Step5BillingDelivery() {
                 )}
             </div>
 
-            {/* City and Province */}
+            {/* City and Province/State */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1102,33 +1370,78 @@ export default function Step5BillingDelivery() {
                 )}
               </div>
 
+              {/* Province/State - Conditional */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Province <span className="text-red-500">*</span>
+                  {getProvinceLabel(shippingAddress.country)}{" "}
+                  {(shippingAddress.country === "CA" ||
+                    shippingAddress.country === "US") && (
+                    <span className="text-red-500">*</span>
+                  )}
                 </label>
-                <select
-                  value={shippingAddress.province}
-                  onChange={(e) =>
-                    handleShippingFieldChange("province", e.target.value)
-                  }
-                  disabled={sameAsBilling}
-                  className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
-                    sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
-                  }`}
-                >
-                  {CANADIAN_PROVINCES.map((province) => (
-                    <option key={province.code} value={province.code}>
-                      {province.name}
-                    </option>
-                  ))}
-                </select>
+                {shippingAddress.country === "CA" ? (
+                  <select
+                    value={shippingAddress.province}
+                    onChange={(e) =>
+                      handleShippingFieldChange("province", e.target.value)
+                    }
+                    disabled={sameAsBilling}
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                      sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
+                    }`}
+                  >
+                    {CANADIAN_PROVINCES.map((province) => (
+                      <option key={province.code} value={province.code}>
+                        {province.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : shippingAddress.country === "US" ? (
+                  <select
+                    value={shippingAddress.province}
+                    onChange={(e) =>
+                      handleShippingFieldChange("province", e.target.value)
+                    }
+                    disabled={sameAsBilling}
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                      sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
+                    }`}
+                  >
+                    <option value="">Select state...</option>
+                    {US_STATES.map((st) => (
+                      <option key={st.code} value={st.code}>
+                        {st.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={shippingAddress.province}
+                    onChange={(e) =>
+                      handleShippingFieldChange("province", e.target.value)
+                    }
+                    onBlur={() => handleShippingFieldBlur("province")}
+                    disabled={sameAsBilling}
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                      sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
+                    }`}
+                    placeholder="Province/State (optional)"
+                  />
+                )}
+                {touched.shipping_province && errors.shipping_province && (
+                  <p className="text-xs text-red-600 mt-1">
+                    {errors.shipping_province}
+                  </p>
+                )}
               </div>
             </div>
 
             {/* Postal Code */}
             <div className="sm:w-1/2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Postal Code <span className="text-red-500">*</span>
+                {getPostalCodeLabel(shippingAddress.country)}{" "}
+                <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -1136,7 +1449,9 @@ export default function Step5BillingDelivery() {
                 onChange={(e) =>
                   handleShippingFieldChange(
                     "postalCode",
-                    e.target.value.toUpperCase(),
+                    shippingAddress.country === "CA"
+                      ? e.target.value.toUpperCase()
+                      : e.target.value
                   )
                 }
                 onBlur={() => handleShippingFieldBlur("postalCode")}
@@ -1148,8 +1463,20 @@ export default function Step5BillingDelivery() {
                     ? "border-red-500"
                     : "border-gray-300"
                 }`}
-                placeholder="T2P 1J9"
-                maxLength={7}
+                placeholder={
+                  shippingAddress.country === "CA"
+                    ? "T2P 1J9"
+                    : shippingAddress.country === "US"
+                    ? "12345"
+                    : "Postal code"
+                }
+                maxLength={
+                  shippingAddress.country === "CA"
+                    ? 7
+                    : shippingAddress.country === "US"
+                    ? 10
+                    : 20
+                }
               />
               {touched.shipping_postalCode && errors.shipping_postalCode && (
                 <p className="text-xs text-red-600 mt-1">
@@ -1157,43 +1484,6 @@ export default function Step5BillingDelivery() {
                 </p>
               )}
             </div>
-          </div>
-
-          {/* Country */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Country <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={shippingAddress.country}
-              onChange={(e) =>
-                handleShippingFieldChange("country", e.target.value)
-              }
-              disabled={sameAsBilling}
-              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
-                sameAsBilling ? "bg-gray-50 cursor-not-allowed" : ""
-              }`}
-            >
-              <option value="">Select country...</option>
-              {commonCountries.length > 0 && (
-                <optgroup label="Common Countries">
-                  {commonCountries.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {otherCountries.length > 0 && (
-                <optgroup label="All Countries">
-                  {otherCountries.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
           </div>
         </div>
       )}
@@ -1206,7 +1496,6 @@ export default function Step5BillingDelivery() {
           </h3>
 
           {pickupLocations.length === 1 ? (
-            // Single location - just display it
             <div className="p-4 bg-cethos-teal-50 border border-cethos-teal/20 rounded-lg">
               <p className="font-medium text-gray-900">
                 {pickupLocations[0].name}
@@ -1235,7 +1524,6 @@ export default function Step5BillingDelivery() {
               )}
             </div>
           ) : (
-            // Multiple locations - show dropdown
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Select pickup location
@@ -1253,12 +1541,11 @@ export default function Step5BillingDelivery() {
                 ))}
               </select>
 
-              {/* Show selected location details */}
               {selectedPickupLocation && (
                 <div className="mt-3 p-4 bg-gray-50 rounded-lg">
                   {(() => {
                     const loc = pickupLocations.find(
-                      (l) => l.id === selectedPickupLocation,
+                      (l) => l.id === selectedPickupLocation
                     );
                     if (!loc) return null;
                     return (
@@ -1325,14 +1612,25 @@ export default function Step5BillingDelivery() {
               </div>
             )}
 
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">
-                {taxName} ({(taxRate * 100).toFixed(0)}%)
-              </span>
-              <span className="text-gray-900 font-medium">
-                ${pricing.tax_amount.toFixed(2)}
-              </span>
-            </div>
+            {taxRate > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">
+                  {taxName} ({(taxRate * 100).toFixed(0)}%)
+                </span>
+                <span className="text-gray-900 font-medium">
+                  ${pricing.tax_amount.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {taxRate === 0 && billingAddress.country !== "CA" && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Tax</span>
+                <span className="text-gray-500 font-medium">
+                  Not applicable
+                </span>
+              </div>
+            )}
 
             <div className="pt-3 border-t-2 border-gray-300 flex justify-between items-center">
               <span className="text-xl font-bold text-gray-900">TOTAL CAD</span>
