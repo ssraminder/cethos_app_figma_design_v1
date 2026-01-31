@@ -1075,7 +1075,10 @@ export default function Step4ReviewRush() {
             </div>
             <div className="text-xs text-gray-500 ml-4 mt-0.5">
               {totalBillablePages.toFixed(1)} pages × $
-              {(baseRate * languageMultiplier).toFixed(2)} per page
+              {totalBillablePages > 0
+                ? (totals.translationSubtotal / totalBillablePages).toFixed(2)
+                : "0.00"}{" "}
+              per page
             </div>
           </div>
           {totals.certificationTotal > 0 && (
