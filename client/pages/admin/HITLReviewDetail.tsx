@@ -1493,6 +1493,7 @@ const HITLReviewDetail: React.FC = () => {
             quoteNumber: quoteNumber,
             total: total,
             paymentUrl: paymentResult.url,
+            staffId: staffSession?.staffId,
           }),
         },
       );

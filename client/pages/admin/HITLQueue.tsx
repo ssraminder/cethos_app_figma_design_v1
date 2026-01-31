@@ -13,17 +13,55 @@ interface HITLReview {
   minutes_to_sla: number;
 }
 
+type FilterType = "open" | "completed" | "all";
+
 export default function HITLQueue() {
   console.log("HITLQueue: Component starting to render");
 
   const [reviews, setReviews] = useState<HITLReview[]>([]);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<FilterType>("open");
+  const [openCount, setOpenCount] = useState(0);
   const navigate = useNavigate();
   const { session, loading: authLoading } = useAdminAuthContext();
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // Fetch count of open reviews for badge
+  const fetchOpenCount = useCallback(async () => {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/v_hitl_queue?review_deleted_at=is.null&quote_deleted_at=is.null&review_status=in.(pending,in_review)&select=review_id`,
+        {
+          method: "GET",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+            Prefer: "count=exact",
+          },
+        },
+      );
+
+      const countHeader = response.headers.get("content-range");
+      if (countHeader) {
+        const match = countHeader.match(/\/(\d+)$/);
+        if (match) {
+          setOpenCount(parseInt(match[1], 10));
+        }
+      } else {
+        // Fallback: count the returned items
+        const data = await response.json();
+        setOpenCount(data?.length || 0);
+      }
+    } catch (err) {
+      console.error("Error fetching open count:", err);
+    }
+  }, [SUPABASE_URL, SUPABASE_ANON_KEY]);
 
   // Define fetchReviews BEFORE the useEffect that uses it
   const fetchReviews = useCallback(async () => {
@@ -37,10 +75,18 @@ export default function HITLQueue() {
     setError(null);
 
     try {
+      // Build the query URL based on the active filter
+      let statusFilter = "";
+      if (activeFilter === "open") {
+        statusFilter = "&review_status=in.(pending,in_review)";
+      } else if (activeFilter === "completed") {
+        statusFilter = "&review_status=in.(approved,rejected)";
+      }
+      // "all" doesn't need a status filter
+
       // Use direct fetch to Supabase REST API
-      // Filter out deleted reviews and only show pending/in_review statuses
       const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/v_hitl_queue?review_deleted_at=is.null&quote_deleted_at=is.null&review_status=in.(pending,in_review)&order=priority.asc,review_created_at.asc`,
+        `${SUPABASE_URL}/rest/v1/v_hitl_queue?review_deleted_at=is.null&quote_deleted_at=is.null${statusFilter}&order=priority.asc,review_created_at.asc`,
         {
           method: "GET",
           headers: {
@@ -64,13 +110,16 @@ export default function HITLQueue() {
 
       setReviews(data || []);
       setError(null);
+
+      // Also fetch the open count for the badge
+      await fetchOpenCount();
     } catch (err) {
       console.error("Fetch exception:", err);
       setError(`Error: ${err}`);
     }
 
     setFetching(false);
-  }, [SUPABASE_URL, SUPABASE_ANON_KEY]);
+  }, [SUPABASE_URL, SUPABASE_ANON_KEY, activeFilter, fetchOpenCount]);
 
   // Now call fetchReviews when session is available
   useEffect(() => {
@@ -161,6 +210,45 @@ export default function HITLQueue() {
               {stats.slaBreached}
             </p>
           </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveFilter("open")}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+              activeFilter === "open"
+                ? "bg-cyan-600 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            Open
+            {openCount > 0 && (
+              <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-xs">
+                {openCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveFilter("completed")}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+              activeFilter === "completed"
+                ? "bg-cyan-600 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            Completed
+          </button>
+          <button
+            onClick={() => setActiveFilter("all")}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+              activeFilter === "all"
+                ? "bg-cyan-600 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            All
+          </button>
         </div>
 
         {/* Reviews Section */}

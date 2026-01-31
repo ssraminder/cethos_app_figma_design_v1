@@ -813,6 +813,21 @@ export default function Step5BillingDelivery() {
           .eq("id", state.quoteId);
 
         if (error) throw error;
+
+        // Update quote status to pending_payment (only from allowed statuses)
+        const { error: statusError } = await supabase
+          .from("quotes")
+          .update({
+            status: "pending_payment",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", state.quoteId)
+          .in("status", ["draft", "lead", "quote_ready"]); // Only update from these statuses
+
+        if (statusError) {
+          console.error("Failed to update quote status to pending_payment:", statusError);
+          // Don't block the user, just log the error
+        }
       }
 
       updateState({

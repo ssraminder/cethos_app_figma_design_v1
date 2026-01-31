@@ -1,5 +1,6 @@
 import { Lock, ChevronRight, ChevronLeft } from "lucide-react";
 import { useQuote } from "@/context/QuoteContext";
+import { supabase } from "@/lib/supabase";
 import StartOverLink from "@/components/StartOverLink";
 
 export default function Step3Contact() {
@@ -11,6 +12,29 @@ export default function Step3Contact() {
 
   const handleCustomerTypeChange = (type: "individual" | "business") => {
     updateState({ customerType: type });
+  };
+
+  // Handle form submission with status update to "lead"
+  const handleContinue = async () => {
+    // First, save customer info and proceed to next step
+    const result = await goToNextStep();
+
+    if (result.success && state.quoteId) {
+      // Update quote status to "lead" (only if currently in draft status)
+      const { error: statusError } = await supabase
+        .from("quotes")
+        .update({
+          status: "lead",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", state.quoteId)
+        .eq("status", "draft"); // Only update if still in draft
+
+      if (statusError) {
+        console.error("Failed to update quote status to lead:", statusError);
+        // Don't block the user, just log the error
+      }
+    }
   };
 
   return (
@@ -164,7 +188,7 @@ export default function Step3Contact() {
           </button>
 
           <button
-            onClick={goToNextStep}
+            onClick={handleContinue}
             disabled={
               !state.firstName ||
               !state.lastName ||
