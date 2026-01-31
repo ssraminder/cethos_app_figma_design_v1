@@ -690,9 +690,16 @@ export default function Step4ReviewRush() {
     );
     const isPastDailyCutoff = mstTime.getHours() >= dailyCutoffHour;
 
-    // If past cutoff, shift start date by 1 day before counting business days
+    // If past cutoff, advance to the next business day first, then count from there
     if (isPastDailyCutoff) {
       date.setDate(date.getDate() + 1);
+      // Skip weekends and holidays to find next business day
+      while (
+        isWeekend(date) ||
+        holidayDates.some((h) => isSameDay(h, date))
+      ) {
+        date.setDate(date.getDate() + 1);
+      }
     }
 
     let addedDays = 0;
