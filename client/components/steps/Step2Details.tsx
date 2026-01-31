@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 import StartOverLink from "@/components/StartOverLink";
+import SearchableDropdown, { DropdownOption } from "@/components/SearchableDropdown";
 import { Loader2, ChevronRight, ChevronLeft } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -18,25 +19,81 @@ export default function Step2Details() {
   } = useDropdownOptions();
 
   const [processingStatus, setProcessingStatus] = useState<
-    "pending" | "processing" | "quote_ready" | null
+    "pending" | "processing" | "quote_ready" | "completed" | null
   >(null);
   const [fileProgress, setFileProgress] = useState({ completed: 0, total: 0 });
   const [showProvinceDropdown, setShowProvinceDropdown] = useState(false);
   const [provinces, setProvinces] = useState<{ code: string; name: string }[]>(
-    [],
+    []
   );
 
   const updateField = (field: string, value: string) => {
     updateState({ [field]: value });
   };
 
-  // Check if source language is English
-  const isSourceEnglish = useMemo(() => {
-    const selected = sourceLanguages.find(
-      (l) => l.id === state.sourceLanguageId,
-    );
-    return selected?.code?.startsWith("en") || false;
-  }, [state.sourceLanguageId, sourceLanguages]);
+  // Define subcategory order for intended uses
+  const subcategoryOrder = [
+    "Immigration",
+    "Legal",
+    "Academic",
+    "Government",
+    "Employment",
+    "Healthcare",
+    "Financial",
+    "Personal",
+    "Business",
+    "Real Estate",
+    "Provincial Services",
+    "Other",
+  ];
+
+  // Convert source languages to dropdown options
+  const sourceLanguageOptions: DropdownOption[] = useMemo(() => {
+    return sourceLanguages
+      .filter((lang) => lang.id !== state.targetLanguageId)
+      .map((lang) => ({
+        id: lang.id,
+        label: lang.name,
+      }));
+  }, [sourceLanguages, state.targetLanguageId]);
+
+  // Convert target languages to dropdown options
+  const targetLanguageOptions: DropdownOption[] = useMemo(() => {
+    return targetLanguages
+      .filter((lang) => lang.id !== state.sourceLanguageId)
+      .map((lang) => ({
+        id: lang.id,
+        label: lang.name,
+      }));
+  }, [targetLanguages, state.sourceLanguageId]);
+
+  // Convert intended uses to grouped dropdown options
+  const intendedUseOptions: DropdownOption[] = useMemo(() => {
+    return intendedUses.map((use) => ({
+      id: use.id,
+      label: use.name,
+      group: use.subcategory || "Other",
+    }));
+  }, [intendedUses]);
+
+  // Convert provinces to dropdown options
+  const provinceOptions: DropdownOption[] = useMemo(() => {
+    return provinces.map((p) => ({
+      id: p.code,
+      label: p.name,
+    }));
+  }, [provinces]);
+
+  // Convert countries to grouped dropdown options (Common vs All)
+  const countryOptions: DropdownOption[] = useMemo(() => {
+    const common = countries.filter((c) => c.is_common);
+    const other = countries.filter((c) => !c.is_common).sort((a, b) => a.name.localeCompare(b.name));
+
+    return [
+      ...common.map((c) => ({ id: c.id, label: c.name, group: "Common Countries" })),
+      ...other.map((c) => ({ id: c.id, label: c.name, group: "All Countries" })),
+    ];
+  }, [countries]);
 
   // Handle source language change with smart target auto-selection
   const handleSourceLanguageChange = (languageId: string) => {
@@ -78,9 +135,18 @@ export default function Step2Details() {
     if (selectedUse?.default_certification_type_id) {
       updateField(
         "certificationTypeId",
-        selectedUse.default_certification_type_id,
+        selectedUse.default_certification_type_id
       );
     }
+  };
+
+  // Handle country change
+  const handleCountryChange = (countryId: string) => {
+    const selectedCountry = countries.find((c) => c.id === countryId);
+    updateState({
+      countryId,
+      countryOfIssue: selectedCountry?.name || "",
+    });
   };
 
   // Fetch provinces on mount
@@ -103,54 +169,12 @@ export default function Step2Details() {
   useEffect(() => {
     if (state.intendedUseId && intendedUses.length > 0) {
       const selectedUse = intendedUses.find(
-        (u) => u.id === state.intendedUseId,
+        (u) => u.id === state.intendedUseId
       );
       const isProvincial = selectedUse?.subcategory === "Provincial Services";
       setShowProvinceDropdown(isProvincial);
     }
   }, [state.intendedUseId, intendedUses]);
-
-  // Group intended uses by subcategory
-  const groupedIntendedUses = useMemo(() => {
-    const groups: Record<string, typeof intendedUses> = {};
-
-    intendedUses.forEach((use) => {
-      const category = use.subcategory || "Other";
-      if (!groups[category]) {
-        groups[category] = [];
-      }
-      groups[category].push(use);
-    });
-
-    return groups;
-  }, [intendedUses]);
-
-  // Define subcategory order
-  const subcategoryOrder = [
-    "Immigration",
-    "Legal",
-    "Academic",
-    "Government",
-    "Employment",
-    "Healthcare",
-    "Financial",
-    "Personal",
-    "Business",
-    "Real Estate",
-    "Provincial Services",
-    "Other",
-  ];
-
-  // Separate common and other countries
-  const { commonCountries, otherCountries } = useMemo(() => {
-    const common = countries.filter((c) => c.is_common);
-    const other = countries.filter((c) => !c.is_common);
-
-    return {
-      commonCountries: common,
-      otherCountries: other.sort((a, b) => a.name.localeCompare(b.name)),
-    };
-  }, [countries]);
 
   // Subscribe to processing status updates
   useEffect(() => {
@@ -178,7 +202,7 @@ export default function Step2Details() {
 
       if (files) {
         const completed = files.filter(
-          (f) => f.processing_status === "complete",
+          (f) => f.processing_status === "complete"
         ).length;
         setFileProgress({ completed, total: files.length });
       }
@@ -201,7 +225,7 @@ export default function Step2Details() {
         },
         (payload: any) => {
           setProcessingStatus(payload.new.processing_status);
-        },
+        }
       )
       .on(
         "postgres_changes",
@@ -213,7 +237,7 @@ export default function Step2Details() {
         },
         () => {
           fetchStatus();
-        },
+        }
       )
       .subscribe();
 
@@ -274,7 +298,7 @@ export default function Step2Details() {
         )}
 
       {/* Processing Complete Indicator */}
-      {processingStatus === "quote_ready" && (
+      {(processingStatus === "quote_ready" || processingStatus === "completed") && (
         <div className="mb-6 bg-green-50 border-l-4 border-green-500 rounded-lg p-4 flex items-center gap-3">
           <svg
             className="w-5 h-5 text-green-600 flex-shrink-0"
@@ -298,93 +322,47 @@ export default function Step2Details() {
       {/* Form Section */}
       <div className="bg-white border-2 border-cethos-border rounded-xl p-6 sm:p-8 space-y-6">
         {/* Source Language */}
-        <div>
-          <label className="block text-cethos-slate-dark font-semibold text-sm mb-2">
-            Source Language <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={state.sourceLanguageId || ""}
-            onChange={(e) => handleSourceLanguageChange(e.target.value)}
-            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
-          >
-            <option value="">Select source language...</option>
-            {sourceLanguages
-              .filter((lang) => lang.id !== state.targetLanguageId)
-              .map((lang) => (
-                <option key={lang.id} value={lang.id}>
-                  {lang.name}
-                </option>
-              ))}
-          </select>
-        </div>
+        <SearchableDropdown
+          options={sourceLanguageOptions}
+          value={state.sourceLanguageId || ""}
+          onChange={handleSourceLanguageChange}
+          label="Source Language"
+          placeholder="Search or select source language..."
+          required
+        />
 
         {/* Target Language */}
-        <div>
-          <label className="block text-cethos-slate-dark font-semibold text-sm mb-2">
-            Target Language <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={state.targetLanguageId || ""}
-            onChange={(e) => updateField("targetLanguageId", e.target.value)}
-            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
-          >
-            <option value="">Select target language...</option>
-            {targetLanguages
-              .filter((lang) => lang.id !== state.sourceLanguageId)
-              .map((lang) => (
-                <option key={lang.id} value={lang.id}>
-                  {lang.name}
-                </option>
-              ))}
-          </select>
-        </div>
+        <SearchableDropdown
+          options={targetLanguageOptions}
+          value={state.targetLanguageId || ""}
+          onChange={(value) => updateField("targetLanguageId", value)}
+          label="Target Language"
+          placeholder="Search or select target language..."
+          required
+        />
 
         {/* Purpose of Translation */}
-        <div>
-          <label className="block text-cethos-slate-dark font-semibold text-sm mb-2">
-            Purpose of Translation <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={state.intendedUseId || ""}
-            onChange={(e) => handleIntendedUseChange(e.target.value)}
-            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
-          >
-            <option value="">Select intended use...</option>
-            {subcategoryOrder.map((category) => {
-              const uses = groupedIntendedUses[category];
-              if (!uses || uses.length === 0) return null;
-
-              return (
-                <optgroup key={category} label={category}>
-                  {uses.map((use) => (
-                    <option key={use.id} value={use.id}>
-                      {use.name}
-                    </option>
-                  ))}
-                </optgroup>
-              );
-            })}
-          </select>
-        </div>
+        <SearchableDropdown
+          options={intendedUseOptions}
+          value={state.intendedUseId || ""}
+          onChange={handleIntendedUseChange}
+          label="Purpose of Translation"
+          placeholder="Search or select intended use..."
+          required
+          groupOrder={subcategoryOrder}
+        />
 
         {/* Province Dropdown - Conditional */}
         {showProvinceDropdown && (
-          <div>
-            <label className="block text-cethos-slate-dark font-semibold text-sm mb-2">
-              Province / Territory <span className="text-red-500">*</span>
-            </label>
-            <select
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+            <SearchableDropdown
+              options={provinceOptions}
               value={state.serviceProvince || ""}
-              onChange={(e) => updateField("serviceProvince", e.target.value)}
-              className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
-            >
-              <option value="">Select province or territory...</option>
-              {provinces.map((p) => (
-                <option key={p.code} value={p.code}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => updateField("serviceProvince", value)}
+              label="Province / Territory"
+              placeholder="Search or select province..."
+              required
+            />
             <p className="mt-2 text-xs text-cethos-slate">
               Select where this document will be submitted.
             </p>
@@ -392,48 +370,15 @@ export default function Step2Details() {
         )}
 
         {/* Country of Issue */}
-        <div>
-          <label className="block text-cethos-slate-dark font-semibold text-sm mb-2">
-            Country where document was issued{" "}
-            <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={state.countryId || ""}
-            onChange={(e) => {
-              const countryId = e.target.value;
-              const selectedCountry = countries.find((c) => c.id === countryId);
-              updateState({
-                countryId,
-                countryOfIssue: selectedCountry?.name || "",
-              });
-            }}
-            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm bg-white"
-          >
-            <option value="">Select country of document origin...</option>
-
-            {/* Common Countries */}
-            {commonCountries.length > 0 && (
-              <optgroup label="Common Countries">
-                {commonCountries.map((country) => (
-                  <option key={country.id} value={country.id}>
-                    {country.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-
-            {/* All Other Countries */}
-            {otherCountries.length > 0 && (
-              <optgroup label="All Countries">
-                {otherCountries.map((country) => (
-                  <option key={country.id} value={country.id}>
-                    {country.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-        </div>
+        <SearchableDropdown
+          options={countryOptions}
+          value={state.countryId || ""}
+          onChange={handleCountryChange}
+          label="Country where document was issued"
+          placeholder="Search or select country..."
+          required
+          groupOrder={["Common Countries", "All Countries"]}
+        />
 
         {/* Special Instructions */}
         <div>
