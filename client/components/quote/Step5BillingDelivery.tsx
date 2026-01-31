@@ -1217,7 +1217,12 @@ export default function Step5BillingDelivery() {
 
         <select
           value={selectedPhysicalOption}
-          onChange={(e) => setSelectedPhysicalOption(e.target.value)}
+          onChange={(e) => {
+            setSelectedPhysicalOption(e.target.value);
+            if (errors.physicalDelivery) {
+              setErrors((prev) => ({ ...prev, physicalDelivery: "" }));
+            }
+          }}
           className={`w-full px-3 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal text-gray-900 ${
             errors.physicalDelivery ? "border-red-500" : "border-gray-300"
           } ${!selectedPhysicalOption ? "text-gray-400" : ""}`}
