@@ -13,10 +13,12 @@ interface ProcessingStep {
   status: "completed" | "processing" | "pending";
 }
 
+// FIX 1: Added "completed" to QuoteStatus type
 type QuoteStatus =
   | "pending"
   | "processing"
   | "quote_ready"
+  | "completed"
   | "hitl_pending"
   | "error";
 
@@ -149,6 +151,7 @@ export default function ProcessingStatus({
   }, [createHitlReview, onEmailInstead]);
 
   // Countdown timer effect
+  // FIX: Timer stops on "completed" OR "quote_ready"
   useEffect(() => {
     if (!quoteId || hitlCreated || quoteStatus === "quote_ready" || quoteStatus === "completed") return;
 
@@ -250,7 +253,8 @@ export default function ProcessingStatus({
           const newStatus = payload.new.processing_status as QuoteStatus;
           setQuoteStatus(newStatus);
 
-          if (newStatus === "quote_ready") {
+          // FIX 3: Handle both "quote_ready" AND "completed"
+          if (newStatus === "quote_ready" || newStatus === "completed") {
             setProgress(100);
             setSteps([
               { label: "Files uploaded", status: "completed" },
@@ -290,8 +294,9 @@ export default function ProcessingStatus({
   }, [quoteId]);
 
   // Check if processing is complete - then check thresholds
+  // FIX 2: Added "completed" to the completion check
   useEffect(() => {
-    if ((quoteStatus === "quote_ready" || progress >= 100) && !hitlCreated && !isCheckingThresholds && !thresholdsChecked) {
+    if ((quoteStatus === "quote_ready" || quoteStatus === "completed" || progress >= 100) && !hitlCreated && !isCheckingThresholds && !thresholdsChecked) {
       // Processing complete - check thresholds before proceeding
       const checkAndProceed = async () => {
         const passed = await checkHitlThresholds();
