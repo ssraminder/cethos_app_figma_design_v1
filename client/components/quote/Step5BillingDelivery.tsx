@@ -12,7 +12,7 @@ import {
 import StartOverLink from "@/components/StartOverLink";
 import { toast } from "sonner";
 
-// Canadian Provinces Data
+// Canadian Provinces Data Check
 const CANADIAN_PROVINCES = [
   { code: "AB", name: "Alberta" },
   { code: "BC", name: "British Columbia" },
