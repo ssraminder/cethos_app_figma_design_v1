@@ -19,6 +19,10 @@ import {
   Award,
   Save,
   RotateCcw,
+  Minus,
+  Clock,
+  XCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -31,12 +35,31 @@ import {
 // TYPES
 // ============================================================================
 
+interface FileCategory {
+  id: string;
+  name: string;
+  slug: string;
+  is_billable: boolean;
+}
+
 interface QuoteFile {
   id: string;
   original_filename: string;
   storage_path?: string;
   mime_type: string;
 }
+
+interface UploadedQuoteFile {
+  id: string;
+  original_filename: string;
+  file_size: number;
+  mime_type: string;
+  ai_processing_status: string | null;
+  file_category_id: string | null;
+  created_at: string;
+}
+
+type ProcessingStatus = "pending" | "processing" | "completed" | "failed" | "skipped" | null;
 
 export interface FileWithAnalysis {
   id: string;
@@ -369,6 +392,13 @@ export default function StaffFileUploadForm({
   const [selectedFile, setSelectedFile] = useState<QuoteFile | null>(null);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
 
+  // File categories and selection state
+  const [fileCategories, setFileCategories] = useState<FileCategory[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedQuoteFile[]>([]);
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
+  const [processingFileIds, setProcessingFileIds] = useState<Set<string>>(new Set());
+  const [isBatchAnalyzing, setIsBatchAnalyzing] = useState(false);
+
   // Translation details state
   const [translationDetails, setTranslationDetails] = useState<TranslationDetails | null>(null);
   const [translationExpanded, setTranslationExpanded] = useState(true);
@@ -397,14 +427,47 @@ export default function StaffFileUploadForm({
 
   useEffect(() => {
     loadReferenceData();
+    fetchFileCategories();
   }, []);
 
   useEffect(() => {
     if (quoteId) {
       fetchTranslationDetails();
       fetchAnalysisResults();
+      fetchUploadedFiles();
     }
   }, [quoteId]);
+
+  const fetchFileCategories = async () => {
+    const { data, error } = await supabase
+      .from("file_categories")
+      .select("id, name, slug, is_billable")
+      .eq("is_active", true)
+      .order("display_order");
+
+    if (error) {
+      console.error("Error fetching file categories:", error);
+      return;
+    }
+    setFileCategories(data || []);
+  };
+
+  const fetchUploadedFiles = async () => {
+    if (!quoteId) return;
+
+    const { data, error } = await supabase
+      .from("quote_files")
+      .select("id, original_filename, file_size, mime_type, ai_processing_status, file_category_id, created_at")
+      .eq("quote_id", quoteId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching uploaded files:", error);
+      return;
+    }
+    setUploadedFiles(data || []);
+  };
 
   useEffect(() => {
     onChange(files);
@@ -595,6 +658,222 @@ export default function StaffFileUploadForm({
   };
 
   // ============================================================================
+  // FILE CATEGORY HANDLERS
+  // ============================================================================
+
+  const getFileCategory = (file: UploadedQuoteFile): FileCategory | undefined => {
+    return fileCategories.find((c) => c.id === file.file_category_id);
+  };
+
+  const isBillable = (file: UploadedQuoteFile): boolean => {
+    const category = getFileCategory(file);
+    return category?.is_billable ?? false;
+  };
+
+  const getSelectableBillableFiles = (): UploadedQuoteFile[] => {
+    return uploadedFiles.filter((f) => isBillable(f));
+  };
+
+  const getSelectedBillableCount = (): number => {
+    return uploadedFiles.filter((f) => isBillable(f) && selectedFileIds.has(f.id)).length;
+  };
+
+  const handleCategoryChange = async (fileId: string, categoryId: string | null) => {
+    try {
+      const { error } = await supabase
+        .from("quote_files")
+        .update({ file_category_id: categoryId })
+        .eq("id", fileId);
+
+      if (error) throw error;
+
+      // Update local state
+      setUploadedFiles((prev) =>
+        prev.map((f) =>
+          f.id === fileId ? { ...f, file_category_id: categoryId } : f
+        )
+      );
+
+      // If changing to non-billable, deselect the file
+      const newCategory = fileCategories.find((c) => c.id === categoryId);
+      if (!newCategory?.is_billable) {
+        setSelectedFileIds((prev) => {
+          const next = new Set(prev);
+          next.delete(fileId);
+          return next;
+        });
+      }
+    } catch (err) {
+      console.error("Error updating category:", err);
+      toast.error("Failed to update file category");
+    }
+  };
+
+  // ============================================================================
+  // FILE SELECTION HANDLERS
+  // ============================================================================
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const billableIds = getSelectableBillableFiles().map((f) => f.id);
+      setSelectedFileIds(new Set(billableIds));
+    } else {
+      setSelectedFileIds(new Set());
+    }
+  };
+
+  const handleSelectFile = (fileId: string, checked: boolean) => {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(fileId);
+      } else {
+        next.delete(fileId);
+      }
+      return next;
+    });
+  };
+
+  // ============================================================================
+  // BATCH AI ANALYSIS
+  // ============================================================================
+
+  const handleAnalyzeSelected = async () => {
+    const filesToAnalyze = uploadedFiles.filter(
+      (f) => selectedFileIds.has(f.id) && isBillable(f)
+    );
+
+    if (filesToAnalyze.length === 0) {
+      toast.error("No billable files selected for analysis");
+      return;
+    }
+
+    setIsBatchAnalyzing(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    // Mark all as processing
+    setProcessingFileIds(new Set(filesToAnalyze.map((f) => f.id)));
+
+    // Update UI immediately
+    setUploadedFiles((prev) =>
+      prev.map((f) =>
+        selectedFileIds.has(f.id) && isBillable(f)
+          ? { ...f, ai_processing_status: "processing" }
+          : f
+      )
+    );
+
+    try {
+      // Process files sequentially to avoid overwhelming the server
+      for (const file of filesToAnalyze) {
+        try {
+          console.log(`🔄 Analyzing file: ${file.original_filename}`);
+
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-document`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                fileId: file.id,
+                quoteId: quoteId,
+              }),
+            }
+          );
+
+          const data = await response.json();
+
+          if (response.ok && data.success) {
+            console.log(`✅ Analysis complete: ${file.original_filename}`);
+            successCount++;
+
+            // Update status in UI
+            setUploadedFiles((prev) =>
+              prev.map((f) =>
+                f.id === file.id ? { ...f, ai_processing_status: "completed" } : f
+              )
+            );
+          } else {
+            console.error(`❌ Analysis failed: ${file.original_filename}`, data);
+            failCount++;
+
+            setUploadedFiles((prev) =>
+              prev.map((f) =>
+                f.id === file.id ? { ...f, ai_processing_status: "failed" } : f
+              )
+            );
+          }
+        } catch (err) {
+          console.error(`❌ Error analyzing ${file.original_filename}:`, err);
+          failCount++;
+
+          setUploadedFiles((prev) =>
+            prev.map((f) =>
+              f.id === file.id ? { ...f, ai_processing_status: "failed" } : f
+            )
+          );
+        }
+
+        // Remove from processing set
+        setProcessingFileIds((prev) => {
+          const next = new Set(prev);
+          next.delete(file.id);
+          return next;
+        });
+      }
+
+      // Show results
+      if (successCount > 0 && failCount === 0) {
+        toast.success(`${successCount} file(s) analyzed successfully`);
+      } else if (successCount > 0 && failCount > 0) {
+        toast.warning(`${successCount} succeeded, ${failCount} failed`);
+      } else {
+        toast.error(`Analysis failed for all files`);
+      }
+
+      // Clear selection
+      setSelectedFileIds(new Set());
+
+      // Refresh data and notify parent
+      await fetchUploadedFiles();
+      await fetchAnalysisResults();
+      onPricingRefresh?.();
+    } finally {
+      setIsBatchAnalyzing(false);
+      setProcessingFileIds(new Set());
+    }
+  };
+
+  const handleDeleteUploadedFile = async (fileId: string) => {
+    try {
+      // Soft delete
+      const { error } = await supabase
+        .from("quote_files")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", fileId);
+
+      if (error) throw error;
+
+      toast.success("File removed");
+      setSelectedFileIds((prev) => {
+        const next = new Set(prev);
+        next.delete(fileId);
+        return next;
+      });
+      await fetchUploadedFiles();
+      await fetchAnalysisResults();
+      onPricingRefresh?.();
+    } catch (err) {
+      console.error("Error deleting file:", err);
+      toast.error("Failed to remove file");
+    }
+  };
+
+  // ============================================================================
   // FILE UPLOAD HANDLERS
   // ============================================================================
 
@@ -662,8 +941,11 @@ export default function StaffFileUploadForm({
         )
       );
 
-      // Refresh analysis results after upload
-      setTimeout(() => fetchAnalysisResults(), 2000);
+      // Refresh analysis results and uploaded files after upload
+      setTimeout(() => {
+        fetchAnalysisResults();
+        fetchUploadedFiles();
+      }, 2000);
     } catch (error) {
       console.error("Upload failed:", error);
       setFiles((prev) =>
@@ -1044,7 +1326,168 @@ export default function StaffFileUploadForm({
       </div>
 
       {/* ================================================================== */}
-      {/* UPLOADED FILES LIST */}
+      {/* FILE MANAGEMENT WITH CATEGORIES */}
+      {/* ================================================================== */}
+      {uploadedFiles.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {/* Header with Select All and Analyze Button */}
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={
+                  getSelectableBillableFiles().length > 0 &&
+                  getSelectableBillableFiles().every((f) => selectedFileIds.has(f.id))
+                }
+                ref={(el) => {
+                  if (el) {
+                    const billableFiles = getSelectableBillableFiles();
+                    const someSelected = billableFiles.some((f) => selectedFileIds.has(f.id));
+                    const allSelected = billableFiles.length > 0 && billableFiles.every((f) => selectedFileIds.has(f.id));
+                    el.indeterminate = someSelected && !allSelected;
+                  }
+                }}
+                onChange={(e) => handleSelectAll(e.target.checked)}
+                disabled={getSelectableBillableFiles().length === 0}
+                className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
+              />
+              <span className="text-sm text-gray-700">
+                Select All (To Translate)
+              </span>
+            </label>
+
+            <button
+              onClick={handleAnalyzeSelected}
+              disabled={selectedFileIds.size === 0 || isBatchAnalyzing}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isBatchAnalyzing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Brain className="w-4 h-4" />
+              )}
+              {isBatchAnalyzing
+                ? "Analyzing..."
+                : `Analyze Selected (${getSelectedBillableCount()})`}
+            </button>
+          </div>
+
+          {/* File Rows */}
+          <div className="divide-y divide-gray-100">
+            {uploadedFiles.map((file) => {
+              const category = getFileCategory(file);
+              const canSelect = category?.is_billable ?? false;
+              const isSelected = selectedFileIds.has(file.id);
+              const isProcessing = processingFileIds.has(file.id);
+              const status = file.ai_processing_status as ProcessingStatus;
+
+              return (
+                <div
+                  key={file.id}
+                  className={`px-4 py-3 flex items-center gap-4 hover:bg-gray-50 transition-colors ${
+                    isProcessing ? "bg-blue-50" : ""
+                  }`}
+                >
+                  {/* Checkbox */}
+                  <div className="w-6 flex-shrink-0">
+                    {canSelect ? (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => handleSelectFile(file.id, e.target.checked)}
+                        disabled={isProcessing}
+                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
+                      />
+                    ) : (
+                      <span className="text-gray-300">
+                        <Minus className="w-4 h-4" />
+                      </span>
+                    )}
+                  </div>
+
+                  {/* File Icon & Name */}
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <FileText className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                    <span className="text-sm font-medium text-gray-900 truncate">
+                      {file.original_filename}
+                    </span>
+                  </div>
+
+                  {/* Category Dropdown */}
+                  <div className="w-40 flex-shrink-0">
+                    <select
+                      value={file.file_category_id || ""}
+                      onChange={(e) =>
+                        handleCategoryChange(file.id, e.target.value || null)
+                      }
+                      className="w-full text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Select type...</option>
+                      {fileCategories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* File Size */}
+                  <span className="text-xs text-gray-500 w-16 text-right flex-shrink-0">
+                    {formatFileSize(file.file_size)}
+                  </span>
+
+                  {/* Status Badge */}
+                  <div className="w-24 flex-shrink-0">
+                    {!category?.is_billable ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded">
+                        <Minus className="w-3 h-3" />
+                        N/A
+                      </span>
+                    ) : !category ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">
+                        Select type
+                      </span>
+                    ) : status === "processing" ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Processing
+                      </span>
+                    ) : status === "completed" ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Completed
+                      </span>
+                    ) : status === "failed" ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded">
+                        <XCircle className="w-3 h-3" />
+                        Failed
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
+                        <Clock className="w-3 h-3" />
+                        Pending
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Delete Button */}
+                  <button
+                    onClick={() => handleDeleteUploadedFile(file.id)}
+                    disabled={isProcessing}
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 flex-shrink-0"
+                    title="Remove file"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================== */}
+      {/* PENDING UPLOADS LIST */}
       {/* ================================================================== */}
       {files.length > 0 && (
         <div className="space-y-3">
@@ -1447,12 +1890,26 @@ export default function StaffFileUploadForm({
       )}
 
       {/* ================================================================== */}
+      {/* HELPER TEXT */}
+      {/* ================================================================== */}
+      {uploadedFiles.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-800">
+            <strong>Tip:</strong> Only "To Translate" files will be analyzed and priced.
+            Reference materials, glossaries, and style guides are for translator reference only.
+          </p>
+        </div>
+      )}
+
+      {/* ================================================================== */}
       {/* NOTES */}
       {/* ================================================================== */}
       <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
         <p className="font-medium text-gray-700 mb-1">Note:</p>
         <ul className="list-disc list-inside space-y-1">
           <li>Files are optional - you can create a quote without uploading files</li>
+          <li>Set file category to "To Translate" for documents that need translation</li>
+          <li>Select files and click "Analyze Selected" to run AI analysis on chosen files</li>
           <li>Use "Remove" to clear analysis and re-analyze or enter data manually</li>
           <li>All analysis fields are editable by staff</li>
         </ul>
