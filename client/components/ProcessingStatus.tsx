@@ -150,7 +150,7 @@ export default function ProcessingStatus({
 
   // Countdown timer effect
   useEffect(() => {
-    if (!quoteId || hitlCreated || quoteStatus === "quote_ready") return;
+    if (!quoteId || hitlCreated || quoteStatus === "quote_ready" || quoteStatus === "completed") return;
 
     const countdownInterval = setInterval(() => {
       setTimeRemaining((prev) => {
