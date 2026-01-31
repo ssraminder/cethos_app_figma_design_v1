@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo } from "react";
 import {
   X,
   FileText,
-  Plus,
-  Trash2,
   Loader2,
   Save,
   Calculator,
+  Info,
+  AlertCircle,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -38,6 +38,13 @@ interface CertificationType {
   price: number;
 }
 
+interface IntendedUse {
+  id: string;
+  code: string;
+  name: string;
+  default_certification_type_id: string | null;
+}
+
 interface AppSettings {
   base_rate: number;
   words_per_page: number;
@@ -47,27 +54,21 @@ interface AppSettings {
   min_billable_pages: number;
 }
 
-interface PageEntry {
-  id: string;
-  pageNumber: number;
-  wordCount: number;
-  complexity: "low" | "medium" | "high";
-}
-
 interface ManualEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  file: QuoteFile;
+  file: QuoteFile | null; // Now optional - null for standalone entries
   quoteId: string;
+  staffId?: string;
   onSaveComplete?: () => void | Promise<void>;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   base_rate: 65.0,
-  words_per_page: 250,
+  words_per_page: 225, // Updated to 225 as per spec
   complexity_easy: 1.0,
   complexity_medium: 1.15,
-  complexity_hard: 1.3,
+  complexity_hard: 1.25,
   min_billable_pages: 0.5,
 };
 
@@ -76,6 +77,7 @@ export default function ManualEntryModal({
   onClose,
   file,
   quoteId,
+  staffId,
   onSaveComplete,
 }: ManualEntryModalProps) {
   // Reference data
@@ -85,30 +87,62 @@ export default function ManualEntryModal({
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // Form state
-  const [pages, setPages] = useState<PageEntry[]>([
-    { id: "page-1", pageNumber: 1, wordCount: 250, complexity: "low" },
-  ]);
+  const [documentName, setDocumentName] = useState<string>("");
   const [selectedLanguageId, setSelectedLanguageId] = useState<string>("");
   const [selectedDocumentTypeId, setSelectedDocumentTypeId] = useState<string>("");
+  const [documentTypeOther, setDocumentTypeOther] = useState<string>("");
+  const [wordCount, setWordCount] = useState<number | null>(null);
+  const [billablePages, setBillablePages] = useState<number>(1.0);
+  const [complexity, setComplexity] = useState<string>("medium");
   const [selectedCertificationId, setSelectedCertificationId] = useState<string>("");
+
+  // Quote context
+  const [quotePurpose, setQuotePurpose] = useState<string>("");
+  const [defaultCertificationFromPurpose, setDefaultCertificationFromPurpose] = useState<string | null>(null);
 
   // UI state
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [existingAnalysisId, setExistingAnalysisId] = useState<string | null>(null);
 
+  // Determine if this is a standalone entry (no file)
+  const isStandalone = !file;
+
   useEffect(() => {
     if (isOpen) {
       loadReferenceData();
-      loadExistingAnalysis();
+      loadQuoteContext();
+      if (file) {
+        loadExistingAnalysis();
+        setDocumentName(file.original_filename);
+      } else {
+        // Reset form for standalone entry
+        setDocumentName("");
+        setExistingAnalysisId(null);
+        setWordCount(null);
+        setBillablePages(1.0);
+        setComplexity("medium");
+        setSelectedDocumentTypeId("");
+        setDocumentTypeOther("");
+      }
     }
-  }, [isOpen, file.id]);
+  }, [isOpen, file?.id]);
+
+  // Auto-calculate billable pages when word count or complexity changes
+  useEffect(() => {
+    if (wordCount && wordCount > 0) {
+      const multiplier = getComplexityMultiplier(complexity);
+      // Formula: ceil((words / 225) × complexity × 10) / 10 - rounds UP to nearest 0.1
+      const calculated = Math.ceil((wordCount / settings.words_per_page) * multiplier * 10) / 10;
+      setBillablePages(Math.max(calculated, settings.min_billable_pages));
+    }
+  }, [wordCount, complexity, settings]);
 
   const loadReferenceData = async () => {
     setLoading(true);
     try {
       const [languagesRes, docTypesRes, certTypesRes, settingsRes] = await Promise.all([
-        supabase.from("languages").select("*").eq("is_active", true).order("sort_order"),
+        supabase.from("languages").select("*").eq("is_active", true).order("name"),
         supabase.from("document_types").select("*").eq("is_active", true).order("sort_order"),
         supabase.from("certification_types").select("*").eq("is_active", true).order("sort_order"),
         supabase.from("app_settings").select("setting_key, setting_value"),
@@ -123,16 +157,10 @@ export default function ManualEntryModal({
 
       if (docTypesRes.data) {
         setDocumentTypes(docTypesRes.data);
-        if (docTypesRes.data.length > 0 && !selectedDocumentTypeId) {
-          setSelectedDocumentTypeId(docTypesRes.data[0].id);
-        }
       }
 
       if (certTypesRes.data) {
         setCertificationTypes(certTypesRes.data);
-        if (certTypesRes.data.length > 0 && !selectedCertificationId) {
-          setSelectedCertificationId(certTypesRes.data[0].id);
-        }
       }
 
       if (settingsRes.data) {
@@ -158,7 +186,52 @@ export default function ManualEntryModal({
     }
   };
 
+  const loadQuoteContext = async () => {
+    try {
+      // Fetch quote with intended use and its default certification
+      const { data, error } = await supabase
+        .from("quotes")
+        .select(`
+          intended_use_id,
+          source_language_id,
+          intended_uses(
+            id,
+            name,
+            default_certification_type_id
+          )
+        `)
+        .eq("id", quoteId)
+        .single();
+
+      if (data && !error) {
+        // Set source language if available and not already set
+        if (data.source_language_id && !selectedLanguageId) {
+          setSelectedLanguageId(data.source_language_id);
+        }
+
+        // Set purpose name for display
+        const intendedUse = data.intended_uses as IntendedUse | null;
+        if (intendedUse) {
+          setQuotePurpose(intendedUse.name);
+
+          // Set default certification from intended use
+          if (intendedUse.default_certification_type_id) {
+            setDefaultCertificationFromPurpose(intendedUse.default_certification_type_id);
+            // Only set if not editing existing entry
+            if (!existingAnalysisId && !selectedCertificationId) {
+              setSelectedCertificationId(intendedUse.default_certification_type_id);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error loading quote context:", error);
+    }
+  };
+
   const loadExistingAnalysis = async () => {
+    if (!file) return;
+
     try {
       const { data, error } = await supabase
         .from("ai_analysis_results")
@@ -168,35 +241,41 @@ export default function ManualEntryModal({
 
       if (data && !error) {
         setExistingAnalysisId(data.id);
+
         // Pre-populate form with existing data
-        // For simplicity, we'll just set the top-level values
-        // In a full implementation, you might store page-level data
         if (data.detected_language) {
-          const lang = languages.find((l) => l.name === data.detected_language);
+          const lang = languages.find((l) => l.name === data.detected_language || l.code === data.detected_language);
           if (lang) setSelectedLanguageId(lang.id);
         }
+
         if (data.detected_document_type) {
-          const docType = documentTypes.find((d) => d.name === data.detected_document_type);
-          if (docType) setSelectedDocumentTypeId(docType.id);
+          const docType = documentTypes.find((d) => d.name === data.detected_document_type || d.code === data.detected_document_type);
+          if (docType) {
+            setSelectedDocumentTypeId(docType.id);
+          } else if (data.detected_document_type === "other" || data.document_type_other) {
+            setSelectedDocumentTypeId("other");
+            setDocumentTypeOther(data.document_type_other || data.detected_document_type);
+          }
         }
+
         if (data.certification_type_id) {
           setSelectedCertificationId(data.certification_type_id);
         }
-        // Set pages based on word count and page count
-        if (data.word_count && data.page_count) {
-          const avgWordsPerPage = Math.round(data.word_count / data.page_count);
-          const newPages: PageEntry[] = [];
-          for (let i = 1; i <= data.page_count; i++) {
-            newPages.push({
-              id: `page-${i}`,
-              pageNumber: i,
-              wordCount: avgWordsPerPage,
-              complexity: data.assessed_complexity?.toLowerCase() || "low",
-            });
-          }
-          if (newPages.length > 0) {
-            setPages(newPages);
-          }
+
+        if (data.word_count) {
+          setWordCount(data.word_count);
+        }
+
+        if (data.billable_pages) {
+          setBillablePages(data.billable_pages);
+        }
+
+        if (data.assessed_complexity) {
+          // Normalize complexity values
+          const comp = data.assessed_complexity.toLowerCase();
+          if (comp === "low" || comp === "easy") setComplexity("easy");
+          else if (comp === "high" || comp === "hard") setComplexity("hard");
+          else setComplexity("medium");
         }
       }
     } catch (error) {
@@ -205,41 +284,18 @@ export default function ManualEntryModal({
     }
   };
 
-  const addPage = () => {
-    const newPageNumber = pages.length > 0 ? Math.max(...pages.map((p) => p.pageNumber)) + 1 : 1;
-    setPages([
-      ...pages,
-      {
-        id: `page-${Date.now()}`,
-        pageNumber: newPageNumber,
-        wordCount: settings.words_per_page,
-        complexity: "low",
-      },
-    ]);
-  };
-
-  const removePage = (id: string) => {
-    if (pages.length > 1) {
-      setPages(pages.filter((p) => p.id !== id));
-    }
-  };
-
-  const updatePage = (id: string, field: keyof PageEntry, value: any) => {
-    setPages(
-      pages.map((p) => (p.id === id ? { ...p, [field]: value } : p))
-    );
-  };
-
-  const getComplexityMultiplier = (complexity: string): number => {
-    switch (complexity) {
+  const getComplexityMultiplier = (comp: string): number => {
+    switch (comp) {
+      case "easy":
       case "low":
         return settings.complexity_easy;
       case "medium":
         return settings.complexity_medium;
+      case "hard":
       case "high":
         return settings.complexity_hard;
       default:
-        return settings.complexity_easy;
+        return settings.complexity_medium;
     }
   };
 
@@ -249,32 +305,13 @@ export default function ManualEntryModal({
     const selectedCertification = certificationTypes.find((c) => c.id === selectedCertificationId);
 
     const languageMultiplier = selectedLanguage?.multiplier ? parseFloat(selectedLanguage.multiplier as any) : 1.0;
+    const complexityMultiplier = getComplexityMultiplier(complexity);
 
-    // Calculate totals
-    const totalWords = pages.reduce((sum, p) => sum + p.wordCount, 0);
-    const totalPages = pages.length;
-
-    // Calculate billable pages per page entry and sum
-    let totalBillablePages = 0;
-    pages.forEach((page) => {
-      const pageBillable = page.wordCount / settings.words_per_page;
-      totalBillablePages += pageBillable;
-    });
-
-    // Apply minimum billable pages
-    totalBillablePages = Math.max(totalBillablePages, settings.min_billable_pages);
-
-    // Calculate weighted average complexity
-    let weightedComplexity = 0;
-    pages.forEach((page) => {
-      const pageBillable = page.wordCount / settings.words_per_page;
-      weightedComplexity += pageBillable * getComplexityMultiplier(page.complexity);
-    });
-    const avgComplexityMultiplier = totalBillablePages > 0 ? weightedComplexity / totalBillablePages : 1.0;
-
-    // Translation cost
-    const translationCost =
-      settings.base_rate * totalBillablePages * languageMultiplier * avgComplexityMultiplier;
+    // Translation cost calculation
+    // Formula: ceil((billable_pages × base_rate × language_multiplier) / 2.5) × 2.5
+    // This rounds to nearest $2.50
+    const rawTranslationCost = billablePages * settings.base_rate * languageMultiplier;
+    const translationCost = Math.ceil(rawTranslationCost / 2.5) * 2.5;
 
     // Certification cost
     const certificationCost = selectedCertification?.price ? parseFloat(selectedCertification.price as any) : 0;
@@ -282,52 +319,62 @@ export default function ManualEntryModal({
     // Line total
     const lineTotal = translationCost + certificationCost;
 
-    // Determine overall complexity
-    let overallComplexity = "low";
-    if (avgComplexityMultiplier >= settings.complexity_hard) {
-      overallComplexity = "high";
-    } else if (avgComplexityMultiplier >= settings.complexity_medium) {
-      overallComplexity = "medium";
-    }
-
     return {
-      totalWords,
-      totalPages,
-      totalBillablePages: Math.round(totalBillablePages * 100) / 100,
-      avgComplexityMultiplier: Math.round(avgComplexityMultiplier * 100) / 100,
-      overallComplexity,
+      billablePages,
+      complexityMultiplier,
       languageMultiplier,
-      translationCost: Math.round(translationCost * 100) / 100,
+      translationCost,
       certificationCost,
-      lineTotal: Math.round(lineTotal * 100) / 100,
+      lineTotal,
     };
-  }, [pages, selectedLanguageId, selectedCertificationId, languages, certificationTypes, settings]);
+  }, [billablePages, selectedLanguageId, selectedCertificationId, complexity, languages, certificationTypes, settings]);
 
   const handleSave = async () => {
+    // Validation
+    if (isStandalone && !documentName.trim()) {
+      toast.error("Please enter a document name");
+      return;
+    }
+
+    if (!selectedLanguageId) {
+      toast.error("Please select a language");
+      return;
+    }
+
+    if (selectedDocumentTypeId === "other" && !documentTypeOther.trim()) {
+      toast.error("Please specify the document type");
+      return;
+    }
+
     setSaving(true);
 
     try {
       const selectedLanguage = languages.find((l) => l.id === selectedLanguageId);
       const selectedDocumentType = documentTypes.find((d) => d.id === selectedDocumentTypeId);
+      const isOtherDocType = selectedDocumentTypeId === "other";
 
       const analysisData = {
         quote_id: quoteId,
-        quote_file_id: file.id,
-        detected_language: selectedLanguage?.name || "Unknown",
-        detected_document_type: selectedDocumentType?.name || "Unknown",
-        assessed_complexity: pricingSummary.overallComplexity,
-        complexity_multiplier: pricingSummary.avgComplexityMultiplier,
-        word_count: pricingSummary.totalWords,
-        page_count: pricingSummary.totalPages,
-        billable_pages: pricingSummary.totalBillablePages,
+        quote_file_id: file?.id || null,
+        manual_filename: isStandalone ? documentName.trim() : null,
+        detected_language: selectedLanguage?.code || selectedLanguage?.name || "Unknown",
+        detected_document_type: isOtherDocType ? "other" : (selectedDocumentType?.code || selectedDocumentType?.name || "Unknown"),
+        document_type_other: isOtherDocType ? documentTypeOther.trim() : null,
+        assessed_complexity: complexity,
+        complexity_multiplier: getComplexityMultiplier(complexity),
+        word_count: wordCount || null,
+        page_count: 1, // Default for manual entries
+        billable_pages: billablePages,
         base_rate: settings.base_rate,
         line_total: pricingSummary.lineTotal,
         certification_type_id: selectedCertificationId || null,
         certification_price: pricingSummary.certificationCost,
         ocr_provider: "manual",
         llm_provider: "manual",
-        llm_model: "manual_entry",
+        llm_model: "staff_manual_entry",
         processing_status: "completed",
+        is_staff_created: true,
+        created_by_staff_id: staffId || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -348,13 +395,23 @@ export default function ManualEntryModal({
 
       if (result.error) throw result.error;
 
-      // Update quote_files status
-      await supabase
-        .from("quote_files")
-        .update({ ai_processing_status: "completed" })
-        .eq("id", file.id);
+      // Update quote_files status if we have a file
+      if (file?.id) {
+        await supabase
+          .from("quote_files")
+          .update({ ai_processing_status: "completed" })
+          .eq("id", file.id);
+      }
 
-      toast.success("Manual entry saved successfully");
+      // Recalculate quote totals
+      const { error: rpcError } = await supabase.rpc("recalculate_quote_totals", {
+        p_quote_id: quoteId,
+      });
+      if (rpcError) {
+        console.error("RPC recalculate error:", rpcError);
+      }
+
+      toast.success(existingAnalysisId ? "Entry updated successfully" : "Manual entry saved successfully");
 
       if (onSaveComplete) {
         await onSaveComplete();
@@ -371,15 +428,17 @@ export default function ManualEntryModal({
 
   if (!isOpen) return null;
 
+  const wordCountProvided = wordCount !== null && wordCount > 0;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <FileText className="w-6 h-6 text-orange-600" />
             <h2 className="text-lg font-semibold text-gray-900">
-              Manual Document Entry
+              {isStandalone ? "Add Manual Entry" : "Manual Document Entry"}
             </h2>
           </div>
           <button
@@ -397,57 +456,160 @@ export default function ManualEntryModal({
               <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
             </div>
           ) : (
-            <div className="space-y-6">
-              {/* File Info */}
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <FileText className="w-5 h-5 text-gray-400" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {file.original_filename}
-                  </p>
+            <div className="space-y-5">
+              {/* File Info or Document Name */}
+              {file ? (
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                  <FileText className="w-5 h-5 text-gray-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {file.original_filename}
+                    </p>
+                  </div>
                 </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Document Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={documentName}
+                    onChange={(e) => setDocumentName(e.target.value)}
+                    placeholder="e.g., Birth Certificate - Maria Garcia"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+
+              {/* Document Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Document Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={selectedDocumentTypeId}
+                  onChange={(e) => {
+                    setSelectedDocumentTypeId(e.target.value);
+                    if (e.target.value !== "other") {
+                      setDocumentTypeOther("");
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select document type...</option>
+                  {documentTypes.map((docType) => (
+                    <option key={docType.id} value={docType.id}>
+                      {docType.name}
+                    </option>
+                  ))}
+                  <option value="other">Other</option>
+                </select>
+
+                {selectedDocumentTypeId === "other" && (
+                  <div className="mt-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Specify Document Type <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={documentTypeOther}
+                      onChange={(e) => setDocumentTypeOther(e.target.value)}
+                      placeholder="e.g., Medical Power of Attorney"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Document Details */}
+              {/* Language */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Detected Language <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={selectedLanguageId}
+                  onChange={(e) => setSelectedLanguageId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select language...</option>
+                  {languages.map((lang) => (
+                    <option key={lang.id} value={lang.id}>
+                      {lang.name} ({lang.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Word Count and Complexity */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Language
+                    Word Count <span className="text-gray-400">(optional)</span>
                   </label>
-                  <select
-                    value={selectedLanguageId}
-                    onChange={(e) => setSelectedLanguageId(e.target.value)}
+                  <input
+                    type="number"
+                    min="0"
+                    value={wordCount || ""}
+                    onChange={(e) => {
+                      const val = e.target.value ? parseInt(e.target.value) : null;
+                      setWordCount(val);
+                    }}
+                    placeholder="e.g., 450"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {languages.map((lang) => (
-                      <option key={lang.id} value={lang.id}>
-                        {lang.name} ({lang.code})
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    If entered, billable pages will be calculated automatically
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Document Type
+                    Complexity <span className="text-red-500">*</span>
                   </label>
                   <select
-                    value={selectedDocumentTypeId}
-                    onChange={(e) => setSelectedDocumentTypeId(e.target.value)}
+                    value={complexity}
+                    onChange={(e) => setComplexity(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {documentTypes.map((docType) => (
-                      <option key={docType.id} value={docType.id}>
-                        {docType.name}
-                      </option>
-                    ))}
+                    <option value="easy">Easy (1.0x)</option>
+                    <option value="medium">Medium ({settings.complexity_medium}x)</option>
+                    <option value="hard">Hard ({settings.complexity_hard}x)</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Billable Pages */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Billable Pages <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={billablePages}
+                  onChange={(e) => {
+                    if (!wordCountProvided) {
+                      setBillablePages(parseFloat(e.target.value) || 0.5);
+                    }
+                  }}
+                  disabled={wordCountProvided}
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    wordCountProvided ? "bg-gray-100 cursor-not-allowed" : ""
+                  }`}
+                />
+                {wordCountProvided && (
+                  <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                    <Calculator className="w-3 h-3" />
+                    Auto-calculated from word count
+                  </p>
+                )}
               </div>
 
               {/* Certification */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Certification
+                  Certification <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={selectedCertificationId}
@@ -457,108 +619,20 @@ export default function ManualEntryModal({
                   <option value="">No Certification</option>
                   {certificationTypes.map((cert) => (
                     <option key={cert.id} value={cert.id}>
-                      {cert.name} (${parseFloat(cert.price as any).toFixed(2)})
+                      {cert.name} - ${parseFloat(cert.price as any).toFixed(2)}
                     </option>
                   ))}
                 </select>
-              </div>
-
-              {/* Page-by-Page Entry */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Pages ({pages.length})
-                  </label>
-                  <button
-                    onClick={addPage}
-                    className="px-3 py-1.5 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100 flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Add Page
-                  </button>
-                </div>
-
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left font-medium text-gray-700">
-                          Page
-                        </th>
-                        <th className="px-4 py-2 text-left font-medium text-gray-700">
-                          Word Count
-                        </th>
-                        <th className="px-4 py-2 text-left font-medium text-gray-700">
-                          Complexity
-                        </th>
-                        <th className="px-4 py-2 text-left font-medium text-gray-700">
-                          Billable
-                        </th>
-                        <th className="px-4 py-2 w-10"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {pages.map((page, index) => {
-                        const billable = Math.round((page.wordCount / settings.words_per_page) * 100) / 100;
-                        return (
-                          <tr key={page.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-2">
-                              <input
-                                type="number"
-                                min="1"
-                                value={page.pageNumber}
-                                onChange={(e) =>
-                                  updatePage(page.id, "pageNumber", parseInt(e.target.value) || 1)
-                                }
-                                className="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
-                              />
-                            </td>
-                            <td className="px-4 py-2">
-                              <input
-                                type="number"
-                                min="0"
-                                value={page.wordCount}
-                                onChange={(e) =>
-                                  updatePage(page.id, "wordCount", parseInt(e.target.value) || 0)
-                                }
-                                className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
-                              />
-                            </td>
-                            <td className="px-4 py-2">
-                              <select
-                                value={page.complexity}
-                                onChange={(e) =>
-                                  updatePage(page.id, "complexity", e.target.value)
-                                }
-                                className="px-2 py-1 border border-gray-300 rounded text-sm"
-                              >
-                                <option value="low">Low</option>
-                                <option value="medium">Medium</option>
-                                <option value="high">High</option>
-                              </select>
-                            </td>
-                            <td className="px-4 py-2 text-gray-600">
-                              {billable.toFixed(2)}
-                            </td>
-                            <td className="px-4 py-2">
-                              <button
-                                onClick={() => removePage(page.id)}
-                                disabled={pages.length === 1}
-                                className="p-1 text-gray-400 hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                {quotePurpose && defaultCertificationFromPurpose && (
+                  <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                    <Info className="w-3 h-3" />
+                    Based on quote purpose: {quotePurpose}
+                  </p>
+                )}
               </div>
 
               {/* Pricing Summary */}
-              <div className="bg-blue-50 rounded-lg p-4 space-y-3">
+              <div className="bg-blue-50 rounded-lg p-4 space-y-3 border border-blue-200">
                 <div className="flex items-center gap-2 mb-2">
                   <Calculator className="w-5 h-5 text-blue-600" />
                   <h3 className="text-sm font-semibold text-blue-900">
@@ -566,33 +640,10 @@ export default function ManualEntryModal({
                   </h3>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <p className="text-blue-700">Total Words</p>
-                    <p className="font-semibold text-blue-900">
-                      {pricingSummary.totalWords.toLocaleString()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-blue-700">Total Pages</p>
-                    <p className="font-semibold text-blue-900">
-                      {pricingSummary.totalPages}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-blue-700">Billable Pages</p>
-                    <p className="font-semibold text-blue-900">
-                      {pricingSummary.totalBillablePages}
-                    </p>
-                  </div>
-                </div>
-
                 <div className="border-t border-blue-200 pt-3 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-blue-700">
-                      Translation Cost ({pricingSummary.totalBillablePages} pages ×
-                      ${settings.base_rate} × {pricingSummary.languageMultiplier}x ×{" "}
-                      {pricingSummary.avgComplexityMultiplier}x):
+                      Translation ({pricingSummary.billablePages} pages × ${settings.base_rate} × {pricingSummary.languageMultiplier}x):
                     </span>
                     <span className="font-medium text-blue-900">
                       ${pricingSummary.translationCost.toFixed(2)}
@@ -602,7 +653,7 @@ export default function ManualEntryModal({
                     <div className="flex justify-between text-sm">
                       <span className="text-blue-700">Certification:</span>
                       <span className="font-medium text-blue-900">
-                        ${pricingSummary.certificationCost.toFixed(2)}
+                        +${pricingSummary.certificationCost.toFixed(2)}
                       </span>
                     </div>
                   )}
@@ -614,6 +665,16 @@ export default function ManualEntryModal({
                   </div>
                 </div>
               </div>
+
+              {/* Info Notice for Standalone Entries */}
+              {isStandalone && (
+                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-900">
+                    This creates a pricing entry without an uploaded file. The document name will be used for display and invoicing purposes.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -629,7 +690,7 @@ export default function ManualEntryModal({
           <button
             onClick={handleSave}
             disabled={saving || loading}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-md hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
           >
             {saving ? (
               <>
