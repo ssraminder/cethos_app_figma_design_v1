@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import SearchableDropdown from "@/components/SearchableDropdown";
 
 export interface QuoteFile {
   id: string;
@@ -100,6 +101,10 @@ export default function ManualEntryModal({
   const [quotePurpose, setQuotePurpose] = useState<string>("");
   const [defaultCertificationFromPurpose, setDefaultCertificationFromPurpose] = useState<string | null>(null);
 
+  // Quote source language multiplier (from Step 2)
+  const [quoteLanguageMultiplier, setQuoteLanguageMultiplier] = useState<number>(1.0);
+  const [quoteSourceLanguageName, setQuoteSourceLanguageName] = useState<string>("");
+
   // UI state
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -112,6 +117,7 @@ export default function ManualEntryModal({
     if (isOpen) {
       loadReferenceData();
       loadQuoteContext();
+      fetchQuoteLanguageMultiplier();
       if (file) {
         loadExistingAnalysis();
         setDocumentName(file.original_filename);
@@ -229,6 +235,38 @@ export default function ManualEntryModal({
     }
   };
 
+  // Fetch quote's source language multiplier (from Step 2)
+  const fetchQuoteLanguageMultiplier = async () => {
+    if (!quoteId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("quotes")
+        .select(`
+          source_language_id,
+          language_multiplier_override,
+          languages!quotes_source_language_id_fkey (
+            name,
+            multiplier
+          )
+        `)
+        .eq("id", quoteId)
+        .single();
+
+      if (data && !error) {
+        const langData = data.languages as { name: string; multiplier: number } | null;
+        if (langData) {
+          // Use override if set, otherwise use language's default multiplier
+          const multiplier = data.language_multiplier_override ?? langData.multiplier ?? 1.0;
+          setQuoteLanguageMultiplier(multiplier);
+          setQuoteSourceLanguageName(langData.name || "");
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching quote language multiplier:", error);
+    }
+  };
+
   const loadExistingAnalysis = async () => {
     if (!file) return;
 
@@ -300,17 +338,15 @@ export default function ManualEntryModal({
   };
 
   // Calculate pricing summary
+  // IMPORTANT: Use quote's source language multiplier (from Step 2), NOT the detected language
   const pricingSummary = useMemo(() => {
-    const selectedLanguage = languages.find((l) => l.id === selectedLanguageId);
     const selectedCertification = certificationTypes.find((c) => c.id === selectedCertificationId);
-
-    const languageMultiplier = selectedLanguage?.multiplier ? parseFloat(selectedLanguage.multiplier as any) : 1.0;
     const complexityMultiplier = getComplexityMultiplier(complexity);
 
-    // Translation cost calculation
+    // Translation cost calculation using QUOTE's source language multiplier
     // Formula: ceil((billable_pages × base_rate × language_multiplier) / 2.5) × 2.5
     // This rounds to nearest $2.50
-    const rawTranslationCost = billablePages * settings.base_rate * languageMultiplier;
+    const rawTranslationCost = billablePages * settings.base_rate * quoteLanguageMultiplier;
     const translationCost = Math.ceil(rawTranslationCost / 2.5) * 2.5;
 
     // Certification cost
@@ -322,12 +358,12 @@ export default function ManualEntryModal({
     return {
       billablePages,
       complexityMultiplier,
-      languageMultiplier,
+      languageMultiplier: quoteLanguageMultiplier,
       translationCost,
       certificationCost,
       lineTotal,
     };
-  }, [billablePages, selectedLanguageId, selectedCertificationId, complexity, languages, certificationTypes, settings]);
+  }, [billablePages, selectedCertificationId, complexity, certificationTypes, settings, quoteLanguageMultiplier]);
 
   const handleSave = async () => {
     // Validation
@@ -487,24 +523,23 @@ export default function ManualEntryModal({
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Document Type <span className="text-red-500">*</span>
                 </label>
-                <select
+                <SearchableDropdown
+                  options={[
+                    ...documentTypes.map((dt) => ({
+                      id: dt.id,
+                      label: dt.name,
+                    })),
+                    { id: "other", label: "Other" },
+                  ]}
                   value={selectedDocumentTypeId}
-                  onChange={(e) => {
-                    setSelectedDocumentTypeId(e.target.value);
-                    if (e.target.value !== "other") {
+                  onChange={(value) => {
+                    setSelectedDocumentTypeId(value);
+                    if (value !== "other") {
                       setDocumentTypeOther("");
                     }
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select document type...</option>
-                  {documentTypes.map((docType) => (
-                    <option key={docType.id} value={docType.id}>
-                      {docType.name}
-                    </option>
-                  ))}
-                  <option value="other">Other</option>
-                </select>
+                  placeholder="Search document types..."
+                />
 
                 {selectedDocumentTypeId === "other" && (
                   <div className="mt-2">
@@ -516,7 +551,8 @@ export default function ManualEntryModal({
                       value={documentTypeOther}
                       onChange={(e) => setDocumentTypeOther(e.target.value)}
                       placeholder="e.g., Medical Power of Attorney"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
                     />
                   </div>
                 )}
@@ -526,19 +562,20 @@ export default function ManualEntryModal({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Detected Language <span className="text-red-500">*</span>
+                  <span className="text-gray-400 font-normal ml-1">(for classification)</span>
                 </label>
-                <select
+                <SearchableDropdown
+                  options={languages.map((l) => ({
+                    id: l.id,
+                    label: `${l.name} (${l.code})`,
+                  }))}
                   value={selectedLanguageId}
-                  onChange={(e) => setSelectedLanguageId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select language...</option>
-                  {languages.map((lang) => (
-                    <option key={lang.id} value={lang.id}>
-                      {lang.name} ({lang.code})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => setSelectedLanguageId(value)}
+                  placeholder="Search languages..."
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Identifies the document's language for the translator
+                </p>
               </div>
 
               {/* Word Count and Complexity */}
@@ -632,38 +669,30 @@ export default function ManualEntryModal({
               </div>
 
               {/* Pricing Summary */}
-              <div className="bg-blue-50 rounded-lg p-4 space-y-3 border border-blue-200">
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                 <div className="flex items-center gap-2 mb-2">
-                  <Calculator className="w-5 h-5 text-blue-600" />
-                  <h3 className="text-sm font-semibold text-blue-900">
-                    Pricing Summary
-                  </h3>
+                  <Calculator className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium text-gray-700">Pricing Summary</span>
                 </div>
-
-                <div className="border-t border-blue-200 pt-3 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-blue-700">
-                      Translation ({pricingSummary.billablePages} pages × ${settings.base_rate} × {pricingSummary.languageMultiplier}x):
-                    </span>
-                    <span className="font-medium text-blue-900">
-                      ${pricingSummary.translationCost.toFixed(2)}
-                    </span>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Translation ({pricingSummary.billablePages} pages × ${settings.base_rate} × {pricingSummary.languageMultiplier}x):</span>
+                    <span>${pricingSummary.translationCost.toFixed(2)}</span>
                   </div>
-                  {pricingSummary.certificationCost > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-blue-700">Certification:</span>
-                      <span className="font-medium text-blue-900">
-                        +${pricingSummary.certificationCost.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="border-t border-blue-200 pt-2 flex justify-between text-base font-semibold">
-                    <span className="text-blue-900">Line Total:</span>
-                    <span className="text-blue-900">
-                      ${pricingSummary.lineTotal.toFixed(2)}
-                    </span>
+                  <div className="flex justify-between">
+                    <span>Certification:</span>
+                    <span>${pricingSummary.certificationCost.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t pt-1 mt-1">
+                    <span>Line Total:</span>
+                    <span>${pricingSummary.lineTotal.toFixed(2)}</span>
                   </div>
                 </div>
+                {quoteSourceLanguageName && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    ℹ️ Language multiplier ({pricingSummary.languageMultiplier}x) from quote source: {quoteSourceLanguageName}
+                  </p>
+                )}
               </div>
 
               {/* Info Notice for Standalone Entries */}
