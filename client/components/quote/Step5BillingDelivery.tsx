@@ -317,12 +317,13 @@ export default function Step5BillingDelivery() {
           defaultProvince = validState ? geo.region_code : "";
         }
         
+        // Pre-populate country, province/state, and city only (NOT postal code)
         setBillingAddress((prev) => ({
           ...prev,
           country: geo.country_code,
           province: defaultProvince,
           city: geo.city || prev.city,
-          postalCode: geo.postal || prev.postalCode,
+          // postalCode intentionally NOT pre-populated
         }));
         
         // Also set shipping defaults
