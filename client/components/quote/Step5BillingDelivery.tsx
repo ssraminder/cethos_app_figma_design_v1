@@ -152,7 +152,7 @@ export default function Step5BillingDelivery() {
     string[]
   >(["online_portal"]);
   const [selectedPhysicalOption, setSelectedPhysicalOption] =
-    useState<string>("none");
+    useState<string>("");
   const [selectedPickupLocation, setSelectedPickupLocation] =
     useState<string>("");
 
@@ -728,6 +728,11 @@ export default function Step5BillingDelivery() {
       newErrors.pickupLocation = "Please select a pickup location";
     }
 
+    // Validate physical delivery selection is made
+    if (!selectedPhysicalOption) {
+      newErrors.physicalDelivery = "Please select a physical delivery option";
+    }
+
     setErrors(newErrors);
 
     const touchedFields: Record<string, boolean> = {
@@ -1213,8 +1218,13 @@ export default function Step5BillingDelivery() {
         <select
           value={selectedPhysicalOption}
           onChange={(e) => setSelectedPhysicalOption(e.target.value)}
-          className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal text-gray-900"
+          className={`w-full px-3 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal text-gray-900 ${
+            errors.physicalDelivery ? "border-red-500" : "border-gray-300"
+          } ${!selectedPhysicalOption ? "text-gray-400" : ""}`}
         >
+          <option value="" disabled>
+            Select a delivery option...
+          </option>
           <option value="none">No physical copy needed (Digital only) - FREE</option>
           {physicalOptions.map((option) => (
             <option key={option.id} value={option.code}>
@@ -1224,8 +1234,13 @@ export default function Step5BillingDelivery() {
           ))}
         </select>
 
+        {/* Show error message if no option selected */}
+        {errors.physicalDelivery && (
+          <p className="text-red-500 text-sm mt-1">{errors.physicalDelivery}</p>
+        )}
+
         {/* Show description for selected option */}
-        {selectedPhysicalOption !== "none" && (
+        {selectedPhysicalOption && selectedPhysicalOption !== "none" && (
           <p className="text-sm text-gray-500 mt-2">
             {
               physicalOptions.find(
