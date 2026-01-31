@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Mail, Phone, User, Building2, AlertCircle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Search, Mail, Phone, User, Building2, AlertCircle, X, CheckCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 interface CustomerData {
@@ -9,6 +9,15 @@ interface CustomerData {
   fullName: string;
   customerType: "individual" | "business";
   companyName?: string;
+}
+
+interface CustomerSearchResult {
+  id: string;
+  email: string;
+  full_name: string;
+  phone: string;
+  customer_type: "individual" | "business";
+  company_name: string | null;
 }
 
 interface StaffCustomerFormProps {
@@ -30,42 +39,119 @@ export default function StaffCustomerForm({
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
-  const [existingCustomer, setExistingCustomer] = useState<any>(null);
+  
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<CustomerSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerSearchResult | null>(
+    value?.id ? {
+      id: value.id,
+      email: value.email,
+      full_name: value.fullName,
+      phone: value.phone,
+      customer_type: value.customerType,
+      company_name: value.companyName || null,
+    } : null
+  );
+  
+  const searchRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Notify parent of form changes
   useEffect(() => {
     onChange(formData);
   }, [formData]);
 
-  const handleEmailBlur = async () => {
-    if (!formData.email || !formData.email.includes("@")) return;
+  // Debounced search
+  useEffect(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
 
-    setIsCheckingEmail(true);
+    if (searchQuery.trim().length < 2) {
+      setSearchResults([]);
+      setShowDropdown(false);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      await performSearch(searchQuery.trim());
+    }, 300);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  const performSearch = async (query: string) => {
+    setIsSearching(true);
     try {
+      // Search across multiple fields using OR conditions
+      const searchTerm = `%${query}%`;
+      
       const { data, error } = await supabase
         .from("customers")
-        .select("*")
-        .eq("email", formData.email.toLowerCase())
-        .single();
+        .select("id, email, full_name, phone, customer_type, company_name")
+        .or(`full_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm},company_name.ilike.${searchTerm}`)
+        .limit(8);
 
-      if (data && !error) {
-        setExistingCustomer(data);
-        setFormData({
-          ...formData,
-          id: data.id,
-          fullName: data.full_name || formData.fullName,
-          phone: data.phone || formData.phone,
-          customerType: data.customer_type || formData.customerType,
-          companyName: data.company_name || formData.companyName,
-        });
+      if (error) {
+        console.error("Search error:", error);
+        setSearchResults([]);
       } else {
-        setExistingCustomer(null);
+        setSearchResults(data || []);
+        setShowDropdown((data || []).length > 0);
       }
     } catch (err) {
-      console.error("Error checking customer:", err);
+      console.error("Error searching customers:", err);
+      setSearchResults([]);
     } finally {
-      setIsCheckingEmail(false);
+      setIsSearching(false);
     }
+  };
+
+  const handleSelectCustomer = (customer: CustomerSearchResult) => {
+    setSelectedCustomer(customer);
+    setFormData({
+      id: customer.id,
+      email: customer.email || "",
+      fullName: customer.full_name || "",
+      phone: customer.phone || "",
+      customerType: customer.customer_type || "individual",
+      companyName: customer.company_name || "",
+    });
+    setSearchQuery("");
+    setShowDropdown(false);
+    setErrors({});
+  };
+
+  const handleClearSelection = () => {
+    setSelectedCustomer(null);
+    setFormData({
+      email: "",
+      phone: "",
+      fullName: "",
+      customerType: "individual",
+      companyName: "",
+    });
+    setSearchQuery("");
+    setErrors({});
   };
 
   const validateField = (name: string, value: string) => {
@@ -136,20 +222,95 @@ export default function StaffCustomerForm({
           Customer Information
         </h2>
         <p className="text-sm text-gray-600">
-          Enter the customer's details or search by email for existing customers
+          Search for an existing customer or enter new customer details
         </p>
       </div>
 
-      {existingCustomer && (
-        <div className="bg-green-50 border border-green-200 rounded-md p-4 flex gap-3">
-          <AlertCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-green-800">
-            <p className="font-medium">Existing Customer Found</p>
-            <p className="mt-1">
-              Customer information has been automatically filled from previous
-              records.
-            </p>
+      {/* Customer Search */}
+      <div ref={searchRef} className="relative">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Search Existing Customers
+        </label>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
+            placeholder="Search by name, email, phone, or company..."
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+          {isSearching && (
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            </div>
+          )}
+        </div>
+
+        {/* Search Results Dropdown */}
+        {showDropdown && searchResults.length > 0 && (
+          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-auto">
+            {searchResults.map((customer) => (
+              <button
+                key={customer.id}
+                type="button"
+                onClick={() => handleSelectCustomer(customer)}
+                className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 focus:outline-none focus:bg-blue-50"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">
+                      {customer.full_name || "No name"}
+                    </p>
+                    <p className="text-sm text-gray-600 truncate">
+                      {customer.email}
+                    </p>
+                  </div>
+                  <div className="ml-4 text-right flex-shrink-0">
+                    <p className="text-sm text-gray-500">
+                      {customer.phone || "No phone"}
+                    </p>
+                    {customer.company_name && (
+                      <p className="text-xs text-gray-400 truncate max-w-[150px]">
+                        {customer.company_name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </button>
+            ))}
           </div>
+        )}
+
+        {/* No Results */}
+        {showDropdown && searchQuery.length >= 2 && searchResults.length === 0 && !isSearching && (
+          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-4 text-center text-gray-500">
+            No customers found matching "{searchQuery}"
+          </div>
+        )}
+      </div>
+
+      {/* Selected Customer Banner */}
+      {selectedCustomer && (
+        <div className="bg-green-50 border border-green-200 rounded-md p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-green-800">Existing Customer Selected</p>
+              <p className="text-sm text-green-700">
+                {selectedCustomer.full_name} • {selectedCustomer.email}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleClearSelection}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-700 hover:text-green-900 hover:bg-green-100 rounded-md transition-colors"
+          >
+            <X className="w-4 h-4" />
+            Clear
+          </button>
         </div>
       )}
 
@@ -191,34 +352,31 @@ export default function StaffCustomerForm({
           </div>
         </div>
 
-        {/* Email */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Email Address *
-          </label>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              onBlur={handleEmailBlur}
-              placeholder="customer@example.com"
-              className={`w-full pl-10 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                errors.email ? "border-red-300" : "border-gray-300"
-              }`}
-            />
-            {isCheckingEmail && (
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-              </div>
+        {/* Company Name (conditional) */}
+        {formData.customerType === "business" && (
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Company Name *
+            </label>
+            <div className="relative">
+              <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                name="companyName"
+                value={formData.companyName || ""}
+                onChange={handleChange}
+                onBlur={(e) => validateField("companyName", e.target.value)}
+                placeholder="Acme Corporation"
+                className={`w-full pl-10 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                  errors.companyName ? "border-red-300" : "border-gray-300"
+                }`}
+              />
+            </div>
+            {errors.companyName && (
+              <p className="mt-1 text-sm text-red-600">{errors.companyName}</p>
             )}
           </div>
-          {errors.email && (
-            <p className="mt-1 text-sm text-red-600">{errors.email}</p>
-          )}
-        </div>
+        )}
 
         {/* Full Name */}
         <div>
@@ -244,6 +402,33 @@ export default function StaffCustomerForm({
           )}
         </div>
 
+        {/* Email */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Email Address *
+          </label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              onBlur={(e) => validateField("email", e.target.value)}
+              placeholder="customer@example.com"
+              className={`w-full pl-10 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                errors.email ? "border-red-300" : "border-gray-300"
+              }`}
+            />
+          </div>
+          {errors.email && (
+            <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+          )}
+          <p className="mt-1 text-xs text-gray-500">
+            Quote and order updates will be sent here
+          </p>
+        </div>
+
         {/* Phone */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -266,43 +451,18 @@ export default function StaffCustomerForm({
           {errors.phone && (
             <p className="mt-1 text-sm text-red-600">{errors.phone}</p>
           )}
+          <p className="mt-1 text-xs text-gray-500">
+            For urgent order updates only
+          </p>
         </div>
-
-        {/* Company Name (conditional) */}
-        {formData.customerType === "business" && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Company Name *
-            </label>
-            <div className="relative">
-              <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                name="companyName"
-                value={formData.companyName || ""}
-                onChange={handleChange}
-                onBlur={(e) => validateField("companyName", e.target.value)}
-                placeholder="Acme Corporation"
-                className={`w-full pl-10 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.companyName ? "border-red-300" : "border-gray-300"
-                }`}
-              />
-            </div>
-            {errors.companyName && (
-              <p className="mt-1 text-sm text-red-600">{errors.companyName}</p>
-            )}
-          </div>
-        )}
       </div>
 
       <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
         <p className="font-medium text-gray-700 mb-1">Note:</p>
         <ul className="list-disc list-inside space-y-1">
           <li>All fields marked with * are required</li>
-          <li>
-            Entering an email will automatically check for existing customers
-          </li>
-          <li>Existing customer details will be pre-filled automatically</li>
+          <li>Search to find and select existing customers</li>
+          <li>Or enter details manually for new customers</li>
         </ul>
       </div>
     </div>
