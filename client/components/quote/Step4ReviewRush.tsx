@@ -135,7 +135,7 @@ export default function Step4ReviewRush() {
     if (sourceLanguage && targetLanguage && documentType && intendedUse) {
       checkAvailability();
     }
-  }, [sourceLanguage, targetLanguage, documentType, intendedUse]);
+  }, [sourceLanguage, targetLanguage, documentType, intendedUse, standardDays]);
 
   // Auto-polling effect
   useEffect(() => {
@@ -730,7 +730,16 @@ export default function Step4ReviewRush() {
     const isEligible = !!data && !error;
     setIsSameDayEligible(isEligible);
 
-    const rushAvail = checkCutoffTime(rushCutoffHour, rushCutoffMinute);
+    // Calculate actual rush delivery days
+    const rushDeliveryDays = Math.max(1, standardDays - rushTurnaroundDays);
+
+    // Only apply cutoff if rush means next business day delivery
+    // If rush is 2+ business days, cutoff doesn't matter - work starts tomorrow
+    const needsRushCutoff = rushDeliveryDays <= 1;
+    const rushAvail = needsRushCutoff
+      ? checkCutoffTime(rushCutoffHour, rushCutoffMinute)
+      : !isWeekend(new Date()); // Still block weekends for any rush
+
     const sameDayAvail =
       isEligible && checkCutoffTime(sameDayCutoffHour, sameDayCutoffMinute);
 
@@ -1199,9 +1208,16 @@ export default function Step4ReviewRush() {
                   Ready by {format(rushDeliveryDate, "EEEE, MMMM d, yyyy")}
                 </p>
                 <p className="text-xs text-gray-400">
-                  1 day faster • Order by 4:30 PM MST Mon-Fri
+                  {rushTurnaroundDays} day{rushTurnaroundDays !== 1 ? "s" : ""}{" "}
+                  faster
+                  {Math.max(1, standardDays - rushTurnaroundDays) <= 1 &&
+                    " • Order by 4:30 PM MST Mon-Fri"}
                   {!isRushAvailable && (
-                    <span className="text-red-500 ml-1">(Cutoff passed)</span>
+                    <span className="text-red-500 ml-1">
+                      {isWeekend(new Date())
+                        ? "(Unavailable on weekends)"
+                        : "(Cutoff passed)"}
+                    </span>
                   )}
                 </p>
               </div>
