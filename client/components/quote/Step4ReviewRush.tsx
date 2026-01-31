@@ -768,9 +768,9 @@ export default function Step4ReviewRush() {
     // Rush availability logic:
     // - After daily cutoff: rush is available (work starts next business day anyway)
     // - Before daily cutoff AND rush is next-day: apply rush cutoff (4:30 PM)
-    // - Weekends: rush is blocked
+    // - Weekends (in MST): rush is blocked
     let rushAvail: boolean;
-    if (isWeekend(now)) {
+    if (isWeekend(mstTime)) {
       rushAvail = false;
     } else if (isPastDailyCutoff) {
       // After 9 PM, rush is available - delivery dates already shifted
@@ -1257,7 +1257,13 @@ export default function Step4ReviewRush() {
                     " • Order by 4:30 PM MST Mon-Fri"}
                   {!isRushAvailable && (
                     <span className="text-red-500 ml-1">
-                      {isWeekend(new Date())
+                      {isWeekend(
+                        new Date(
+                          new Date().toLocaleString("en-US", {
+                            timeZone: "America/Edmonton",
+                          }),
+                        ),
+                      )
                         ? "(Unavailable on weekends)"
                         : "(Cutoff passed)"}
                     </span>
