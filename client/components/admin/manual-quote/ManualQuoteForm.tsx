@@ -62,6 +62,9 @@ export default function ManualQuoteForm({
     total: 0,
   });
   const [staffNotes, setStaffNotes] = useState("");
+  
+  // Pricing refresh key - increments to trigger re-fetch in StaffPricingForm
+  const [pricingRefreshKey, setPricingRefreshKey] = useState(0);
 
   const steps = [
     { id: 1, name: "Customer Info", description: "Enter customer details" },
@@ -256,6 +259,12 @@ export default function ManualQuoteForm({
     }
   };
 
+  // Callback to refresh pricing when analysis/certifications change in Step 3
+  const handlePricingRefresh = () => {
+    console.log("🔄 [PRICING REFRESH] Triggered from file upload form");
+    setPricingRefreshKey((prev) => prev + 1);
+  };
+
   const canProceed = () => {
     switch (currentStep) {
       case 1:
@@ -353,6 +362,7 @@ export default function ManualQuoteForm({
               onChange={setFiles}
               processWithAI={processWithAI}
               onProcessWithAIChange={setProcessWithAI}
+              onPricingRefresh={handlePricingRefresh}
             />
           )}
 
@@ -362,6 +372,7 @@ export default function ManualQuoteForm({
               files={files}
               value={pricing}
               onChange={setPricing}
+              refreshKey={pricingRefreshKey}
             />
           )}
 

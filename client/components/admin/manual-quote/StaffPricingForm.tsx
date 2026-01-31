@@ -81,6 +81,7 @@ interface StaffPricingFormProps {
   files: FileWithAnalysis[];
   value: QuotePricing;
   onChange: (pricing: QuotePricing) => void;
+  refreshKey?: number; // Increment to trigger re-fetch of analysis data
 }
 
 const DEFAULT_TAX_RATE = 0.05; // 5% GST fallback
@@ -90,6 +91,7 @@ export default function StaffPricingForm({
   files,
   value,
   onChange,
+  refreshKey = 0,
 }: StaffPricingFormProps) {
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
@@ -163,7 +165,7 @@ export default function StaffPricingForm({
     if (quoteId) {
       loadData();
     }
-  }, [quoteId]);
+  }, [quoteId, refreshKey]); // Re-fetch when refreshKey changes
 
   // Calculate document subtotal from ai_analysis_results (already calculated correctly)
   const documentSubtotal = useMemo(() => {
