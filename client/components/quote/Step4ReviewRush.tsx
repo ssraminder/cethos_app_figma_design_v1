@@ -766,20 +766,19 @@ export default function Step4ReviewRush() {
     const rushDeliveryDays = Math.max(1, standardDays - rushTurnaroundDays);
 
     // Rush availability logic:
-    // - After daily cutoff: rush is available (work starts next business day anyway)
-    // - Before daily cutoff AND rush is next-day: apply rush cutoff (4:30 PM)
-    // - Weekends: rush is blocked
+    // Rush cutoff (4:30 PM) only applies when:
+    // - It's a weekday AND before daily cutoff (9 PM) AND rush means next-day delivery
+    // On weekends or after daily cutoff, delivery dates already start from next business day,
+    // so rush is always available (it still provides value - 1 day faster)
     let rushAvail: boolean;
-    if (isWeekend(now)) {
-      rushAvail = false;
-    } else if (isPastDailyCutoff) {
-      // After 9 PM, rush is available - delivery dates already shifted
+    if (isWeekend(mstTime) || isPastDailyCutoff) {
+      // Weekends or after 9 PM: rush is available, dates calculated from next business day
       rushAvail = true;
     } else if (rushDeliveryDays <= 1) {
-      // Before 9 PM and rush is next-day, apply 4:30 PM cutoff
+      // Weekday before 9 PM and rush is next-day: apply 4:30 PM cutoff
       rushAvail = checkCutoffTime(rushCutoffHour, rushCutoffMinute);
     } else {
-      // Before 9 PM but rush is 2+ days, no cutoff needed
+      // Weekday before 9 PM but rush is 2+ days: no cutoff needed
       rushAvail = true;
     }
 
@@ -1257,7 +1256,13 @@ export default function Step4ReviewRush() {
                     " • Order by 4:30 PM MST Mon-Fri"}
                   {!isRushAvailable && (
                     <span className="text-red-500 ml-1">
-                      {isWeekend(new Date())
+                      {isWeekend(
+                        new Date(
+                          new Date().toLocaleString("en-US", {
+                            timeZone: "America/Edmonton",
+                          }),
+                        ),
+                      )
                         ? "(Unavailable on weekends)"
                         : "(Cutoff passed)"}
                     </span>
