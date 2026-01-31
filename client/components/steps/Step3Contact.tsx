@@ -97,7 +97,7 @@ export default function Step3Contact() {
               value={state.companyName}
               onChange={(e) => updateField("companyName", e.target.value)}
               placeholder="Your company name"
-              className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm"
+              className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-base"
             />
           </div>
         )}
@@ -113,7 +113,7 @@ export default function Step3Contact() {
               value={state.firstName}
               onChange={(e) => updateField("firstName", e.target.value)}
               placeholder="John"
-              className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm"
+              className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-base"
             />
           </div>
           <div>
@@ -125,7 +125,7 @@ export default function Step3Contact() {
               value={state.lastName}
               onChange={(e) => updateField("lastName", e.target.value)}
               placeholder="Smith"
-              className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm"
+              className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-base"
             />
           </div>
         </div>
@@ -140,7 +140,7 @@ export default function Step3Contact() {
             value={state.email}
             onChange={(e) => updateField("email", e.target.value)}
             placeholder="your.email@example.com"
-            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm"
+            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-base"
           />
           <p className="mt-2 text-xs text-cethos-slate">
             We'll send your quote and order updates here
@@ -157,7 +157,7 @@ export default function Step3Contact() {
             value={state.phone}
             onChange={(e) => updateField("phone", e.target.value)}
             placeholder="(555) 123-4567"
-            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-sm"
+            className="w-full h-12 px-4 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-blue focus:border-transparent text-base"
           />
           <p className="mt-2 text-xs text-cethos-slate">
             For urgent order updates only

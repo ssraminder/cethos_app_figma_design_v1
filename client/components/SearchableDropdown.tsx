@@ -161,7 +161,7 @@ export default function SearchableDropdown({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search..."
-                className="w-full h-10 pl-9 pr-4 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent"
+                className="w-full h-10 pl-9 pr-4 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent"
               />
             </div>
           </div>

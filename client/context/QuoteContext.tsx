@@ -416,6 +416,9 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       return { success: false };
     }
 
+    // Reset scroll position on step transition
+    window.scrollTo(0, 0);
+
     // Step 1 -> 2: Create quote and upload files
     if (state.currentStep === 1) {
       if (filesQueuedForUpload.current.length > 0) {
@@ -506,6 +509,8 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
 
   const goToPreviousStep = () => {
     if (state.currentStep > 1) {
+      // Reset scroll position on step transition
+      window.scrollTo(0, 0);
       updateState({ currentStep: state.currentStep - 1 });
     }
   };
@@ -523,6 +528,8 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       }
 
       if (canNavigate) {
+        // Reset scroll position on step transition
+        window.scrollTo(0, 0);
         updateState({ currentStep: step });
       }
     }

@@ -392,7 +392,7 @@ export default function Step2Details() {
               updateField("specialInstructions", value);
             }}
             placeholder="Add any special instructions or notes for your translation..."
-            className="w-full h-32 px-4 py-3 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-sm resize-none"
+            className="w-full h-32 px-4 py-3 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-base resize-none"
             maxLength={500}
           />
           <div className="mt-2 text-xs text-cethos-slate text-right">
