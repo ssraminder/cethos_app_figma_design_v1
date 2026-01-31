@@ -1,45 +1,24 @@
 import { RotateCcw } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { useQuote } from "@/context/QuoteContext";
-import { useUpload } from "@/context/UploadContext";
-import { handleStartNewQuote } from "@/utils/navigationHelpers";
 
 interface StartOverLinkProps {
   className?: string;
 }
 
 export default function StartOverLink({ className = "" }: StartOverLinkProps) {
-  const navigate = useNavigate();
-
-  // Try to use UploadContext first, fall back to QuoteContext
-  let resetFunction: (() => void) | undefined;
-
-  try {
-    const uploadContext = useUpload();
-    resetFunction = uploadContext.resetUpload;
-  } catch {
-    // Fall back to QuoteContext
-    try {
-      const quoteContext = useQuote();
-      resetFunction = quoteContext.resetQuote;
-    } catch {
-      // Neither context available
-    }
-  }
-
   const handleStartOver = () => {
     const confirmed = window.confirm(
-      "Are you sure you want to start over? All your uploaded documents and entered information will be lost.",
+      "Are you sure you want to start over? All your uploaded documents and entered information will be lost."
     );
 
     if (confirmed) {
-      // Use the navigation helper which clears storage and navigates to correct entry point
-      handleStartNewQuote(navigate);
+      // Clear localStorage
+      localStorage.removeItem("cethos_upload_draft");
+      localStorage.removeItem("cethos_quote_draft");
+      localStorage.removeItem("cethos_quote_id");
+      localStorage.removeItem("cethos_quote_state");
 
-      // Call the appropriate reset function if available
-      if (resetFunction) {
-        resetFunction();
-      }
+      // Navigate to /quote (Step 1)
+      window.location.href = "/quote";
     }
   };
 
