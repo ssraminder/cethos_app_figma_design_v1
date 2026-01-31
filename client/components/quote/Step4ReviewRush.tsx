@@ -1253,8 +1253,6 @@ export default function Step4ReviewRush() {
                 <p className="text-xs text-gray-400">
                   {rushTurnaroundDays} day{rushTurnaroundDays !== 1 ? "s" : ""}{" "}
                   faster
-                  {Math.max(1, standardDays - rushTurnaroundDays) <= 1 &&
-                    " • Order by 4:30 PM MST Mon-Fri"}
                   {!isRushAvailable && (
                     <span className="text-red-500 ml-1">
                       {isWeekend(
