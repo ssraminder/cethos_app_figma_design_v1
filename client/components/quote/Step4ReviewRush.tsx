@@ -684,14 +684,15 @@ export default function Step4ReviewRush() {
 
     let date = new Date();
 
-    // Check if past daily cutoff (e.g., 9 PM MST)
+    // Check if past daily cutoff (e.g., 9 PM MST) or if it's a weekend
     const mstTime = new Date(
       date.toLocaleString("en-US", { timeZone: "America/Edmonton" }),
     );
     const isPastDailyCutoff = mstTime.getHours() >= dailyCutoffHour;
+    const isWeekendOrder = isWeekend(mstTime);
 
-    // If past cutoff, advance to the next business day first, then count from there
-    if (isPastDailyCutoff) {
+    // If past cutoff OR weekend, advance to the next business day first, then count from there
+    if (isPastDailyCutoff || isWeekendOrder) {
       date.setDate(date.getDate() + 1);
       // Skip weekends and holidays to find next business day
       while (
