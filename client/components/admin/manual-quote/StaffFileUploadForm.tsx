@@ -23,6 +23,7 @@ import {
   Clock,
   XCircle,
   CheckCircle2,
+  Plus,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -79,10 +80,12 @@ export interface FileWithAnalysis {
 
 interface AnalysisResult {
   id: string;
-  quote_file_id: string;
+  quote_file_id: string | null;
+  manual_filename: string | null;
   original_filename: string;
   detected_language: string;
   detected_document_type: string;
+  document_type_other: string | null;
   assessed_complexity: string;
   complexity_multiplier: number;
   word_count: number;
@@ -92,6 +95,7 @@ interface AnalysisResult {
   line_total: number;
   certification_type_id: string | null;
   certification_price: number | null;
+  is_staff_created: boolean;
 }
 
 interface Language {
@@ -527,13 +531,16 @@ export default function StaffFileUploadForm({
   const fetchAnalysisResults = async () => {
     if (!quoteId) return;
 
+    // Fetch analysis results with optional file join (supports manual entries without files)
     const { data, error } = await supabase
       .from("ai_analysis_results")
       .select(`
         id,
         quote_file_id,
+        manual_filename,
         detected_language,
         detected_document_type,
+        document_type_other,
         assessed_complexity,
         complexity_multiplier,
         word_count,
@@ -543,7 +550,8 @@ export default function StaffFileUploadForm({
         line_total,
         certification_type_id,
         certification_price,
-        quote_files!inner(original_filename)
+        is_staff_created,
+        quote_files(original_filename)
       `)
       .eq("quote_id", quoteId);
 
@@ -551,7 +559,8 @@ export default function StaffFileUploadForm({
       setAnalysisResults(
         data.map((r: any) => ({
           ...r,
-          original_filename: r.quote_files?.original_filename || "Unknown",
+          // Use manual_filename if no file, otherwise use the file's original_filename
+          original_filename: r.quote_files?.original_filename || r.manual_filename || "Manual Entry",
         }))
       );
     }
@@ -962,10 +971,13 @@ export default function StaffFileUploadForm({
   // ANALYSIS HANDLERS
   // ============================================================================
 
-  const handleRemoveAnalysis = async (analysisId: string, fileId: string, fileName: string) => {
-    const confirmed = window.confirm(
-      `Remove analysis for "${fileName}"?\n\nThe file will remain and can be re-analyzed or manually entered.`
-    );
+  const handleRemoveAnalysis = async (analysisId: string, fileId: string | null, fileName: string) => {
+    const isManualEntry = !fileId;
+    const message = isManualEntry
+      ? `Remove manual entry "${fileName}"?`
+      : `Remove analysis for "${fileName}"?\n\nThe file will remain and can be re-analyzed or manually entered.`;
+
+    const confirmed = window.confirm(message);
 
     if (!confirmed) return;
 
@@ -979,20 +991,27 @@ export default function StaffFileUploadForm({
 
       if (deleteError) throw deleteError;
 
-      // Reset quote_files status to 'skipped'
-      const { error: updateError } = await supabase
-        .from("quote_files")
-        .update({ ai_processing_status: "skipped" })
-        .eq("id", fileId);
+      // Reset quote_files status to 'skipped' (only if there's a file)
+      if (fileId) {
+        const { error: updateError } = await supabase
+          .from("quote_files")
+          .update({ ai_processing_status: "skipped" })
+          .eq("id", fileId);
 
-      if (updateError) throw updateError;
+        if (updateError) throw updateError;
+      }
 
-      toast.success(`Analysis removed for "${fileName}"`);
+      // Recalculate quote totals
+      if (quoteId) {
+        await supabase.rpc("recalculate_quote_totals", { p_quote_id: quoteId });
+      }
+
+      toast.success(isManualEntry ? `Entry removed: "${fileName}"` : `Analysis removed for "${fileName}"`);
       fetchAnalysisResults();
       onPricingRefresh?.();
     } catch (error: any) {
       console.error("Error removing analysis:", error);
-      toast.error(`Failed to remove analysis: ${error.message}`);
+      toast.error(`Failed to remove: ${error.message}`);
     } finally {
       setRemovingAnalysisId(null);
     }
@@ -1023,12 +1042,24 @@ export default function StaffFileUploadForm({
     try {
       const certType = certificationTypes.find((c) => c.id === editingAnalysis.certification_type_id);
 
+      // Map complexity to multiplier
+      const complexityMultipliers: Record<string, number> = {
+        easy: 1.0,
+        low: 1.0,
+        medium: 1.15,
+        hard: 1.25,
+        high: 1.25,
+      };
+      const newComplexity = editingAnalysis.assessed_complexity?.toLowerCase() || "medium";
+      const newMultiplier = complexityMultipliers[newComplexity] || 1.0;
+
       const { error } = await supabase
         .from("ai_analysis_results")
         .update({
           detected_language: editingAnalysis.detected_language,
           detected_document_type: editingAnalysis.detected_document_type,
           assessed_complexity: editingAnalysis.assessed_complexity,
+          complexity_multiplier: newMultiplier,
           word_count: editingAnalysis.word_count,
           page_count: editingAnalysis.page_count,
           billable_pages: editingAnalysis.billable_pages,
@@ -1039,6 +1070,16 @@ export default function StaffFileUploadForm({
         .eq("id", analysisId);
 
       if (error) throw error;
+
+      // Recalculate quote totals after the update
+      if (quoteId) {
+        const { error: rpcError } = await supabase.rpc("recalculate_quote_totals", {
+          p_quote_id: quoteId,
+        });
+        if (rpcError) {
+          console.error("RPC recalculate error:", rpcError);
+        }
+      }
 
       toast.success("Analysis updated");
       setEditingAnalysisId(null);
@@ -1326,6 +1367,35 @@ export default function StaffFileUploadForm({
       </div>
 
       {/* ================================================================== */}
+      {/* STANDALONE MANUAL ENTRY BUTTON */}
+      {/* ================================================================== */}
+      {quoteId && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="font-medium text-orange-900 flex items-center gap-2">
+                <PenTool className="w-5 h-5" />
+                Manual Document Entry
+              </h4>
+              <p className="text-sm text-orange-700 mt-1">
+                Create a document entry without uploading a file, or manually define document details.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedFile(null);
+                setManualEntryModalOpen(true);
+              }}
+              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Add Manual Entry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================== */}
       {/* FILE MANAGEMENT WITH CATEGORIES */}
       {/* ================================================================== */}
       {uploadedFiles.length > 0 && (
@@ -1547,13 +1617,23 @@ export default function StaffFileUploadForm({
             const isSaving = savingField === `analysis-${analysis.id}`;
             const currentCert = certificationTypes.find((c) => c.id === (isEditing ? editingAnalysis?.certification_type_id : analysis.certification_type_id));
 
+            const isManualEntry = !analysis.quote_file_id;
+
             return (
-              <div key={analysis.id} className="bg-white border border-gray-200 rounded-lg p-4">
+              <div key={analysis.id} className={`bg-white border rounded-lg p-4 ${isManualEntry ? "border-orange-200" : "border-gray-200"}`}>
                 {/* File Header */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-gray-400" />
+                    <FileText className={`w-5 h-5 ${isManualEntry ? "text-orange-500" : "text-gray-400"}`} />
                     <span className="font-medium text-gray-900">{analysis.original_filename}</span>
+                    {isManualEntry && (
+                      <span className="px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded-full">
+                        Manual Entry
+                      </span>
+                    )}
+                    {analysis.document_type_other && (
+                      <span className="text-xs text-gray-500">({analysis.document_type_other})</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {!isEditing && (
@@ -1565,36 +1645,44 @@ export default function StaffFileUploadForm({
                           <Edit2 className="w-3 h-3" />
                           Edit
                         </button>
+                        {/* Only show Re-analyze if there's a file */}
+                        {analysis.quote_file_id && (
+                          <button
+                            onClick={() => {
+                              setSelectedFile({
+                                id: analysis.quote_file_id!,
+                                original_filename: analysis.original_filename,
+                                mime_type: "",
+                              });
+                              setAnalyzeModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 text-xs bg-purple-50 text-purple-700 rounded hover:bg-purple-100 flex items-center gap-1"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            Re-analyze
+                          </button>
+                        )}
+                        {/* Show Edit in Modal for manual entries or files */}
                         <button
                           onClick={() => {
-                            setSelectedFile({
-                              id: analysis.quote_file_id,
-                              original_filename: analysis.original_filename,
-                              mime_type: "",
-                            });
-                            setAnalyzeModalOpen(true);
-                          }}
-                          className="px-3 py-1.5 text-xs bg-purple-50 text-purple-700 rounded hover:bg-purple-100 flex items-center gap-1"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                          Re-analyze
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedFile({
-                              id: analysis.quote_file_id,
-                              original_filename: analysis.original_filename,
-                              mime_type: "",
-                            });
+                            if (analysis.quote_file_id) {
+                              setSelectedFile({
+                                id: analysis.quote_file_id,
+                                original_filename: analysis.original_filename,
+                                mime_type: "",
+                              });
+                            } else {
+                              setSelectedFile(null);
+                            }
                             setManualEntryModalOpen(true);
                           }}
                           className="px-3 py-1.5 text-xs bg-orange-50 text-orange-700 rounded hover:bg-orange-100 flex items-center gap-1"
                         >
                           <PenTool className="w-3 h-3" />
-                          Manual Entry
+                          {isManualEntry ? "Edit Entry" : "Manual Entry"}
                         </button>
                         <button
-                          onClick={() => handleRemoveAnalysis(analysis.id, analysis.quote_file_id, analysis.original_filename)}
+                          onClick={() => handleRemoveAnalysis(analysis.id, analysis.quote_file_id || "", analysis.original_filename)}
                           disabled={isRemoving}
                           className="px-3 py-1.5 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100 flex items-center gap-1 disabled:opacity-50"
                         >
@@ -1919,36 +2007,37 @@ export default function StaffFileUploadForm({
       {/* MODALS */}
       {/* ================================================================== */}
       {selectedFile && (
-        <>
-          <AnalyzeDocumentModal
-            isOpen={analyzeModalOpen}
-            onClose={() => {
-              setAnalyzeModalOpen(false);
-              setSelectedFile(null);
-            }}
-            file={selectedFile}
-            quoteId={quoteId!}
-            onAnalysisComplete={() => {
-              fetchAnalysisResults();
-              onPricingRefresh?.();
-            }}
-          />
-
-          <ManualEntryModal
-            isOpen={manualEntryModalOpen}
-            onClose={() => {
-              setManualEntryModalOpen(false);
-              setSelectedFile(null);
-            }}
-            file={selectedFile}
-            quoteId={quoteId!}
-            onSaveComplete={() => {
-              fetchAnalysisResults();
-              onPricingRefresh?.();
-            }}
-          />
-        </>
+        <AnalyzeDocumentModal
+          isOpen={analyzeModalOpen}
+          onClose={() => {
+            setAnalyzeModalOpen(false);
+            setSelectedFile(null);
+          }}
+          file={selectedFile}
+          quoteId={quoteId!}
+          onAnalysisComplete={() => {
+            fetchAnalysisResults();
+            onPricingRefresh?.();
+          }}
+        />
       )}
+
+      {/* Manual Entry Modal - works with or without a file */}
+      <ManualEntryModal
+        isOpen={manualEntryModalOpen}
+        onClose={() => {
+          setManualEntryModalOpen(false);
+          setSelectedFile(null);
+        }}
+        file={selectedFile}
+        quoteId={quoteId!}
+        staffId={staffId}
+        onSaveComplete={() => {
+          fetchAnalysisResults();
+          fetchUploadedFiles();
+          onPricingRefresh?.();
+        }}
+      />
     </div>
   );
 }
