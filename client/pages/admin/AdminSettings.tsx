@@ -390,6 +390,18 @@ export default function AdminSettings() {
               <h3 className="font-semibold text-gray-900 mb-1">Languages</h3>
               <p className="text-sm text-gray-600">Manage languages</p>
             </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/file-categories")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                File Categories
+              </h3>
+              <p className="text-sm text-gray-600">
+                Categorize uploaded files in quotes
+              </p>
+            </button>
           </div>
         </div>
 

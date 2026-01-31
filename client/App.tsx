@@ -85,6 +85,7 @@ import PaymentMethodsSettings from "./pages/admin/settings/PaymentMethodsSetting
 import SameDaySettings from "./pages/admin/settings/SameDaySettings";
 import LanguageTiersSettings from "./pages/admin/settings/LanguageTiersSettings";
 import LanguagesSettings from "./pages/admin/settings/LanguagesSettings";
+import FileCategoriesSettings from "./pages/admin/settings/FileCategoriesSettings";
 
 const queryClient = new QueryClient();
 
@@ -343,6 +344,10 @@ const App = () => (
                     <Route
                       path="settings/languages"
                       element={<LanguagesSettings />}
+                    />
+                    <Route
+                      path="settings/file-categories"
+                      element={<FileCategoriesSettings />}
                     />
                   </Route>
 
