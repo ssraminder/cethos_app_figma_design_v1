@@ -15,7 +15,6 @@ import {
   Mail,
   Check,
   Package,
-  Edit2,
 } from "lucide-react";
 
 // Types
@@ -74,13 +73,6 @@ interface DeliveryOption {
   is_physical: boolean;
 }
 
-interface TurnaroundSettings {
-  rushMultiplier: number;
-  sameDayMultiplier: number;
-  standardDays: number;
-  rushDays: number;
-}
-
 interface PricingData {
   subtotal: number;
   certifications: QuoteCertification[];
@@ -92,13 +84,8 @@ interface PricingData {
   rushFee: number;
   deliveryFee: number;
   turnaroundType: string;
-  turnaroundDays: number;
-  isRush: boolean;
-  rushFeeType: "auto" | "percentage" | "fixed";
-  rushFeeCustomValue: number | null;
   selectedDeliveryOptions: string[];
   physicalDeliveryOptionId: string | null;
-  documentCount: number;
 }
 
 interface Props {
@@ -134,12 +121,6 @@ export default function PricingSummaryBox({
   const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
   const [turnaroundOptions, setTurnaroundOptions] = useState<TurnaroundOption[]>([]);
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
-  const [turnaroundSettings, setTurnaroundSettings] = useState<TurnaroundSettings>({
-    rushMultiplier: 0.30,
-    sameDayMultiplier: 2.00,
-    standardDays: 2,
-    rushDays: 1,
-  });
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,11 +133,6 @@ export default function PricingSummaryBox({
   const [selectedTurnaround, setSelectedTurnaround] = useState<string>("standard");
   const [emailDeliveryEnabled, setEmailDeliveryEnabled] = useState(false);
   const [selectedPhysicalDelivery, setSelectedPhysicalDelivery] = useState<string>("");
-
-  // Rush fee override state
-  const [rushOverrideEnabled, setRushOverrideEnabled] = useState(false);
-  const [rushOverrideType, setRushOverrideType] = useState<"percentage" | "fixed">("percentage");
-  const [rushOverrideValue, setRushOverrideValue] = useState<string>("");
 
   // Adjustment form state
   const [adjustmentForm, setAdjustmentForm] = useState({
@@ -191,10 +167,6 @@ export default function PricingSummaryBox({
           total,
           calculated_totals,
           turnaround_type,
-          turnaround_days,
-          is_rush,
-          rush_fee_type,
-          rush_fee_custom_value,
           digital_delivery_options,
           physical_delivery_option_id
         `
@@ -203,50 +175,6 @@ export default function PricingSummaryBox({
         .single();
 
       if (quoteError) throw quoteError;
-
-      // Fetch document count for certifications display
-      const { count: docCount, error: docCountError } = await supabase
-        .from("quote_files")
-        .select("id", { count: "exact", head: true })
-        .eq("quote_id", quoteId);
-
-      if (docCountError) {
-        console.warn("Error fetching document count:", docCountError);
-      }
-
-      // Fetch turnaround settings from app_settings
-      const { data: settingsData, error: settingsError } = await supabase
-        .from("app_settings")
-        .select("setting_key, setting_value")
-        .in("setting_key", [
-          "rush_multiplier",
-          "same_day_multiplier",
-          "turnaround_base_days",
-          "rush_turnaround_days"
-        ]);
-
-      if (settingsError) {
-        console.warn("Error fetching turnaround settings:", settingsError);
-      } else if (settingsData) {
-        const newSettings: TurnaroundSettings = {
-          rushMultiplier: 0.30,
-          sameDayMultiplier: 2.00,
-          standardDays: 2,
-          rushDays: 1,
-        };
-        settingsData.forEach((s) => {
-          if (s.setting_key === "rush_multiplier") {
-            newSettings.rushMultiplier = parseFloat(s.setting_value) || 0.30;
-          } else if (s.setting_key === "same_day_multiplier") {
-            newSettings.sameDayMultiplier = parseFloat(s.setting_value) || 2.00;
-          } else if (s.setting_key === "turnaround_base_days") {
-            newSettings.standardDays = parseInt(s.setting_value) || 2;
-          } else if (s.setting_key === "rush_turnaround_days") {
-            newSettings.rushDays = parseInt(s.setting_value) || 1;
-          }
-        });
-        setTurnaroundSettings(newSettings);
-      }
 
       // Fetch quote certifications
       const { data: certsData, error: certsError } = await supabase
@@ -327,28 +255,11 @@ export default function PricingSummaryBox({
       // Set selected values from quote data
       setSelectedTurnaround(quoteData?.turnaround_type || "standard");
 
-      // Set rush override state from quote data
-      const rushFeeType = quoteData?.rush_fee_type || "auto";
-      setRushOverrideEnabled(rushFeeType !== "auto");
-      if (rushFeeType === "percentage") {
-        setRushOverrideType("percentage");
-        setRushOverrideValue(String(quoteData?.rush_fee_custom_value || ""));
-      } else if (rushFeeType === "fixed") {
-        setRushOverrideType("fixed");
-        setRushOverrideValue(String(quoteData?.rush_fee_custom_value || ""));
-      } else {
-        // Auto - set default based on turnaround type
-        setRushOverrideType("percentage");
-        setRushOverrideValue("");
-      }
-
       // Check if email delivery is enabled in digital_delivery_options
       const digitalOptions = quoteData?.digital_delivery_options || [];
       const emailOption = deliveryData?.find((d: DeliveryOption) => d.code === "email");
       if (emailOption && digitalOptions.includes(emailOption.id)) {
         setEmailDeliveryEnabled(true);
-      } else {
-        setEmailDeliveryEnabled(false);
       }
 
       setSelectedPhysicalDelivery(quoteData?.physical_delivery_option_id || "");
@@ -375,13 +286,8 @@ export default function PricingSummaryBox({
           quoteData?.rush_fee || quoteData?.calculated_totals?.rush_fee || 0,
         deliveryFee: quoteData?.delivery_fee || 0,
         turnaroundType: quoteData?.turnaround_type || "standard",
-        turnaroundDays: quoteData?.turnaround_days || 2,
-        isRush: quoteData?.is_rush || false,
-        rushFeeType: quoteData?.rush_fee_type || "auto",
-        rushFeeCustomValue: quoteData?.rush_fee_custom_value || null,
         selectedDeliveryOptions: quoteData?.digital_delivery_options || [],
         physicalDeliveryOptionId: quoteData?.physical_delivery_option_id || null,
-        documentCount: docCount || 0,
       });
     } catch (err: any) {
       console.error("Error fetching pricing data:", err);
@@ -391,34 +297,23 @@ export default function PricingSummaryBox({
     }
   };
 
-  // Add certification (quote-level - applies to all docs)
+  // Add certification
   const handleAddCertification = async (certTypeId: string) => {
     const certType = certificationTypes.find((c) => c.id === certTypeId);
     if (!certType) return;
-
-    const docCount = pricing?.documentCount || 1;
-    const totalCost = certType.price * docCount;
-
-    // Confirm with user
-    const confirmed = window.confirm(
-      `Apply "${certType.name}" to entire quote?\n\n` +
-      `Cost: ${formatCurrency(certType.price)} × ${docCount} document${docCount !== 1 ? "s" : ""} = ${formatCurrency(totalCost)}`
-    );
-    if (!confirmed) return;
 
     try {
       const { error } = await supabase.from("quote_certifications").insert({
         quote_id: quoteId,
         certification_type_id: certTypeId,
         price: certType.price,
-        quantity: docCount,
+        quantity: 1,
         added_by: staffId || null,
       });
 
       if (error) throw error;
 
       setShowCertDropdown(false);
-      toast.success(`${certType.name} applied to ${docCount} document${docCount !== 1 ? "s" : ""}`);
       await handleRecalculate();
     } catch (err: any) {
       console.error("Error adding certification:", err);
@@ -537,40 +432,24 @@ export default function PricingSummaryBox({
     try {
       setSelectedTurnaround(turnaroundCode);
 
-      const isRush = turnaroundCode !== "standard";
-      const days = turnaroundCode === "standard"
-        ? turnaroundSettings.standardDays
-        : turnaroundCode === "rush"
-          ? turnaroundSettings.rushDays
-          : 0; // same_day
+      const selectedOption = turnaroundOptions.find(t => t.code === turnaroundCode);
+      const isRush = selectedOption?.is_rush || false;
+      const multiplier = selectedOption?.multiplier || 1.0;
 
-      // Calculate rush fee based on subtotal and turnaround type
+      // Calculate rush fee based on subtotal
       const subtotal = pricing?.subtotal || 0;
-      let newRushFee = 0;
-      if (turnaroundCode === "rush") {
-        newRushFee = subtotal * turnaroundSettings.rushMultiplier;
-      } else if (turnaroundCode === "same_day") {
-        newRushFee = subtotal * (turnaroundSettings.sameDayMultiplier - 1);
-      }
+      const newRushFee = isRush ? subtotal * (multiplier - 1) : 0;
 
       const { error } = await supabase
         .from("quotes")
         .update({
           turnaround_type: turnaroundCode,
-          turnaround_days: days,
           is_rush: isRush,
-          rush_fee: newRushFee,
-          rush_fee_type: "auto",  // Reset to auto when changing turnaround
-          rush_fee_custom_value: null,
-          updated_at: new Date().toISOString()
+          rush_fee: newRushFee
         })
         .eq("id", quoteId);
 
       if (error) throw error;
-
-      // Reset override state
-      setRushOverrideEnabled(false);
-      setRushOverrideValue("");
 
       await handleRecalculate();
     } catch (err: any) {
@@ -578,88 +457,6 @@ export default function PricingSummaryBox({
       setError(err.message);
       // Revert optimistic update
       setSelectedTurnaround(pricing?.turnaroundType || "standard");
-    }
-  };
-
-  // Handle rush fee override toggle
-  const handleRushOverrideToggle = async (enabled: boolean) => {
-    if (!enabled) {
-      // Reset to auto
-      try {
-        const subtotal = pricing?.subtotal || 0;
-        let newRushFee = 0;
-        if (selectedTurnaround === "rush") {
-          newRushFee = subtotal * turnaroundSettings.rushMultiplier;
-        } else if (selectedTurnaround === "same_day") {
-          newRushFee = subtotal * (turnaroundSettings.sameDayMultiplier - 1);
-        }
-
-        const { error } = await supabase
-          .from("quotes")
-          .update({
-            rush_fee_type: "auto",
-            rush_fee_custom_value: null,
-            rush_fee: newRushFee,
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", quoteId);
-
-        if (error) throw error;
-
-        setRushOverrideEnabled(false);
-        setRushOverrideValue("");
-        await handleRecalculate();
-      } catch (err: any) {
-        console.error("Error resetting rush override:", err);
-        setError(err.message);
-      }
-    } else {
-      // Just enable the override UI
-      setRushOverrideEnabled(true);
-      // Set default value based on current turnaround
-      if (selectedTurnaround === "rush") {
-        setRushOverrideValue(String(turnaroundSettings.rushMultiplier * 100));
-      } else if (selectedTurnaround === "same_day") {
-        setRushOverrideValue(String((turnaroundSettings.sameDayMultiplier - 1) * 100));
-      }
-    }
-  };
-
-  // Apply rush fee override
-  const handleApplyRushOverride = async () => {
-    const value = parseFloat(rushOverrideValue);
-    if (isNaN(value) || value < 0) {
-      toast.error("Please enter a valid value");
-      return;
-    }
-
-    try {
-      const subtotal = pricing?.subtotal || 0;
-      let newRushFee = 0;
-
-      if (rushOverrideType === "percentage") {
-        newRushFee = subtotal * (value / 100);
-      } else {
-        newRushFee = value;
-      }
-
-      const { error } = await supabase
-        .from("quotes")
-        .update({
-          rush_fee_type: rushOverrideType,
-          rush_fee_custom_value: value,
-          rush_fee: newRushFee,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", quoteId);
-
-      if (error) throw error;
-
-      toast.success("Rush fee override applied");
-      await handleRecalculate();
-    } catch (err: any) {
-      console.error("Error applying rush override:", err);
-      setError(err.message);
     }
   };
 
@@ -737,35 +534,11 @@ export default function PricingSummaryBox({
     }
   };
 
-  // Calculate rush fee for display based on turnaround type and override settings
-  const calculateRushFeeForType = (turnaroundType: string) => {
-    const subtotal = pricing?.subtotal || 0;
-    if (turnaroundType === "standard") return 0;
-    if (turnaroundType === "rush") {
-      return subtotal * turnaroundSettings.rushMultiplier;
-    }
-    if (turnaroundType === "same_day") {
-      return subtotal * (turnaroundSettings.sameDayMultiplier - 1);
-    }
-    return 0;
-  };
-
-  // Calculate current rush fee (with override if applicable)
+  // Calculate rush fee for display
   const calculateRushFee = () => {
-    if (selectedTurnaround === "standard") return 0;
-
-    // If override is enabled and applied
-    if (rushOverrideEnabled && pricing?.rushFeeType !== "auto") {
-      const value = pricing?.rushFeeCustomValue || 0;
-      if (pricing?.rushFeeType === "percentage") {
-        return (pricing?.subtotal || 0) * (value / 100);
-      } else {
-        return value;
-      }
-    }
-
-    // Auto calculation
-    return calculateRushFeeForType(selectedTurnaround);
+    const selectedOption = turnaroundOptions.find(t => t.code === selectedTurnaround);
+    if (!selectedOption?.is_rush) return 0;
+    return (pricing?.subtotal || 0) * (selectedOption.multiplier - 1);
   };
 
   // Calculate delivery fee for display
@@ -856,19 +629,12 @@ export default function PricingSummaryBox({
               {pricing.certifications.map((cert) => (
                 <div
                   key={cert.id}
-                  className="flex items-center justify-between bg-blue-50 rounded-md px-3 py-2 border border-blue-100"
+                  className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2"
                 >
-                  <div>
-                    <span className="text-sm text-gray-700">{cert.name}</span>
-                    {cert.quantity > 1 && (
-                      <span className="ml-1 text-xs text-gray-500">
-                        × {cert.quantity} docs
-                      </span>
-                    )}
-                  </div>
+                  <span className="text-sm text-gray-700">{cert.name}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-blue-700">
-                      +{formatCurrency(cert.price * cert.quantity)}
+                    <span className="text-sm font-medium">
+                      {formatCurrency(cert.price)}
                     </span>
                     <button
                       onClick={() => handleRemoveCertification(cert.id)}
@@ -887,7 +653,7 @@ export default function PricingSummaryBox({
             </p>
           )}
 
-          {/* Add Certification Dropdown - Show with document count */}
+          {/* Add Certification Dropdown */}
           <div className="relative">
             <button
               onClick={() => setShowCertDropdown(!showCertDropdown)}
@@ -895,11 +661,6 @@ export default function PricingSummaryBox({
             >
               <Plus className="w-4 h-4" />
               Add Certification
-              {pricing?.documentCount ? (
-                <span className="text-gray-400 text-xs ml-1">
-                  (for {pricing.documentCount} doc{pricing.documentCount !== 1 ? "s" : ""})
-                </span>
-              ) : null}
               <ChevronDown
                 className={`w-4 h-4 transition-transform ${showCertDropdown ? "rotate-180" : ""}`}
               />
@@ -907,29 +668,18 @@ export default function PricingSummaryBox({
 
             {showCertDropdown && (
               <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
-                {certificationTypes.map((type) => {
-                  const docCount = pricing?.documentCount || 1;
-                  const totalPrice = type.price * docCount;
-                  return (
-                    <button
-                      key={type.id}
-                      onClick={() => handleAddCertification(type.id)}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
-                    >
-                      <div className="flex justify-between">
-                        <span>{type.name}</span>
-                        <span className="text-teal-600 font-medium">
-                          {formatCurrency(totalPrice)}
-                        </span>
-                      </div>
-                      {docCount > 1 && (
-                        <div className="text-xs text-gray-400">
-                          {formatCurrency(type.price)} × {docCount} docs
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
+                {certificationTypes.map((type) => (
+                  <button
+                    key={type.id}
+                    onClick={() => handleAddCertification(type.id)}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex justify-between"
+                  >
+                    <span>{type.name}</span>
+                    <span className="text-gray-500">
+                      {formatCurrency(type.price)}
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -999,154 +749,29 @@ export default function PricingSummaryBox({
 
         <hr className="border-gray-200" />
 
-        {/* TURNAROUND Section - Radio Buttons */}
+        {/* TURNAROUND Section */}
         <div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
             <Clock className="w-3 h-3" />
             Turnaround
           </p>
 
-          <div className="space-y-2">
-            {/* Standard Option */}
-            <label className="flex items-center justify-between cursor-pointer p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="turnaround"
-                  checked={selectedTurnaround === "standard"}
-                  onChange={() => handleTurnaroundChange("standard")}
-                  className="w-4 h-4 text-teal-600 focus:ring-teal-500"
-                />
-                <span className="text-sm text-gray-700">
-                  Standard ({turnaroundSettings.standardDays} {turnaroundSettings.standardDays === 1 ? "day" : "days"})
-                </span>
-              </div>
-              <span className="text-sm text-gray-500">+$0.00</span>
-            </label>
+          <select
+            value={selectedTurnaround}
+            onChange={(e) => handleTurnaroundChange(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+          >
+            {turnaroundOptions.map((option) => (
+              <option key={option.id} value={option.code}>
+                {option.name} {option.is_rush ? `(+${((option.multiplier - 1) * 100).toFixed(0)}%)` : ""}
+              </option>
+            ))}
+          </select>
 
-            {/* Rush Option */}
-            <label className="flex items-center justify-between cursor-pointer p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="turnaround"
-                  checked={selectedTurnaround === "rush"}
-                  onChange={() => handleTurnaroundChange("rush")}
-                  className="w-4 h-4 text-teal-600 focus:ring-teal-500"
-                />
-                <span className="text-sm text-gray-700">
-                  Rush ({turnaroundSettings.rushDays} {turnaroundSettings.rushDays === 1 ? "day" : "days"}, +{(turnaroundSettings.rushMultiplier * 100).toFixed(0)}%)
-                </span>
-              </div>
-              <span className="text-sm text-orange-600 font-medium">
-                +{formatCurrency(calculateRushFeeForType("rush"))}
-              </span>
-            </label>
-
-            {/* Same Day Option */}
-            <label className="flex items-center justify-between cursor-pointer p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="turnaround"
-                  checked={selectedTurnaround === "same_day"}
-                  onChange={() => handleTurnaroundChange("same_day")}
-                  className="w-4 h-4 text-teal-600 focus:ring-teal-500"
-                />
-                <span className="text-sm text-gray-700">
-                  Same Day (+{((turnaroundSettings.sameDayMultiplier - 1) * 100).toFixed(0)}%)
-                </span>
-              </div>
-              <span className="text-sm text-orange-600 font-medium">
-                +{formatCurrency(calculateRushFeeForType("same_day"))}
-              </span>
-            </label>
-          </div>
-
-          {/* Rush Fee Override - Only show when rush or same_day is selected */}
-          {selectedTurnaround !== "standard" && (
-            <div className="mt-3 p-3 bg-gray-50 rounded-md border border-gray-200">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rushOverrideEnabled}
-                  onChange={(e) => handleRushOverrideToggle(e.target.checked)}
-                  className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500"
-                />
-                <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                  <Edit2 className="w-3 h-3" />
-                  Override rush fee
-                </span>
-              </label>
-
-              {rushOverrideEnabled && (
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={rushOverrideType === "percentage"}
-                        onChange={() => setRushOverrideType("percentage")}
-                        className="w-3.5 h-3.5 text-teal-600 focus:ring-teal-500"
-                      />
-                      <span className="text-sm text-gray-600">Percentage</span>
-                    </label>
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={rushOverrideType === "fixed"}
-                        onChange={() => setRushOverrideType("fixed")}
-                        className="w-3.5 h-3.5 text-teal-600 focus:ring-teal-500"
-                      />
-                      <span className="text-sm text-gray-600">Fixed $</span>
-                    </label>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {rushOverrideType === "fixed" && (
-                      <span className="text-sm text-gray-500">$</span>
-                    )}
-                    <input
-                      type="number"
-                      value={rushOverrideValue}
-                      onChange={(e) => setRushOverrideValue(e.target.value)}
-                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                      min="0"
-                      step={rushOverrideType === "percentage" ? "1" : "0.01"}
-                      placeholder={rushOverrideType === "percentage" ? "30" : "50.00"}
-                    />
-                    {rushOverrideType === "percentage" && (
-                      <span className="text-sm text-gray-500">%</span>
-                    )}
-                    <button
-                      onClick={handleApplyRushOverride}
-                      className="px-3 py-1.5 bg-teal-600 text-white text-sm rounded hover:bg-teal-700 transition-colors"
-                    >
-                      Apply
-                    </button>
-                  </div>
-
-                  {/* Preview calculated fee */}
-                  {rushOverrideValue && (
-                    <div className="text-xs text-gray-500">
-                      Preview: {rushOverrideType === "percentage"
-                        ? `${rushOverrideValue}% = ${formatCurrency((pricing?.subtotal || 0) * (parseFloat(rushOverrideValue) / 100))}`
-                        : formatCurrency(parseFloat(rushOverrideValue) || 0)}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Current Rush Fee Display */}
-          <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-100">
+          <div className="flex justify-between items-center mt-2">
             <span className="text-gray-600 text-sm">Rush Fee:</span>
             <span className={`font-medium text-sm ${calculateRushFee() > 0 ? "text-orange-600" : "text-gray-500"}`}>
               {calculateRushFee() > 0 ? `+${formatCurrency(calculateRushFee())}` : formatCurrency(0)}
-              {rushOverrideEnabled && pricing?.rushFeeType !== "auto" && (
-                <span className="ml-1 text-xs text-gray-400">(custom)</span>
-              )}
             </span>
           </div>
         </div>
