@@ -86,6 +86,7 @@ export default function Step4ReviewRush() {
   const [sameDayCutoffHour, setSameDayCutoffHour] = useState(14);
   const [sameDayCutoffMinute, setSameDayCutoffMinute] = useState(0);
   const [rushTurnaroundDays, setRushTurnaroundDays] = useState(1);
+  const [dailyCutoffHour, setDailyCutoffHour] = useState(21); // 9 PM MST
 
   // Availability checks
   const [isSameDayEligible, setIsSameDayEligible] = useState(false);
@@ -202,6 +203,7 @@ export default function Step4ReviewRush() {
           "same_day_cutoff_hour",
           "same_day_cutoff_minute",
           "rush_turnaround_days",
+          "daily_cutoff_hour",
         ]);
 
       const settings = (settingsData || []).reduce(
@@ -236,6 +238,9 @@ export default function Step4ReviewRush() {
       }
       if (settings.rush_turnaround_days !== undefined) {
         setRushTurnaroundDays(settings.rush_turnaround_days);
+      }
+      if (settings.daily_cutoff_hour !== undefined) {
+        setDailyCutoffHour(settings.daily_cutoff_hour);
       }
 
       const fallbackOptions: TurnaroundOption[] = [
@@ -662,6 +667,7 @@ export default function Step4ReviewRush() {
   };
 
   // Calculate delivery date (skip weekends and holidays)
+  // After daily cutoff (9 PM MST), start counting from next business day
   const getDeliveryDate = async (daysToAdd: number): Promise<Date> => {
     const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
 
@@ -677,6 +683,18 @@ export default function Step4ReviewRush() {
     const holidayDates = holidays?.map((h) => new Date(h.holiday_date)) || [];
 
     let date = new Date();
+
+    // Check if past daily cutoff (e.g., 9 PM MST)
+    const mstTime = new Date(
+      date.toLocaleString("en-US", { timeZone: "America/Edmonton" }),
+    );
+    const isPastDailyCutoff = mstTime.getHours() >= dailyCutoffHour;
+
+    // If past cutoff, shift start date by 1 day before counting business days
+    if (isPastDailyCutoff) {
+      date.setDate(date.getDate() + 1);
+    }
+
     let addedDays = 0;
 
     while (addedDays < daysToAdd) {
@@ -730,15 +748,33 @@ export default function Step4ReviewRush() {
     const isEligible = !!data && !error;
     setIsSameDayEligible(isEligible);
 
+    // Check if past daily cutoff (9 PM MST)
+    const now = new Date();
+    const mstTime = new Date(
+      now.toLocaleString("en-US", { timeZone: "America/Edmonton" }),
+    );
+    const isPastDailyCutoff = mstTime.getHours() >= dailyCutoffHour;
+
     // Calculate actual rush delivery days
     const rushDeliveryDays = Math.max(1, standardDays - rushTurnaroundDays);
 
-    // Only apply cutoff if rush means next business day delivery
-    // If rush is 2+ business days, cutoff doesn't matter - work starts tomorrow
-    const needsRushCutoff = rushDeliveryDays <= 1;
-    const rushAvail = needsRushCutoff
-      ? checkCutoffTime(rushCutoffHour, rushCutoffMinute)
-      : !isWeekend(new Date()); // Still block weekends for any rush
+    // Rush availability logic:
+    // - After daily cutoff: rush is available (work starts next business day anyway)
+    // - Before daily cutoff AND rush is next-day: apply rush cutoff (4:30 PM)
+    // - Weekends: rush is blocked
+    let rushAvail: boolean;
+    if (isWeekend(now)) {
+      rushAvail = false;
+    } else if (isPastDailyCutoff) {
+      // After 9 PM, rush is available - delivery dates already shifted
+      rushAvail = true;
+    } else if (rushDeliveryDays <= 1) {
+      // Before 9 PM and rush is next-day, apply 4:30 PM cutoff
+      rushAvail = checkCutoffTime(rushCutoffHour, rushCutoffMinute);
+    } else {
+      // Before 9 PM but rush is 2+ days, no cutoff needed
+      rushAvail = true;
+    }
 
     const sameDayAvail =
       isEligible && checkCutoffTime(sameDayCutoffHour, sameDayCutoffMinute);
