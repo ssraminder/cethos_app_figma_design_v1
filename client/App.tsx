@@ -28,6 +28,7 @@ import QuoteRevisionPage from "./pages/quote/QuoteRevisionPage";
 import QuoteConfirmationPage from "./pages/quote/QuoteConfirmationPage";
 import QuoteSavedPage from "./pages/quote/QuoteSavedPage";
 import QuoteExpiredPage from "./pages/quote/QuoteExpiredPage";
+import QuoteContinuePage from "./pages/quote/QuoteContinuePage";
 import UploadPage from "./pages/upload/UploadPage";
 import UploadConfirmationPage from "./pages/upload/UploadConfirmationPage";
 import ETransferConfirmation from "./pages/ETransferConfirmation";
@@ -133,6 +134,10 @@ const App = () => (
                     <Route
                       path="/quote/expired"
                       element={<QuoteExpiredPage />}
+                    />
+                    <Route
+                      path="/quote/:quoteId/continue"
+                      element={<QuoteContinuePage />}
                     />
                     <Route path="/order/success" element={<OrderSuccess />} />
                     <Route path="/payment/cancel" element={<PaymentCancel />} />
