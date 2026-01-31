@@ -286,13 +286,13 @@ export function useSupabase() {
 
       // Update quote with customer ID and change status from details_pending to draft
       // Note: quote_ready will be set later after AI processing completes
-      const { error: quoteUpdateError } = await supabase
-        .from("quotes")
-        .update({
-          customer_id: customerId,
-          status: "draft", // Customer info provided, but AI processing still needed
-        })
-        .eq("id", quoteId);
+const { error: quoteUpdateError } = await supabase
+  .from("quotes")
+  .update({
+    customer_id: customerId,
+    status: "lead", // Customer info provided, contactable prospect
+  })
+  .eq("id", quoteId);
 
       if (quoteUpdateError) throw quoteUpdateError;
 
