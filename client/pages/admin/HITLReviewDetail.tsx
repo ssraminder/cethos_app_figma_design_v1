@@ -226,6 +226,7 @@ const HITLReviewDetail: React.FC = () => {
   // Manual Payment state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
+  const [selectedPaymentMethodCode, setSelectedPaymentMethodCode] = useState<string>("");
   const [paymentRemarks, setPaymentRemarks] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -1617,147 +1618,146 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
+  // Handle payment method selection change
+  const handlePaymentMethodChange = (methodId: string) => {
+    setSelectedPaymentMethod(methodId);
+
+    // Find and store the payment method code
+    const method = paymentMethods.find((pm) => pm.id === methodId);
+    setSelectedPaymentMethodCode(method?.code || '');
+
+    // Auto-default to $0 for Account Payment
+    if (method?.code === 'account') {
+      setAmountPaid('0');
+    }
+  };
+
   const handleManualPayment = async () => {
+    // Validation
     if (!selectedPaymentMethod) {
-      alert("Please select a payment method.");
+      toast.error("Please select a payment method");
       return;
     }
 
-    // Validate amount paid
-    const parsedAmountPaid = parseFloat(amountPaid);
-    if (isNaN(parsedAmountPaid) || parsedAmountPaid < 0) {
-      alert("Please enter a valid amount paid (must be 0 or greater).");
+    const quote = reviewData?.quotes || reviewData;
+    const parsedAmountPaid = parseFloat(amountPaid) || 0;
+    const totalAmount = quote?.total || 0;
+
+    if (parsedAmountPaid < 0) {
+      toast.error("Amount paid cannot be negative");
+      return;
+    }
+
+    if (parsedAmountPaid > totalAmount) {
+      toast.error("Amount paid cannot exceed total amount");
       return;
     }
 
     if (!staffSession?.staffId || !reviewData?.quote_id) {
-      alert("Missing required data. Please refresh the page.");
+      toast.error("Missing required data. Please refresh the page.");
       return;
     }
 
-    const quote = reviewData.quotes || reviewData;
-    const totalAmount = quote.total || 0;
     const calculatedBalanceDue = Math.max(0, totalAmount - parsedAmountPaid);
+    const isAccountPayment = selectedPaymentMethodCode === 'account';
 
-    // Warning for zero payment
-    if (parsedAmountPaid === 0) {
-      if (!confirm("Are you sure? This will create an order with full balance due.")) {
-        return;
-      }
-    }
+    // Confirmation dialog
+    const confirmMessage = isAccountPayment
+      ? `Create order with Account Payment (Net 30)?\n\n` +
+        `Total: $${totalAmount.toFixed(2)}\n` +
+        `Paid Now: $${parsedAmountPaid.toFixed(2)}\n` +
+        `Balance Due: $${calculatedBalanceDue.toFixed(2)}\n\n` +
+        `An Accounts Receivable record will be created.\n` +
+        `Payment due in 30 days.`
+      : calculatedBalanceDue > 0
+      ? `Create order with partial payment?\n\n` +
+        `Total: $${totalAmount.toFixed(2)}\n` +
+        `Paid: $${parsedAmountPaid.toFixed(2)}\n` +
+        `Balance: $${calculatedBalanceDue.toFixed(2)}`
+      : `Create order - Paid in Full?\n\n` +
+        `Total: $${totalAmount.toFixed(2)}`;
 
-    const confirmMsg =
-      `Are you sure you want to record this manual payment?\n\n` +
-      `Quote: ${reviewData.quote_number}\n` +
-      `Total Amount: $${totalAmount.toFixed(2)}\n` +
-      `Amount Paid: $${parsedAmountPaid.toFixed(2)}\n` +
-      `Balance Due: $${calculatedBalanceDue.toFixed(2)}\n` +
-      `Payment Method: ${paymentMethods.find((pm) => pm.id === selectedPaymentMethod)?.name}\n\n` +
-      `This will:\n` +
-      `- Convert the quote to an order\n` +
-      `- Record the payment\n` +
-      `- Cannot be undone`;
-
-    if (!confirm(confirmMsg)) {
+    if (!window.confirm(confirmMessage)) {
       return;
     }
 
     setIsProcessingPayment(true);
 
     try {
-      // Generate order number
-      const orderNumber = `ORD-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+      // Get auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("Not authenticated");
+      }
 
-      // Create order from quote
-      const { data: order, error: orderError } = await supabase
-        .from("orders")
-        .insert({
-          order_number: orderNumber,
-          quote_id: reviewData.quote_id,
+      // Prepare payload for edge function
+      const payload = {
+        quote_id: reviewData.quote_id,
+        payment_method_id: selectedPaymentMethod,
+        payment_method_code: selectedPaymentMethodCode,
+        amount_paid: parsedAmountPaid,
+        total_amount: totalAmount,
+        remarks: paymentRemarks || undefined,
+        staff_id: staffSession.staffId,
+        quote_data: {
           customer_id: quote.customer_id,
-          status: calculatedBalanceDue > 0 ? "balance_due" : "paid",
-          work_status: "pending",
           subtotal: quote.subtotal || 0,
           certification_total: quote.certification_total || 0,
           rush_fee: quote.rush_fee || 0,
           delivery_fee: quote.delivery_fee || 0,
           tax_rate: quote.tax_rate || 0.05,
           tax_amount: quote.tax_amount || 0,
-          total_amount: totalAmount,
-          amount_paid: parsedAmountPaid,
-          balance_due: calculatedBalanceDue,
-          currency: "CAD",
           is_rush: quote.is_rush || false,
-          paid_at: parsedAmountPaid > 0 ? new Date().toISOString() : null,
           service_province: quote.service_province,
-        })
-        .select()
-        .single();
-
-      if (orderError) {
-        console.error("Order creation error:", orderError);
-        throw new Error(`Failed to create order: ${orderError.message}`);
-      }
-
-      // Update quote status to converted
-      const { error: quoteUpdateError } = await supabase
-        .from("quotes")
-        .update({
-          status: "converted",
-          converted_to_order_id: order.id,
-        })
-        .eq("id", reviewData.quote_id);
-
-      if (quoteUpdateError) {
-        console.error("Quote update error:", quoteUpdateError);
-        throw new Error(`Failed to update quote: ${quoteUpdateError.message}`);
-      }
-
-      // Log staff activity
-      await supabase.from("staff_activity_log").insert({
-        staff_id: staffSession.staffId,
-        action_type: "manual_payment",
-        entity_type: "order",
-        entity_id: order.id,
-        details: {
-          quote_id: reviewData.quote_id,
-          quote_number: reviewData.quote_number,
-          order_number: orderNumber,
-          payment_method_id: selectedPaymentMethod,
-          payment_method: paymentMethods.find(
-            (pm) => pm.id === selectedPaymentMethod,
-          )?.name,
-          total_amount: totalAmount,
-          amount_paid: parsedAmountPaid,
-          balance_due: calculatedBalanceDue,
-          remarks: paymentRemarks || null,
         },
-      });
+      };
 
-      const balanceMsg = calculatedBalanceDue > 0
-        ? `Balance Due: $${calculatedBalanceDue.toFixed(2)}`
-        : `Paid in Full`;
-
-      alert(
-        `✅ Payment recorded successfully!\n\n` +
-          `Order Number: ${orderNumber}\n` +
-          `Total Amount: $${totalAmount.toFixed(2)}\n` +
-          `Amount Paid: $${parsedAmountPaid.toFixed(2)}\n` +
-          `${balanceMsg}\n` +
-          `Payment Method: ${paymentMethods.find((pm) => pm.id === selectedPaymentMethod)?.name}\n\n` +
-          `The quote has been converted to an order.`,
+      // Call edge function
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-manual-payment`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify(payload),
+        }
       );
 
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to process payment');
+      }
+
+      // Success! Show appropriate toast
+      if (result.is_account_payment && result.balance_due > 0) {
+        toast.success(
+          `Order ${result.order_number} created with Account Payment. ` +
+          `AR record created - $${result.balance_due.toFixed(2)} due in 30 days.`
+        );
+      } else if (result.balance_due > 0) {
+        toast.success(
+          `Order ${result.order_number} created with $${result.balance_due.toFixed(2)} balance due.`
+        );
+      } else {
+        toast.success(`Order ${result.order_number} created - Paid in Full!`);
+      }
+
+      // Close modal and reset state
       setShowPaymentModal(false);
       setSelectedPaymentMethod("");
+      setSelectedPaymentMethodCode("");
       setPaymentRemarks("");
       setAmountPaid("");
 
-      // Navigate to order or refresh
+      // Navigate back to HITL list
       navigate("/admin/hitl");
-    } catch (error) {
-      console.error("Failed to process manual payment:", error);
-      alert("Failed to process payment: " + (error as Error).message);
+
+    } catch (error: any) {
+      console.error("Manual payment error:", error);
+      toast.error(error.message || "Failed to process payment");
     } finally {
       setIsProcessingPayment(false);
     }
@@ -4344,15 +4344,35 @@ const HITLReviewDetail: React.FC = () => {
               </div>
             </div>
 
-            {/* Warning */}
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-amber-800">
-                <p className="font-medium mb-1">Important:</p>
-                <p>
-                  This will immediately convert the quote to a paid order.
-                  Ensure payment has been received before proceeding.
-                </p>
+            {/* Warning - Dynamic based on payment method */}
+            <div className={`rounded-lg p-3 mb-4 flex items-start gap-2 ${
+              selectedPaymentMethodCode === 'account'
+                ? 'bg-blue-50 border border-blue-200'
+                : 'bg-amber-50 border border-amber-200'
+            }`}>
+              <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                selectedPaymentMethodCode === 'account' ? 'text-blue-600' : 'text-amber-600'
+              }`} />
+              <div className={`text-sm ${
+                selectedPaymentMethodCode === 'account' ? 'text-blue-800' : 'text-amber-800'
+              }`}>
+                {selectedPaymentMethodCode === 'account' ? (
+                  <>
+                    <p className="font-medium mb-1">Account Payment (Net 30)</p>
+                    <p>
+                      Order will be created and work can proceed. An Accounts Receivable
+                      record will track the balance due within 30 days.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium mb-1">Important:</p>
+                    <p>
+                      This will convert the quote to an order.
+                      Ensure payment has been received before proceeding.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -4397,7 +4417,7 @@ const HITLReviewDetail: React.FC = () => {
               </label>
               <select
                 value={selectedPaymentMethod}
-                onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+                onChange={(e) => handlePaymentMethodChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                 disabled={isProcessingPayment}
               >
@@ -4440,11 +4460,34 @@ const HITLReviewDetail: React.FC = () => {
                   const paid = parseFloat(amountPaid) || 0;
                   const balanceDue = Math.max(0, totalAmount - paid);
                   const isPaidInFull = paid >= totalAmount;
+                  const isAccountPayment = selectedPaymentMethodCode === 'account';
                   const isZeroPayment = paid === 0 && amountPaid !== "";
+
+                  // Account payment with balance due - show in blue
+                  if (isAccountPayment && balanceDue > 0) {
+                    return (
+                      <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-blue-700">
+                            Balance Due (Net 30):
+                          </span>
+                          <span className="font-bold text-blue-700">
+                            ${balanceDue.toFixed(2)}
+                          </span>
+                        </div>
+                        {paid > 0 && (
+                          <div className="flex items-center justify-between mt-1 text-xs text-blue-600">
+                            <span>Upfront payment:</span>
+                            <span>${paid.toFixed(2)}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
 
                   return (
                     <div className={`p-3 rounded-lg ${isPaidInFull ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
-                      {isZeroPayment && (
+                      {isZeroPayment && !isAccountPayment && (
                         <div className="flex items-start gap-2 mb-2">
                           <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                           <p className="text-sm text-amber-800">
@@ -4494,6 +4537,7 @@ const HITLReviewDetail: React.FC = () => {
                 onClick={() => {
                   setShowPaymentModal(false);
                   setSelectedPaymentMethod("");
+                  setSelectedPaymentMethodCode("");
                   setPaymentRemarks("");
                   setAmountPaid("");
                 }}
