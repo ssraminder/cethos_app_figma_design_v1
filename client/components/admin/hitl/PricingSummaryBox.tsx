@@ -100,6 +100,8 @@ interface Props {
   onAddAddress?: () => void;
   // Quote status for conditional rendering
   quoteStatus?: string;
+  // HITL review status for Manual Payment visibility
+  hitlReviewStatus?: string;
 }
 
 export default function PricingSummaryBox({
@@ -112,6 +114,7 @@ export default function PricingSummaryBox({
   hasShippingAddress = false,
   onAddAddress,
   quoteStatus,
+  hitlReviewStatus,
 }: Props) {
   // State
   const [pricing, setPricing] = useState<PricingData | null>(null);
@@ -927,8 +930,8 @@ export default function PricingSummaryBox({
           {recalculating ? "Recalculating..." : "Recalculate Totals"}
         </button>
 
-        {/* Action Buttons - Manual Payment (only for approved or awaiting_payment) */}
-        {showActions && ['approved', 'awaiting_payment'].includes(quoteStatus || '') && (
+        {/* Action Buttons - Manual Payment (visible during active HITL review) */}
+        {showActions && hitlReviewStatus === 'in_review' && (
           <div className="mt-4 pt-4 border-t border-gray-200">
             <button
               onClick={onManualPayment}
