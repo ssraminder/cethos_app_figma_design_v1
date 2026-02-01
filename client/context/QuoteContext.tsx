@@ -173,9 +173,10 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
         case 'awaiting_payment':
         case 'approved':
         case 'pending_payment':
-          return 6; // Payment step
+          // Customer email links should start at step 4 (review) so they can see pricing first
+          return 4;
         case 'quote_ready':
-          return 5; // Billing & Delivery step
+          return 4; // Start at review step
         default:
           // For draft or other statuses, go to step 4 (review) so customer can see pricing
           return 4;
@@ -183,9 +184,9 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
     }
 
     // Regular quotes follow normal flow
-    // If quote is ready for payment, go to step 5 (billing)
+    // If quote is awaiting_payment or ready, go to step 4 (review) so customer can see pricing
     if (quote.status === 'quote_ready' || quote.status === 'awaiting_payment') {
-      return 5;
+      return 4;
     }
     // If processing or pending, go to step 4 (review)
     if (quote.processing_status === 'processing' || quote.processing_status === 'pending') {
