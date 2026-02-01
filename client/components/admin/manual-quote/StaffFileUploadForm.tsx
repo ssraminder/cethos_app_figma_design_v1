@@ -1125,20 +1125,25 @@ export default function StaffFileUploadForm({
       const languageMultiplier = translationDetails?.languageMultiplier || 1.0;
 
       // Calculate the new line_total using the formula:
-      // line_total = ceil((billable_pages × base_rate × lang_multiplier × complexity_multiplier) / 2.50) × 2.50
+      // line_total = ceil((billable_pages × base_rate × lang_multiplier × complexity_multiplier) / 2.50) × 2.50 + certification_price
       const billablePagesToUse = editingAnalysis.billable_pages ?? originalAnalysis.billable_pages;
-      const newLineTotal = recalculateLineTotal(
+      const certPrice = certType?.price ?? 0;
+      const translationCost = recalculateLineTotal(
         billablePagesToUse,
         originalAnalysis.base_rate,
         languageMultiplier,
         newComplexity
       );
+      // line_total includes certification price per database schema
+      const newLineTotal = translationCost + Number(certPrice);
 
       console.log(`💾 [SAVE] Calculated values:`, {
         billablePagesToUse,
         newComplexity,
         newMultiplier,
         languageMultiplier,
+        translationCost,
+        certPrice,
         newLineTotal,
       });
 
@@ -1232,12 +1237,24 @@ export default function StaffFileUploadForm({
       if (!selectedCert) throw new Error("Certification type not found");
 
       // Update all analysis results with the new certification
+      // line_total must include certification_price per database schema
+      const languageMultiplier = translationDetails?.languageMultiplier || 1.0;
       for (const analysis of analysisResults) {
+        // Calculate new line_total = translation cost + certification price
+        const translationCost = recalculateLineTotal(
+          analysis.billable_pages,
+          analysis.base_rate,
+          languageMultiplier,
+          analysis.assessed_complexity
+        );
+        const newLineTotal = translationCost + Number(selectedCert.price);
+
         const { error } = await supabase
           .from("ai_analysis_results")
           .update({
             certification_type_id: selectedCertificationId,
             certification_price: selectedCert.price,
+            line_total: newLineTotal,
             updated_at: new Date().toISOString(),
           })
           .eq("id", analysis.id);
@@ -1245,17 +1262,15 @@ export default function StaffFileUploadForm({
         if (error) throw error;
       }
 
-      // Update quote certification total
-      const totalCertCost = analysisResults.length * Number(selectedCert.price);
-      const { error: quoteError } = await supabase
-        .from("quotes")
-        .update({
-          certification_total: totalCertCost,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", quoteId);
-
-      if (quoteError) throw quoteError;
+      // Recalculate quote totals via RPC
+      if (quoteId) {
+        const { error: rpcError } = await supabase.rpc("recalculate_quote_totals", {
+          p_quote_id: quoteId,
+        });
+        if (rpcError) {
+          console.error("Error recalculating quote totals:", rpcError);
+        }
+      }
 
       toast.success(`Certification updated for ${analysisResults.length} document(s)`);
       setEditingCertification(false);
