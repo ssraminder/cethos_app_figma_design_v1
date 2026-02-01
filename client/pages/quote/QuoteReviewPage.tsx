@@ -165,6 +165,8 @@ export default function QuoteReviewPage() {
           source_language_id,
           target_language_id,
           country_of_issue,
+          delivery_option_id,
+          intended_use_id,
           subtotal,
           certification_total,
           rush_fee,
@@ -186,21 +188,37 @@ export default function QuoteReviewPage() {
           ),
           target_language:languages!quotes_target_language_id_fkey (
             name
-          ),
-          intended_uses (
-            name
-          ),
-          delivery_options (
-            name
           )
         `
         )
         .eq("id", quoteId)
         .single();
 
+      // Fetch intended_use and delivery_option separately if IDs exist
+      let intendedUseName = null;
+      let deliveryOptionName = null;
+
       if (quoteError || !quoteData) {
         const details = quoteError?.message || quoteError?.details;
         throw new Error(details || "Quote not found");
+      }
+
+      if (quoteData.intended_use_id) {
+        const { data: intendedUse } = await supabase
+          .from("intended_uses")
+          .select("name")
+          .eq("id", quoteData.intended_use_id)
+          .single();
+        intendedUseName = intendedUse?.name;
+      }
+
+      if (quoteData.delivery_option_id) {
+        const { data: deliveryOption } = await supabase
+          .from("delivery_options")
+          .select("name")
+          .eq("id", quoteData.delivery_option_id)
+          .single();
+        deliveryOptionName = deliveryOption?.name;
       }
 
       // Fetch documents from ai_analysis_results (including manual entries)
@@ -282,8 +300,8 @@ export default function QuoteReviewPage() {
         ...quoteData,
         source_language_name: (quoteData.source_language as any)?.name || "",
         target_language_name: (quoteData.target_language as any)?.name || "",
-        intended_use_name: (quoteData.intended_uses as any)?.name || null,
-        delivery_option_name: (quoteData.delivery_options as any)?.name || null,
+        intended_use_name: intendedUseName,
+        delivery_option_name: deliveryOptionName,
         subtotal: totals.subtotal,
         certification_total: totals.certification_total,
         rush_fee: totals.rush_fee,
