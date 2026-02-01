@@ -53,7 +53,8 @@ interface DeliveryOption {
 
 interface AnalysisResultRaw {
   id: string;
-  quote_file_id: string;
+  quote_file_id: string | null;
+  manual_filename: string | null;
   detected_language: string;
   detected_document_type: string;
   assessed_complexity: string;
@@ -67,7 +68,7 @@ interface AnalysisResultRaw {
   certification_price: number | null;
   quote_files: {
     original_filename: string;
-  };
+  } | null;
 }
 
 interface AnalysisResult extends Omit<AnalysisResultRaw, 'quote_files'> {
@@ -120,13 +121,14 @@ export default function StaffPricingForm({
     const loadData = async () => {
       setSettingsLoading(true);
 
-      // Fetch analysis results for this quote
+      // Fetch analysis results for this quote (LEFT JOIN to include manual entries without files)
       const { data: analysisData } = await supabase
         .from("ai_analysis_results")
         .select(
           `
           id,
           quote_file_id,
+          manual_filename,
           detected_language,
           detected_document_type,
           assessed_complexity,
@@ -138,7 +140,7 @@ export default function StaffPricingForm({
           line_total,
           certification_type_id,
           certification_price,
-          quote_files!inner(original_filename)
+          quote_files(original_filename)
         `
         )
         .eq("quote_id", quoteId);
@@ -253,10 +255,10 @@ export default function StaffPricingForm({
       taxRate: currentTaxRate,
       taxAmount,
       total,
-      // Map analysis results to filePrices for compatibility
+      // Map analysis results to filePrices for compatibility (handles manual entries)
       filePrices: analysisResults.map((r) => ({
-        fileId: r.quote_file_id,
-        fileName: r.quote_files?.original_filename || "Unknown",
+        fileId: r.quote_file_id || r.id, // Use analysis ID as fallback for manual entries
+        fileName: r.manual_filename || r.quote_files?.original_filename || "Unknown",
         languageId: "",
         pageCount: r.page_count,
         billablePages: r.billable_pages,
@@ -293,6 +295,14 @@ export default function StaffPricingForm({
       default:
         return "bg-gray-100 text-gray-800";
     }
+  };
+
+  // Helper to get document name for display (handles manual entries)
+  const getDocumentName = (item: AnalysisResult) => {
+    if (item.manual_filename) {
+      return item.manual_filename;
+    }
+    return item.quote_files?.original_filename || "Unknown Document";
   };
 
   if (loading || settingsLoading) {
@@ -334,10 +344,15 @@ export default function StaffPricingForm({
               >
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-start gap-3">
-                    <FileText className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                    <FileText className={`w-5 h-5 flex-shrink-0 mt-0.5 ${result.manual_filename && !result.quote_file_id ? "text-blue-500" : "text-gray-400"}`} />
                     <div>
-                      <p className="font-medium text-gray-900">
-                        {result.quote_files?.original_filename || "Unknown file"}
+                      <p className="font-medium text-gray-900 flex items-center gap-2">
+                        <span>{getDocumentName(result)}</span>
+                        {result.manual_filename && !result.quote_file_id && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                            Manual
+                          </span>
+                        )}
                       </p>
                       <p className="text-xs text-gray-500 mt-0.5">
                         {result.detected_language} •{" "}
