@@ -1363,8 +1363,8 @@ export default function Step4ReviewRush() {
         </div>
       </div>
 
-      {/* HITL Request Banner - MOVED HERE - Below pricing, above navigation */}
-      {!hitlRequested && (
+      {/* HITL Request Banner - Hidden when customer came via staff email link (already reviewed) */}
+      {!hitlRequested && !state.isStaffReviewed && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-6">
           {/* Header row: icon, title, and button */}
           <div className="flex items-start justify-between gap-4 mb-2">
