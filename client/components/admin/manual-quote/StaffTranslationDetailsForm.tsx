@@ -315,7 +315,7 @@ export default function StaffTranslationDetailsForm({
             rows={4}
             maxLength={1000}
             placeholder="Any special requirements, formatting notes, or specific terminology..."
-            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+            className="w-full px-4 py-2 text-base border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
           />
           <p className="mt-1 text-xs text-gray-500 text-right">
             {(formData.specialInstructions || "").length} / 1000 characters
