@@ -430,43 +430,55 @@ export default function StaffFileUploadForm({
   // ============================================================================
 
   useEffect(() => {
-    loadReferenceData();
-    fetchFileCategories();
+    const abortController = new AbortController();
+    loadReferenceData(abortController.signal);
+    fetchFileCategories(abortController.signal);
+    return () => abortController.abort();
   }, []);
 
   useEffect(() => {
     if (quoteId) {
-      fetchTranslationDetails();
-      fetchAnalysisResults();
-      fetchUploadedFiles();
+      const abortController = new AbortController();
+      fetchTranslationDetails(abortController.signal);
+      fetchAnalysisResults(abortController.signal);
+      fetchUploadedFiles(abortController.signal);
+      return () => abortController.abort();
     }
   }, [quoteId]);
 
-  const fetchFileCategories = async () => {
-    const { data, error } = await supabase
+  const fetchFileCategories = async (signal?: AbortSignal) => {
+    const query = supabase
       .from("file_categories")
       .select("id, name, slug, is_billable")
       .eq("is_active", true)
       .order("display_order");
 
+    const { data, error } = signal ? await query.abortSignal(signal) : await query;
+
     if (error) {
+      // Ignore abort errors - they're expected when component unmounts
+      if (error.message?.includes("AbortError") || error.code === "ABORT_ERR") return;
       console.error("Error fetching file categories:", error);
       return;
     }
     setFileCategories(data || []);
   };
 
-  const fetchUploadedFiles = async () => {
+  const fetchUploadedFiles = async (signal?: AbortSignal) => {
     if (!quoteId) return;
 
-    const { data, error } = await supabase
+    const query = supabase
       .from("quote_files")
       .select("id, original_filename, file_size, mime_type, ai_processing_status, file_category_id, created_at")
       .eq("quote_id", quoteId)
       .is("deleted_at", null)
       .order("created_at", { ascending: true });
 
+    const { data, error } = signal ? await query.abortSignal(signal) : await query;
+
     if (error) {
+      // Ignore abort errors - they're expected when component unmounts
+      if (error.message?.includes("AbortError") || error.code === "ABORT_ERR") return;
       console.error("Error fetching uploaded files:", error);
       return;
     }
@@ -477,13 +489,18 @@ export default function StaffFileUploadForm({
     onChange(files);
   }, [files]);
 
-  const loadReferenceData = async () => {
+  const loadReferenceData = async (signal?: AbortSignal) => {
     try {
+      const langsQuery = supabase.from("languages").select("id, code, name, native_name, tier, multiplier").eq("is_active", true).order("name");
+      const usesQuery = supabase.from("intended_uses").select("id, code, name").eq("is_active", true).order("sort_order");
+      const docTypesQuery = supabase.from("document_types").select("id, code, name").eq("is_active", true).order("name");
+      const certTypesQuery = supabase.from("certification_types").select("*").eq("is_active", true).order("sort_order");
+
       const [langsRes, usesRes, docTypesRes, certTypesRes] = await Promise.all([
-        supabase.from("languages").select("id, code, name, native_name, tier, multiplier").eq("is_active", true).order("name"),
-        supabase.from("intended_uses").select("id, code, name").eq("is_active", true).order("sort_order"),
-        supabase.from("document_types").select("id, code, name").eq("is_active", true).order("name"),
-        supabase.from("certification_types").select("*").eq("is_active", true).order("sort_order"),
+        signal ? langsQuery.abortSignal(signal) : langsQuery,
+        signal ? usesQuery.abortSignal(signal) : usesQuery,
+        signal ? docTypesQuery.abortSignal(signal) : docTypesQuery,
+        signal ? certTypesQuery.abortSignal(signal) : certTypesQuery,
       ]);
 
       if (langsRes.data) setLanguages(langsRes.data);
@@ -494,15 +511,17 @@ export default function StaffFileUploadForm({
         const defaultCert = certTypesRes.data.find((c) => c.is_default);
         if (defaultCert) setSelectedCertificationId(defaultCert.id);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Ignore abort errors - they're expected when component unmounts
+      if (error?.message?.includes("AbortError") || error?.name === "AbortError") return;
       console.error("Error loading reference data:", error);
     }
   };
 
-  const fetchTranslationDetails = async () => {
+  const fetchTranslationDetails = async (signal?: AbortSignal) => {
     if (!quoteId) return;
 
-    const { data, error } = await supabase
+    const query = supabase
       .from("quotes")
       .select(`
         source_language_id,
@@ -513,6 +532,13 @@ export default function StaffFileUploadForm({
       `)
       .eq("id", quoteId)
       .single();
+
+    const { data, error } = signal ? await query.abortSignal(signal) : await query;
+
+    if (error) {
+      // Ignore abort errors - they're expected when component unmounts
+      if (error.message?.includes("AbortError") || error.code === "ABORT_ERR") return;
+    }
 
     if (data && !error) {
       const sourceLang = languages.find((l) => l.id === data.source_language_id);
@@ -528,11 +554,11 @@ export default function StaffFileUploadForm({
     }
   };
 
-  const fetchAnalysisResults = async () => {
+  const fetchAnalysisResults = async (signal?: AbortSignal) => {
     if (!quoteId) return;
 
     // Fetch analysis results with optional file join (supports manual entries without files)
-    const { data, error } = await supabase
+    const query = supabase
       .from("ai_analysis_results")
       .select(`
         id,
@@ -554,6 +580,13 @@ export default function StaffFileUploadForm({
         quote_files(original_filename)
       `)
       .eq("quote_id", quoteId);
+
+    const { data, error } = signal ? await query.abortSignal(signal) : await query;
+
+    if (error) {
+      // Ignore abort errors - they're expected when component unmounts
+      if (error.message?.includes("AbortError") || error.code === "ABORT_ERR") return;
+    }
 
     if (data && !error) {
       setAnalysisResults(
