@@ -164,12 +164,11 @@ export default function StaffPricingForm({
         setAnalysisResults(analysisData as unknown as AnalysisResult[]);
       }
 
-      // Fetch quote details (intended use, certification, languages)
+      // Fetch quote details (intended use, languages) - certification is through junction table
       const { data: quoteData, error: quoteError } = await supabase
         .from("quotes")
         .select(`
           intended_use:intended_uses(name),
-          certification_type:certification_types(name),
           source_language:languages!quotes_source_language_id_fkey(name),
           target_language:languages!quotes_target_language_id_fkey(name),
           language_multiplier
@@ -181,23 +180,36 @@ export default function StaffPricingForm({
         console.error("❌ [PRICING] Error fetching quote details:", quoteError);
       }
 
+      // Fetch certification types through quote_certifications junction table
+      const { data: certData } = await supabase
+        .from("quote_certifications")
+        .select(`
+          certification_type:certification_types(name)
+        `)
+        .eq("quote_id", quoteId);
+
+      // Get the first certification type name (if any)
+      const certificationTypeName = certData?.[0]?.certification_type
+        ? (certData[0].certification_type as any)?.name
+        : null;
+
       if (quoteData) {
         console.log(`✅ [PRICING] Fetched quote details:`, quoteData);
         setQuoteDetails({
           intendedUse: (quoteData.intended_use as any)?.name || null,
-          certificationTypeName: (quoteData.certification_type as any)?.name || null,
+          certificationTypeName: certificationTypeName,
           sourceLanguage: (quoteData.source_language as any)?.name || null,
           targetLanguage: (quoteData.target_language as any)?.name || null,
           languageMultiplier: quoteData.language_multiplier || 1.0,
         });
       }
 
-      // Fetch tax rate from app_settings
+      // Fetch tax rate from app_settings (use maybeSingle to handle missing setting)
       const { data: settingsData } = await supabase
         .from("app_settings")
         .select("setting_key, setting_value")
         .eq("setting_key", "default_tax_rate")
-        .single();
+        .maybeSingle();
 
       if (settingsData) {
         setTaxRate(parseFloat(settingsData.setting_value) || DEFAULT_TAX_RATE);
