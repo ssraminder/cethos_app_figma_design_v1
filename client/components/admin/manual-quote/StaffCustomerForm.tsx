@@ -159,21 +159,31 @@ export default function StaffCustomerForm({
 
     switch (name) {
       case "email":
-        if (!value) {
-          newErrors.email = "Email is required";
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        // Email is optional, but if provided must be valid format
+        if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
           newErrors.email = "Invalid email format";
         } else {
           delete newErrors.email;
         }
+        // Check if at least one contact method is provided
+        if (!value && !formData.phone) {
+          newErrors.contact = "Please provide at least one contact method (email or phone)";
+        } else {
+          delete newErrors.contact;
+        }
         break;
       case "phone":
-        if (!value) {
-          newErrors.phone = "Phone is required";
-        } else if (value.length < 10) {
+        // Phone is optional, but if provided must be at least 10 digits
+        if (value && value.length < 10) {
           newErrors.phone = "Phone number must be at least 10 digits";
         } else {
           delete newErrors.phone;
+        }
+        // Check if at least one contact method is provided
+        if (!value && !formData.email) {
+          newErrors.contact = "Please provide at least one contact method (email or phone)";
+        } else {
+          delete newErrors.contact;
         }
         break;
       case "fullName":
@@ -293,7 +303,7 @@ export default function StaffCustomerForm({
 
       {/* Selected Customer Banner */}
       {selectedCustomer && (
-        <div className="bg-green-50 border border-green-200 rounded-md p-4 flex items-center justify-between">
+        <div className="bg-green-50 border border-green-200 rounded-md p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
             <div>
@@ -320,7 +330,7 @@ export default function StaffCustomerForm({
           <label className="block text-sm font-medium text-gray-700 mb-3">
             Customer Type *
           </label>
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <label className="flex items-center cursor-pointer">
               <input
                 type="radio"
@@ -405,7 +415,7 @@ export default function StaffCustomerForm({
         {/* Email */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Email Address *
+            Email Address <span className="text-gray-400 font-normal">(Optional)</span>
           </label>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -432,7 +442,7 @@ export default function StaffCustomerForm({
         {/* Phone */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Phone Number *
+            Phone Number <span className="text-gray-400 font-normal">(Optional)</span>
           </label>
           <div className="relative">
             <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -455,12 +465,23 @@ export default function StaffCustomerForm({
             For urgent order updates only
           </p>
         </div>
+
+        {/* Contact method validation error */}
+        {errors.contact && (
+          <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
+            <p className="text-sm text-amber-800 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {errors.contact}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
         <p className="font-medium text-gray-700 mb-1">Note:</p>
         <ul className="list-disc list-inside space-y-1">
-          <li>All fields marked with * are required</li>
+          <li>Full name is required</li>
+          <li>At least one contact method (email or phone) is required</li>
           <li>Search to find and select existing customers</li>
           <li>Or enter details manually for new customers</li>
         </ul>

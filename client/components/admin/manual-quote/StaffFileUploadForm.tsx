@@ -1017,6 +1017,30 @@ export default function StaffFileUploadForm({
     }
   };
 
+  // Calculate line_total based on billable_pages, base_rate, language_multiplier, and complexity
+  const recalculateLineTotal = (
+    billablePages: number,
+    baseRate: number,
+    languageMultiplier: number,
+    complexity: string
+  ): number => {
+    const complexityMultipliers: Record<string, number> = {
+      easy: 1.0,
+      low: 1.0,
+      medium: 1.15,
+      hard: 1.25,
+      high: 1.25,
+    };
+
+    const complexityMultiplier = complexityMultipliers[complexity?.toLowerCase()] || 1.0;
+    const rawTotal = billablePages * baseRate * languageMultiplier * complexityMultiplier;
+
+    // Round to nearest $2.50
+    const roundedTotal = Math.ceil(rawTotal / 2.5) * 2.5;
+
+    return roundedTotal;
+  };
+
   const startEditAnalysis = (analysis: AnalysisResult) => {
     setEditingAnalysisId(analysis.id);
     setEditingAnalysis({
@@ -1042,6 +1066,12 @@ export default function StaffFileUploadForm({
     try {
       const certType = certificationTypes.find((c) => c.id === editingAnalysis.certification_type_id);
 
+      // Find the original analysis to get base_rate
+      const originalAnalysis = analysisResults.find((a) => a.id === analysisId);
+      if (!originalAnalysis) {
+        throw new Error("Analysis not found");
+      }
+
       // Map complexity to multiplier
       const complexityMultipliers: Record<string, number> = {
         easy: 1.0,
@@ -1052,6 +1082,18 @@ export default function StaffFileUploadForm({
       };
       const newComplexity = editingAnalysis.assessed_complexity?.toLowerCase() || "medium";
       const newMultiplier = complexityMultipliers[newComplexity] || 1.0;
+
+      // Get language multiplier from translation details
+      const languageMultiplier = translationDetails?.languageMultiplier || 1.0;
+
+      // Calculate the new line_total using the formula:
+      // line_total = ceil((billable_pages × base_rate × lang_multiplier × complexity_multiplier) / 2.50) × 2.50
+      const newLineTotal = recalculateLineTotal(
+        editingAnalysis.billable_pages || originalAnalysis.billable_pages,
+        originalAnalysis.base_rate,
+        languageMultiplier,
+        newComplexity
+      );
 
       const { error } = await supabase
         .from("ai_analysis_results")
@@ -1065,6 +1107,7 @@ export default function StaffFileUploadForm({
           billable_pages: editingAnalysis.billable_pages,
           certification_type_id: editingAnalysis.certification_type_id,
           certification_price: certType?.price || null,
+          line_total: newLineTotal,
           updated_at: new Date().toISOString(),
         })
         .eq("id", analysisId);
@@ -1401,8 +1444,8 @@ export default function StaffFileUploadForm({
       {uploadedFiles.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {/* Header with Select All and Analyze Button */}
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-            <label className="flex items-center gap-2 cursor-pointer">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <label className="flex items-center gap-2 cursor-pointer min-h-[44px]">
               <input
                 type="checkbox"
                 checked={
@@ -1419,7 +1462,7 @@ export default function StaffFileUploadForm({
                 }}
                 onChange={(e) => handleSelectAll(e.target.checked)}
                 disabled={getSelectableBillableFiles().length === 0}
-                className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
+                className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
               />
               <span className="text-sm text-gray-700">
                 Select All (To Translate)
@@ -1429,7 +1472,7 @@ export default function StaffFileUploadForm({
             <button
               onClick={handleAnalyzeSelected}
               disabled={selectedFileIds.size === 0 || isBatchAnalyzing}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-3 sm:py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
             >
               {isBatchAnalyzing ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -1454,101 +1497,118 @@ export default function StaffFileUploadForm({
               return (
                 <div
                   key={file.id}
-                  className={`px-4 py-3 flex items-center gap-4 hover:bg-gray-50 transition-colors ${
+                  className={`px-4 py-3 hover:bg-gray-50 transition-colors ${
                     isProcessing ? "bg-blue-50" : ""
                   }`}
                 >
-                  {/* Checkbox */}
-                  <div className="w-6 flex-shrink-0">
-                    {canSelect ? (
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => handleSelectFile(file.id, e.target.checked)}
+                  {/* Mobile: Stacked layout, Desktop: Horizontal layout */}
+                  <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+                    {/* Top row on mobile: Checkbox, File name, Delete button */}
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {/* Checkbox */}
+                      <div className="w-6 flex-shrink-0">
+                        {canSelect ? (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => handleSelectFile(file.id, e.target.checked)}
+                            disabled={isProcessing}
+                            className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
+                          />
+                        ) : (
+                          <span className="text-gray-300">
+                            <Minus className="w-4 h-4" />
+                          </span>
+                        )}
+                      </div>
+
+                      {/* File Icon & Name */}
+                      <FileText className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                      <span className="text-sm font-medium text-gray-900 truncate flex-1">
+                        {file.original_filename}
+                      </span>
+
+                      {/* Delete Button - visible on mobile in top row */}
+                      <button
+                        onClick={() => handleDeleteUploadedFile(file.id)}
                         disabled={isProcessing}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
-                      />
-                    ) : (
-                      <span className="text-gray-300">
-                        <Minus className="w-4 h-4" />
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 flex-shrink-0 md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        title="Remove file"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Bottom row on mobile: Category, Size, Status */}
+                    <div className="flex items-center gap-3 ml-9 md:ml-0 flex-wrap md:flex-nowrap">
+                      {/* Category Dropdown */}
+                      <div className="flex-1 min-w-[140px] md:w-40 md:flex-none">
+                        <select
+                          value={file.file_category_id || ""}
+                          onChange={(e) =>
+                            handleCategoryChange(file.id, e.target.value || null)
+                          }
+                          className="w-full text-sm border border-gray-300 rounded-lg px-2 py-2 md:py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[44px] md:min-h-0"
+                        >
+                          <option value="">Select type...</option>
+                          {fileCategories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>
+                              {cat.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* File Size */}
+                      <span className="text-xs text-gray-500 flex-shrink-0">
+                        {formatFileSize(file.file_size)}
                       </span>
-                    )}
+
+                      {/* Status Badge */}
+                      <div className="flex-shrink-0">
+                        {!category?.is_billable ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded">
+                            <Minus className="w-3 h-3" />
+                            N/A
+                          </span>
+                        ) : !category ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">
+                            Select type
+                          </span>
+                        ) : status === "processing" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Processing
+                          </span>
+                        ) : status === "completed" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Completed
+                          </span>
+                        ) : status === "failed" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
+                            <XCircle className="w-3 h-3" />
+                            Failed
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                            <Clock className="w-3 h-3" />
+                            Pending
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Delete Button - visible on desktop */}
+                      <button
+                        onClick={() => handleDeleteUploadedFile(file.id)}
+                        disabled={isProcessing}
+                        className="hidden md:flex p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 flex-shrink-0"
+                        title="Remove file"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-
-                  {/* File Icon & Name */}
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <FileText className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                    <span className="text-sm font-medium text-gray-900 truncate">
-                      {file.original_filename}
-                    </span>
-                  </div>
-
-                  {/* Category Dropdown */}
-                  <div className="w-40 flex-shrink-0">
-                    <select
-                      value={file.file_category_id || ""}
-                      onChange={(e) =>
-                        handleCategoryChange(file.id, e.target.value || null)
-                      }
-                      className="w-full text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Select type...</option>
-                      {fileCategories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* File Size */}
-                  <span className="text-xs text-gray-500 w-16 text-right flex-shrink-0">
-                    {formatFileSize(file.file_size)}
-                  </span>
-
-                  {/* Status Badge */}
-                  <div className="w-24 flex-shrink-0">
-                    {!category?.is_billable ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded">
-                        <Minus className="w-3 h-3" />
-                        N/A
-                      </span>
-                    ) : !category ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">
-                        Select type
-                      </span>
-                    ) : status === "processing" ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Processing
-                      </span>
-                    ) : status === "completed" ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Completed
-                      </span>
-                    ) : status === "failed" ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded">
-                        <XCircle className="w-3 h-3" />
-                        Failed
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
-                        <Clock className="w-3 h-3" />
-                        Pending
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Delete Button */}
-                  <button
-                    onClick={() => handleDeleteUploadedFile(file.id)}
-                    disabled={isProcessing}
-                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 flex-shrink-0"
-                    title="Remove file"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
                 </div>
               );
             })}
