@@ -1835,10 +1835,22 @@ export default function StaffFileUploadForm({
                     )}
                   </div>
 
-                  {/* Multiplier (read-only) */}
+                  {/* Multiplier (calculated from complexity during edit) */}
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Multiplier</p>
-                    <p className="font-medium text-gray-900">{analysis.complexity_multiplier?.toFixed(2)}x</p>
+                    {isEditing ? (
+                      <p className="font-medium text-gray-900">
+                        {(() => {
+                          const complexityMultipliers: Record<string, number> = {
+                            easy: 1.0, low: 1.0, medium: 1.15, hard: 1.25, high: 1.25
+                          };
+                          const mult = complexityMultipliers[editingAnalysis?.assessed_complexity?.toLowerCase() || "medium"] || 1.0;
+                          return `${mult.toFixed(2)}x`;
+                        })()}
+                      </p>
+                    ) : (
+                      <p className="font-medium text-gray-900">{analysis.complexity_multiplier?.toFixed(2)}x</p>
+                    )}
                   </div>
 
                   {/* Word Count */}
@@ -1887,10 +1899,27 @@ export default function StaffFileUploadForm({
                     )}
                   </div>
 
-                  {/* Line Total (read-only) */}
+                  {/* Line Total (calculated in real-time during edit) */}
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Line Total</p>
-                    <p className="font-medium text-blue-600">${Number(analysis.line_total || 0).toFixed(2)}</p>
+                    {isEditing ? (
+                      <p className="font-medium text-blue-600">
+                        ${(() => {
+                          const billablePages = editingAnalysis?.billable_pages || analysis.billable_pages || 1;
+                          const baseRate = analysis.base_rate || 65;
+                          const langMultiplier = translationDetails?.languageMultiplier || 1.0;
+                          const complexityMultipliers: Record<string, number> = {
+                            easy: 1.0, low: 1.0, medium: 1.15, hard: 1.25, high: 1.25
+                          };
+                          const complexityMult = complexityMultipliers[editingAnalysis?.assessed_complexity?.toLowerCase() || "medium"] || 1.0;
+                          const rawTotal = billablePages * baseRate * langMultiplier * complexityMult;
+                          const roundedTotal = Math.ceil(rawTotal / 2.5) * 2.5;
+                          return roundedTotal.toFixed(2);
+                        })()}
+                      </p>
+                    ) : (
+                      <p className="font-medium text-blue-600">${Number(analysis.line_total || 0).toFixed(2)}</p>
+                    )}
                   </div>
                 </div>
 
