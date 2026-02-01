@@ -165,13 +165,14 @@ export default function StaffPricingForm({
       }
 
       // Fetch quote details (intended use, languages) - certification is through junction table
+      // language_multiplier_override is on quotes, base multiplier is on languages table
       const { data: quoteData, error: quoteError } = await supabase
         .from("quotes")
         .select(`
           intended_use:intended_uses(name),
-          source_language:languages!quotes_source_language_id_fkey(name),
+          source_language:languages!quotes_source_language_id_fkey(name, multiplier),
           target_language:languages!quotes_target_language_id_fkey(name),
-          language_multiplier
+          language_multiplier_override
         `)
         .eq("id", quoteId)
         .single();
@@ -195,12 +196,17 @@ export default function StaffPricingForm({
 
       if (quoteData) {
         console.log(`✅ [PRICING] Fetched quote details:`, quoteData);
+        // Use override if set, otherwise use source language's multiplier
+        const sourceLanguage = quoteData.source_language as any;
+        const languageMultiplier = quoteData.language_multiplier_override
+          ?? sourceLanguage?.multiplier
+          ?? 1.0;
         setQuoteDetails({
           intendedUse: (quoteData.intended_use as any)?.name || null,
           certificationTypeName: certificationTypeName,
-          sourceLanguage: (quoteData.source_language as any)?.name || null,
+          sourceLanguage: sourceLanguage?.name || null,
           targetLanguage: (quoteData.target_language as any)?.name || null,
-          languageMultiplier: quoteData.language_multiplier || 1.0,
+          languageMultiplier: languageMultiplier,
         });
       }
 
