@@ -143,8 +143,8 @@ export default function StaffReviewForm({
             Edit
           </button>
         </div>
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-6">
+        <div className="p-4 sm:p-6 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                 Full Name
@@ -163,16 +163,16 @@ export default function StaffReviewForm({
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                 Email
               </p>
-              <p className="text-gray-900">{customer?.email}</p>
+              <p className="text-gray-900 break-all">{customer?.email || <span className="text-gray-400 italic">Not provided</span>}</p>
             </div>
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                 Phone
               </p>
-              <p className="text-gray-900">{customer?.phone}</p>
+              <p className="text-gray-900">{customer?.phone || <span className="text-gray-400 italic">Not provided</span>}</p>
             </div>
             {customer?.customerType === "business" && customer?.companyName && (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                   Company Name
                 </p>
@@ -195,8 +195,8 @@ export default function StaffReviewForm({
             Edit
           </button>
         </div>
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-6">
+        <div className="p-4 sm:p-6 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                 Source Language
@@ -245,7 +245,7 @@ export default function StaffReviewForm({
               </div>
             )}
             {quote.specialInstructions && (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                   Special Instructions
                 </p>
@@ -517,20 +517,20 @@ export default function StaffReviewForm({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-4 justify-between">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:justify-between">
         <button
           onClick={onPrevious}
           disabled={submitting}
-          className="px-6 py-3 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 font-medium disabled:opacity-50"
+          className="px-6 py-3 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 font-medium disabled:opacity-50 min-h-[48px] order-last sm:order-first"
         >
           Previous
         </button>
 
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <button
             onClick={() => onSubmit(false)}
             disabled={submitting}
-            className="px-6 py-3 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 font-medium disabled:opacity-50"
+            className="px-6 py-3 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 font-medium disabled:opacity-50 min-h-[48px]"
           >
             {submitting ? "Creating..." : "Save as Draft"}
           </button>
@@ -538,7 +538,7 @@ export default function StaffReviewForm({
           <button
             onClick={() => onSubmit(true)}
             disabled={submitting}
-            className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium disabled:opacity-50"
+            className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium disabled:opacity-50 min-h-[48px]"
           >
             {submitting ? "Creating Quote..." : "Create Quote"}
           </button>

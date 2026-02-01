@@ -373,7 +373,7 @@ export default function StaffPricingForm({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-4 gap-4 text-sm bg-gray-50 rounded p-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 text-sm bg-gray-50 rounded p-3">
                   <div>
                     <span className="text-gray-500 block text-xs">Pages</span>
                     <span className="font-medium">{result.page_count}</span>

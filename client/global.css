@@ -164,7 +164,8 @@
   @media screen and (max-width: 768px) {
     input,
     select,
-    textarea {
+    textarea,
+    button {
       font-size: 16px !important;
     }
   }
@@ -174,5 +175,17 @@
   body {
     overflow-x: hidden;
     max-width: 100%;
+  }
+
+  /* Prevent text size adjustment on orientation change */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Smooth touch interactions and disable tap highlight */
+  * {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 }
