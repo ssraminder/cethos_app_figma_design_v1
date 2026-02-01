@@ -191,6 +191,11 @@ export default function ManualQuoteForm({
       }
     }
 
+    // Refresh pricing data when moving from Step 3 to Step 4
+    if (currentStep === 3) {
+      setPricingRefreshKey((prev) => prev + 1);
+    }
+
     // Move to next step
     if (currentStep < steps.length) {
       setCurrentStep(currentStep + 1);
@@ -375,6 +380,7 @@ export default function ManualQuoteForm({
 
           {currentStep === 4 && quoteId && (
             <StaffPricingForm
+              key={`pricing-${pricingRefreshKey}`}
               quoteId={quoteId}
               files={files}
               value={pricing}

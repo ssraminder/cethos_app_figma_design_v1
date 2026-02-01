@@ -1088,8 +1088,9 @@ export default function StaffFileUploadForm({
 
       // Calculate the new line_total using the formula:
       // line_total = ceil((billable_pages × base_rate × lang_multiplier × complexity_multiplier) / 2.50) × 2.50
+      const billablePagesToUse = editingAnalysis.billable_pages ?? originalAnalysis.billable_pages;
       const newLineTotal = recalculateLineTotal(
-        editingAnalysis.billable_pages || originalAnalysis.billable_pages,
+        billablePagesToUse,
         originalAnalysis.base_rate,
         languageMultiplier,
         newComplexity
@@ -1098,15 +1099,15 @@ export default function StaffFileUploadForm({
       const { error } = await supabase
         .from("ai_analysis_results")
         .update({
-          detected_language: editingAnalysis.detected_language,
-          detected_document_type: editingAnalysis.detected_document_type,
-          assessed_complexity: editingAnalysis.assessed_complexity,
+          detected_language: editingAnalysis.detected_language ?? originalAnalysis.detected_language,
+          detected_document_type: editingAnalysis.detected_document_type ?? originalAnalysis.detected_document_type,
+          assessed_complexity: editingAnalysis.assessed_complexity ?? originalAnalysis.assessed_complexity,
           complexity_multiplier: newMultiplier,
-          word_count: editingAnalysis.word_count,
-          page_count: editingAnalysis.page_count,
-          billable_pages: editingAnalysis.billable_pages,
+          word_count: editingAnalysis.word_count ?? originalAnalysis.word_count,
+          page_count: editingAnalysis.page_count ?? originalAnalysis.page_count,
+          billable_pages: billablePagesToUse,
           certification_type_id: editingAnalysis.certification_type_id,
-          certification_price: certType?.price || null,
+          certification_price: certType?.price ?? null,
           line_total: newLineTotal,
           updated_at: new Date().toISOString(),
         })
