@@ -1860,9 +1860,13 @@ export default function StaffFileUploadForm({
                     {isEditing ? (
                       <input
                         type="number"
-                        value={editingAnalysis?.word_count || 0}
-                        onChange={(e) => setEditingAnalysis({ ...editingAnalysis, word_count: parseInt(e.target.value) || 0 })}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        min="0"
+                        value={editingAnalysis?.word_count ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value === "" ? undefined : parseInt(e.target.value);
+                          setEditingAnalysis({ ...editingAnalysis, word_count: val });
+                        }}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-base"
                       />
                     ) : (
                       <p className="font-medium text-gray-900">{analysis.word_count?.toLocaleString()}</p>
@@ -1875,9 +1879,13 @@ export default function StaffFileUploadForm({
                     {isEditing ? (
                       <input
                         type="number"
-                        value={editingAnalysis?.page_count || 0}
-                        onChange={(e) => setEditingAnalysis({ ...editingAnalysis, page_count: parseInt(e.target.value) || 0 })}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        min="1"
+                        value={editingAnalysis?.page_count ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value === "" ? undefined : parseInt(e.target.value);
+                          setEditingAnalysis({ ...editingAnalysis, page_count: val });
+                        }}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-base"
                       />
                     ) : (
                       <p className="font-medium text-gray-900">{analysis.page_count}</p>
@@ -1890,10 +1898,14 @@ export default function StaffFileUploadForm({
                     {isEditing ? (
                       <input
                         type="number"
-                        step="0.1"
-                        value={editingAnalysis?.billable_pages || 0}
-                        onChange={(e) => setEditingAnalysis({ ...editingAnalysis, billable_pages: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        step="0.5"
+                        min="0.5"
+                        value={editingAnalysis?.billable_pages ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                          setEditingAnalysis({ ...editingAnalysis, billable_pages: val });
+                        }}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-base"
                       />
                     ) : (
                       <p className="font-medium text-gray-900">{analysis.billable_pages}</p>
@@ -1906,7 +1918,7 @@ export default function StaffFileUploadForm({
                     {isEditing ? (
                       <p className="font-medium text-blue-600">
                         ${(() => {
-                          const billablePages = editingAnalysis?.billable_pages || analysis.billable_pages || 1;
+                          const billablePages = editingAnalysis?.billable_pages ?? analysis.billable_pages ?? 1;
                           const baseRate = analysis.base_rate || 65;
                           const langMultiplier = translationDetails?.languageMultiplier || 1.0;
                           const complexityMultipliers: Record<string, number> = {
