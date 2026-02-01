@@ -353,9 +353,15 @@ export default function QuoteReviewPage() {
   };
 
   const handleStartNewQuote = () => {
+    // Clear all quote-related localStorage
     localStorage.removeItem("cethos_quote_draft");
     localStorage.removeItem("cethos_upload_draft");
-    navigate("/");
+    localStorage.removeItem("quoteId");
+    localStorage.removeItem("quoteData");
+    localStorage.removeItem("quoteStep");
+    localStorage.removeItem("currentStep");
+    // Force navigation with page reload to ensure clean state
+    window.location.href = "/quote";
   };
 
   const getStatusDisplay = (status: string) => {
