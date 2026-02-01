@@ -1062,6 +1062,9 @@ export default function StaffFileUploadForm({
   const saveEditAnalysis = async (analysisId: string) => {
     if (!editingAnalysis) return;
 
+    console.log(`💾 [SAVE] Starting save for analysis ${analysisId}`);
+    console.log(`💾 [SAVE] editingAnalysis:`, editingAnalysis);
+
     setSavingField(`analysis-${analysisId}`);
     try {
       const certType = certificationTypes.find((c) => c.id === editingAnalysis.certification_type_id);
@@ -1071,6 +1074,8 @@ export default function StaffFileUploadForm({
       if (!originalAnalysis) {
         throw new Error("Analysis not found");
       }
+
+      console.log(`💾 [SAVE] originalAnalysis:`, originalAnalysis);
 
       // Map complexity to multiplier
       const complexityMultipliers: Record<string, number> = {
@@ -1096,6 +1101,14 @@ export default function StaffFileUploadForm({
         newComplexity
       );
 
+      console.log(`💾 [SAVE] Calculated values:`, {
+        billablePagesToUse,
+        newComplexity,
+        newMultiplier,
+        languageMultiplier,
+        newLineTotal,
+      });
+
       const { error } = await supabase
         .from("ai_analysis_results")
         .update({
@@ -1113,22 +1126,34 @@ export default function StaffFileUploadForm({
         })
         .eq("id", analysisId);
 
-      if (error) throw error;
+      if (error) {
+        console.error(`❌ [SAVE] Database update error:`, error);
+        throw error;
+      }
+
+      console.log(`✅ [SAVE] Database update successful for analysis ${analysisId}`);
 
       // Recalculate quote totals after the update
       if (quoteId) {
+        console.log(`🔄 [SAVE] Calling recalculate_quote_totals RPC for quote ${quoteId}`);
         const { error: rpcError } = await supabase.rpc("recalculate_quote_totals", {
           p_quote_id: quoteId,
         });
         if (rpcError) {
-          console.error("RPC recalculate error:", rpcError);
+          console.error("❌ [SAVE] RPC recalculate error:", rpcError);
+        } else {
+          console.log(`✅ [SAVE] RPC recalculate_quote_totals completed`);
         }
       }
 
       toast.success("Analysis updated");
       setEditingAnalysisId(null);
       setEditingAnalysis(null);
+
+      console.log(`🔄 [SAVE] Fetching updated analysis results...`);
       fetchAnalysisResults();
+
+      console.log(`🔄 [SAVE] Calling onPricingRefresh...`);
       onPricingRefresh?.();
     } catch (error) {
       console.error("Error saving analysis:", error);
