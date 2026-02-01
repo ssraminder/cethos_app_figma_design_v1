@@ -166,7 +166,23 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
   const urlQuoteLoadedRef = useRef<boolean>(false);
 
   // Helper to determine which step to show based on quote status
-  const determineStepFromQuote = useCallback((quote: any): number => {
+  const determineStepFromQuote = useCallback((quote: any, isStaffCreatedQuote: boolean = false): number => {
+    // Manual/staff-created quotes should skip to review/payment based on status
+    if (isStaffCreatedQuote) {
+      switch (quote.status) {
+        case 'awaiting_payment':
+        case 'approved':
+        case 'pending_payment':
+          return 6; // Payment step
+        case 'quote_ready':
+          return 5; // Billing & Delivery step
+        default:
+          // For draft or other statuses, go to step 4 (review) so customer can see pricing
+          return 4;
+      }
+    }
+
+    // Regular quotes follow normal flow
     // If quote is ready for payment, go to step 5 (billing)
     if (quote.status === 'quote_ready' || quote.status === 'awaiting_payment') {
       return 5;
@@ -215,7 +231,7 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Fetch quote data with related files and customer info
+      // Fetch quote data with related files, customer info, and AI analysis results
       const { data: quote, error: quoteError } = await supabase
         .from('quotes')
         .select(`
@@ -235,6 +251,10 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
             phone,
             company_name,
             customer_type
+          ),
+          ai_analysis_results (
+            id,
+            is_staff_created
           )
         `)
         .eq('id', quoteId)
@@ -247,6 +267,17 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
 
       console.log('✅ Quote loaded from database:', quote.quote_number);
 
+      // Check if this is a staff-created manual quote
+      const isManualQuote = quote.is_manual_quote === true;
+      const hasStaffCreatedAnalysis = quote.ai_analysis_results?.some(
+        (ar: { id: string; is_staff_created: boolean }) => ar.is_staff_created === true
+      );
+      const isStaffCreatedQuote = isManualQuote || hasStaffCreatedAnalysis;
+
+      if (isStaffCreatedQuote) {
+        console.log('📋 Manual/staff-created quote detected - skipping processing modal');
+      }
+
       // Parse customer name into first/last name if available
       let firstName = '';
       let lastName = '';
@@ -256,8 +287,8 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
         lastName = nameParts.slice(1).join(' ') || '';
       }
 
-      // Determine the current step based on quote status
-      const currentStep = determineStepFromQuote(quote);
+      // Determine the current step based on quote status (with manual quote awareness)
+      const currentStep = determineStepFromQuote(quote, isStaffCreatedQuote);
 
       // Update context state with quote data
       setState(prev => ({
@@ -293,8 +324,9 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
         deliveryFee: quote.delivery_fee || 0,
         // Set the determined step
         currentStep: currentStep,
-        // If quote is in processing status, show processing screen
-        isProcessing: quote.processing_status === 'processing' || quote.processing_status === 'pending',
+        // If quote is in processing status AND not a manual/staff-created quote, show processing screen
+        // Manual quotes skip the processing modal entirely since there's no AI processing to wait for
+        isProcessing: !isStaffCreatedQuote && (quote.processing_status === 'processing' || quote.processing_status === 'pending'),
       }));
 
     } catch (error) {
