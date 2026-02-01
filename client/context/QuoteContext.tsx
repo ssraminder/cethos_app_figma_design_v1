@@ -64,6 +64,8 @@ export interface QuoteState {
   pickupLocationId: string | null;
   billingAddress: ShippingAddress | null;
   shippingAddress: ShippingAddress | null;
+  // Flag to indicate customer came via staff email link (quote already reviewed)
+  isStaffReviewed: boolean;
 }
 
 interface QuoteContextType {
@@ -111,6 +113,7 @@ const initialState: QuoteState = {
   pickupLocationId: null,
   billingAddress: null,
   shippingAddress: null,
+  isStaffReviewed: false,
 };
 
 const defaultContext: QuoteContextType = {
@@ -328,6 +331,8 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
         // If quote is in processing status AND not a manual/staff-created quote, show processing screen
         // Manual quotes skip the processing modal entirely since there's no AI processing to wait for
         isProcessing: !isStaffCreatedQuote && (quote.processing_status === 'processing' || quote.processing_status === 'pending'),
+        // Mark as staff-reviewed if: came via email link (token), is staff-created, or awaiting_payment status
+        isStaffReviewed: !!token || isStaffCreatedQuote || quote.status === 'awaiting_payment',
       }));
 
     } catch (error) {
