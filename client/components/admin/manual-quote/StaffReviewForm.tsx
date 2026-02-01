@@ -38,6 +38,13 @@ interface Country {
   name: string;
 }
 
+interface CertificationType {
+  id: string;
+  code: string;
+  name: string;
+  price: number;
+}
+
 interface StaffReviewFormProps {
   customer: CustomerData | null;
   quote: QuoteData;
@@ -70,16 +77,18 @@ export default function StaffReviewForm({
     {},
   );
   const [countries, setCountries] = useState<Record<string, Country>>({});
+  const [certificationTypes, setCertificationTypes] = useState<Record<string, CertificationType>>({});
   const [sendNotification, setSendNotification] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Load reference data
   useEffect(() => {
     const loadData = async () => {
-      const [langsRes, usesRes, countriesRes] = await Promise.all([
+      const [langsRes, usesRes, countriesRes, certTypesRes] = await Promise.all([
         supabase.from("languages").select("*"),
         supabase.from("intended_uses").select("*"),
         supabase.from("countries").select("*"),
+        supabase.from("certification_types").select("id, code, name, price").eq("is_active", true),
       ]);
 
       const langsMap: Record<string, Language> = {};
@@ -99,6 +108,12 @@ export default function StaffReviewForm({
         countriesMap[country.code] = country;
       });
       setCountries(countriesMap);
+
+      const certTypesMap: Record<string, CertificationType> = {};
+      certTypesRes.data?.forEach((certType: any) => {
+        certTypesMap[certType.id] = certType;
+      });
+      setCertificationTypes(certTypesMap);
 
       setLoading(false);
     };
@@ -247,7 +262,7 @@ export default function StaffReviewForm({
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-b border-gray-200">
           <h3 className="font-semibold text-gray-900">
-            Files & Analysis ({files.length} files)
+            Files & Analysis ({pricing.filePrices.length > 0 ? pricing.filePrices.length : files.length} files)
           </h3>
           <button
             onClick={() => onEditSection("files")}
@@ -258,9 +273,52 @@ export default function StaffReviewForm({
           </button>
         </div>
         <div className="p-6 space-y-4">
-          {files.length === 0 ? (
+          {pricing.filePrices.length === 0 && files.length === 0 ? (
             <div className="text-gray-600 italic">No files uploaded</div>
+          ) : pricing.filePrices.length > 0 ? (
+            // Show files with analysis from pricing data
+            pricing.filePrices.map((filePrice) => (
+              <div
+                key={filePrice.fileId}
+                className="border border-gray-200 rounded-md p-4 space-y-3"
+              >
+                <div className="font-medium text-gray-900">{filePrice.fileName}</div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-600">Pages</p>
+                    <p className="font-medium text-gray-900">
+                      {filePrice.pageCount}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Billable Pages</p>
+                    <p className="font-medium text-gray-900">
+                      {filePrice.billablePages}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Complexity</p>
+                    <p className="font-medium text-gray-900 capitalize">
+                      {filePrice.complexity}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Line Total</p>
+                    <p className="font-medium text-gray-900">
+                      ${filePrice.lineTotal.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="flex items-center gap-2 text-green-700">
+                    <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+                    Analysis Complete
+                  </div>
+                </div>
+              </div>
+            ))
           ) : (
+            // Fallback to showing files without analysis data
             files.map((file) => (
               <div
                 key={file.id}
@@ -302,22 +360,10 @@ export default function StaffReviewForm({
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-sm">
-                  {file.analysisStatus === "completed" ? (
-                    <div className="flex items-center gap-2 text-green-700">
-                      <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
-                      Analysis Completed
-                    </div>
-                  ) : file.analysisStatus === "analyzing" ? (
-                    <div className="flex items-center gap-2 text-blue-700">
-                      <span className="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                      Analyzing...
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-amber-700">
-                      <AlertCircle className="w-4 h-4" />
-                      Analysis Not Available
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 text-amber-700">
+                    <AlertCircle className="w-4 h-4" />
+                    Analysis Not Available
+                  </div>
                 </div>
               </div>
             ))
@@ -339,39 +385,48 @@ export default function StaffReviewForm({
         </div>
         <div className="p-6 space-y-6">
           {/* Per-File Details */}
-          {pricing.filePrices.map((filePrice, idx) => (
-            <div
-              key={filePrice.fileId}
-              className="border-b border-gray-200 pb-4"
-            >
-              <div className="font-medium text-gray-900 mb-3">
-                {idx + 1}. {filePrice.fileName}
+          {pricing.filePrices.map((filePrice, idx) => {
+            const certType = filePrice.certificationTypeId
+              ? certificationTypes[filePrice.certificationTypeId]
+              : null;
+            return (
+              <div
+                key={filePrice.fileId}
+                className="border-b border-gray-200 pb-4"
+              >
+                <div className="font-medium text-gray-900 mb-3">
+                  {idx + 1}. {filePrice.fileName}
+                </div>
+                <div className="space-y-2 text-sm ml-4">
+                  <div className="flex justify-between text-gray-600">
+                    <span>
+                      Translation ({filePrice.billablePages} pages × $
+                      {filePrice.baseRate.toFixed(2)} base ×{" "}
+                      {filePrice.languageMultiplier.toFixed(2)}x{" "}
+                      <span className="text-gray-400">lang</span> ×{" "}
+                      {filePrice.complexityMultiplier.toFixed(2)}x{" "}
+                      <span className="text-gray-400">{filePrice.complexity}</span>):
+                    </span>
+                    <span className="font-medium text-gray-900">
+                      ${filePrice.translationCost.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
+                    <span>
+                      {certType ? certType.name : "Certification"}:
+                    </span>
+                    <span className="font-medium text-gray-900">
+                      ${filePrice.certificationCost.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold text-gray-900">
+                    <span>Subtotal:</span>
+                    <span>${filePrice.lineTotal.toFixed(2)}</span>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2 text-sm ml-4">
-                <div className="flex justify-between text-gray-600">
-                  <span>
-                    Translation ({filePrice.billablePages} pages × $
-                    {filePrice.baseRate.toFixed(2)} ×{" "}
-                    {filePrice.languageMultiplier.toFixed(2)}x ×
-                    {filePrice.complexityMultiplier.toFixed(2)}x):
-                  </span>
-                  <span className="font-medium text-gray-900">
-                    ${filePrice.translationCost.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>Certification:</span>
-                  <span className="font-medium text-gray-900">
-                    ${filePrice.certificationCost.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold text-gray-900">
-                  <span>Subtotal:</span>
-                  <span>${filePrice.lineTotal.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Quote-Level Summary */}
           <div className="bg-blue-50 border border-blue-200 rounded-md p-4 space-y-3">

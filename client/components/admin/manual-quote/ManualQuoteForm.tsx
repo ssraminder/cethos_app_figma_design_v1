@@ -407,40 +407,42 @@ export default function ManualQuoteForm({
           )}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={handleCancel}
-            className="px-6 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-md transition-colors"
-          >
-            Cancel
-          </button>
-
-          <div className="flex gap-3">
+        {/* Action Buttons - Hidden on Step 5 (Review) as StaffReviewForm has its own buttons */}
+        {currentStep !== 5 && (
+          <div className="flex items-center justify-between">
             <button
-              onClick={handleBack}
-              disabled={currentStep === 1 || isSubmitting}
-              className="inline-flex items-center gap-2 px-6 py-2 border border-gray-300 text-gray-700 font-medium rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              onClick={handleCancel}
+              className="px-6 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-md transition-colors"
             >
-              <ChevronLeft className="w-4 h-4" />
-              Back
+              Cancel
             </button>
 
-            <button
-              onClick={handleNext}
-              disabled={!canProceed() || isSubmitting}
-              className="inline-flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {currentStep === steps.length ? "Create Quote" : "Next"}
-              {currentStep < steps.length && (
-                <ChevronRight className="w-4 h-4" />
-              )}
-              {isSubmitting && (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white ml-2"></div>
-              )}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleBack}
+                disabled={currentStep === 1 || isSubmitting}
+                className="inline-flex items-center gap-2 px-6 py-2 border border-gray-300 text-gray-700 font-medium rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Back
+              </button>
+
+              <button
+                onClick={handleNext}
+                disabled={!canProceed() || isSubmitting}
+                className="inline-flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {currentStep === steps.length ? "Create Quote" : "Next"}
+                {currentStep < steps.length && (
+                  <ChevronRight className="w-4 h-4" />
+                )}
+                {isSubmitting && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white ml-2"></div>
+                )}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
