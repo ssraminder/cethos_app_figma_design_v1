@@ -100,6 +100,15 @@ export default function StaffPricingForm({
   const [loading, setLoading] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
 
+  // Quote details for display (intended use, certification type, languages)
+  const [quoteDetails, setQuoteDetails] = useState<{
+    intendedUse: string | null;
+    certificationTypeName: string | null;
+    sourceLanguage: string | null;
+    targetLanguage: string | null;
+    languageMultiplier: number;
+  } | null>(null);
+
   // Load delivery options
   useEffect(() => {
     const loadDeliveryOptions = async () => {
@@ -116,13 +125,14 @@ export default function StaffPricingForm({
     loadDeliveryOptions();
   }, []);
 
-  // Load analysis results and settings
+  // Load analysis results, quote details, and settings
   useEffect(() => {
     const loadData = async () => {
+      console.log(`📊 [PRICING] Loading data for quote ${quoteId}, refreshKey: ${refreshKey}`);
       setSettingsLoading(true);
 
       // Fetch analysis results for this quote (LEFT JOIN to include manual entries without files)
-      const { data: analysisData } = await supabase
+      const { data: analysisData, error: analysisError } = await supabase
         .from("ai_analysis_results")
         .select(
           `
@@ -145,9 +155,41 @@ export default function StaffPricingForm({
         )
         .eq("quote_id", quoteId);
 
+      if (analysisError) {
+        console.error("❌ [PRICING] Error fetching analysis:", analysisError);
+      }
+
       if (analysisData) {
-        // Supabase !inner join returns quote_files as single object, not array
+        console.log(`✅ [PRICING] Fetched ${analysisData.length} analysis results:`, analysisData);
         setAnalysisResults(analysisData as unknown as AnalysisResult[]);
+      }
+
+      // Fetch quote details (intended use, certification, languages)
+      const { data: quoteData, error: quoteError } = await supabase
+        .from("quotes")
+        .select(`
+          intended_use:intended_uses(name),
+          certification_type:certification_types(name),
+          source_language:languages!quotes_source_language_id_fkey(name),
+          target_language:languages!quotes_target_language_id_fkey(name),
+          language_multiplier
+        `)
+        .eq("id", quoteId)
+        .single();
+
+      if (quoteError) {
+        console.error("❌ [PRICING] Error fetching quote details:", quoteError);
+      }
+
+      if (quoteData) {
+        console.log(`✅ [PRICING] Fetched quote details:`, quoteData);
+        setQuoteDetails({
+          intendedUse: (quoteData.intended_use as any)?.name || null,
+          certificationTypeName: (quoteData.certification_type as any)?.name || null,
+          sourceLanguage: (quoteData.source_language as any)?.name || null,
+          targetLanguage: (quoteData.target_language as any)?.name || null,
+          languageMultiplier: quoteData.language_multiplier || 1.0,
+        });
       }
 
       // Fetch tax rate from app_settings
@@ -316,6 +358,33 @@ export default function StaffPricingForm({
 
   return (
     <div className="space-y-8">
+      {/* Quote Details Summary */}
+      {quoteDetails && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-900 mb-3">Quote Details</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <span className="text-gray-500 block text-xs">Languages</span>
+              <span className="font-medium">
+                {quoteDetails.sourceLanguage} → {quoteDetails.targetLanguage}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-500 block text-xs">Language Multiplier</span>
+              <span className="font-medium">{quoteDetails.languageMultiplier.toFixed(2)}x</span>
+            </div>
+            <div>
+              <span className="text-gray-500 block text-xs">Intended Use</span>
+              <span className="font-medium">{quoteDetails.intendedUse || "Not specified"}</span>
+            </div>
+            <div>
+              <span className="text-gray-500 block text-xs">Certification</span>
+              <span className="font-medium">{quoteDetails.certificationTypeName || "None"}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Per-File Pricing - Read Only */}
       <div className="space-y-4">
         <h3 className="font-semibold text-gray-900">Document Pricing</h3>
