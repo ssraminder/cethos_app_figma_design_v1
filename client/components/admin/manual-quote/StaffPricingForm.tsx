@@ -207,7 +207,7 @@ export default function StaffPricingForm({
     return analysisResults.reduce((sum, result) => {
       const edits = localEdits[result.id];
       // Use edited line_total if available, otherwise use original
-      const lineTotal = edits?.line_total ?? parseFloat(result.line_total as any) || 0;
+      const lineTotal = edits?.line_total ?? (parseFloat(result.line_total as any) || 0);
       return sum + lineTotal;
     }, 0);
   }, [analysisResults, localEdits]);
