@@ -3901,9 +3901,10 @@ const HITLReviewDetail: React.FC = () => {
                   // Refresh review data when pricing changes
                   fetchReviewData();
                 }}
-                showActions={claimedByMe && ['approved', 'awaiting_payment'].includes(reviewData?.quotes?.status || '')}
+                showActions={claimedByMe}
                 isSubmitting={isSubmitting}
                 quoteStatus={reviewData?.quotes?.status}
+                hitlReviewStatus={reviewData?.status}
                 onManualPayment={() => {
                   const total = reviewData?.total || reviewData?.quotes?.total || 0;
                   setAmountPaid(total.toFixed(2));
@@ -3987,7 +3988,7 @@ const HITLReviewDetail: React.FC = () => {
       )}
 
       {/* Note: Main action buttons (Reject, Escalate, Save, Approve, Send to Customer, Resend Quote) are now in the sticky header */}
-      {/* Manual Payment button is in PricingSummaryBox (shown only for approved and awaiting_payment status) */}
+      {/* Manual Payment button is in PricingSummaryBox (shown when claimed and HITL review status is 'in_review') */}
 
       {/* Reject Modal */}
       {showRejectModal && (
