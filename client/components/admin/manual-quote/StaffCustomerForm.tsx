@@ -249,7 +249,7 @@ export default function StaffCustomerForm({
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
             placeholder="Search by name, email, phone, or company..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full pl-10 pr-4 py-2 text-base border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
           {isSearching && (
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -377,7 +377,7 @@ export default function StaffCustomerForm({
                 onChange={handleChange}
                 onBlur={(e) => validateField("companyName", e.target.value)}
                 placeholder="Acme Corporation"
-                className={`w-full pl-10 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                className={`w-full pl-10 pr-4 py-2 text-base border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                   errors.companyName ? "border-red-300" : "border-gray-300"
                 }`}
               />
@@ -402,7 +402,7 @@ export default function StaffCustomerForm({
               onChange={handleChange}
               onBlur={(e) => validateField("fullName", e.target.value)}
               placeholder="John Doe"
-              className={`w-full pl-10 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              className={`w-full pl-10 pr-4 py-2 text-base border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                 errors.fullName ? "border-red-300" : "border-gray-300"
               }`}
             />
@@ -426,7 +426,7 @@ export default function StaffCustomerForm({
               onChange={handleChange}
               onBlur={(e) => validateField("email", e.target.value)}
               placeholder="customer@example.com"
-              className={`w-full pl-10 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              className={`w-full pl-10 pr-4 py-2 text-base border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                 errors.email ? "border-red-300" : "border-gray-300"
               }`}
             />
@@ -453,7 +453,7 @@ export default function StaffCustomerForm({
               onChange={handleChange}
               onBlur={(e) => validateField("phone", e.target.value)}
               placeholder="+1 (555) 123-4567"
-              className={`w-full pl-10 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              className={`w-full pl-10 pr-4 py-2 text-base border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                 errors.phone ? "border-red-300" : "border-gray-300"
               }`}
             />

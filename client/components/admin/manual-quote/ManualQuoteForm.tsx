@@ -82,8 +82,14 @@ export default function ManualQuoteForm({
     switch (step) {
       case 1:
         if (!customer) return false;
-        if (!customer.email || !customer.fullName || !customer.phone) {
-          toast.error("Please fill in all required customer fields");
+        // Full name is required, phone is optional
+        if (!customer.fullName?.trim()) {
+          toast.error("Please enter the customer's full name");
+          return false;
+        }
+        // At least email is required (phone is optional)
+        if (!customer.email?.trim()) {
+          toast.error("Please enter the customer's email address");
           return false;
         }
         if (customer.customerType === "business" && !customer.companyName) {
@@ -268,8 +274,9 @@ export default function ManualQuoteForm({
   const canProceed = () => {
     switch (currentStep) {
       case 1:
+        // Phone is optional - only need fullName and email
         return (
-          customer && customer.email && customer.fullName && customer.phone
+          customer && customer.email?.trim() && customer.fullName?.trim()
         );
       case 2:
         return (

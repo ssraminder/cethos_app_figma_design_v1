@@ -177,6 +177,11 @@
     max-width: 100%;
   }
 
+  /* Prevent pull-to-refresh interfering with scrollable content */
+  body {
+    overscroll-behavior-y: contain;
+  }
+
   /* Prevent text size adjustment on orientation change */
   html {
     -webkit-text-size-adjust: 100%;
