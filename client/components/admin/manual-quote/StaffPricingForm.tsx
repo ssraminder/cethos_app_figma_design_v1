@@ -87,36 +87,6 @@ interface StaffPricingFormProps {
 
 const DEFAULT_TAX_RATE = 0.05; // 5% GST fallback
 
-// Complexity multipliers for pricing calculations
-const COMPLEXITY_MULTIPLIERS: Record<string, number> = {
-  low: 1.0,
-  easy: 1.0,
-  medium: 1.15,
-  moderate: 1.15,
-  high: 1.25,
-  hard: 1.25,
-};
-
-// Calculate line total for a document
-const calculateLineTotal = (
-  billablePages: number,
-  baseRate: number,
-  complexityMultiplier: number,
-  certificationPrice: number = 0
-): number => {
-  const rawTotal = billablePages * baseRate * complexityMultiplier + certificationPrice;
-  // Round to nearest $2.50
-  return Math.ceil(rawTotal / 2.5) * 2.5;
-};
-
-// Local edits type for tracking changes to individual documents
-interface DocumentEdits {
-  billable_pages?: number;
-  assessed_complexity?: string;
-  complexity_multiplier?: number;
-  line_total?: number;
-}
-
 export default function StaffPricingForm({
   quoteId,
   files,
@@ -129,9 +99,6 @@ export default function StaffPricingForm({
   const [taxRate, setTaxRate] = useState(DEFAULT_TAX_RATE);
   const [loading, setLoading] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
-
-  // Track local edits to document pricing (complexity, billable pages)
-  const [localEdits, setLocalEdits] = useState<Record<string, DocumentEdits>>({});
 
   // Load delivery options
   useEffect(() => {
@@ -202,15 +169,12 @@ export default function StaffPricingForm({
     }
   }, [quoteId, refreshKey]); // Re-fetch when refreshKey changes
 
-  // Calculate document subtotal from ai_analysis_results, using local edits if available
+  // Calculate document subtotal from ai_analysis_results (read-only from database)
   const documentSubtotal = useMemo(() => {
     return analysisResults.reduce((sum, result) => {
-      const edits = localEdits[result.id];
-      // Use edited line_total if available, otherwise use original
-      const lineTotal = edits?.line_total ?? (parseFloat(result.line_total as any) || 0);
-      return sum + lineTotal;
+      return sum + (parseFloat(result.line_total as any) || 0);
     }, 0);
-  }, [analysisResults, localEdits]);
+  }, [analysisResults]);
 
   // Recalculate quote-level totals when subtotal or adjustments change
   useEffect(() => {
@@ -333,56 +297,6 @@ export default function StaffPricingForm({
     }
   };
 
-  // Handler for complexity change - recalculates line total
-  const handleComplexityChange = (resultId: string, newComplexity: string, result: AnalysisResult) => {
-    const currentEdits = localEdits[resultId] || {};
-    const billablePages = currentEdits.billable_pages ?? result.billable_pages ?? 1;
-    const baseRate = parseFloat(result.base_rate as any) || 65;
-    const certificationPrice = parseFloat(result.certification_price as any) || 0;
-    const newMultiplier = COMPLEXITY_MULTIPLIERS[newComplexity.toLowerCase()] || 1.0;
-
-    const newLineTotal = calculateLineTotal(billablePages, baseRate, newMultiplier, certificationPrice);
-
-    setLocalEdits(prev => ({
-      ...prev,
-      [resultId]: {
-        ...prev[resultId],
-        assessed_complexity: newComplexity,
-        complexity_multiplier: newMultiplier,
-        line_total: newLineTotal,
-      }
-    }));
-  };
-
-  // Handler for billable pages change - recalculates line total
-  const handleBillablePagesChange = (resultId: string, newPages: number, result: AnalysisResult) => {
-    const currentEdits = localEdits[resultId] || {};
-    const complexity = currentEdits.assessed_complexity ?? result.assessed_complexity ?? "medium";
-    const baseRate = parseFloat(result.base_rate as any) || 65;
-    const certificationPrice = parseFloat(result.certification_price as any) || 0;
-    const complexityMultiplier = currentEdits.complexity_multiplier ?? COMPLEXITY_MULTIPLIERS[complexity.toLowerCase()] ?? 1.0;
-
-    const newLineTotal = calculateLineTotal(newPages, baseRate, complexityMultiplier, certificationPrice);
-
-    setLocalEdits(prev => ({
-      ...prev,
-      [resultId]: {
-        ...prev[resultId],
-        billable_pages: newPages,
-        line_total: newLineTotal,
-      }
-    }));
-  };
-
-  // Get the effective value for a document field (edited or original)
-  const getEffectiveValue = <T,>(resultId: string, field: keyof DocumentEdits, originalValue: T): T => {
-    const edits = localEdits[resultId];
-    if (edits && field in edits && edits[field] !== undefined) {
-      return edits[field] as unknown as T;
-    }
-    return originalValue;
-  };
-
   // Helper to get document name for display (handles manual entries)
   const getDocumentName = (item: AnalysisResult) => {
     if (item.manual_filename) {
@@ -402,10 +316,9 @@ export default function StaffPricingForm({
 
   return (
     <div className="space-y-8">
-      {/* Per-File Pricing - Editable complexity and billable pages */}
+      {/* Per-File Pricing - Read Only */}
       <div className="space-y-4">
         <h3 className="font-semibold text-gray-900">Document Pricing</h3>
-        <p className="text-sm text-gray-600">Adjust complexity or billable pages to recalculate pricing.</p>
 
         {analysisResults.length === 0 ? (
           <div className="bg-amber-50 border border-amber-200 rounded-md p-4">
@@ -424,82 +337,61 @@ export default function StaffPricingForm({
           </div>
         ) : (
           <div className="space-y-3">
-            {analysisResults.map((result) => {
-              const effectiveComplexity = getEffectiveValue(result.id, "assessed_complexity", result.assessed_complexity);
-              const effectiveBillablePages = getEffectiveValue(result.id, "billable_pages", result.billable_pages);
-              const effectiveLineTotal = getEffectiveValue(result.id, "line_total", parseFloat(result.line_total as any) || 0);
-
-              return (
-                <div
-                  key={result.id}
-                  className="border border-gray-200 rounded-lg p-4 bg-white"
-                >
-                  <div className="flex flex-col sm:flex-row justify-between items-start mb-3 gap-2">
-                    <div className="flex items-start gap-3">
-                      <FileText className={`w-5 h-5 flex-shrink-0 mt-0.5 ${result.manual_filename && !result.quote_file_id ? "text-blue-500" : "text-gray-400"}`} />
-                      <div>
-                        <p className="font-medium text-gray-900 flex items-center gap-2">
-                          <span>{getDocumentName(result)}</span>
-                          {result.manual_filename && !result.quote_file_id && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                              Manual
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {result.detected_language} • {result.detected_document_type}
-                        </p>
-                      </div>
+            {analysisResults.map((result) => (
+              <div
+                key={result.id}
+                className="border border-gray-200 rounded-lg p-4 bg-white"
+              >
+                <div className="flex flex-col sm:flex-row justify-between items-start mb-3 gap-2">
+                  <div className="flex items-start gap-3">
+                    <FileText className={`w-5 h-5 flex-shrink-0 mt-0.5 ${result.manual_filename && !result.quote_file_id ? "text-blue-500" : "text-gray-400"}`} />
+                    <div>
+                      <p className="font-medium text-gray-900 flex items-center gap-2">
+                        <span>{getDocumentName(result)}</span>
+                        {result.manual_filename && !result.quote_file_id && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                            Manual
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {result.detected_language} • {result.detected_document_type} •{" "}
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${getComplexityColor(result.assessed_complexity)}`}>
+                          {result.assessed_complexity}
+                        </span>{" "}
+                        complexity
+                      </p>
                     </div>
-                    <span className="text-lg font-semibold text-green-600">
-                      ${effectiveLineTotal.toFixed(2)}
+                  </div>
+                  <span className="text-lg font-semibold text-green-600">
+                    ${parseFloat(result.line_total as any).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 text-sm bg-gray-50 rounded p-3">
+                  <div>
+                    <span className="text-gray-500 block text-xs">Pages</span>
+                    <span className="font-medium">{result.page_count}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block text-xs">Billable</span>
+                    <span className="font-medium">{result.billable_pages}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block text-xs">Rate</span>
+                    <span className="font-medium">
+                      ${parseFloat(result.base_rate as any).toFixed(2)}
                     </span>
                   </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 text-sm bg-gray-50 rounded p-3">
-                    <div>
-                      <span className="text-gray-500 block text-xs mb-1">Pages</span>
-                      <span className="font-medium">{result.page_count}</span>
-                    </div>
-                    <div>
-                      <label className="text-gray-500 block text-xs mb-1">Billable</label>
-                      <input
-                        type="number"
-                        min="0.5"
-                        step="0.5"
-                        value={effectiveBillablePages}
-                        onChange={(e) => handleBillablePagesChange(result.id, parseFloat(e.target.value) || 0.5, result)}
-                        className="w-full px-2 py-1 text-base border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-gray-500 block text-xs mb-1">Complexity</label>
-                      <select
-                        value={effectiveComplexity?.toLowerCase() || "medium"}
-                        onChange={(e) => handleComplexityChange(result.id, e.target.value, result)}
-                        className={`w-full px-2 py-1 text-base border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${getComplexityColor(effectiveComplexity)}`}
-                      >
-                        <option value="low">Low (1.0x)</option>
-                        <option value="medium">Medium (1.15x)</option>
-                        <option value="high">High (1.25x)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 block text-xs mb-1">Rate</span>
-                      <span className="font-medium">
-                        ${parseFloat(result.base_rate as any).toFixed(2)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 block text-xs mb-1">Cert</span>
-                      <span className="font-medium">
-                        ${(parseFloat(result.certification_price as any) || 0).toFixed(2)}
-                      </span>
-                    </div>
+                  <div>
+                    <span className="text-gray-500 block text-xs">Cert</span>
+                    <span className="font-medium">
+                      ${(parseFloat(result.certification_price as any) || 0).toFixed(2)}
+                    </span>
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
 
             {/* Document Subtotal */}
             <div className="flex justify-between items-center pt-3 border-t border-gray-200">
