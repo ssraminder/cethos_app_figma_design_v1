@@ -172,15 +172,21 @@
 
   /* ============================================
      SCROLL & OVERFLOW FIX
-     Consolidated html/body styles to prevent conflicts
+     CRITICAL: html must NOT be a scroll container.
+     When html has overflow-y: scroll, it creates a second
+     scroll context that intercepts mouse wheel/keyboard events
+     and prevents body from receiving them.
+     Solution: Use overflow: visible on html, let body handle scroll.
+     scrollbar-gutter: stable reserves scrollbar space to prevent layout shift.
      ============================================ */
   html {
-    overflow-x: hidden;
-    overflow-y: scroll !important;
+    overflow: visible !important;
     max-width: 100%;
     height: auto;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* Reserve space for scrollbar to prevent layout shift */
+    scrollbar-gutter: stable;
   }
 
   body {
