@@ -27,11 +27,24 @@ import {
   Zap,
   Layers,
   Scissors,
+  Plus,
+  AlertCircle,
 } from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessagePanel from "../../components/messaging/MessagePanel";
-import { HITLPanelLayout, PricingSummaryBox, TranslationDetailsCard, DocumentCardV2 } from "../../components/admin/hitl";
+import {
+  HITLPanelLayout,
+  PricingSummaryBox,
+  TranslationDetailsCard,
+  DocumentCardV2,
+  DocumentGroupCard,
+  CreateGroupModal,
+  EditGroupModal,
+  AssignItemsModal,
+} from "../../components/admin/hitl";
+import type { DocumentGroup, AssignedItem } from "../../components/admin/hitl/DocumentGroupCard";
+import type { UnassignedItem } from "../../components/admin/hitl/AssignItemsModal";
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
 
 interface PageData {
@@ -293,6 +306,23 @@ const HITLReviewDetail: React.FC = () => {
   } | null>(null);
 
   // ============================================
+  // DOCUMENT GROUPING STATE
+  // ============================================
+  const [documentGroups, setDocumentGroups] = useState<DocumentGroup[]>([]);
+  const [unassignedItems, setUnassignedItems] = useState<UnassignedItem[]>([]);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  // Document Grouping Modal states
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [selectedGroupForAssign, setSelectedGroupForAssign] = useState<string | null>(null);
+  const [selectedGroupForEdit, setSelectedGroupForEdit] = useState<DocumentGroup | null>(null);
+  const [analyzingGroupId, setAnalyzingGroupId] = useState<string | null>(null);
+  const [pendingAssignItem, setPendingAssignItem] = useState<UnassignedItem | null>(null);
+
+  // ============================================
   // DATA FETCHING
   // ============================================
 
@@ -305,6 +335,14 @@ const HITLReviewDetail: React.FC = () => {
     fetchAllData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffSession, authLoading, reviewId]);
+
+  // Load document groups when quote data is available
+  useEffect(() => {
+    if (reviewData?.quote_id) {
+      refreshDocumentGroups();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewData?.quote_id]);
 
   // ============================================
   // POLLING FOR PROCESSING DOCUMENTS
@@ -2459,6 +2497,279 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   // ============================================
+  // DOCUMENT GROUPING FUNCTIONS
+  // ============================================
+
+  // Fetch document groups for the quote
+  const fetchDocumentGroups = async (quoteId: string) => {
+    const { data, error } = await supabase
+      .from("v_document_groups_with_items")
+      .select("*")
+      .eq("quote_id", quoteId)
+      .order("group_number");
+
+    if (error) throw error;
+    return data;
+  };
+
+  // Fetch unassigned items for the quote
+  const fetchUnassignedItems = async (quoteId: string) => {
+    const { data, error } = await supabase
+      .from("v_unassigned_quote_items")
+      .select("*")
+      .eq("quote_id", quoteId)
+      .order("page_number");
+
+    if (error) throw error;
+    return data;
+  };
+
+  // Refresh document groups
+  const refreshDocumentGroups = async () => {
+    if (!reviewData?.quote_id) return;
+
+    setIsLoadingGroups(true);
+    try {
+      const [groups, unassigned] = await Promise.all([
+        fetchDocumentGroups(reviewData.quote_id),
+        fetchUnassignedItems(reviewData.quote_id),
+      ]);
+      setDocumentGroups(groups || []);
+      setUnassignedItems(unassigned || []);
+    } catch (error) {
+      console.error("Refresh document groups error:", error);
+    } finally {
+      setIsLoadingGroups(false);
+    }
+  };
+
+  // Toggle group expansion
+  const toggleGroupExpand = (groupId: string) => {
+    setExpandedGroups((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupId)) {
+        newSet.delete(groupId);
+      } else {
+        newSet.add(groupId);
+      }
+      return newSet;
+    });
+  };
+
+  // Create new document group
+  const handleCreateGroup = async (
+    label: string,
+    documentType: string,
+    complexity: string
+  ) => {
+    try {
+      const { data, error } = await supabase.rpc("create_document_group", {
+        p_quote_id: reviewData?.quote_id,
+        p_group_label: label,
+        p_document_type: documentType,
+        p_complexity: complexity,
+        p_staff_id: staffSession?.staffId,
+      });
+
+      if (error) throw error;
+
+      toast.success("Document group created");
+      await refreshDocumentGroups();
+      setShowCreateGroupModal(false);
+
+      // Expand the new group
+      if (data) {
+        setExpandedGroups((prev) => new Set([...prev, data]));
+      }
+
+      // If there was a pending item to assign, assign it now
+      if (pendingAssignItem && data) {
+        await handleAssignToGroup(data, pendingAssignItem);
+        setPendingAssignItem(null);
+      }
+    } catch (error) {
+      console.error("Create group error:", error);
+      toast.error("Failed to create group");
+    }
+  };
+
+  // Edit document group
+  const handleEditGroup = async (
+    groupId: string,
+    label: string,
+    documentType: string,
+    complexity: string
+  ) => {
+    try {
+      const { error } = await supabase
+        .from("quote_document_groups")
+        .update({
+          group_label: label,
+          document_type: documentType,
+          complexity: complexity,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", groupId);
+
+      if (error) throw error;
+
+      // Recalculate the group totals
+      await supabase.rpc("recalculate_document_group", {
+        p_group_id: groupId,
+      });
+
+      toast.success("Document group updated");
+      await refreshDocumentGroups();
+      setShowEditGroupModal(false);
+      setSelectedGroupForEdit(null);
+    } catch (error) {
+      console.error("Edit group error:", error);
+      toast.error("Failed to update group");
+    }
+  };
+
+  // Assign item to group
+  const handleAssignToGroup = async (groupId: string, item: UnassignedItem) => {
+    try {
+      if (item.item_type === "page" && item.page_id) {
+        await supabase.rpc("assign_page_to_group", {
+          p_group_id: groupId,
+          p_page_id: item.page_id,
+          p_staff_id: staffSession?.staffId,
+        });
+      } else if (item.item_type === "file" && item.file_id) {
+        await supabase.rpc("assign_file_to_group", {
+          p_group_id: groupId,
+          p_file_id: item.file_id,
+          p_staff_id: staffSession?.staffId,
+        });
+      }
+
+      toast.success("Item assigned to group");
+      await refreshDocumentGroups();
+    } catch (error) {
+      console.error("Assign error:", error);
+      toast.error("Failed to assign item");
+    }
+  };
+
+  // Assign multiple items to group
+  const handleAssignMultipleToGroup = async (
+    groupId: string,
+    items: UnassignedItem[]
+  ) => {
+    try {
+      for (const item of items) {
+        if (item.item_type === "page" && item.page_id) {
+          await supabase.rpc("assign_page_to_group", {
+            p_group_id: groupId,
+            p_page_id: item.page_id,
+            p_staff_id: staffSession?.staffId,
+          });
+        } else if (item.item_type === "file" && item.file_id) {
+          await supabase.rpc("assign_file_to_group", {
+            p_group_id: groupId,
+            p_file_id: item.file_id,
+            p_staff_id: staffSession?.staffId,
+          });
+        }
+      }
+
+      toast.success(`${items.length} item(s) assigned to group`);
+      await refreshDocumentGroups();
+      setShowAssignModal(false);
+      setSelectedGroupForAssign(null);
+    } catch (error) {
+      console.error("Assign error:", error);
+      toast.error("Failed to assign items");
+    }
+  };
+
+  // Quick assign from dropdown
+  const handleQuickAssign = async (item: UnassignedItem, groupId: string) => {
+    if (groupId === "__new__") {
+      // Open create modal, then assign
+      setShowCreateGroupModal(true);
+      setPendingAssignItem(item);
+    } else if (groupId) {
+      await handleAssignToGroup(groupId, item);
+    }
+  };
+
+  // Remove item from group
+  const handleRemoveFromGroup = async (assignmentId: string) => {
+    try {
+      await supabase.rpc("remove_from_group", {
+        p_assignment_id: assignmentId,
+      });
+
+      toast.success("Item removed from group");
+      await refreshDocumentGroups();
+    } catch (error) {
+      console.error("Remove error:", error);
+      toast.error("Failed to remove item");
+    }
+  };
+
+  // Delete document group
+  const handleDeleteGroup = async (groupId: string) => {
+    try {
+      await supabase.rpc("delete_document_group", {
+        p_group_id: groupId,
+      });
+
+      toast.success("Document group deleted");
+      await refreshDocumentGroups();
+    } catch (error) {
+      console.error("Delete group error:", error);
+      toast.error("Failed to delete group");
+    }
+  };
+
+  // Analyze group with AI
+  const handleAnalyzeGroup = async (groupId: string) => {
+    try {
+      setAnalyzingGroupId(groupId);
+
+      const { data, error } = await supabase.functions.invoke(
+        "analyze-document-group",
+        {
+          body: {
+            groupId,
+            staffId: staffSession?.staffId,
+          },
+        }
+      );
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      toast.success("Analysis complete");
+      await refreshDocumentGroups();
+
+      // Also refresh quote totals
+      await fetchReviewData();
+    } catch (error) {
+      console.error("Analyze error:", error);
+      toast.error("Analysis failed: " + (error as Error).message);
+    } finally {
+      setAnalyzingGroupId(null);
+    }
+  };
+
+  // Open assign modal for a specific group
+  const openAssignModal = (groupId: string) => {
+    setSelectedGroupForAssign(groupId);
+    setShowAssignModal(true);
+  };
+
+  // Open edit modal for a specific group
+  const openEditModal = (group: DocumentGroup) => {
+    setSelectedGroupForEdit(group);
+    setShowEditGroupModal(true);
+  };
+
+  // ============================================
   // PRICING CALCULATIONS
   // ============================================
 
@@ -4046,6 +4357,135 @@ const HITLReviewDetail: React.FC = () => {
                   );
                 })}
               </div>
+
+              {/* ============================================ */}
+              {/* DOCUMENT GROUPING SECTION */}
+              {/* ============================================ */}
+              <div className="bg-white border rounded-xl p-6 mt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-teal-600" />
+                    Document Grouping
+                  </h3>
+                  <button
+                    onClick={() => setShowCreateGroupModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!claimedByMe}
+                  >
+                    <Plus className="w-4 h-4" />
+                    New Document Group
+                  </button>
+                </div>
+
+                <p className="text-sm text-gray-500 mb-4">
+                  Group pages/files that belong to the same logical document. Each group = 1 certification.
+                </p>
+
+                {/* Document Groups List */}
+                {isLoadingGroups ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-teal-600" />
+                  </div>
+                ) : documentGroups.length === 0 ? (
+                  <div className="text-center py-8 bg-gray-50 rounded-lg">
+                    <Layers className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-500">No document groups yet</p>
+                    <p className="text-sm text-gray-400">
+                      Create a group to organize pages/files
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {documentGroups.map((group) => (
+                      <DocumentGroupCard
+                        key={group.group_id}
+                        group={group}
+                        isExpanded={expandedGroups.has(group.group_id)}
+                        onToggleExpand={() => toggleGroupExpand(group.group_id)}
+                        onEdit={() => openEditModal(group)}
+                        onDelete={() => handleDeleteGroup(group.group_id)}
+                        onAnalyze={() => handleAnalyzeGroup(group.group_id)}
+                        onAssignItems={() => openAssignModal(group.group_id)}
+                        onRemoveItem={(assignmentId) =>
+                          handleRemoveFromGroup(assignmentId)
+                        }
+                        isAnalyzing={analyzingGroupId === group.group_id}
+                        isEditable={claimedByMe}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Unassigned Items Section */}
+                {unassignedItems.length > 0 && (
+                  <div className="mt-6 pt-6 border-t">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-500" />
+                      Unassigned Pages/Files ({unassignedItems.length})
+                    </h4>
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <div className="space-y-2">
+                        {unassignedItems.map((item) => (
+                          <div
+                            key={item.item_id}
+                            className="flex items-center justify-between bg-white p-3 rounded border"
+                          >
+                            <div className="flex items-center gap-3">
+                              <FileText className="w-4 h-4 text-gray-400" />
+                              <span className="text-sm font-medium">
+                                {item.file_name}
+                                {item.page_number &&
+                                  ` - Page ${item.page_number}`}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                ({item.word_count || 0} words)
+                              </span>
+                            </div>
+                            <select
+                              onChange={(e) =>
+                                handleQuickAssign(item, e.target.value)
+                              }
+                              className="text-sm border rounded px-2 py-1"
+                              disabled={!claimedByMe}
+                              defaultValue=""
+                            >
+                              <option value="" disabled>
+                                Assign to...
+                              </option>
+                              {documentGroups.map((g) => (
+                                <option key={g.group_id} value={g.group_id}>
+                                  Document {g.group_number}: {g.group_label}
+                                </option>
+                              ))}
+                              <option value="__new__">+ Create new group</option>
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Quote Total from Groups */}
+                {documentGroups.length > 0 && (
+                  <div className="mt-6 pt-4 border-t bg-gray-50 rounded-lg p-4">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-gray-700">
+                        Total: {documentGroups.length} document
+                        {documentGroups.length !== 1 ? "s" : ""} (
+                        {documentGroups.length} certification
+                        {documentGroups.length !== 1 ? "s" : ""})
+                      </span>
+                      <span className="text-xl font-bold text-teal-600">
+                        $
+                        {documentGroups
+                          .reduce((sum, g) => sum + (g.line_total || 0), 0)
+                          .toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </HITLPanelLayout>
           )}
 
@@ -4866,6 +5306,41 @@ const HITLReviewDetail: React.FC = () => {
           fileType={previewDocument.type}
         />
       )}
+
+      {/* Document Grouping Modals */}
+      <CreateGroupModal
+        isOpen={showCreateGroupModal}
+        onClose={() => {
+          setShowCreateGroupModal(false);
+          setPendingAssignItem(null);
+        }}
+        onCreate={handleCreateGroup}
+      />
+
+      <EditGroupModal
+        isOpen={showEditGroupModal}
+        onClose={() => {
+          setShowEditGroupModal(false);
+          setSelectedGroupForEdit(null);
+        }}
+        group={selectedGroupForEdit}
+        onSave={handleEditGroup}
+      />
+
+      <AssignItemsModal
+        isOpen={showAssignModal}
+        onClose={() => {
+          setShowAssignModal(false);
+          setSelectedGroupForAssign(null);
+        }}
+        groupId={selectedGroupForAssign || ""}
+        groupLabel={
+          documentGroups.find((g) => g.group_id === selectedGroupForAssign)
+            ?.group_label || ""
+        }
+        unassignedItems={unassignedItems}
+        onAssign={handleAssignMultipleToGroup}
+      />
     </div>
   );
 };
