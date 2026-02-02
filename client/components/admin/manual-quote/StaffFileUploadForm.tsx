@@ -84,6 +84,7 @@ interface AnalysisResult {
   manual_filename: string | null;
   original_filename: string;
   detected_language: string;
+  language_name?: string;
   detected_document_type: string;
   document_type_other: string | null;
   assessed_complexity: string;
@@ -1867,7 +1868,11 @@ export default function StaffFileUploadForm({
                         ))}
                       </select>
                     ) : (
-                      <p className="font-medium text-gray-900">{analysis.detected_language}</p>
+                      <p className="font-medium text-gray-900">
+                        {analysis.language_name ||
+                         languages.find(l => l.code === analysis.detected_language)?.name ||
+                         analysis.detected_language}
+                      </p>
                     )}
                   </div>
 
@@ -1885,7 +1890,12 @@ export default function StaffFileUploadForm({
                         ))}
                       </select>
                     ) : (
-                      <p className="font-medium text-gray-900">{analysis.detected_document_type}</p>
+                      <p className="font-medium text-gray-900">
+                        {documentTypes.find(dt => dt.code === analysis.detected_document_type)?.name ||
+                         analysis.detected_document_type
+                           ?.replace(/_/g, " ")
+                           .replace(/\b\w/g, (c) => c.toUpperCase())}
+                      </p>
                     )}
                   </div>
 

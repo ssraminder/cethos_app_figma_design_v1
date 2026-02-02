@@ -130,14 +130,18 @@ interface AnalysisResult {
   quote_file_id: string | null;
   manual_filename: string | null;
   detected_language: string;
+  language_name?: string;
   detected_document_type: string;
+  document_type_other: string | null;
   word_count: number;
   page_count: number;
   billable_pages: number;
+  base_rate: number;
   line_total: number;
   certification_type_id: string | null;
   certification_price: number;
   assessed_complexity: string;
+  complexity_multiplier: number;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -782,20 +786,28 @@ export default function AdminOrderDetail() {
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 <div>
                                   <span className="text-gray-500">Type:</span>{" "}
-                                  <span className="font-medium">{analysis.detected_document_type}</span>
+                                  <span className="font-medium">
+                                    {analysis.detected_document_type
+                                      ?.replace(/_/g, " ")
+                                      .replace(/\b\w/g, (c) => c.toUpperCase()) || "—"}
+                                  </span>
                                 </div>
                                 <div>
                                   <span className="text-gray-500">Language:</span>{" "}
-                                  <span className="font-medium">{analysis.detected_language}</span>
+                                  <span className="font-medium">
+                                    {analysis.language_name || analysis.detected_language || "—"}
+                                  </span>
                                 </div>
                                 <div>
                                   <span className="text-gray-500">Words:</span>{" "}
-                                  <span className="font-medium">{analysis.word_count?.toLocaleString()}</span>
+                                  <span className="font-medium">
+                                    {analysis.word_count?.toLocaleString() || "—"}
+                                  </span>
                                 </div>
                                 <div>
                                   <span className="text-gray-500">Total:</span>{" "}
                                   <span className="font-medium text-teal-600">
-                                    ${analysis.line_total?.toFixed(2)}
+                                    ${(analysis.line_total || 0).toFixed(2)}
                                   </span>
                                 </div>
                               </div>
