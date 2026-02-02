@@ -66,6 +66,9 @@ import Patterns from "./pages/admin/Patterns";
 import Learning from "./pages/admin/Learning";
 import Thresholds from "./pages/admin/Thresholds";
 import AIKnowledgeBase from "./pages/admin/AIKnowledgeBase";
+import AccountsReceivable from "./pages/admin/AccountsReceivable";
+import CustomersList from "./pages/admin/CustomersList";
+import CustomerDetail from "./pages/admin/CustomerDetail";
 
 // Admin Settings pages
 import PricingSettings from "./pages/admin/settings/PricingSettings";
@@ -279,6 +282,9 @@ const App = () => (
                     <Route path="ai/knowledge" element={<AIKnowledgeBase />} />
                     <Route path="staff" element={<AdminStaffManagement />} />
                     <Route path="reports" element={<AdminReports />} />
+                    <Route path="ar" element={<AccountsReceivable />} />
+                    <Route path="customers" element={<CustomersList />} />
+                    <Route path="customers/:id" element={<CustomerDetail />} />
 
                     {/* Admin Settings screens */}
                     <Route
