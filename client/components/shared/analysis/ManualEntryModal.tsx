@@ -167,6 +167,16 @@ export default function ManualEntryModal({
 
       if (certTypesRes.data) {
         setCertificationTypes(certTypesRes.data);
+        // Set default certification to "Oath Commissioner" if not already set
+        if (!selectedCertificationId) {
+          const oathCommissioner = certTypesRes.data.find((c: CertificationType) =>
+            c.name.toLowerCase().includes("oath") ||
+            c.name.toLowerCase().includes("commissioner")
+          );
+          if (oathCommissioner) {
+            setSelectedCertificationId(oathCommissioner.id);
+          }
+        }
       }
 
       if (settingsRes.data) {
