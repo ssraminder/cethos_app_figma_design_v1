@@ -33,6 +33,7 @@ interface Quote {
   target_language_name: string;
   file_count: number;
   converted_to_order_id?: string | null;
+  quote_source_name?: string;
 }
 
 const STATUS_OPTIONS = [
@@ -131,6 +132,7 @@ export default function AdminQuotesList() {
           expires_at,
           converted_to_order_id,
           customer:customers(id, full_name, email),
+          quote_source:quote_sources(id, code, name),
           source_language:languages!source_language_id(id, name, code),
           target_language:languages!target_language_id(id, name, code),
           quote_files(count)
@@ -195,6 +197,7 @@ export default function AdminQuotesList() {
           source_language_name: quote.source_language?.name || "",
           target_language_name: quote.target_language?.name || "",
           file_count: quote.quote_files?.[0]?.count ?? 0,
+          quote_source_name: quote.quote_source?.name || "",
         })) || [];
 
       setQuotes(transformedQuotes);
@@ -547,6 +550,9 @@ export default function AdminQuotesList() {
                     Customer
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Source
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -563,14 +569,14 @@ export default function AdminQuotesList() {
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center">
+                    <td colSpan={8} className="px-6 py-12 text-center">
                       <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ) : quotes.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-6 py-12 text-center text-gray-500"
                     >
                       No quotes found
@@ -628,6 +634,12 @@ export default function AdminQuotesList() {
                         </p>
                         <p className="text-xs text-gray-500 mt-0.5">
                           {quote.customer_email || "—"}
+                        </p>
+                      </td>
+                      {/* Source Column */}
+                      <td className="px-4 py-3">
+                        <p className="text-sm text-gray-700">
+                          {quote.quote_source_name || "—"}
                         </p>
                       </td>
                       <td className="px-4 py-3">

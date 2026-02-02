@@ -16,6 +16,7 @@ interface CustomerData {
   fullName: string;
   customerType: "individual" | "business";
   companyName?: string;
+  quoteSourceId?: string;
 }
 
 interface QuoteData {
@@ -96,6 +97,11 @@ export default function ManualQuoteForm({
           toast.error("Company name is required for business customers");
           return false;
         }
+        // Quote source is required
+        if (!customer.quoteSourceId) {
+          toast.error("Please select how the customer contacted us");
+          return false;
+        }
         return true;
 
       case 2:
@@ -153,6 +159,7 @@ export default function ManualQuoteForm({
             staffId,
             customerData: customer,
             quoteData: quote,
+            quoteSourceId: customer.quoteSourceId,
             entryPoint: "staff_manual",
           }),
         },
@@ -279,9 +286,9 @@ export default function ManualQuoteForm({
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        // Phone is optional - only need fullName and email
+        // Phone is optional - only need fullName, email, and quoteSourceId
         return (
-          customer && customer.email?.trim() && customer.fullName?.trim()
+          customer && customer.email?.trim() && customer.fullName?.trim() && customer.quoteSourceId
         );
       case 2:
         return (
