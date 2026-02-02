@@ -9,6 +9,7 @@ import {
   Plus,
   AlertCircle,
 } from "lucide-react";
+import { calculatePerPageRate, calculateLineTotal, formatCurrency as formatPricingCurrency } from "@/utils/pricing";
 
 interface CertificationType {
   id: string;
@@ -197,9 +198,13 @@ export default function DocumentCardV2({
   );
 
   const calculateTranslationCost = () => {
-    const rawCost = billablePages * baseRate * languageMultiplier;
-    return Math.ceil(rawCost / 2.5) * 2.5;
+    // Use consistent per-page rate calculation (rounded to next $2.50)
+    // Note: complexity is already factored into billablePages for this component
+    return calculateLineTotal(billablePages, languageMultiplier, 1.0, baseRate);
   };
+
+  // Per-page rate for display
+  const perPageRate = calculatePerPageRate(languageMultiplier, baseRate);
 
   const calculateCertificationTotal = () => {
     const primaryCert = certificationTypes.find(
@@ -518,7 +523,11 @@ export default function DocumentCardV2({
                   {/* Cost Breakdown */}
                   <div className="border-t border-dashed border-gray-200 pt-4 space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Translation (Base)</span>
+                      <span className="text-gray-600">Per Page Rate</span>
+                      <span className="text-teal-600 font-medium">{formatPricingCurrency(perPageRate)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Translation ({billablePages.toFixed(2)} pages)</span>
                       <span className="text-gray-900">{formatCurrency(translationCost)}</span>
                     </div>
                     <div className="flex justify-between text-sm">

@@ -9,6 +9,7 @@ import {
   Loader2,
   Plus,
 } from "lucide-react";
+import { formatCurrency } from "@/utils/pricing";
 
 interface AssignedItem {
   assignment_id: string;
@@ -55,6 +56,7 @@ interface DocumentGroupCardProps {
   onRemoveItem: (assignmentId: string) => void;
   isAnalyzing: boolean;
   isEditable: boolean;
+  perPageRate?: number;
 }
 
 const complexityColors: Record<string, string> = {
@@ -74,6 +76,7 @@ export default function DocumentGroupCard({
   onRemoveItem,
   isAnalyzing,
   isEditable,
+  perPageRate,
 }: DocumentGroupCardProps) {
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -173,6 +176,12 @@ export default function DocumentGroupCard({
           {/* Pricing Breakdown */}
           <div className="mb-4 p-3 bg-blue-50 rounded-lg">
             <div className="grid grid-cols-2 gap-2 text-sm">
+              {perPageRate !== undefined && (
+                <>
+                  <div className="text-blue-600">Per Page Rate:</div>
+                  <div className="text-right font-medium text-teal-600">{formatCurrency(perPageRate)}</div>
+                </>
+              )}
               <div className="text-gray-600">Words:</div>
               <div className="text-right">{group.total_word_count}</div>
               <div className="text-gray-600">Billable Pages:</div>
@@ -183,11 +192,11 @@ export default function DocumentGroupCard({
               </div>
               <div className="text-gray-600">Certification:</div>
               <div className="text-right">
-                ${(group.certification_price || 0).toFixed(2)}
+                {formatCurrency(group.certification_price || 0)}
               </div>
-              <div className="text-gray-600 font-medium">Line Total:</div>
-              <div className="text-right font-medium">
-                ${(group.line_total || 0).toFixed(2)}
+              <div className="text-blue-800 font-medium border-t border-blue-200 pt-2">Line Total:</div>
+              <div className="text-right font-bold text-blue-800 border-t border-blue-200 pt-2">
+                {formatCurrency(group.line_total || 0)}
               </div>
             </div>
           </div>

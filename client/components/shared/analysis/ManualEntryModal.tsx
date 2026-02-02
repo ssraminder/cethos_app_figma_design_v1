@@ -11,6 +11,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import SearchableDropdown from "@/components/SearchableDropdown";
+import { calculatePerPageRate, calculateLineTotal, formatCurrency, getPricingBreakdown } from "@/utils/pricing";
 
 export interface QuoteFile {
   id: string;
@@ -347,17 +348,31 @@ export default function ManualEntryModal({
     }
   };
 
+  // Calculate per-page rate (rounded to next $2.50)
+  const perPageRate = useMemo(() => {
+    return calculatePerPageRate(quoteLanguageMultiplier, settings.base_rate);
+  }, [quoteLanguageMultiplier, settings.base_rate]);
+
+  // Get pricing breakdown text for display
+  const pricingBreakdownText = useMemo(() => {
+    const breakdown = getPricingBreakdown(quoteLanguageMultiplier, settings.base_rate);
+    return breakdown.breakdownText;
+  }, [quoteLanguageMultiplier, settings.base_rate]);
+
   // Calculate pricing summary
   // IMPORTANT: Use quote's source language multiplier (from Step 2), NOT the detected language
   const pricingSummary = useMemo(() => {
     const selectedCertification = certificationTypes.find((c) => c.id === selectedCertificationId);
     const complexityMultiplier = getComplexityMultiplier(complexity);
 
-    // Translation cost calculation using QUOTE's source language multiplier
-    // Formula: ceil((billable_pages × base_rate × language_multiplier) / 2.5) × 2.5
-    // This rounds to nearest $2.50
-    const rawTranslationCost = billablePages * settings.base_rate * quoteLanguageMultiplier;
-    const translationCost = Math.ceil(rawTranslationCost / 2.5) * 2.5;
+    // Translation cost calculation using consistent per-page rate (rounded to next $2.50)
+    // Note: complexity is already factored into billablePages
+    const translationCost = calculateLineTotal(
+      billablePages,
+      quoteLanguageMultiplier,
+      1.0, // complexity already in billable pages
+      settings.base_rate
+    );
 
     // Certification cost
     const certificationCost = selectedCertification?.price ? parseFloat(selectedCertification.price as any) : 0;
@@ -369,11 +384,12 @@ export default function ManualEntryModal({
       billablePages,
       complexityMultiplier,
       languageMultiplier: quoteLanguageMultiplier,
+      perPageRate,
       translationCost,
       certificationCost,
       lineTotal,
     };
-  }, [billablePages, selectedCertificationId, complexity, certificationTypes, settings, quoteLanguageMultiplier]);
+  }, [billablePages, selectedCertificationId, complexity, certificationTypes, settings, quoteLanguageMultiplier, perPageRate]);
 
   const handleSave = async () => {
     // Validation
@@ -686,16 +702,23 @@ export default function ManualEntryModal({
                 </div>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <span>Translation ({pricingSummary.billablePages} pages × ${settings.base_rate} × {pricingSummary.languageMultiplier}x):</span>
-                    <span>${pricingSummary.translationCost.toFixed(2)}</span>
+                    <span>Per Page Rate:</span>
+                    <span className="font-semibold text-teal-600">{formatCurrency(perPageRate)}</span>
+                  </div>
+                  <div className="text-xs text-gray-500 text-right -mt-0.5">
+                    {pricingBreakdownText}
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Translation ({pricingSummary.billablePages} pages × {formatCurrency(perPageRate)}):</span>
+                    <span>{formatCurrency(pricingSummary.translationCost)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Certification:</span>
-                    <span>${pricingSummary.certificationCost.toFixed(2)}</span>
+                    <span>{formatCurrency(pricingSummary.certificationCost)}</span>
                   </div>
                   <div className="flex justify-between font-semibold border-t pt-1 mt-1">
                     <span>Line Total:</span>
-                    <span>${pricingSummary.lineTotal.toFixed(2)}</span>
+                    <span>{formatCurrency(pricingSummary.lineTotal)}</span>
                   </div>
                 </div>
                 {quoteSourceLanguageName && (
