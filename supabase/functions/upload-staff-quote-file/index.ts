@@ -18,7 +18,9 @@ serve(async (req) => {
     const file = formData.get("file") as File;
     const quoteId = formData.get("quoteId") as string;
     const staffId = formData.get("staffId") as string;
-    const processWithAI = formData.get("processWithAI") === "true";
+    // Note: processWithAI parameter is deprecated - files are always uploaded without auto-processing
+    // Staff must assign files to document groups and manually trigger analysis
+    const _processWithAI = formData.get("processWithAI"); // kept for backwards compatibility
 
     if (!file || !quoteId || !staffId) {
       return new Response(
@@ -35,7 +37,7 @@ serve(async (req) => {
 
     console.log(`📁 Uploading file for quote: ${quoteId}`);
     console.log(`📝 File: ${file.name} (${file.size} bytes)`);
-    console.log(`🤖 Process with AI: ${processWithAI}`);
+    console.log(`📋 File will be uploaded for manual group assignment`);
 
     // Create Supabase client with service role key
     const supabaseAdmin = createClient(
@@ -132,6 +134,8 @@ serve(async (req) => {
     console.log(`✅ File uploaded to storage: ${uploadData.path}`);
 
     // 4. Create quote_files record
+    // Note: ai_processing_status is always "skipped" - files must be assigned to document groups
+    // and analysis triggered via the "Analyze" button on the group
     const now = new Date().toISOString();
     const { data: quoteFile, error: dbError } = await supabaseAdmin
       .from("quote_files")
@@ -142,7 +146,7 @@ serve(async (req) => {
         file_size: file.size,
         mime_type: file.type,
         is_staff_created: true,
-        ai_processing_status: processWithAI ? "pending" : "skipped",
+        ai_processing_status: "skipped",
         created_at: now,
         updated_at: now,
       })
@@ -171,27 +175,7 @@ serve(async (req) => {
 
     console.log(`✅ Quote file record created: ${quoteFile.id}`);
 
-    // 5. If processWithAI is true, trigger AI processing
-    // NOTE: This would call a process-document edge function if it exists
-    // For now, we'll just log it and return the file info
-    if (processWithAI) {
-      console.log(`🤖 AI processing requested for file: ${quoteFile.id}`);
-      // TODO: Call process-document edge function here
-      // Example:
-      // await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/process-document`, {
-      //   method: "POST",
-      //   headers: {
-      //     "Content-Type": "application/json",
-      //     "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-      //   },
-      //   body: JSON.stringify({
-      //     fileId: quoteFile.id,
-      //     quoteId: quoteId,
-      //   }),
-      // });
-    }
-
-    // 6. Log staff activity
+    // 5. Log staff activity
     await supabaseAdmin.from("staff_activity_log").insert({
       staff_id: staffId,
       action: "upload_quote_file",
@@ -200,7 +184,6 @@ serve(async (req) => {
         file_id: quoteFile.id,
         filename: file.name,
         file_size: file.size,
-        process_with_ai: processWithAI,
       },
       created_at: now,
     });
@@ -210,7 +193,8 @@ serve(async (req) => {
         success: true,
         fileId: quoteFile.id,
         storagePath: storagePath,
-        uploadStatus: processWithAI ? "pending_ai" : "success",
+        uploadStatus: "success",
+        message: "File uploaded. Assign to a document group and click Analyze.",
       }),
       {
         status: 200,
