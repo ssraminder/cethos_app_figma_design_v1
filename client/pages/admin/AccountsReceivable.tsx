@@ -27,6 +27,7 @@ import { format, differenceInDays, startOfMonth, endOfMonth, parseISO, isAfter }
 import { toast } from "sonner";
 import { useStaffAuth } from "@/context/StaffAuthContext";
 import RecordARPaymentModal from "@/components/admin/RecordARPaymentModal";
+import BulkPaymentModal from "@/components/admin/BulkPaymentModal";
 
 // Types
 interface UnpaidQuote {
@@ -181,6 +182,9 @@ export default function AccountsReceivable() {
   // Record Payment Modal state
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
   const [selectedARRecord, setSelectedARRecord] = useState<ARInvoice | null>(null);
+
+  // Bulk Payment Modal state
+  const [showBulkPaymentModal, setShowBulkPaymentModal] = useState(false);
 
   // Fetch summary stats
   const fetchStats = async () => {
@@ -777,14 +781,23 @@ export default function AccountsReceivable() {
             Track payments, outstanding balances, and overdue quotes
           </p>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowBulkPaymentModal(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+          >
+            <DollarSign className="w-4 h-4" />
+            Receive Bulk Payment
+          </button>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Summary Stats Cards */}
@@ -1723,6 +1736,18 @@ export default function AccountsReceivable() {
           }}
         />
       )}
+
+      {/* Bulk Payment Modal */}
+      <BulkPaymentModal
+        isOpen={showBulkPaymentModal}
+        onClose={() => setShowBulkPaymentModal(false)}
+        staffId={staffUser?.id || ""}
+        onSuccess={() => {
+          fetchARInvoices();
+          fetchStats();
+          fetchData();
+        }}
+      />
     </div>
   );
 }
