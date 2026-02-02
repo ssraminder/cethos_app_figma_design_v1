@@ -15,6 +15,8 @@ import {
   ChevronLeft,
   LogOut,
   Plus,
+  DollarSign,
+  UserCircle,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -66,6 +68,18 @@ const NAV_ITEMS: NavItem[] = [
     section: "AI",
   },
   { label: "Staff", path: "/admin/staff", icon: Users, section: "Management" },
+  {
+    label: "Customers",
+    path: "/admin/customers",
+    icon: UserCircle,
+    section: "Management",
+  },
+  {
+    label: "Accounts Receivable",
+    path: "/admin/ar",
+    icon: DollarSign,
+    section: "Management",
+  },
   {
     label: "Reports",
     path: "/admin/reports",
