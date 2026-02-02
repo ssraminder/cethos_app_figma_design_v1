@@ -63,6 +63,7 @@ interface UploadedQuoteFile {
   file_category_id: string | null;
   created_at: string;
   page_count?: number;
+  word_count?: number;
   document_group_id?: string | null;
   contains_multiple_documents?: boolean;
 }
@@ -543,8 +544,8 @@ export default function StaffFileUploadForm({
         ai_processing_status,
         file_category_id,
         created_at,
-        page_count,
         contains_multiple_documents,
+        analysis:ai_analysis_results!left(page_count, word_count),
         group_assignment:quote_page_group_assignments!left(group_id)
       `)
       .eq("quote_id", quoteId)
@@ -560,9 +561,11 @@ export default function StaffFileUploadForm({
       return;
     }
 
-    // Map the group assignments to a simple document_group_id field
+    // Map the analysis and group assignments to flat fields
     const filesWithGroups = (data || []).map((f: any) => ({
       ...f,
+      page_count: f.analysis?.[0]?.page_count || 1,
+      word_count: f.analysis?.[0]?.word_count || 0,
       document_group_id: f.group_assignment?.[0]?.group_id || null,
     }));
 
