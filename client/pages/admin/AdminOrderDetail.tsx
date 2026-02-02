@@ -220,6 +220,9 @@ export default function AdminOrderDetail() {
   const [selectedWorkStatus, setSelectedWorkStatus] = useState('');
   const [savingStatus, setSavingStatus] = useState(false);
 
+  // Recalculate state
+  const [recalculating, setRecalculating] = useState(false);
+
   useEffect(() => {
     if (id) {
       fetchOrderDetails();
@@ -336,6 +339,31 @@ export default function AdminOrderDetail() {
       setError(err.message || "Failed to load order");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRecalculateOrder = async () => {
+    if (!order) return;
+
+    setRecalculating(true);
+    try {
+      const { data, error } = await supabase.rpc("recalculate_order_totals", {
+        p_order_id: order.id,
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success("Order totals recalculated");
+        fetchOrderDetails();
+      } else {
+        throw new Error(data?.error || "Recalculation failed");
+      }
+    } catch (err: any) {
+      console.error("Error recalculating:", err);
+      toast.error(err.message || "Failed to recalculate order");
+    } finally {
+      setRecalculating(false);
     }
   };
 
@@ -981,10 +1009,27 @@ export default function AdminOrderDetail() {
 
         <div className="space-y-6">
           <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-gray-400" />
-              Order Summary
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-gray-400" />
+                Order Summary
+              </h2>
+              {order.status !== 'cancelled' && (
+                <button
+                  onClick={handleRecalculateOrder}
+                  disabled={recalculating}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                  title="Recalculate totals from documents"
+                >
+                  {recalculating ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  Recalculate
+                </button>
+              )}
+            </div>
 
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
@@ -1322,7 +1367,13 @@ export default function AdminOrderDetail() {
           quoteId={order.quote_id}
           onAnalysisComplete={async () => {
             await fetchDocuments();
+            // Auto-recalculate order totals
+            if (order) {
+              await supabase.rpc("recalculate_order_totals", { p_order_id: order.id });
+            }
+            await fetchOrderDetails();
             setAnalyzeFile(null);
+            toast.success("Document analyzed and order recalculated");
           }}
         />
       )}
@@ -1336,7 +1387,13 @@ export default function AdminOrderDetail() {
           quoteId={order.quote_id}
           onSaveComplete={async () => {
             await fetchDocuments();
+            // Auto-recalculate order totals
+            if (order) {
+              await supabase.rpc("recalculate_order_totals", { p_order_id: order.id });
+            }
+            await fetchOrderDetails();
             setManualEntryFile(null);
+            toast.success("Document entry saved and order recalculated");
           }}
         />
       )}
