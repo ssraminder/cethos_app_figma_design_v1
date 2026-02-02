@@ -43,6 +43,7 @@ interface QuoteDetail {
     customer_type: string;
     company_name: string;
   };
+  quote_source?: { id: string; code: string; name: string };
   source_language?: { id: string; name: string; code: string };
   target_language?: { id: string; name: string; code: string };
   country_of_issue: string;
@@ -263,6 +264,7 @@ export default function AdminQuoteDetail() {
           `
           *,
           customer:customers(id, full_name, email, phone, customer_type),
+          quote_source:quote_sources(id, code, name),
           source_language:languages!source_language_id(id, name, code),
           target_language:languages!target_language_id(id, name, code),
           delivery_option:delivery_options!delivery_option_id(id, name, price, description),
@@ -1047,6 +1049,14 @@ export default function AdminQuoteDetail() {
                     <p className="font-medium flex items-center gap-1">
                       <Building className="w-4 h-4 text-gray-400" />
                       {quote.customer.company_name}
+                    </p>
+                  </div>
+                )}
+                {quote.quote_source && (
+                  <div className="col-span-2">
+                    <p className="text-sm text-gray-500">Contact Method</p>
+                    <p className="font-medium">
+                      {quote.quote_source.name}
                     </p>
                   </div>
                 )}

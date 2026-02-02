@@ -34,12 +34,14 @@ serve(async (req) => {
       staffId,
       customerData,
       quoteData,
+      quoteSourceId,
       entryPoint = "staff_manual",
       notes,
     }: {
       staffId: string;
       customerData: CustomerData;
       quoteData: QuoteData;
+      quoteSourceId?: string;
       entryPoint: string;
       notes?: string;
     } = await req.json();
@@ -211,6 +213,7 @@ serve(async (req) => {
         intended_use_id: quoteData.intendedUseId || null,
         country_of_issue: quoteData.countryOfIssue || null,
         special_instructions: quoteData.specialInstructions || null,
+        quote_source_id: quoteSourceId || null,
         created_at: now,
         updated_at: now,
       })

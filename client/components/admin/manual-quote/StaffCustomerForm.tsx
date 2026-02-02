@@ -9,6 +9,13 @@ interface CustomerData {
   fullName: string;
   customerType: "individual" | "business";
   companyName?: string;
+  quoteSourceId?: string;
+}
+
+interface QuoteSource {
+  id: string;
+  code: string;
+  name: string;
 }
 
 interface CustomerSearchResult {
@@ -35,10 +42,15 @@ export default function StaffCustomerForm({
     fullName: "",
     customerType: "individual",
     companyName: "",
+    quoteSourceId: "",
     ...value,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Quote sources state
+  const [quoteSources, setQuoteSources] = useState<QuoteSource[]>([]);
+  const [isLoadingQuoteSources, setIsLoadingQuoteSources] = useState(true);
   
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,6 +81,32 @@ export default function StaffCustomerForm({
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Fetch quote sources on mount
+  useEffect(() => {
+    const fetchQuoteSources = async () => {
+      setIsLoadingQuoteSources(true);
+      try {
+        const { data, error } = await supabase
+          .from("quote_sources")
+          .select("id, code, name")
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true });
+
+        if (error) {
+          console.error("Error fetching quote sources:", error);
+        } else {
+          setQuoteSources(data || []);
+        }
+      } catch (err) {
+        console.error("Error fetching quote sources:", err);
+      } finally {
+        setIsLoadingQuoteSources(false);
+      }
+    };
+
+    fetchQuoteSources();
   }, []);
 
   // Notify parent of form changes
@@ -149,6 +187,7 @@ export default function StaffCustomerForm({
       fullName: "",
       customerType: "individual",
       companyName: "",
+      quoteSourceId: formData.quoteSourceId, // Preserve quote source when clearing customer
     });
     setSearchQuery("");
     setErrors({});
@@ -201,6 +240,13 @@ export default function StaffCustomerForm({
             "Company name is required for business customers";
         } else {
           delete newErrors.companyName;
+        }
+        break;
+      case "quoteSourceId":
+        if (!value) {
+          newErrors.quoteSourceId = "Please select how the customer contacted us";
+        } else {
+          delete newErrors.quoteSourceId;
         }
         break;
     }
@@ -360,6 +406,35 @@ export default function StaffCustomerForm({
               </span>
             </label>
           </div>
+        </div>
+
+        {/* Quote Source / Lead Source */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            How did the customer contact us? *
+          </label>
+          <select
+            name="quoteSourceId"
+            value={formData.quoteSourceId || ""}
+            onChange={handleChange}
+            onBlur={(e) => validateField("quoteSourceId", e.target.value)}
+            disabled={isLoadingQuoteSources}
+            className={`w-full px-3 py-2 text-base border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              errors.quoteSourceId ? "border-red-300" : "border-gray-300"
+            } ${isLoadingQuoteSources ? "bg-gray-100 cursor-not-allowed" : ""}`}
+          >
+            <option value="">
+              {isLoadingQuoteSources ? "Loading..." : "Select contact method..."}
+            </option>
+            {quoteSources.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.name}
+              </option>
+            ))}
+          </select>
+          {errors.quoteSourceId && (
+            <p className="mt-1 text-sm text-red-600">{errors.quoteSourceId}</p>
+          )}
         </div>
 
         {/* Company Name (conditional) */}
