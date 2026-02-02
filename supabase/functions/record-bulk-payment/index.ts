@@ -153,7 +153,7 @@ serve(async (req) => {
         amount,
         payment_method_id,
         payment_method_code: paymentMethod.code,
-        payment_method_name: paymentMethod.name,
+        payment_method: paymentMethod.name, // Use existing payment_method column
         payment_date,
         reference_number: reference_number || null,
         notes: notes || null,
