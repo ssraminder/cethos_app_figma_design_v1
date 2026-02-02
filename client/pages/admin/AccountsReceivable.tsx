@@ -156,6 +156,27 @@ export default function AccountsReceivable() {
 
   // Actions menu
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+
+  // Helper to open menu with position
+  const handleOpenMenu = (id: string, event: React.MouseEvent<HTMLButtonElement>) => {
+    if (openMenuId === id) {
+      setOpenMenuId(null);
+      setMenuPosition(null);
+    } else {
+      const rect = event.currentTarget.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom + 4,
+        left: rect.right - 192, // 192px = w-48 (12rem)
+      });
+      setOpenMenuId(id);
+    }
+  };
+
+  const handleCloseMenu = () => {
+    setOpenMenuId(null);
+    setMenuPosition(null);
+  };
 
   // Record Payment Modal state
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
@@ -1108,24 +1129,25 @@ export default function AccountsReceivable() {
                           </td>
                           <td className="px-4 py-3 text-center relative">
                             <button
-                              onClick={() =>
-                                setOpenMenuId(openMenuId === quote.id ? null : quote.id)
-                              }
+                              onClick={(e) => handleOpenMenu(quote.id, e)}
                               className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                             >
                               <MoreVertical className="w-4 h-4 text-gray-600" />
                             </button>
-                            {openMenuId === quote.id && (
+                            {openMenuId === quote.id && menuPosition && (
                               <>
                                 <div
-                                  className="fixed inset-0 z-10"
-                                  onClick={() => setOpenMenuId(null)}
+                                  className="fixed inset-0 z-40"
+                                  onClick={handleCloseMenu}
                                 />
-                                <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                <div 
+                                  className="fixed w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50"
+                                  style={{ top: menuPosition.top, left: menuPosition.left }}
+                                >
                                   <Link
                                     to={`/admin/quotes/${quote.id}`}
                                     className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                    onClick={() => setOpenMenuId(null)}
+                                    onClick={handleCloseMenu}
                                   >
                                     <Eye className="w-4 h-4" />
                                     View Quote
@@ -1229,24 +1251,25 @@ export default function AccountsReceivable() {
                           </td>
                           <td className="px-4 py-3 text-center relative">
                             <button
-                              onClick={() =>
-                                setOpenMenuId(openMenuId === order.id ? null : order.id)
-                              }
+                              onClick={(e) => handleOpenMenu(order.id, e)}
                               className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                             >
                               <MoreVertical className="w-4 h-4 text-gray-600" />
                             </button>
-                            {openMenuId === order.id && (
+                            {openMenuId === order.id && menuPosition && (
                               <>
                                 <div
-                                  className="fixed inset-0 z-10"
-                                  onClick={() => setOpenMenuId(null)}
+                                  className="fixed inset-0 z-40"
+                                  onClick={handleCloseMenu}
                                 />
-                                <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                <div 
+                                  className="fixed w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50"
+                                  style={{ top: menuPosition.top, left: menuPosition.left }}
+                                >
                                   <Link
                                     to={`/admin/orders/${order.id}`}
                                     className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                    onClick={() => setOpenMenuId(null)}
+                                    onClick={handleCloseMenu}
                                   >
                                     <Eye className="w-4 h-4" />
                                     View Order
@@ -1254,7 +1277,7 @@ export default function AccountsReceivable() {
                                   <button
                                     onClick={() => {
                                       toast.info("Payment reminder feature coming soon");
-                                      setOpenMenuId(null);
+                                      handleCloseMenu();
                                     }}
                                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                   >
@@ -1379,24 +1402,25 @@ export default function AccountsReceivable() {
                           </td>
                           <td className="px-4 py-3 text-center relative">
                             <button
-                              onClick={() =>
-                                setOpenMenuId(openMenuId === ar.id ? null : ar.id)
-                              }
+                              onClick={(e) => handleOpenMenu(ar.id, e)}
                               className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                             >
                               <MoreVertical className="w-4 h-4 text-gray-600" />
                             </button>
-                            {openMenuId === ar.id && (
+                            {openMenuId === ar.id && menuPosition && (
                               <>
                                 <div
-                                  className="fixed inset-0 z-10"
-                                  onClick={() => setOpenMenuId(null)}
+                                  className="fixed inset-0 z-40"
+                                  onClick={handleCloseMenu}
                                 />
-                                <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                <div 
+                                  className="fixed w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50"
+                                  style={{ top: menuPosition.top, left: menuPosition.left }}
+                                >
                                   <Link
                                     to={`/admin/orders/${ar.order_id}`}
                                     className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                    onClick={() => setOpenMenuId(null)}
+                                    onClick={handleCloseMenu}
                                   >
                                     <Eye className="w-4 h-4" />
                                     View Order
@@ -1405,7 +1429,7 @@ export default function AccountsReceivable() {
                                     onClick={() => {
                                       setSelectedARRecord(ar);
                                       setShowRecordPaymentModal(true);
-                                      setOpenMenuId(null);
+                                      handleCloseMenu();
                                     }}
                                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-teal-700 hover:bg-teal-50"
                                   >
@@ -1415,7 +1439,7 @@ export default function AccountsReceivable() {
                                   <button
                                     onClick={() => {
                                       toast.info("Payment reminder feature coming soon");
-                                      setOpenMenuId(null);
+                                      handleCloseMenu();
                                     }}
                                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                   >
@@ -1602,24 +1626,25 @@ export default function AccountsReceivable() {
                           </td>
                           <td className="px-4 py-3 text-center relative">
                             <button
-                              onClick={() =>
-                                setOpenMenuId(openMenuId === quote.id ? null : quote.id)
-                              }
+                              onClick={(e) => handleOpenMenu(quote.id, e)}
                               className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                             >
                               <MoreVertical className="w-4 h-4 text-gray-600" />
                             </button>
-                            {openMenuId === quote.id && (
+                            {openMenuId === quote.id && menuPosition && (
                               <>
                                 <div
-                                  className="fixed inset-0 z-10"
-                                  onClick={() => setOpenMenuId(null)}
+                                  className="fixed inset-0 z-40"
+                                  onClick={handleCloseMenu}
                                 />
-                                <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                <div 
+                                  className="fixed w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50"
+                                  style={{ top: menuPosition.top, left: menuPosition.left }}
+                                >
                                   <Link
                                     to={`/admin/quotes/${quote.id}`}
                                     className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                    onClick={() => setOpenMenuId(null)}
+                                    onClick={handleCloseMenu}
                                   >
                                     <Eye className="w-4 h-4" />
                                     View Quote
