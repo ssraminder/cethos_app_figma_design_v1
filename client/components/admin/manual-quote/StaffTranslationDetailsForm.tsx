@@ -50,7 +50,7 @@ export default function StaffTranslationDetailsForm({
       const { data: languagesData } = await supabase
         .from("languages")
         .select(
-          "id, code, name, native_name, is_source_available, is_target_available",
+          "id, code, name, native_name, is_source_available, is_target_available, tier, multiplier",
         )
         .eq("is_active", true)
         .order("sort_order")
