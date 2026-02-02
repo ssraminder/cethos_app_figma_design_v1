@@ -23,6 +23,7 @@ import {
 import { format } from "date-fns";
 import CancelOrderModal from "@/components/admin/CancelOrderModal";
 import EditOrderModal from "@/components/admin/EditOrderModal";
+import BalanceResolutionModal from "@/components/admin/BalanceResolutionModal";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 
 interface OrderDetail {
@@ -146,6 +147,9 @@ export default function AdminOrderDetail() {
   const [error, setError] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showBalanceResolutionModal, setShowBalanceResolutionModal] = useState(false);
+  const [balanceChange, setBalanceChange] = useState(0);
+  const [originalTotal, setOriginalTotal] = useState(0);
 
   useEffect(() => {
     if (id) {
@@ -791,12 +795,50 @@ export default function AdminOrderDetail() {
           }}
           staffId={currentStaff?.staffId || ""}
           staffRole={currentStaff?.role || "reviewer"}
-          onSuccess={(newTotal, balanceChange) => {
-            fetchOrderDetails();
-            if (balanceChange !== 0) {
-              // Could show a balance resolution modal here in future
-              console.log(`Balance changed by $${balanceChange.toFixed(2)}`);
+          onSuccess={(newTotal, balanceChangeAmount) => {
+            if (Math.abs(balanceChangeAmount) > 0.01) {
+              // Store original total before refresh
+              setOriginalTotal(order.total_amount);
+              setBalanceChange(balanceChangeAmount);
+              // Refresh order data first, then show balance resolution modal
+              fetchOrderDetails().then(() => {
+                setShowBalanceResolutionModal(true);
+              });
+            } else {
+              fetchOrderDetails();
             }
+          }}
+        />
+      )}
+
+      {/* Balance Resolution Modal */}
+      {order && order.customer && showBalanceResolutionModal && (
+        <BalanceResolutionModal
+          isOpen={showBalanceResolutionModal}
+          onClose={() => {
+            setShowBalanceResolutionModal(false);
+            setBalanceChange(0);
+            setOriginalTotal(0);
+          }}
+          order={{
+            id: order.id,
+            order_number: order.order_number,
+            customer_id: order.customer_id,
+            total_amount: order.total_amount,
+            amount_paid: order.amount_paid || 0,
+            balance_due: order.balance_due || 0,
+          }}
+          customer={{
+            id: order.customer.id,
+            full_name: order.customer.full_name || "Customer",
+            email: order.customer.email,
+          }}
+          originalTotal={originalTotal}
+          balanceChange={balanceChange}
+          staffId={currentStaff?.staffId || ""}
+          staffRole={currentStaff?.role || "reviewer"}
+          onSuccess={() => {
+            fetchOrderDetails();
           }}
         />
       )}
