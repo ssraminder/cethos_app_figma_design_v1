@@ -37,6 +37,7 @@ import {
   AnalyzeDocumentModal,
   ManualEntryModal,
 } from "@/components/shared/analysis";
+import { calculatePerPageRate, getPricingBreakdown, formatCurrency, BASE_RATE_PER_PAGE } from "@/utils/pricing";
 
 // ============================================================================
 // TYPES
@@ -117,6 +118,8 @@ interface Language {
   native_name: string | null;
   tier: number;
   multiplier: number;
+  is_source_available: boolean;
+  is_target_available: boolean;
 }
 
 interface IntendedUse {
@@ -582,7 +585,7 @@ export default function StaffFileUploadForm({
 
   const loadReferenceData = async (signal?: AbortSignal) => {
     try {
-      const langsQuery = supabase.from("languages").select("id, code, name, native_name, tier, multiplier").eq("is_active", true).order("name");
+      const langsQuery = supabase.from("languages").select("id, code, name, native_name, tier, multiplier, is_source_available, is_target_available").eq("is_active", true).order("sort_order").order("name");
       const usesQuery = supabase.from("intended_uses").select("id, code, name").eq("is_active", true).order("sort_order");
       const docTypesQuery = supabase.from("document_types").select("id, code, name").eq("is_active", true).order("name");
       const certTypesQuery = supabase.from("certification_types").select("*").eq("is_active", true).order("sort_order");
@@ -1927,6 +1930,21 @@ export default function StaffFileUploadForm({
                       Custom override (Tier default: {languages.find((l) => l.id === translationDetails.sourceLanguageId)?.multiplier || "1.00"}x)
                     </p>
                   )}
+                </div>
+
+                {/* Per Page Rate (calculated, read-only) */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                    Per Page Rate
+                  </label>
+                  <div className="flex items-center h-[38px]">
+                    <span className="text-xl font-semibold text-teal-600">
+                      {formatCurrency(calculatePerPageRate(translationDetails.languageMultiplier))}/page
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {getPricingBreakdown(translationDetails.languageMultiplier).breakdownText}
+                  </p>
                 </div>
               </div>
             </div>
