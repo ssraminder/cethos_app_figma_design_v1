@@ -25,6 +25,8 @@ import {
   Save,
   RefreshCw,
   Zap,
+  Layers,
+  Scissors,
 } from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -279,6 +281,9 @@ const HITLReviewDetail: React.FC = () => {
   const [showCombineModal, setShowCombineModal] = useState(false);
   const [splitDocumentName, setSplitDocumentName] = useState("");
   const [targetDocumentId, setTargetDocumentId] = useState("");
+
+  // Document-level selection for combine/split
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
 
   // Document preview modal
   const [previewDocument, setPreviewDocument] = useState<{
@@ -2231,7 +2236,114 @@ const HITLReviewDetail: React.FC = () => {
 
   const clearSelection = () => {
     setSelectedPages(new Set());
+    setSelectedDocuments([]);
     setSplitMode(false);
+  };
+
+  // Document-level selection functions
+  const toggleDocumentSelection = (analysisId: string) => {
+    setSelectedDocuments((prev) =>
+      prev.includes(analysisId)
+        ? prev.filter((id) => id !== analysisId)
+        : [...prev, analysisId]
+    );
+  };
+
+  const selectAllDocuments = () => {
+    if (selectedDocuments.length === analysisResults.length) {
+      setSelectedDocuments([]);
+    } else {
+      setSelectedDocuments(analysisResults.map((a) => a.id));
+    }
+  };
+
+  const getDocumentPageCount = (analysisId: string): number => {
+    const analysis = analysisResults.find((a) => a.id === analysisId);
+    if (!analysis) return 1;
+    const pages = pageData[analysis.quote_file_id] || [];
+    return pages.length > 0 ? pages.length : analysis.page_count || 1;
+  };
+
+  const handleCombineDocuments = async () => {
+    if (selectedDocuments.length < 2) return;
+
+    const confirmed = window.confirm(
+      `Combine ${selectedDocuments.length} documents into one? This will merge all pages.`
+    );
+
+    if (!confirmed) return;
+
+    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
+
+    try {
+      // Get all page IDs from selected documents
+      const pageIds: string[] = [];
+      const firstAnalysis = analysisResults.find(
+        (a) => a.id === selectedDocuments[0]
+      );
+      if (!firstAnalysis) {
+        throw new Error("Could not find source document");
+      }
+
+      for (const docId of selectedDocuments) {
+        const analysis = analysisResults.find((a) => a.id === docId);
+        if (analysis) {
+          const docPages = pageData[analysis.quote_file_id] || [];
+          pageIds.push(...docPages.map((p) => p.id));
+        }
+      }
+
+      if (pageIds.length === 0) {
+        throw new Error("No pages found in selected documents");
+      }
+
+      const accessToken = await getAccessToken();
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/save-hitl-correction`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            field: "create_document_from_pages",
+            correctedValue: JSON.stringify({
+              source_analysis_id: selectedDocuments[0],
+              page_ids: pageIds,
+              document_name: "Combined Document",
+            }),
+            reason: `Combined ${selectedDocuments.length} documents`,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success("Documents combined successfully");
+        clearSelection();
+        await fetchAllData();
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error("Combine error:", error);
+      toast.error("Failed to combine documents: " + (error as Error).message);
+    }
+  };
+
+  const handleSplitDocument = (analysisId: string) => {
+    // Find all pages for this document and select them
+    const analysis = analysisResults.find((a) => a.id === analysisId);
+    if (analysis) {
+      const docPages = pageData[analysis.quote_file_id] || [];
+      setSelectedPages(new Set(docPages.map((p) => p.id)));
+    }
+    setShowSplitModal(true);
+    setSplitDocumentName("");
   };
 
   const confirmSplitPages = async () => {
@@ -2994,25 +3106,31 @@ const HITLReviewDetail: React.FC = () => {
                 </div>
               )}
 
-              {/* Page Selection Toolbar */}
+              {/* Selection Mode Toolbar */}
               {analysisResults.length > 0 && (
                 <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setSplitMode(!splitMode)}
+                      onClick={() => {
+                        if (splitMode) {
+                          clearSelection();
+                        } else {
+                          setSplitMode(true);
+                        }
+                      }}
                       disabled={!claimedByMe}
                       className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                         splitMode
-                          ? "bg-blue-600 text-white"
+                          ? "bg-teal-600 text-white"
                           : !claimedByMe
                             ? "bg-gray-200 border border-gray-300 text-gray-400 cursor-not-allowed"
                             : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
                       }`}
                       title={
-                        !claimedByMe ? "Claim this review to select pages" : ""
+                        !claimedByMe ? "Claim this review to enable selection" : ""
                       }
                     >
-                      {splitMode ? "✓ Selection Mode" : "Select Pages"}
+                      {splitMode ? "✓ Selection Mode" : "Selection Mode"}
                     </button>
 
                     {splitMode && selectedPages.size > 0 && (
@@ -3040,6 +3158,56 @@ const HITLReviewDetail: React.FC = () => {
                         </button>
                       </>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Document Selection Action Bar - Shows when documents are selected */}
+              {splitMode && selectedDocuments.length > 0 && (
+                <div className="sticky top-0 z-10 bg-teal-50 border border-teal-200 rounded-lg p-4 mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <span className="font-medium text-teal-800">
+                      {selectedDocuments.length} document{selectedDocuments.length !== 1 ? "s" : ""} selected
+                    </span>
+                    <button
+                      onClick={selectAllDocuments}
+                      className="text-sm text-teal-600 hover:text-teal-800 underline"
+                    >
+                      {selectedDocuments.length === analysisResults.length ? "Deselect All" : "Select All"}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Combine Button - Only show when 2+ documents selected */}
+                    {selectedDocuments.length >= 2 && (
+                      <button
+                        onClick={handleCombineDocuments}
+                        className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                      >
+                        <Layers className="w-4 h-4" />
+                        Combine Selected
+                      </button>
+                    )}
+
+                    {/* Split Button - Only show when 1 multi-page document selected */}
+                    {selectedDocuments.length === 1 && getDocumentPageCount(selectedDocuments[0]) > 1 && (
+                      <button
+                        onClick={() => handleSplitDocument(selectedDocuments[0])}
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                      >
+                        <Scissors className="w-4 h-4" />
+                        Split Document
+                      </button>
+                    )}
+
+                    {/* Cancel Selection */}
+                    <button
+                      onClick={clearSelection}
+                      className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                      Cancel
+                    </button>
                   </div>
                 </div>
               )}
@@ -3077,36 +3245,58 @@ const HITLReviewDetail: React.FC = () => {
                   return (
                     <div
                       key={fileId}
-                      className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
+                      className={`bg-white rounded-lg border shadow-sm overflow-hidden ${
+                        splitMode && selectedDocuments.includes(analysis.id)
+                          ? "border-teal-400 ring-2 ring-teal-200"
+                          : "border-gray-200"
+                      }`}
                     >
                       {/* File Header */}
-                      <button
-                        onClick={() =>
-                          setExpandedFile(isExpanded ? null : fileId)
-                        }
-                        className="w-full px-4 py-3 flex justify-between items-center bg-gradient-to-r from-gray-50 to-white border-b border-gray-200 hover:from-gray-100 hover:to-gray-50 text-left transition-colors"
+                      <div
+                        className="w-full px-4 py-3 flex justify-between items-center bg-gradient-to-r from-gray-50 to-white border-b border-gray-200 hover:from-gray-100 hover:to-gray-50 text-left transition-colors cursor-pointer"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <FileText className="w-4 h-4 text-teal-600" />
-                          </div>
-                          <div>
-                            <h4 className="font-medium text-gray-900">
-                              {index + 1}.{" "}
-                              {file.original_filename ||
-                                analysis.quote_file?.original_filename}
-                            </h4>
-                            <p className="text-xs text-gray-500">
-                              {totalWords} words • {displayPageCount} page(s)
-                            </p>
-                          </div>
-                          {hasChanges(analysis.quote_file_id) && (
-                            <span className="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800 font-medium">
-                              Unsaved
-                            </span>
+                          {/* Selection Checkbox - Only show in selection mode */}
+                          {splitMode && (
+                            <input
+                              type="checkbox"
+                              checked={selectedDocuments.includes(analysis.id)}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                toggleDocumentSelection(analysis.id);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-5 h-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                            />
                           )}
+                          <div
+                            className="flex items-center gap-3 flex-1"
+                            onClick={() => setExpandedFile(isExpanded ? null : fileId)}
+                          >
+                            <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <FileText className="w-4 h-4 text-teal-600" />
+                            </div>
+                            <div>
+                              <h4 className="font-medium text-gray-900">
+                                {index + 1}.{" "}
+                                {file.original_filename ||
+                                  analysis.quote_file?.original_filename}
+                              </h4>
+                              <p className="text-xs text-gray-500">
+                                {totalWords} words • {displayPageCount} page(s)
+                              </p>
+                            </div>
+                            {hasChanges(analysis.quote_file_id) && (
+                              <span className="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800 font-medium">
+                                Unsaved
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div
+                          className="flex items-center gap-3"
+                          onClick={() => setExpandedFile(isExpanded ? null : fileId)}
+                        >
                           <span className="text-lg font-semibold text-gray-900">
                             $
                             {calculateLineTotal(
@@ -3133,7 +3323,7 @@ const HITLReviewDetail: React.FC = () => {
                             <X className="w-4 h-4" />
                           </button>
                         </div>
-                      </button>
+                      </div>
 
                       {/* Expanded Content */}
                       {isExpanded && (
