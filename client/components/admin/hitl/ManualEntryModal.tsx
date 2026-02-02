@@ -271,21 +271,28 @@ export default function ManualEntryModal({
     return Math.ceil((wordCount / settings.wordsPerPage) * multiplier * 10) / 10;
   };
 
-  // Recalculate pages when settings change
+  // Recalculate pages when settings change or when pages need calculation
   useEffect(() => {
-    if (settings) {
-      setPages((prevPages) =>
-        prevPages.map((page) => ({
-          ...page,
-          billablePages: calculatePageBillable(
-            page.wordCount,
-            page.complexity,
-            settings
-          ),
-        }))
+    if (settings && pages.length > 0) {
+      // Check if any page has billablePages = 0 but has wordCount
+      const needsRecalculation = pages.some(
+        (p) => p.billablePages === 0 && p.wordCount > 0
       );
+
+      if (needsRecalculation) {
+        setPages((prevPages) =>
+          prevPages.map((page) => ({
+            ...page,
+            billablePages: calculatePageBillable(
+              page.wordCount,
+              page.complexity,
+              settings
+            ),
+          }))
+        );
+      }
     }
-  }, [settings]);
+  }, [settings, pages.length]); // Added pages.length as dependency
 
   // Calculate document totals
   const calculatedTotals = useMemo((): CalculationResult | null => {
