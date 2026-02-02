@@ -22,6 +22,7 @@ import {
   Phone,
   Plus,
   RefreshCw,
+  Save,
   Trash2,
   Truck,
   Upload,
@@ -29,6 +30,7 @@ import {
   Zap,
 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import CancelOrderModal from "@/components/admin/CancelOrderModal";
 import EditOrderModal from "@/components/admin/EditOrderModal";
 import BalanceResolutionModal from "@/components/admin/BalanceResolutionModal";
@@ -161,15 +163,21 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const WORK_STATUS_STYLES: Record<string, string> = {
+  pending: "bg-gray-100 text-gray-700",
   active: "bg-blue-100 text-blue-700",
+  in_progress: "bg-blue-100 text-blue-700",
   paused: "bg-amber-100 text-amber-700",
   completed: "bg-green-100 text-green-700",
+  delivered: "bg-teal-100 text-teal-700",
 };
 
 const WORK_STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
   active: "Active",
+  in_progress: "In Progress",
   paused: "Paused",
   completed: "Completed",
+  delivered: "Delivered",
 };
 
 export default function AdminOrderDetail() {
@@ -201,6 +209,12 @@ export default function AdminOrderDetail() {
 
   // Payment recording
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
+
+  // Status edit state
+  const [editingStatus, setEditingStatus] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedWorkStatus, setSelectedWorkStatus] = useState('');
+  const [savingStatus, setSavingStatus] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -321,6 +335,67 @@ export default function AdminOrderDetail() {
     }
   };
 
+  const handleStatusUpdate = async () => {
+    if (!order) return;
+
+    setSavingStatus(true);
+    try {
+      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+      let hasChanges = false;
+
+      if (selectedStatus && selectedStatus !== order.status) {
+        updates.status = selectedStatus;
+        hasChanges = true;
+      }
+      if (selectedWorkStatus && selectedWorkStatus !== order.work_status) {
+        updates.work_status = selectedWorkStatus;
+        hasChanges = true;
+      }
+
+      if (!hasChanges) {
+        toast.info("No changes to save");
+        setEditingStatus(false);
+        setSavingStatus(false);
+        return;
+      }
+
+      // Update order
+      const { error } = await supabase
+        .from("orders")
+        .update(updates)
+        .eq("id", order.id);
+
+      if (error) throw error;
+
+      // Log status change to history
+      const historyRecord: Record<string, any> = {
+        order_id: order.id,
+        previous_status: order.status,
+        new_status: selectedStatus || order.status,
+        previous_work_status: order.work_status,
+        new_work_status: selectedWorkStatus || order.work_status,
+        changed_by_staff_id: currentStaff?.staffId || null,
+        created_at: new Date().toISOString(),
+      };
+
+      await supabase
+        .from("order_status_history")
+        .insert(historyRecord)
+        .then(({ error }) => {
+          if (error) console.warn("Failed to log status history:", error);
+        });
+
+      toast.success("Order status updated");
+      setEditingStatus(false);
+      fetchOrderDetails(); // Refresh order data
+    } catch (err: any) {
+      console.error("Error updating status:", err);
+      toast.error(err.message || "Failed to update status");
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -373,27 +448,106 @@ export default function AdminOrderDetail() {
             <h1 className="text-2xl font-bold text-gray-900">
               {order.order_number}
             </h1>
-            <div className="flex items-center gap-3 mt-2">
-              <span
-                className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
-                  STATUS_STYLES[order.status] || "bg-gray-100 text-gray-700"
-                }`}
-              >
-                {STATUS_LABELS[order.status] || order.status}
-              </span>
-              <span
-                className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-                  WORK_STATUS_STYLES[order.work_status] ||
-                  "bg-gray-100 text-gray-700"
-                }`}
-              >
-                Work:{" "}
-                {WORK_STATUS_LABELS[order.work_status] || order.work_status}
-              </span>
-              {order.delivery_hold && (
-                <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
-                  Delivery Hold
-                </span>
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              {editingStatus ? (
+                <>
+                  {/* Status Dropdown */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-500">Status:</label>
+                    <select
+                      value={selectedStatus}
+                      onChange={(e) => setSelectedStatus(e.target.value)}
+                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                      {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Work Status Dropdown */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-500">Work:</label>
+                    <select
+                      value={selectedWorkStatus}
+                      onChange={(e) => setSelectedWorkStatus(e.target.value)}
+                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                      {Object.entries(WORK_STATUS_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Save Button */}
+                  <button
+                    onClick={handleStatusUpdate}
+                    disabled={savingStatus}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
+                  >
+                    {savingStatus ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    Save
+                  </button>
+
+                  {/* Cancel Button */}
+                  <button
+                    onClick={() => setEditingStatus(false)}
+                    disabled={savingStatus}
+                    className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* Status Badge */}
+                  <span
+                    className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
+                      STATUS_STYLES[order.status] || "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {STATUS_LABELS[order.status] || order.status}
+                  </span>
+
+                  {/* Work Status Badge */}
+                  <span
+                    className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
+                      WORK_STATUS_STYLES[order.work_status] || "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    Work: {WORK_STATUS_LABELS[order.work_status] || order.work_status}
+                  </span>
+
+                  {/* Delivery Hold Badge */}
+                  {order.delivery_hold && (
+                    <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
+                      Delivery Hold
+                    </span>
+                  )}
+
+                  {/* Edit Button */}
+                  {order.status !== 'cancelled' && (
+                    <button
+                      onClick={() => {
+                        setSelectedStatus(order.status);
+                        setSelectedWorkStatus(order.work_status);
+                        setEditingStatus(true);
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                      title="Edit Status"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
