@@ -20,6 +20,7 @@ import {
   DollarSign,
   Clock,
   User,
+  UserCheck,
   Check,
   Camera,
   Save,
@@ -29,6 +30,7 @@ import {
   Scissors,
   Plus,
   AlertCircle,
+  Lock,
 } from "lucide-react";
 import { CorrectionReasonModal } from "@/components/CorrectionReasonModal";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -46,6 +48,34 @@ import {
 import type { DocumentGroup, AssignedItem } from "../../components/admin/hitl/DocumentGroupCard";
 import type { UnassignedItem } from "../../components/admin/hitl/AssignItemsModal";
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
+
+// ============================================
+// ROLE HIERARCHY FOR CLAIM OVERRIDE
+// ============================================
+
+// Role hierarchy (higher number = higher authority)
+const ROLE_HIERARCHY: Record<string, number> = {
+  reviewer: 1,
+  senior_reviewer: 2,
+  admin: 3,
+  super_admin: 4,
+};
+
+/**
+ * Check if currentRole can override claimedByRole
+ * @param currentRole - The role of the current staff user
+ * @param claimedByRole - The role of the staff who claimed the review
+ * @returns true if current user can take over the review
+ */
+const canOverrideClaim = (
+  currentRole: string | undefined,
+  claimedByRole: string | undefined
+): boolean => {
+  if (!currentRole || !claimedByRole) return false;
+  const currentLevel = ROLE_HIERARCHY[currentRole.toLowerCase()] || 0;
+  const claimedLevel = ROLE_HIERARCHY[claimedByRole.toLowerCase()] || 0;
+  return currentLevel > claimedLevel;
+};
 
 interface PageData {
   id: string;
@@ -219,6 +249,11 @@ const HITLReviewDetail: React.FC = () => {
   const [assignedStaffName, setAssignedStaffName] = useState<string | null>(
     null,
   );
+  const [assignedStaffRole, setAssignedStaffRole] = useState<string | null>(
+    null,
+  );
+  const [showOverrideConfirm, setShowOverrideConfirm] = useState(false);
+  const [isClaimingReview, setIsClaimingReview] = useState(false);
 
   // Action buttons
   const [internalNotes, setInternalNotes] = useState("");
@@ -558,30 +593,35 @@ const HITLReviewDetail: React.FC = () => {
       let assignedTo = viewReview.assigned_to || null;
       let reviewStatus =
         viewReview.review_status || viewReview.status || "pending";
+      let assignedStaffInfo: { full_name: string; role: string } | null = null;
 
-      // If view doesn't have assigned_to, fetch directly from hitl_reviews base table
-      if (!assignedTo) {
-        try {
-          const baseReviews = await fetchFromSupabase(
-            `hitl_reviews?id=eq.${viewReview.review_id}&select=assigned_to,status`,
-          );
-          if (baseReviews && baseReviews[0]) {
-            assignedTo = baseReviews[0].assigned_to;
-            reviewStatus = baseReviews[0].status;
-            console.log(
-              "✅ Fetched from base table - assigned_to:",
-              assignedTo,
-              "status:",
-              reviewStatus,
-            );
+      // Always try to fetch from base table to get the staff details
+      try {
+        const baseReviews = await fetchFromSupabase(
+          `hitl_reviews?id=eq.${viewReview.review_id}&select=assigned_to,status,assigned_staff:staff_users!hitl_reviews_assigned_to_fkey(full_name,role)`,
+        );
+        if (baseReviews && baseReviews[0]) {
+          assignedTo = baseReviews[0].assigned_to || assignedTo;
+          reviewStatus = baseReviews[0].status || reviewStatus;
+          if (baseReviews[0].assigned_staff) {
+            assignedStaffInfo = baseReviews[0].assigned_staff;
           }
-        } catch (error) {
-          console.warn("⚠️ Could not fetch from base table (RLS):", error);
+          console.log(
+            "✅ Fetched from base table - assigned_to:",
+            assignedTo,
+            "status:",
+            reviewStatus,
+            "staff_info:",
+            assignedStaffInfo,
+          );
         }
+      } catch (error) {
+        console.warn("⚠️ Could not fetch from base table (RLS):", error);
       }
 
       console.log("📍 Final assigned_to:", assignedTo);
       console.log("📍 Final status:", reviewStatus);
+      console.log("📍 Final assigned_staff_info:", assignedStaffInfo);
 
       // Construct review object from view data
       const review = {
@@ -629,9 +669,16 @@ const HITLReviewDetail: React.FC = () => {
       if (assignedTo !== null) {
         setClaimedByMe(isClaimed);
         setClaimedByOther(isClaimedByOther);
-        setAssignedStaffName(null); // Will be set if we fetch from base table with staff join
+        // Set staff name and role if claimed by another staff
+        if (isClaimedByOther && assignedStaffInfo) {
+          setAssignedStaffName(assignedStaffInfo.full_name);
+          setAssignedStaffRole(assignedStaffInfo.role);
+        } else {
+          setAssignedStaffName(null);
+          setAssignedStaffRole(null);
+        }
         console.log(
-          `🔐 Claim status updated - Claimed by me: ${isClaimed}, by other: ${isClaimedByOther} (assigned_to: ${assignedTo}, staffId: ${currentStaffId})`,
+          `🔐 Claim status updated - Claimed by me: ${isClaimed}, by other: ${isClaimedByOther} (assigned_to: ${assignedTo}, staffId: ${currentStaffId}, staff_name: ${assignedStaffInfo?.full_name}, staff_role: ${assignedStaffInfo?.role})`,
         );
       } else {
         // Fallback: If status is "in_review", it must be claimed by someone
@@ -830,6 +877,74 @@ const HITLReviewDetail: React.FC = () => {
     } catch (error) {
       console.error("Claim error:", error);
       alert("Failed to claim review: " + (error as Error).message);
+    }
+  };
+
+  const handleClaimOverride = async () => {
+    const session = JSON.parse(localStorage.getItem("staffSession") || "{}");
+
+    if (!session.staffId) {
+      alert("Session expired. Please login again.");
+      navigate("/admin/login");
+      return;
+    }
+
+    // Close confirmation modal
+    setShowOverrideConfirm(false);
+    setIsClaimingReview(true);
+
+    try {
+      const accessToken = await getAccessToken();
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/claim-hitl-review`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            reviewId: reviewId,
+            staffId: session.staffId,
+            isOverride: true,
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success(result.message || "Review claimed successfully");
+
+        // Set claim status BEFORE refetching data
+        setClaimedByMe(true);
+        setClaimedByOther(false);
+        setAssignedStaffName(null);
+        setAssignedStaffRole(null);
+
+        // Update reviewData to reflect claimed status and in_review state
+        if (reviewData) {
+          setReviewData({
+            ...reviewData,
+            assigned_to: session.staffId,
+            status: "in_review",
+          });
+        }
+
+        // Refresh data
+        await fetchAllData();
+
+        // Re-assert the claim status after fetch
+        setClaimedByMe(true);
+        setClaimedByOther(false);
+      } else {
+        throw new Error(result.error || "Failed to take over review");
+      }
+    } catch (error) {
+      console.error("Claim override error:", error);
+      toast.error("Failed to take over review: " + (error as Error).message);
+    } finally {
+      setIsClaimingReview(false);
     }
   };
 
@@ -3126,13 +3241,16 @@ const HITLReviewDetail: React.FC = () => {
                     Claimed by you
                   </span>
                 ) : claimedByOther ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600">
-                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
+                    <User className="w-3 h-3" />
                     {assignedStaffName || "Another staff"}
+                    {assignedStaffRole && (
+                      <span className="text-amber-500">({assignedStaffRole.replace(/_/g, " ")})</span>
+                    )}
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-500">
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
                     Unclaimed
                   </span>
                 )}
@@ -3153,6 +3271,33 @@ const HITLReviewDetail: React.FC = () => {
               >
                 Claim Review
               </button>
+            )}
+
+            {/* When claimed by another staff */}
+            {claimedByOther && (
+              <>
+                {/* Show Take Over button if current user has higher role */}
+                {canOverrideClaim(staffSession?.staffRole, assignedStaffRole ?? undefined) ? (
+                  <button
+                    onClick={() => setShowOverrideConfirm(true)}
+                    disabled={isClaimingReview}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors text-sm disabled:opacity-50"
+                  >
+                    {isClaimingReview ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <UserCheck className="w-4 h-4" />
+                    )}
+                    Take Over Review
+                  </button>
+                ) : (
+                  // Show locked indicator if current user cannot override
+                  <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-500 rounded-lg text-sm">
+                    <Lock className="w-4 h-4" />
+                    In Review by {assignedStaffName || "another staff"}
+                  </div>
+                )}
+              </>
             )}
 
             {/* When claimed by me - show workflow buttons */}
@@ -5341,6 +5486,53 @@ const HITLReviewDetail: React.FC = () => {
         unassignedItems={unassignedItems}
         onAssign={handleAssignMultipleToGroup}
       />
+
+      {/* Claim Override Confirmation Modal */}
+      {showOverrideConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-semibold">Take Over Review?</h3>
+            </div>
+
+            <p className="text-gray-600 mb-4">
+              This review is currently claimed by <strong>{assignedStaffName || "another staff member"}</strong>
+              {assignedStaffRole && (
+                <span className="text-gray-500"> ({assignedStaffRole.replace(/_/g, " ")})</span>
+              )}.
+              Taking over will remove their claim and assign it to you.
+            </p>
+
+            <p className="text-sm text-gray-500 mb-6">
+              Any unsaved changes by the previous reviewer may be lost.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowOverrideConfirm(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClaimOverride}
+                disabled={isClaimingReview}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50"
+              >
+                {isClaimingReview ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <UserCheck className="w-4 h-4" />
+                )}
+                Take Over Review
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
