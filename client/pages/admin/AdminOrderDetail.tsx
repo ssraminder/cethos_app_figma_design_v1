@@ -9,6 +9,7 @@ import {
   Clock,
   CreditCard,
   DollarSign,
+  Edit2,
   ExternalLink,
   Mail,
   MapPin,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import CancelOrderModal from "@/components/admin/CancelOrderModal";
+import EditOrderModal from "@/components/admin/EditOrderModal";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 
 interface OrderDetail {
@@ -35,6 +37,7 @@ interface OrderDetail {
   certification_total: number;
   rush_fee: number;
   delivery_fee: number;
+  tax_rate: number;
   tax_amount: number;
   total_amount: number;
   amount_paid: number;
@@ -142,6 +145,7 @@ export default function AdminOrderDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -293,26 +297,39 @@ export default function AdminOrderDetail() {
             </div>
           </div>
 
-          {order.quote_id && (
-            <Link
-              to={`/admin/quotes/${order.quote_id}`}
-              className="inline-flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200"
-            >
-              View Quote ({order.quote?.quote_number})
-              <ExternalLink className="w-4 h-4" />
-            </Link>
-          )}
+          <div className="flex items-center gap-3">
+            {order.quote_id && (
+              <Link
+                to={`/admin/quotes/${order.quote_id}`}
+                className="inline-flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200"
+              >
+                View Quote ({order.quote?.quote_number})
+                <ExternalLink className="w-4 h-4" />
+              </Link>
+            )}
 
-          {/* Cancel Order Button */}
-          {order.status !== "cancelled" && (
-            <button
-              onClick={() => setShowCancelModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-              Cancel Order
-            </button>
-          )}
+            {/* Edit Order Button */}
+            {order.status !== "cancelled" && order.status !== "refunded" && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors"
+              >
+                <Edit2 className="w-4 h-4" />
+                Edit Order
+              </button>
+            )}
+
+            {/* Cancel Order Button */}
+            {order.status !== "cancelled" && (
+              <button
+                onClick={() => setShowCancelModal(true)}
+                className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Cancel Order
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -747,6 +764,40 @@ export default function AdminOrderDetail() {
           }}
           staffId={currentStaff?.staffId || ""}
           onSuccess={fetchOrderDetails}
+        />
+      )}
+
+      {/* Edit Order Modal */}
+      {order && showEditModal && (
+        <EditOrderModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          order={{
+            id: order.id,
+            order_number: order.order_number,
+            customer_id: order.customer_id,
+            subtotal: order.subtotal,
+            certification_total: order.certification_total,
+            rush_fee: order.rush_fee,
+            delivery_fee: order.delivery_fee,
+            tax_rate: order.tax_rate || 0,
+            tax_amount: order.tax_amount,
+            total_amount: order.total_amount,
+            amount_paid: order.amount_paid || 0,
+            balance_due: order.balance_due || 0,
+            is_rush: order.is_rush,
+            delivery_option: order.delivery_option,
+            estimated_delivery_date: order.estimated_delivery_date,
+          }}
+          staffId={currentStaff?.staffId || ""}
+          staffRole={currentStaff?.role || "reviewer"}
+          onSuccess={(newTotal, balanceChange) => {
+            fetchOrderDetails();
+            if (balanceChange !== 0) {
+              // Could show a balance resolution modal here in future
+              console.log(`Balance changed by $${balanceChange.toFixed(2)}`);
+            }
+          }}
         />
       )}
     </div>
