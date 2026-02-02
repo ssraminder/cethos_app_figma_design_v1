@@ -226,16 +226,16 @@ export default function AccountsReceivable() {
       // Fetch AR invoices (unpaid or partial from accounts_receivable table)
       const { data: arData, error: arErr } = await supabase
         .from("accounts_receivable")
-        .select("id, amount_due, original_amount, amount_paid, status")
+        .select("id, balance_due, original_amount, amount_paid, status")
         .in("status", ["pending", "partial", "unpaid"]);
 
       if (arErr) throw arErr;
 
-      // Calculate AR totals - use amount_due or (original_amount - amount_paid)
+      // Calculate AR totals - use balance_due or (original_amount - amount_paid)
       let arTotal = 0;
-      (arData || []).forEach((ar: { amount_due?: number; original_amount?: number; amount_paid?: number }) => {
-        if (ar.amount_due !== undefined && ar.amount_due !== null) {
-          arTotal += ar.amount_due;
+      (arData || []).forEach((ar: { balance_due?: number; original_amount?: number; amount_paid?: number }) => {
+        if (ar.balance_due !== undefined && ar.balance_due !== null) {
+          arTotal += ar.balance_due;
         } else {
           const originalAmt = ar.original_amount || 0;
           const paidAmt = ar.amount_paid || 0;
@@ -538,7 +538,7 @@ export default function AccountsReceivable() {
           id,
           order_id,
           customer_id,
-          amount_due,
+          balance_due,
           original_amount,
           amount_paid,
           due_date,
@@ -571,7 +571,7 @@ export default function AccountsReceivable() {
 
       const transformed = (data || []).map((ar: any) => {
         // Calculate original amount and balance due
-        const originalAmount = ar.original_amount || ar.amount_due || 0;
+        const originalAmount = ar.original_amount || ar.balance_due || 0;
         const amountPaid = ar.amount_paid || 0;
         const balanceDue = originalAmount - amountPaid;
         const dueDate = ar.due_date ? parseISO(ar.due_date) : null;
