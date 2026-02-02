@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import { FileText, Download, Eye, Brain, Pencil, Trash2, Loader2 } from "lucide-react";
+import { FileText, Download, Eye, Pencil, Trash2, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import DocumentPreviewModal from "../../admin/DocumentPreviewModal";
-import AnalyzeDocumentModal from "./AnalyzeDocumentModal";
 import ManualEntryModal from "./ManualEntryModal";
 
 interface QuoteFile {
@@ -30,7 +29,6 @@ export default function DocumentFilesPanel({
   onRefresh,
 }: DocumentFilesPanelProps) {
   const [previewFile, setPreviewFile] = useState<QuoteFile | null>(null);
-  const [analyzeFile, setAnalyzeFile] = useState<QuoteFile | null>(null);
   const [manualEntryFile, setManualEntryFile] = useState<QuoteFile | null>(null);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -303,15 +301,6 @@ export default function DocumentFilesPanel({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-1 flex-shrink-0">
-                {/* Analyze Button */}
-                <button
-                  onClick={() => setAnalyzeFile(file)}
-                  className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
-                  title="Analyze/Re-analyze file"
-                >
-                  <Brain className="w-4 h-4" />
-                </button>
-
                 {/* Manual Entry Button */}
                 <button
                   onClick={() => setManualEntryFile(file)}
@@ -370,34 +359,6 @@ export default function DocumentFilesPanel({
           fileUrl={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${previewFile.storage_path}`}
           fileName={previewFile.original_filename}
           fileType={previewFile.mime_type?.includes("pdf") ? "pdf" : "image"}
-        />
-      )}
-
-      {/* Analyze Document Modal */}
-      {analyzeFile && (
-        <AnalyzeDocumentModal
-          isOpen={true}
-          onClose={() => setAnalyzeFile(null)}
-          file={analyzeFile}
-          quoteId={quoteId}
-          onAnalysisComplete={async () => {
-            console.log(
-              "🟢 [DocumentFilesPanel] onAnalysisComplete callback triggered!",
-            );
-            console.log(
-              "🟢 [DocumentFilesPanel] Refreshing data before closing modal...",
-            );
-
-            // CRITICAL: Refresh data FIRST, then close modal
-            if (onRefresh) {
-              console.log("🟢 [DocumentFilesPanel] Calling onRefresh...");
-              await onRefresh();
-              console.log("🟢 [DocumentFilesPanel] onRefresh completed!");
-            }
-
-            // Close modal state after refresh completes
-            setAnalyzeFile(null);
-          }}
         />
       )}
 
