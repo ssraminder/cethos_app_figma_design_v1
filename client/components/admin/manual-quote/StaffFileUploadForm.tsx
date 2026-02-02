@@ -24,6 +24,10 @@ import {
   XCircle,
   CheckCircle2,
   Plus,
+  Layers,
+  Sparkles,
+  Info,
+  Pencil,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -58,6 +62,9 @@ interface UploadedQuoteFile {
   ai_processing_status: string | null;
   file_category_id: string | null;
   created_at: string;
+  page_count?: number;
+  document_group_id?: string | null;
+  contains_multiple_documents?: boolean;
 }
 
 type ProcessingStatus = "pending" | "processing" | "completed" | "failed" | "skipped" | null;
@@ -127,6 +134,47 @@ interface CertificationType {
   description: string;
   price: number;
   is_default: boolean;
+}
+
+// Document Group Types
+interface DocumentGroup {
+  group_id: string;
+  quote_id: string;
+  group_number: number;
+  group_label: string;
+  document_type: string;
+  complexity: string;
+  complexity_multiplier: number;
+  total_pages: number;
+  total_word_count: number;
+  billable_pages: number;
+  line_total: number;
+  certification_type_id: string | null;
+  certification_type_name: string | null;
+  certification_price: number;
+  is_ai_suggested: boolean;
+  ai_confidence: number | null;
+  last_analyzed_at: string | null;
+  analysis_status: string;
+  assigned_items: AssignedItem[];
+}
+
+interface AssignedItem {
+  assignment_id: string;
+  page_id: string | null;
+  file_id: string | null;
+  sequence_order: number;
+  page_number: number | null;
+  word_count: number;
+  file_name: string;
+  storage_path: string;
+  item_type: "page" | "file";
+}
+
+interface GroupTarget {
+  type: "file" | "page";
+  fileId: string;
+  pageId?: string;
 }
 
 interface Country {
@@ -426,6 +474,22 @@ export default function StaffFileUploadForm({
   const [selectedCertificationId, setSelectedCertificationId] = useState<string | null>(null);
   const [savingCertification, setSavingCertification] = useState(false);
 
+  // Document Groups state
+  const [documentGroups, setDocumentGroups] = useState<DocumentGroup[]>([]);
+  const [documentGroupsExpanded, setDocumentGroupsExpanded] = useState(true);
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+  const [pendingGroupTarget, setPendingGroupTarget] = useState<GroupTarget | null>(null);
+  const [newGroupLabel, setNewGroupLabel] = useState("");
+  const [newGroupDocType, setNewGroupDocType] = useState("");
+  const [newGroupComplexity, setNewGroupComplexity] = useState("easy");
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [analyzingGroupId, setAnalyzingGroupId] = useState<string | null>(null);
+  const [isAnalyzingAll, setIsAnalyzingAll] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editGroupLabel, setEditGroupLabel] = useState("");
+  const [editGroupDocType, setEditGroupDocType] = useState("");
+  const [editGroupComplexity, setEditGroupComplexity] = useState("");
+
   // ============================================================================
   // DATA LOADING
   // ============================================================================
@@ -443,6 +507,7 @@ export default function StaffFileUploadForm({
       fetchTranslationDetails(abortController.signal);
       fetchAnalysisResults(abortController.signal);
       fetchUploadedFiles(abortController.signal);
+      fetchDocumentGroups(abortController.signal);
       return () => abortController.abort();
     }
   }, [quoteId]);
@@ -470,7 +535,18 @@ export default function StaffFileUploadForm({
 
     const query = supabase
       .from("quote_files")
-      .select("id, original_filename, file_size, mime_type, ai_processing_status, file_category_id, created_at")
+      .select(`
+        id,
+        original_filename,
+        file_size,
+        mime_type,
+        ai_processing_status,
+        file_category_id,
+        created_at,
+        page_count,
+        contains_multiple_documents,
+        group_assignment:quote_page_group_assignments!left(group_id)
+      `)
       .eq("quote_id", quoteId)
       .is("deleted_at", null)
       .order("created_at", { ascending: true });
@@ -483,7 +559,14 @@ export default function StaffFileUploadForm({
       console.error("Error fetching uploaded files:", error);
       return;
     }
-    setUploadedFiles(data || []);
+
+    // Map the group assignments to a simple document_group_id field
+    const filesWithGroups = (data || []).map((f: any) => ({
+      ...f,
+      document_group_id: f.group_assignment?.[0]?.group_id || null,
+    }));
+
+    setUploadedFiles(filesWithGroups);
   };
 
   useEffect(() => {
@@ -913,6 +996,272 @@ export default function StaffFileUploadForm({
     } catch (err) {
       console.error("Error deleting file:", err);
       toast.error("Failed to remove file");
+    }
+  };
+
+  // ============================================================================
+  // DOCUMENT GROUPS HANDLERS
+  // ============================================================================
+
+  const fetchDocumentGroups = async (signal?: AbortSignal) => {
+    if (!quoteId) return;
+
+    const query = supabase
+      .from("v_document_groups_with_items")
+      .select("*")
+      .eq("quote_id", quoteId)
+      .order("group_number");
+
+    const { data, error } = signal ? await query.abortSignal(signal) : await query;
+
+    if (error) {
+      if (error.message?.includes("AbortError") || error.code === "ABORT_ERR") return;
+      console.error("Error fetching document groups:", error);
+      return;
+    }
+
+    if (data) {
+      setDocumentGroups(data as DocumentGroup[]);
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!quoteId) return;
+
+    setCreatingGroup(true);
+    try {
+      const { data: newGroupId, error } = await supabase.rpc("create_document_group", {
+        p_quote_id: quoteId,
+        p_group_label: newGroupLabel || null,
+        p_document_type: newGroupDocType || null,
+        p_complexity: newGroupComplexity || "easy",
+        p_staff_id: staffId,
+      });
+
+      if (error) throw error;
+
+      // If we were creating for a specific file, assign it
+      if (pendingGroupTarget && newGroupId) {
+        if (pendingGroupTarget.type === "file") {
+          await handleFileGroupAssignment(pendingGroupTarget.fileId, newGroupId);
+        }
+        setPendingGroupTarget(null);
+      }
+
+      toast.success("Document group created");
+      setShowCreateGroupModal(false);
+      setNewGroupLabel("");
+      setNewGroupDocType("");
+      setNewGroupComplexity("easy");
+      await fetchDocumentGroups();
+    } catch (error: any) {
+      console.error("Create group error:", error);
+      toast.error("Failed to create group");
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const handleFileGroupAssignment = async (fileId: string, groupId: string) => {
+    if (groupId === "__new__") {
+      setPendingGroupTarget({ type: "file", fileId });
+      setShowCreateGroupModal(true);
+      return;
+    }
+
+    try {
+      // Remove existing file-level assignment
+      await supabase
+        .from("quote_page_group_assignments")
+        .delete()
+        .eq("file_id", fileId);
+
+      // Create new assignment (if not "Auto")
+      if (groupId) {
+        const { error } = await supabase.from("quote_page_group_assignments").insert({
+          quote_id: quoteId,
+          group_id: groupId,
+          file_id: fileId,
+          page_id: null,
+          sequence_order: 1,
+          assigned_by_ai: false,
+          assigned_by_staff_id: staffId,
+          assigned_at: new Date().toISOString(),
+        });
+
+        if (error) throw error;
+      }
+
+      setUploadedFiles((prev) =>
+        prev.map((f) => (f.id === fileId ? { ...f, document_group_id: groupId || null } : f))
+      );
+
+      toast.success(groupId ? "File assigned to group" : "Group cleared");
+      await fetchDocumentGroups();
+    } catch (error: any) {
+      console.error("File group assignment error:", error);
+      toast.error("Failed to assign file");
+    }
+  };
+
+  const handleAnalyzeGroup = async (groupId: string) => {
+    try {
+      setAnalyzingGroupId(groupId);
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-document-group`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            groupId,
+            staffId,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Analysis failed");
+      }
+
+      toast.success("Group analyzed successfully");
+      await fetchDocumentGroups();
+      onPricingRefresh?.();
+    } catch (error: any) {
+      console.error("Analyze group error:", error);
+      toast.error(`Analysis failed: ${error.message || "Unknown error"}`);
+    } finally {
+      setAnalyzingGroupId(null);
+    }
+  };
+
+  const handleAnalyzeAllGroups = async () => {
+    const groupsToAnalyze = documentGroups.filter((g) => g.assigned_items?.length > 0);
+
+    if (groupsToAnalyze.length === 0) {
+      toast.error("No groups with assigned items to analyze");
+      return;
+    }
+
+    try {
+      setIsAnalyzingAll(true);
+
+      for (const group of groupsToAnalyze) {
+        setAnalyzingGroupId(group.group_id);
+
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-document-group`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                groupId: group.group_id,
+                staffId,
+              }),
+            }
+          );
+
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            console.error(`Error analyzing group ${group.group_number}:`, data);
+          }
+        } catch (err) {
+          console.error(`Error analyzing group ${group.group_number}:`, err);
+        }
+      }
+
+      toast.success(`Analyzed ${groupsToAnalyze.length} groups`);
+      await fetchDocumentGroups();
+      onPricingRefresh?.();
+    } catch (error: any) {
+      console.error("Analyze all groups error:", error);
+      toast.error("Some groups failed to analyze");
+    } finally {
+      setAnalyzingGroupId(null);
+      setIsAnalyzingAll(false);
+    }
+  };
+
+  const handleEditGroup = (group: DocumentGroup) => {
+    setEditingGroupId(group.group_id);
+    setEditGroupLabel(group.group_label || "");
+    setEditGroupDocType(group.document_type || "");
+    setEditGroupComplexity(group.complexity || "easy");
+  };
+
+  const handleSaveGroupEdit = async (groupId: string) => {
+    try {
+      const { error } = await supabase
+        .from("quote_document_groups")
+        .update({
+          group_label: editGroupLabel || null,
+          document_type: editGroupDocType || null,
+          complexity: editGroupComplexity,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", groupId);
+
+      if (error) throw error;
+
+      // Recalculate group totals
+      await supabase.rpc("recalculate_document_group", { p_group_id: groupId });
+
+      toast.success("Group updated");
+      setEditingGroupId(null);
+      await fetchDocumentGroups();
+      onPricingRefresh?.();
+    } catch (error: any) {
+      console.error("Save group edit error:", error);
+      toast.error("Failed to update group");
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    if (!confirm("Delete this document group? Files will become unassigned.")) return;
+
+    try {
+      // First delete assignments
+      await supabase.from("quote_page_group_assignments").delete().eq("group_id", groupId);
+
+      // Then delete the group
+      const { error } = await supabase.from("quote_document_groups").delete().eq("id", groupId);
+
+      if (error) throw error;
+
+      toast.success("Group deleted");
+      await fetchDocumentGroups();
+      await fetchUploadedFiles();
+      onPricingRefresh?.();
+    } catch (error: any) {
+      console.error("Delete group error:", error);
+      toast.error("Failed to delete group");
+    }
+  };
+
+  const handleRemoveItemFromGroup = async (assignmentId: string) => {
+    try {
+      const { error } = await supabase
+        .from("quote_page_group_assignments")
+        .delete()
+        .eq("id", assignmentId);
+
+      if (error) throw error;
+
+      toast.success("Item removed from group");
+      await fetchDocumentGroups();
+      await fetchUploadedFiles();
+    } catch (error: any) {
+      console.error("Remove item error:", error);
+      toast.error("Failed to remove item");
     }
   };
 
@@ -1614,7 +1963,7 @@ export default function StaffFileUploadForm({
                       </button>
                     </div>
 
-                    {/* Bottom row on mobile: Category, Size, Status */}
+                    {/* Bottom row on mobile: Category, Group, Size, Status */}
                     <div className="flex items-center gap-3 ml-9 md:ml-0 flex-wrap md:flex-nowrap">
                       {/* Category Dropdown */}
                       <div className="flex-1 min-w-[140px] md:w-40 md:flex-none">
@@ -1633,6 +1982,26 @@ export default function StaffFileUploadForm({
                           ))}
                         </select>
                       </div>
+
+                      {/* Document Group Dropdown - only for billable files */}
+                      {canSelect && (
+                        <div className="flex-1 min-w-[160px] md:w-44 md:flex-none">
+                          <select
+                            value={file.document_group_id || ""}
+                            onChange={(e) => handleFileGroupAssignment(file.id, e.target.value)}
+                            disabled={isProcessing}
+                            className="w-full text-sm border border-gray-300 rounded-lg px-2 py-2 md:py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent min-h-[44px] md:min-h-0"
+                          >
+                            <option value="">Auto (AI decides)</option>
+                            {documentGroups.map((group) => (
+                              <option key={group.group_id} value={group.group_id}>
+                                Doc {group.group_number}: {group.group_label || "Untitled"}
+                              </option>
+                            ))}
+                            <option value="__new__">+ Create New Group</option>
+                          </select>
+                        </div>
+                      )}
 
                       {/* File Size */}
                       <span className="text-xs text-gray-500 flex-shrink-0">
@@ -1690,6 +2059,282 @@ export default function StaffFileUploadForm({
           </div>
         </div>
       )}
+
+      {/* ================================================================== */}
+      {/* DOCUMENT GROUPS SUMMARY */}
+      {/* ================================================================== */}
+      {quoteId && documentGroups.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setDocumentGroupsExpanded(!documentGroupsExpanded)}
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-teal-600" />
+              <h4 className="font-medium text-gray-900">Document Groups</h4>
+              <span className="text-sm text-gray-500">
+                ({documentGroups.length} group{documentGroups.length !== 1 ? "s" : ""})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {documentGroupsExpanded ? (
+                <ChevronUp className="w-5 h-5 text-gray-400" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-400" />
+              )}
+            </div>
+          </button>
+
+          {documentGroupsExpanded && (
+            <>
+              {/* Actions Bar */}
+              <div className="px-4 py-2 bg-gray-50 border-t border-b border-gray-200 flex items-center justify-end gap-2">
+                <button
+                  onClick={handleAnalyzeAllGroups}
+                  disabled={isAnalyzingAll || documentGroups.every((g) => !g.assigned_items?.length)}
+                  className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {isAnalyzingAll ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Analyze All Groups
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowCreateGroupModal(true)}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Group
+                </button>
+              </div>
+
+              {/* Groups List */}
+              <div className="divide-y divide-gray-100">
+                {documentGroups.map((group) => {
+                  const isEditing = editingGroupId === group.group_id;
+                  const isAnalyzing = analyzingGroupId === group.group_id;
+
+                  return (
+                    <div key={group.group_id} className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          {isEditing ? (
+                            <div className="flex flex-col gap-2">
+                              <input
+                                type="text"
+                                value={editGroupLabel}
+                                onChange={(e) => setEditGroupLabel(e.target.value)}
+                                placeholder="Group label..."
+                                className="px-2 py-1 border border-gray-300 rounded text-sm w-full max-w-xs"
+                              />
+                              <div className="flex gap-2">
+                                <select
+                                  value={editGroupDocType}
+                                  onChange={(e) => setEditGroupDocType(e.target.value)}
+                                  className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                >
+                                  <option value="">Document Type...</option>
+                                  {documentTypes.map((dt) => (
+                                    <option key={dt.id} value={dt.code}>
+                                      {dt.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={editGroupComplexity}
+                                  onChange={(e) => setEditGroupComplexity(e.target.value)}
+                                  className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                >
+                                  <option value="easy">Easy</option>
+                                  <option value="medium">Medium</option>
+                                  <option value="hard">Hard</option>
+                                </select>
+                              </div>
+                              <div className="flex gap-2 mt-1">
+                                <button
+                                  onClick={() => handleSaveGroupEdit(group.group_id)}
+                                  className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => setEditingGroupId(null)}
+                                  className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-gray-900">
+                                  Document {group.group_number}: {group.group_label || "Untitled"}
+                                </span>
+                                {group.complexity && (
+                                  <span
+                                    className={`px-2 py-0.5 text-xs rounded-full ${
+                                      group.complexity === "easy"
+                                        ? "bg-green-100 text-green-700"
+                                        : group.complexity === "medium"
+                                        ? "bg-yellow-100 text-yellow-700"
+                                        : "bg-red-100 text-red-700"
+                                    }`}
+                                  >
+                                    {group.complexity}
+                                  </span>
+                                )}
+                                {group.is_ai_suggested && (
+                                  <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full flex items-center gap-1">
+                                    <Sparkles className="w-3 h-3" />
+                                    AI: {((group.ai_confidence || 0) * 100).toFixed(0)}%
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm text-gray-500 mt-1">
+                                {group.document_type?.replace(/_/g, " ") || "Unknown type"} •{" "}
+                                {group.total_word_count || 0} words •{" "}
+                                {group.assigned_items?.length || 0} item(s) assigned
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Price & Actions */}
+                        {!isEditing && (
+                          <div className="flex items-center gap-4">
+                            {/* Price */}
+                            {(group.line_total || 0) > 0 && (
+                              <div className="text-right">
+                                <div className="font-semibold text-gray-900">
+                                  ${(group.line_total || 0).toFixed(2)}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {group.billable_pages || 1} page(s)
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleAnalyzeGroup(group.group_id)}
+                                disabled={isAnalyzing || !group.assigned_items?.length}
+                                className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={
+                                  !group.assigned_items?.length
+                                    ? "Assign items first"
+                                    : "Analyze with AI"
+                                }
+                              >
+                                {isAnalyzing ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Sparkles className="w-4 h-4" />
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleEditGroup(group)}
+                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                                title="Edit group"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteGroup(group.group_id)}
+                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                                title="Delete group"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Assigned Items Preview */}
+                      {group.assigned_items && group.assigned_items.length > 0 && !isEditing && (
+                        <div className="mt-3 pl-4 border-l-2 border-gray-200 space-y-1">
+                          {group.assigned_items.slice(0, 3).map((item, idx) => (
+                            <div
+                              key={item.assignment_id}
+                              className="flex items-center justify-between text-sm text-gray-600"
+                            >
+                              <span>
+                                {idx + 1}. {item.file_name}
+                                {item.page_number && ` - Page ${item.page_number}`}
+                              </span>
+                              <button
+                                onClick={() => handleRemoveItemFromGroup(item.assignment_id)}
+                                className="p-1 text-gray-400 hover:text-red-500"
+                                title="Remove from group"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                          {group.assigned_items.length > 3 && (
+                            <div className="text-sm text-gray-400">
+                              +{group.assigned_items.length - 3} more...
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Total from all groups */}
+              <div className="px-4 py-3 bg-gray-50 border-t">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-gray-700">
+                    Total: {documentGroups.length} document
+                    {documentGroups.length !== 1 ? "s" : ""} (
+                    {documentGroups.length} certification
+                    {documentGroups.length !== 1 ? "s" : ""})
+                  </span>
+                  <span className="text-xl font-bold text-teal-600">
+                    ${documentGroups.reduce((sum, g) => sum + (g.line_total || 0), 0).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* No Groups Yet - Show Hint */}
+      {quoteId &&
+        documentGroups.length === 0 &&
+        uploadedFiles.some((f) => isBillable(f)) && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-blue-800 font-medium">Document Grouping Available</p>
+                <p className="text-sm text-blue-600 mt-1">
+                  You can pre-organize files into document groups (e.g., front + back of ID = 1
+                  group). If not set, AI will automatically suggest groupings during analysis.
+                </p>
+                <button
+                  onClick={() => setShowCreateGroupModal(true)}
+                  className="mt-2 text-sm text-blue-700 hover:text-blue-800 font-medium flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create Document Group
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* ================================================================== */}
       {/* PENDING UPLOADS LIST */}
@@ -2223,6 +2868,96 @@ export default function StaffFileUploadForm({
           onPricingRefresh?.();
         }}
       />
+
+      {/* Create Document Group Modal */}
+      {showCreateGroupModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Layers className="w-5 h-5 text-teal-600" />
+              Create Document Group
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Group Label
+                </label>
+                <input
+                  type="text"
+                  value={newGroupLabel}
+                  onChange={(e) => setNewGroupLabel(e.target.value)}
+                  placeholder="e.g., Driver's License (Front & Back)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Document Type
+                </label>
+                <select
+                  value={newGroupDocType}
+                  onChange={(e) => setNewGroupDocType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                >
+                  <option value="">Let AI Detect</option>
+                  {documentTypes.map((dt) => (
+                    <option key={dt.id} value={dt.code}>
+                      {dt.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Complexity
+                </label>
+                <select
+                  value={newGroupComplexity}
+                  onChange={(e) => setNewGroupComplexity(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                >
+                  <option value="easy">Easy (1.0x) - Clear text, standard format</option>
+                  <option value="medium">Medium (1.15x) - Some handwriting, stamps</option>
+                  <option value="hard">Hard (1.25x) - Complex layout, poor quality</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowCreateGroupModal(false);
+                  setPendingGroupTarget(null);
+                  setNewGroupLabel("");
+                  setNewGroupDocType("");
+                  setNewGroupComplexity("easy");
+                }}
+                disabled={creatingGroup}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateGroup}
+                disabled={creatingGroup}
+                className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {creatingGroup ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Group"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
