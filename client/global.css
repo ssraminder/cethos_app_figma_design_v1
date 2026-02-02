@@ -171,9 +171,15 @@
   }
 
   /* Prevent horizontal overflow that can cause zoom issues */
-  html,
+  html {
+    overflow-x: hidden;
+    overflow-y: visible;
+    max-width: 100%;
+  }
+
   body {
     overflow-x: hidden;
+    overflow-y: auto;
     max-width: 100%;
   }
 
