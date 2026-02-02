@@ -21,9 +21,12 @@ import {
   XCircle,
   ArrowUpRight,
   TrendingUp,
+  FileText,
 } from "lucide-react";
 import { format, differenceInDays, startOfMonth, endOfMonth, parseISO, isAfter } from "date-fns";
 import { toast } from "sonner";
+import { useStaffAuth } from "@/context/StaffAuthContext";
+import RecordARPaymentModal from "@/components/admin/RecordARPaymentModal";
 
 // Types
 interface UnpaidQuote {
@@ -76,6 +79,23 @@ interface OverdueQuote {
   days_overdue: number;
 }
 
+interface ARInvoice {
+  id: string;
+  order_id: string;
+  order_number: string;
+  customer_id: string;
+  customer_name: string;
+  customer_email: string;
+  original_amount: number;
+  amount_paid: number;
+  balance_due: number;
+  due_date: string;
+  status: string;
+  created_at: string;
+  days_until_due: number;
+  is_overdue: boolean;
+}
+
 interface SummaryStats {
   totalOutstanding: number;
   awaitingPayment: number;
@@ -85,14 +105,17 @@ interface SummaryStats {
   collectedThisMonth: number;
   overdueCount: number;
   overdueAmount: number;
+  arInvoicesCount: number;
+  arInvoicesAmount: number;
 }
 
-const TABS = ["unpaid", "balance_due", "payments", "overdue"] as const;
+const TABS = ["unpaid", "balance_due", "ar_invoices", "payments", "overdue"] as const;
 type Tab = (typeof TABS)[number];
 
 const PAGE_SIZE = 25;
 
 export default function AccountsReceivable() {
+  const { staffUser } = useStaffAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = (searchParams.get("tab") as Tab) || "unpaid";
   const page = parseInt(searchParams.get("page") || "1", 10);
@@ -117,6 +140,8 @@ export default function AccountsReceivable() {
     collectedThisMonth: 0,
     overdueCount: 0,
     overdueAmount: 0,
+    arInvoicesCount: 0,
+    arInvoicesAmount: 0,
   });
   const [unpaidQuotes, setUnpaidQuotes] = useState<UnpaidQuote[]>([]);
   const [unpaidQuotesCount, setUnpaidQuotesCount] = useState(0);
@@ -126,9 +151,15 @@ export default function AccountsReceivable() {
   const [recentPaymentsCount, setRecentPaymentsCount] = useState(0);
   const [overdueQuotes, setOverdueQuotes] = useState<OverdueQuote[]>([]);
   const [overdueCount, setOverdueCount] = useState(0);
+  const [arInvoices, setARInvoices] = useState<ARInvoice[]>([]);
+  const [arInvoicesCount, setARInvoicesCount] = useState(0);
 
   // Actions menu
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Record Payment Modal state
+  const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
+  const [selectedARRecord, setSelectedARRecord] = useState<ARInvoice | null>(null);
 
   // Fetch summary stats
   const fetchStats = async () => {
@@ -192,6 +223,26 @@ export default function AccountsReceivable() {
 
       if (overdueErr) throw overdueErr;
 
+      // Fetch AR invoices (unpaid or partial from accounts_receivable table)
+      const { data: arData, error: arErr } = await supabase
+        .from("accounts_receivable")
+        .select("id, amount_due, original_amount, amount_paid, status")
+        .in("status", ["pending", "partial", "unpaid"]);
+
+      if (arErr) throw arErr;
+
+      // Calculate AR totals - use amount_due or (original_amount - amount_paid)
+      let arTotal = 0;
+      (arData || []).forEach((ar: { amount_due?: number; original_amount?: number; amount_paid?: number }) => {
+        if (ar.amount_due !== undefined && ar.amount_due !== null) {
+          arTotal += ar.amount_due;
+        } else {
+          const originalAmt = ar.original_amount || 0;
+          const paidAmt = ar.amount_paid || 0;
+          arTotal += originalAmt - paidAmt;
+        }
+      });
+
       const awaitingTotal = (awaitingQuotes || []).reduce(
         (sum, q) => sum + (q.total || 0),
         0
@@ -203,7 +254,7 @@ export default function AccountsReceivable() {
       );
 
       setStats({
-        totalOutstanding: awaitingTotal + balanceDueTotal,
+        totalOutstanding: awaitingTotal + balanceDueTotal + arTotal,
         awaitingPayment: awaitingTotal,
         awaitingPaymentCount: awaitingQuotes?.length || 0,
         balanceDue: balanceDueTotal,
@@ -211,6 +262,8 @@ export default function AccountsReceivable() {
         collectedThisMonth,
         overdueCount: overdueData?.length || 0,
         overdueAmount,
+        arInvoicesCount: arData?.length || 0,
+        arInvoicesAmount: arTotal,
       });
     } catch (error) {
       console.error("Error fetching stats:", error);
@@ -471,6 +524,86 @@ export default function AccountsReceivable() {
     }
   };
 
+  // Fetch AR invoices
+  const fetchARInvoices = async () => {
+    const from = (page - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    const now = new Date();
+
+    try {
+      let query = supabase
+        .from("accounts_receivable")
+        .select(
+          `
+          id,
+          order_id,
+          customer_id,
+          amount_due,
+          original_amount,
+          amount_paid,
+          due_date,
+          status,
+          created_at,
+          orders!inner(order_number),
+          customers!inner(id, full_name, email)
+        `,
+          { count: "exact" }
+        )
+        .in("status", ["pending", "partial", "unpaid"]);
+
+      if (search) {
+        query = query.or(
+          `orders.order_number.ilike.%${search}%,customers.email.ilike.%${search}%,customers.full_name.ilike.%${search}%`
+        );
+      }
+      if (dateFrom) {
+        query = query.gte("created_at", dateFrom);
+      }
+      if (dateTo) {
+        query = query.lte("created_at", dateTo + "T23:59:59");
+      }
+
+      query = query.order("due_date", { ascending: true }).range(from, to);
+
+      const { data, count, error } = await query;
+
+      if (error) throw error;
+
+      const transformed = (data || []).map((ar: any) => {
+        // Calculate original amount and balance due
+        const originalAmount = ar.original_amount || ar.amount_due || 0;
+        const amountPaid = ar.amount_paid || 0;
+        const balanceDue = originalAmount - amountPaid;
+        const dueDate = ar.due_date ? parseISO(ar.due_date) : null;
+        const isOverdue = dueDate ? isAfter(now, dueDate) : false;
+        const daysUntilDue = dueDate ? differenceInDays(dueDate, now) : 0;
+
+        return {
+          id: ar.id,
+          order_id: ar.order_id,
+          order_number: ar.orders?.order_number || "",
+          customer_id: ar.customer_id,
+          customer_name: ar.customers?.full_name || "",
+          customer_email: ar.customers?.email || "",
+          original_amount: originalAmount,
+          amount_paid: amountPaid,
+          balance_due: balanceDue,
+          due_date: ar.due_date,
+          status: ar.status,
+          created_at: ar.created_at,
+          days_until_due: daysUntilDue,
+          is_overdue: isOverdue,
+        };
+      });
+
+      setARInvoices(transformed);
+      setARInvoicesCount(count || 0);
+    } catch (error) {
+      console.error("Error fetching AR invoices:", error);
+      toast.error("Failed to load AR invoices");
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     await fetchStats();
@@ -481,6 +614,9 @@ export default function AccountsReceivable() {
         break;
       case "balance_due":
         await fetchBalanceDueOrders();
+        break;
+      case "ar_invoices":
+        await fetchARInvoices();
         break;
       case "payments":
         await fetchRecentPayments();
@@ -545,6 +681,8 @@ export default function AccountsReceivable() {
         return unpaidQuotesCount;
       case "balance_due":
         return balanceDueCount;
+      case "ar_invoices":
+        return arInvoicesCount;
       case "payments":
         return recentPaymentsCount;
       case "overdue":
@@ -719,6 +857,21 @@ export default function AccountsReceivable() {
               <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">
                 {stats.balanceDueCount}
               </span>
+            </button>
+            <button
+              onClick={() => setTab("ar_invoices")}
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "ar_invoices"
+                  ? "border-teal-500 text-teal-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              AR Invoices
+              {stats.arInvoicesCount > 0 && (
+                <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">
+                  {stats.arInvoicesCount}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setTab("payments")}
@@ -1119,6 +1272,167 @@ export default function AccountsReceivable() {
                 </table>
               )}
 
+              {/* AR Invoices Tab */}
+              {activeTab === "ar_invoices" && (
+                <table className="w-full min-w-[640px]">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Order
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Customer
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Original
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Paid
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Balance
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Due Date
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {arInvoices.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                          No AR invoices found
+                        </td>
+                      </tr>
+                    ) : (
+                      arInvoices.map((ar) => (
+                        <tr key={ar.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <Link
+                              to={`/admin/orders/${ar.order_id}`}
+                              className="text-sm font-semibold text-gray-900 font-mono hover:text-teal-600"
+                            >
+                              {ar.order_number}
+                            </Link>
+                            <p className="text-xs text-gray-500">
+                              {format(parseISO(ar.created_at), "MMM d, yyyy")}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <Link
+                              to={`/admin/customers/${ar.customer_id}`}
+                              className="block hover:text-teal-600"
+                            >
+                              <p className="text-sm font-medium text-gray-900">
+                                {ar.customer_name || "—"}
+                              </p>
+                              <p className="text-xs text-gray-500">{ar.customer_email}</p>
+                            </Link>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <p className="text-sm text-gray-700 tabular-nums">
+                              ${ar.original_amount.toFixed(2)}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <p className="text-sm text-green-600 tabular-nums">
+                              ${ar.amount_paid.toFixed(2)}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <p className="text-sm font-semibold text-amber-600 tabular-nums">
+                              ${ar.balance_due.toFixed(2)}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3">
+                            {ar.due_date ? (
+                              <>
+                                <p className="text-sm text-gray-700">
+                                  {format(parseISO(ar.due_date), "MMM d, yyyy")}
+                                </p>
+                                <p
+                                  className={`text-xs ${
+                                    ar.is_overdue
+                                      ? "text-red-600 font-medium"
+                                      : ar.days_until_due <= 7
+                                        ? "text-amber-600"
+                                        : "text-gray-500"
+                                  }`}
+                                >
+                                  {ar.is_overdue
+                                    ? `${Math.abs(ar.days_until_due)} days overdue`
+                                    : `${ar.days_until_due} days left`}
+                                </p>
+                              </>
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <ARStatusBadge status={ar.status} isOverdue={ar.is_overdue} />
+                          </td>
+                          <td className="px-4 py-3 text-center relative">
+                            <button
+                              onClick={() =>
+                                setOpenMenuId(openMenuId === ar.id ? null : ar.id)
+                              }
+                              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                              <MoreVertical className="w-4 h-4 text-gray-600" />
+                            </button>
+                            {openMenuId === ar.id && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-10"
+                                  onClick={() => setOpenMenuId(null)}
+                                />
+                                <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                  <Link
+                                    to={`/admin/orders/${ar.order_id}`}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    onClick={() => setOpenMenuId(null)}
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                    View Order
+                                  </Link>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedARRecord(ar);
+                                      setShowRecordPaymentModal(true);
+                                      setOpenMenuId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-teal-700 hover:bg-teal-50"
+                                  >
+                                    <DollarSign className="w-4 h-4" />
+                                    Record Payment
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      toast.info("Payment reminder feature coming soon");
+                                      setOpenMenuId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    <Send className="w-4 h-4" />
+                                    Send Reminder
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
+
               {/* Recent Payments Tab */}
               {activeTab === "payments" && (
                 <table className="w-full min-w-[640px]">
@@ -1367,6 +1681,23 @@ export default function AccountsReceivable() {
           </div>
         )}
       </div>
+
+      {/* Record Payment Modal */}
+      {showRecordPaymentModal && selectedARRecord && (
+        <RecordARPaymentModal
+          isOpen={showRecordPaymentModal}
+          onClose={() => {
+            setShowRecordPaymentModal(false);
+            setSelectedARRecord(null);
+          }}
+          arRecord={selectedARRecord}
+          staffId={staffUser?.id || ""}
+          onSuccess={() => {
+            fetchARInvoices();
+            fetchStats();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1403,6 +1734,40 @@ function PaymentStatusBadge({ status }: { status: string }) {
     >
       {icon}
       {status}
+    </span>
+  );
+}
+
+// AR Status Badge
+function ARStatusBadge({ status, isOverdue }: { status: string; isOverdue: boolean }) {
+  let style = "bg-gray-100 text-gray-700";
+  let icon: React.ReactNode = null;
+  let label = status;
+
+  if (status === "paid") {
+    style = "bg-green-100 text-green-700";
+    icon = <CheckCircle className="w-3 h-3" />;
+    label = "Paid";
+  } else if (isOverdue) {
+    style = "bg-red-100 text-red-700";
+    icon = <AlertTriangle className="w-3 h-3" />;
+    label = "Overdue";
+  } else if (status === "partial") {
+    style = "bg-blue-100 text-blue-700";
+    icon = <DollarSign className="w-3 h-3" />;
+    label = "Partial";
+  } else if (status === "pending" || status === "unpaid") {
+    style = "bg-amber-100 text-amber-700";
+    icon = <Clock className="w-3 h-3" />;
+    label = "Unpaid";
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${style}`}
+    >
+      {icon}
+      {label}
     </span>
   );
 }
