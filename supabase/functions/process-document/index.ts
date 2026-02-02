@@ -133,6 +133,30 @@ serve(async (req) => {
       `📁 [PROCESS-DOCUMENT] Found ${filesToProcess.length} files to process`,
     );
 
+    // Fetch default certification (Oath Commissioner) for new analysis results
+    let defaultCertificationId: string | null = null;
+    let defaultCertificationPrice = 0;
+    const { data: certTypes } = await supabaseAdmin
+      .from("certification_types")
+      .select("id, name, price")
+      .eq("is_active", true)
+      .order("sort_order");
+
+    if (certTypes && certTypes.length > 0) {
+      // First look for is_default, then fall back to "Oath Commissioner" by name
+      const defaultCert = certTypes.find((c: any) => c.is_default);
+      const oathCert = certTypes.find((c: any) =>
+        c.name.toLowerCase().includes("oath") ||
+        c.name.toLowerCase().includes("commissioner")
+      );
+      const certToUse = defaultCert || oathCert;
+      if (certToUse) {
+        defaultCertificationId = certToUse.id;
+        defaultCertificationPrice = certToUse.price || 0;
+        console.log(`🏷️ [PROCESS-DOCUMENT] Using default certification: ${certToUse.name}`);
+      }
+    }
+
     // Process each file
     const results: ProcessingResult[] = [];
 
@@ -187,6 +211,8 @@ serve(async (req) => {
               word_count: analysis.wordCount,
               page_count: analysis.pageCount,
               assessed_complexity: analysis.complexity,
+              certification_type_id: defaultCertificationId,
+              certification_price: defaultCertificationPrice,
               processing_status: "completed",
               processed_at: now,
               created_at: now,

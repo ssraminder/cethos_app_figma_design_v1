@@ -28,6 +28,8 @@ import {
   Sparkles,
   Info,
   Pencil,
+  Eye,
+  Download,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -57,6 +59,7 @@ interface QuoteFile {
 interface UploadedQuoteFile {
   id: string;
   original_filename: string;
+  storage_path: string;
   file_size: number;
   mime_type: string;
   ai_processing_status: string | null;
@@ -539,6 +542,7 @@ export default function StaffFileUploadForm({
       .select(`
         id,
         original_filename,
+        storage_path,
         file_size,
         mime_type,
         ai_processing_status,
@@ -595,8 +599,18 @@ export default function StaffFileUploadForm({
       if (docTypesRes.data) setDocumentTypes(docTypesRes.data);
       if (certTypesRes.data) {
         setCertificationTypes(certTypesRes.data);
+        // Find default certification: first check is_default flag, then look for "Oath Commissioner"
         const defaultCert = certTypesRes.data.find((c) => c.is_default);
-        if (defaultCert) setSelectedCertificationId(defaultCert.id);
+        if (defaultCert) {
+          setSelectedCertificationId(defaultCert.id);
+        } else {
+          // Fallback to "Oath Commissioner" if no is_default flag set
+          const oathCommissioner = certTypesRes.data.find((c) =>
+            c.name.toLowerCase().includes("oath") ||
+            c.name.toLowerCase().includes("commissioner")
+          );
+          if (oathCommissioner) setSelectedCertificationId(oathCommissioner.id);
+        }
       }
     } catch (error: any) {
       // Ignore abort errors - they're expected when component unmounts
@@ -1641,6 +1655,134 @@ export default function StaffFileUploadForm({
   // RENDER
   // ============================================================================
 
+  // ============================================================================
+  // FILE PREVIEW & DOWNLOAD HANDLERS
+  // ============================================================================
+
+  const handlePreviewFile = async (file: UploadedQuoteFile) => {
+    if (!file.storage_path) {
+      toast.error("File not available for preview");
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.storage
+        .from("quote-files")
+        .createSignedUrl(file.storage_path, 3600); // 1 hour expiry
+
+      if (error) throw error;
+
+      window.open(data.signedUrl, "_blank");
+    } catch (error) {
+      console.error("Preview error:", error);
+      toast.error("Failed to preview file");
+    }
+  };
+
+  const handleDownloadFile = async (file: UploadedQuoteFile) => {
+    if (!file.storage_path) {
+      toast.error("File not available for download");
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.storage
+        .from("quote-files")
+        .createSignedUrl(file.storage_path, 3600, {
+          download: file.original_filename || "document",
+        });
+
+      if (error) throw error;
+
+      // Trigger download
+      const link = document.createElement("a");
+      link.href = data.signedUrl;
+      link.download = file.original_filename || "document";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Download error:", error);
+      toast.error("Failed to download file");
+    }
+  };
+
+  const handlePreviewAnalysis = async (analysis: AnalysisResult) => {
+    if (!analysis.quote_file_id) {
+      toast.error("No file associated with this analysis");
+      return;
+    }
+
+    try {
+      // Get file info
+      const { data: file, error: fileError } = await supabase
+        .from("quote_files")
+        .select("storage_path")
+        .eq("id", analysis.quote_file_id)
+        .single();
+
+      if (fileError) throw fileError;
+      if (!file?.storage_path) {
+        toast.error("File not found");
+        return;
+      }
+
+      // Get signed URL
+      const { data, error } = await supabase.storage
+        .from("quote-files")
+        .createSignedUrl(file.storage_path, 3600);
+
+      if (error) throw error;
+
+      window.open(data.signedUrl, "_blank");
+    } catch (error) {
+      console.error("Preview error:", error);
+      toast.error("Failed to preview file");
+    }
+  };
+
+  const handleDownloadAnalysis = async (analysis: AnalysisResult) => {
+    if (!analysis.quote_file_id) {
+      toast.error("No file associated with this analysis");
+      return;
+    }
+
+    try {
+      // Get file info
+      const { data: file, error: fileError } = await supabase
+        .from("quote_files")
+        .select("storage_path, original_filename")
+        .eq("id", analysis.quote_file_id)
+        .single();
+
+      if (fileError) throw fileError;
+      if (!file?.storage_path) {
+        toast.error("File not found");
+        return;
+      }
+
+      // Get signed URL for download
+      const { data, error } = await supabase.storage
+        .from("quote-files")
+        .createSignedUrl(file.storage_path, 3600, {
+          download: file.original_filename || "document",
+        });
+
+      if (error) throw error;
+
+      // Trigger download
+      const link = document.createElement("a");
+      link.href = data.signedUrl;
+      link.download = file.original_filename || "document";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Download error:", error);
+      toast.error("Failed to download file");
+    }
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
@@ -1949,8 +2091,30 @@ export default function StaffFileUploadForm({
                         )}
                       </div>
 
-                      {/* File Icon & Name */}
-                      <FileText className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                      {/* Preview Thumbnail Button */}
+                      <button
+                        onClick={() => handlePreviewFile(file)}
+                        className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center hover:bg-gray-200 transition-colors flex-shrink-0 border border-gray-200"
+                        title="Click to preview"
+                      >
+                        {file.mime_type?.startsWith("image/") ? (
+                          <img
+                            src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${file.storage_path}`}
+                            alt={file.original_filename}
+                            className="w-full h-full object-cover rounded-lg"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                              (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden");
+                            }}
+                          />
+                        ) : file.mime_type === "application/pdf" ? (
+                          <FileText className="w-5 h-5 text-red-500" />
+                        ) : (
+                          <FileText className="w-5 h-5 text-gray-400" />
+                        )}
+                      </button>
+
+                      {/* File Name */}
                       <span className="text-sm font-medium text-gray-900 truncate flex-1">
                         {file.original_filename}
                       </span>
@@ -2421,6 +2585,25 @@ export default function StaffFileUploadForm({
                   <div className="flex items-center gap-2">
                     {!isEditing && (
                       <>
+                        {/* Preview & Download - only show if there's a file */}
+                        {analysis.quote_file_id && (
+                          <>
+                            <button
+                              onClick={() => handlePreviewAnalysis(analysis)}
+                              className="px-3 py-1.5 text-xs bg-gray-50 text-gray-700 rounded hover:bg-gray-100 flex items-center gap-1 border border-gray-200"
+                            >
+                              <Eye className="w-3 h-3 text-blue-500" />
+                              Preview
+                            </button>
+                            <button
+                              onClick={() => handleDownloadAnalysis(analysis)}
+                              className="px-3 py-1.5 text-xs bg-gray-50 text-gray-700 rounded hover:bg-gray-100 flex items-center gap-1 border border-gray-200"
+                            >
+                              <Download className="w-3 h-3 text-green-500" />
+                              Download
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => startEditAnalysis(analysis)}
                           className="px-3 py-1.5 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100 flex items-center gap-1"
@@ -2687,7 +2870,7 @@ export default function StaffFileUploadForm({
                         </select>
                       ) : (
                         <p className="font-medium text-gray-900">
-                          {currentCert ? `${currentCert.name} - $${Number(currentCert.price).toFixed(2)}` : "No certification"}
+                          {currentCert ? `${currentCert.name} - $${Number(currentCert.price).toFixed(2)}` : "Oath Commissioner - $0.00"}
                         </p>
                       )}
                     </div>
@@ -2733,7 +2916,7 @@ export default function StaffFileUploadForm({
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Current Certification:</p>
                     <p className="font-semibold text-gray-900">
-                      {certificationTypes.find((c) => c.id === selectedCertificationId)?.name || "Not Set"}
+                      {certificationTypes.find((c) => c.id === selectedCertificationId)?.name || "Oath Commissioner"}
                     </p>
                     {selectedCertificationId && (
                       <p className="text-sm text-purple-700 mt-1">
