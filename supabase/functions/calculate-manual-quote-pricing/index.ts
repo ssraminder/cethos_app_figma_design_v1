@@ -7,6 +7,50 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Pricing calculation constants
+const BASE_RATE_PER_PAGE = 65.00;
+
+/**
+ * Round a number UP to the next $2.50 increment
+ * Examples: 58.50 → 60.00, 65.00 → 65.00, 78.00 → 80.00, 91.00 → 92.50
+ */
+const roundToNext250 = (amount: number): number => {
+  return Math.ceil(amount / 2.50) * 2.50;
+};
+
+/**
+ * Calculate per-page rate based on language multiplier
+ * @param multiplier - Language tier multiplier (e.g., 0.9, 1.0, 1.2, 1.4)
+ * @param baseRate - Base rate per page (defaults to $65.00)
+ * @returns Per-page rate rounded to next $2.50
+ */
+const calculatePerPageRate = (
+  multiplier: number = 1.0,
+  baseRate: number = BASE_RATE_PER_PAGE
+): number => {
+  const rawRate = baseRate * multiplier;
+  return roundToNext250(rawRate);
+};
+
+/**
+ * Calculate line total for a document
+ * @param billablePages - Number of billable pages
+ * @param multiplier - Language tier multiplier
+ * @param complexityMultiplier - Complexity multiplier (1.0, 1.15, 1.25)
+ * @param baseRate - Base rate per page
+ * @returns Line total rounded to 2 decimal places
+ */
+const calculateLineTotal = (
+  billablePages: number,
+  multiplier: number = 1.0,
+  complexityMultiplier: number = 1.0,
+  baseRate: number = BASE_RATE_PER_PAGE
+): number => {
+  const perPageRate = calculatePerPageRate(multiplier, baseRate);
+  const total = billablePages * perPageRate * complexityMultiplier;
+  return Math.round(total * 100) / 100;
+};
+
 interface PricingData {
   billablePages: number;
   sourceLanguageId: string;
@@ -152,25 +196,25 @@ serve(async (req) => {
         deliveryFee = manualOverride.deliveryFee ?? deliveryFee;
       } else if (pricingData) {
         // Calculate from pricing data
-        // Get language pricing tier
+        // Get language multiplier
         const { data: language } = await supabaseAdmin
           .from("languages")
-          .select("pricing_tier")
+          .select("multiplier, pricing_tier")
           .eq("id", pricingData.targetLanguageId)
           .single();
 
-        const pricingTier = language?.pricing_tier || "tier_1";
+        const languageMultiplier = language?.multiplier || 1.0;
 
         // Get base rate from settings
         const { data: baseRateSetting } = await supabaseAdmin
           .from("app_settings")
           .select("setting_value")
-          .eq("setting_key", `base_rate_${pricingTier}`)
+          .eq("setting_key", "base_rate")
           .single();
 
         const baseRate = baseRateSetting?.setting_value
           ? parseFloat(baseRateSetting.setting_value)
-          : 65.0;
+          : BASE_RATE_PER_PAGE;
 
         // Get complexity multiplier
         const complexityMultipliers: Record<string, number> = {
@@ -181,9 +225,13 @@ serve(async (req) => {
         const complexityMultiplier =
           complexityMultipliers[pricingData.complexity] || 1.0;
 
-        // Calculate translation total
-        translationTotal =
-          pricingData.billablePages * baseRate * complexityMultiplier;
+        // Calculate translation total using consistent per-page rate (rounded to next $2.50)
+        translationTotal = calculateLineTotal(
+          pricingData.billablePages,
+          languageMultiplier,
+          complexityMultiplier,
+          baseRate
+        );
 
         // Calculate certification total
         if (pricingData.certificationTypeIds.length > 0) {

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { calculatePerPageRate, calculateLineTotal, formatCurrency, getPricingBreakdown } from "@/utils/pricing";
 
 interface QuoteFile {
   id: string;
@@ -294,6 +295,24 @@ export default function ManualEntryModal({
     }
   }, [settings, pages.length]); // Added pages.length as dependency
 
+  // Get selected language multiplier
+  const selectedLanguageMultiplier = useMemo(() => {
+    const lang = languages.find((l) => l.id === selectedLanguageId);
+    return lang?.multiplier || 1.0;
+  }, [languages, selectedLanguageId]);
+
+  // Get per-page rate based on language multiplier (rounded to next $2.50)
+  const perPageRate = useMemo(() => {
+    if (!settings) return 0;
+    return calculatePerPageRate(selectedLanguageMultiplier, settings.baseRate);
+  }, [settings, selectedLanguageMultiplier]);
+
+  // Get pricing breakdown text for display
+  const pricingBreakdown = useMemo(() => {
+    if (!settings) return null;
+    return getPricingBreakdown(selectedLanguageMultiplier, settings.baseRate);
+  }, [settings, selectedLanguageMultiplier]);
+
   // Calculate document totals
   const calculatedTotals = useMemo((): CalculationResult | null => {
     if (!settings) return null;
@@ -316,9 +335,14 @@ export default function ManualEntryModal({
       totalBillablePages = Math.max(totalBillablePages, settings.minBillablePages);
     }
 
-    // Calculate costs
-    const translationCost =
-      Math.round(totalBillablePages * settings.baseRate * 100) / 100;
+    // Calculate costs using consistent per-page rate (rounded to next $2.50)
+    // Note: complexity is already factored into billablePages
+    const translationCost = calculateLineTotal(
+      totalBillablePages,
+      selectedLanguageMultiplier,
+      1.0, // complexity already in billable pages
+      settings.baseRate
+    );
     const lineTotal = translationCost + certPrice;
 
     return {
@@ -330,7 +354,7 @@ export default function ManualEntryModal({
       lineTotal,
       minApplied,
     };
-  }, [pages, selectedCertificationId, settings, certificationTypes]);
+  }, [pages, selectedCertificationId, settings, certificationTypes, selectedLanguageMultiplier]);
 
   // Page management functions
   const handleAddPage = () => {
@@ -762,18 +786,29 @@ export default function ManualEntryModal({
                   <hr className="my-2 border-gray-300" />
 
                   <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Per Page Rate:</span>
+                    <span className="font-semibold text-teal-600">
+                      {formatCurrency(perPageRate)}
+                    </span>
+                  </div>
+                  {pricingBreakdown && (
+                    <div className="text-xs text-gray-500 text-right -mt-1">
+                      {pricingBreakdown.breakdownText}
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
                     <span className="text-gray-600">
-                      Translation (${settings?.baseRate.toFixed(2)} ×{" "}
+                      Translation ({formatCurrency(perPageRate)} ×{" "}
                       {calculatedTotals?.totalBillablePages.toFixed(2)}):
                     </span>
                     <span className="font-medium text-gray-900">
-                      ${calculatedTotals?.translationCost.toFixed(2) || "0.00"}
+                      {formatCurrency(calculatedTotals?.translationCost || 0)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Certification:</span>
                     <span className="font-medium text-gray-900">
-                      ${calculatedTotals?.certificationCost.toFixed(2) || "0.00"}
+                      {formatCurrency(calculatedTotals?.certificationCost || 0)}
                     </span>
                   </div>
 
@@ -782,7 +817,7 @@ export default function ManualEntryModal({
                   <div className="flex justify-between text-lg font-bold">
                     <span className="text-gray-900">Line Total:</span>
                     <span className="text-green-600">
-                      ${calculatedTotals?.lineTotal.toFixed(2) || "0.00"}
+                      {formatCurrency(calculatedTotals?.lineTotal || 0)}
                     </span>
                   </div>
                 </div>

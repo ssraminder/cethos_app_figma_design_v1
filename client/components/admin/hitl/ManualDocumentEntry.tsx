@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Calculator, Save, AlertTriangle } from "lucide-react";
+import { calculatePerPageRate, calculateLineTotal, formatCurrency, getPricingBreakdown } from "@/utils/pricing";
 
 interface ManualDocumentEntryProps {
   quoteFileId: string;
@@ -101,11 +102,13 @@ export default function ManualDocumentEntry({
     );
     const languageMultiplier = selectedLanguage?.multiplier || 1.0;
 
-    const translationCost =
-      (formData.billable_pages || 0) *
-      settings.base_rate *
-      languageMultiplier *
-      (formData.complexity_multiplier || 1.0);
+    // Use consistent per-page rate calculation (rounded to next $2.50)
+    const translationCost = calculateLineTotal(
+      formData.billable_pages || 0,
+      languageMultiplier,
+      formData.complexity_multiplier || 1.0,
+      settings.base_rate
+    );
 
     const certificationCost =
       (formData.certification_price || 0) * (formData.page_count || 1);
@@ -119,6 +122,22 @@ export default function ManualDocumentEntry({
 
     setTimeout(() => setCalculating(false), 300);
   };
+
+  // Computed per-page rate for display
+  const perPageRate = useMemo(() => {
+    const selectedLanguage = languages.find(
+      (l) => l.id === formData.detected_language,
+    );
+    return calculatePerPageRate(selectedLanguage?.multiplier || 1.0, settings.base_rate);
+  }, [formData.detected_language, languages, settings.base_rate]);
+
+  // Pricing breakdown for display
+  const pricingBreakdown = useMemo(() => {
+    const selectedLanguage = languages.find(
+      (l) => l.id === formData.detected_language,
+    );
+    return getPricingBreakdown(selectedLanguage?.multiplier || 1.0, settings.base_rate);
+  }, [formData.detected_language, languages, settings.base_rate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -339,8 +358,11 @@ export default function ManualDocumentEntry({
           </div>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-600">Base Rate:</span>
-              <span className="text-gray-900">${settings.base_rate}/page</span>
+              <span className="text-gray-600">Per Page Rate:</span>
+              <span className="text-teal-700 font-medium">{formatCurrency(perPageRate)}/page</span>
+            </div>
+            <div className="text-xs text-gray-500 -mt-1 text-right">
+              {pricingBreakdown.breakdownText}
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Billable Pages:</span>
