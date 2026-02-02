@@ -170,33 +170,36 @@
     }
   }
 
-  /* Prevent horizontal overflow that can cause zoom issues */
+  /* ============================================
+     SCROLL & OVERFLOW FIX
+     Consolidated html/body styles to prevent conflicts
+     ============================================ */
   html {
     overflow-x: hidden;
-    overflow-y: visible;
+    overflow-y: scroll !important;
     max-width: 100%;
-  }
-
-  body {
-    overflow-x: hidden;
-    overflow-y: auto;
-    max-width: 100%;
-  }
-
-  /* Prevent pull-to-refresh interfering with scrollable content */
-  body {
-    overscroll-behavior-y: contain;
-  }
-
-  /* Prevent text size adjustment on orientation change */
-  html {
+    height: auto;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+  }
+
+  body {
+    overflow-x: hidden;
+    overflow-y: auto !important;
+    max-width: 100%;
+    min-height: 100vh;
+    overscroll-behavior-y: contain;
   }
 
   /* Smooth touch interactions and disable tap highlight */
   * {
     -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
+  }
+
+  /* Only apply touch-action on mobile to avoid scroll issues on desktop */
+  @media (pointer: coarse) {
+    * {
+      touch-action: manipulation;
+    }
   }
 }
