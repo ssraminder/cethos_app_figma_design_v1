@@ -406,13 +406,12 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
       case 1: // Upload
         return state.files.length > 0;
 
-      case 2: // Details
+      case 2: // Details - countryId is OPTIONAL
         return !!(
           state.sourceLanguageId &&
           state.targetLanguageId &&
           state.sourceLanguageId !== state.targetLanguageId &&
-          state.intendedUseId &&
-          state.countryId
+          state.intendedUseId
         );
 
       case 3: // Contact
