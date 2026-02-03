@@ -144,6 +144,32 @@ serve(async (req) => {
 
     console.log("Order created:", orderNumber);
 
+    // 4b. Send internal notification for new order (fire and forget)
+    try {
+      const notifyResponse = await fetch(
+        `${supabaseUrl}/functions/v1/send-internal-notification`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            type: "new_order",
+            orderId: order.id,
+          }),
+        }
+      );
+      if (notifyResponse.ok) {
+        console.log("Internal order notification sent");
+      } else {
+        console.error("Failed to send order notification:", await notifyResponse.text());
+      }
+    } catch (notifyErr) {
+      // Don't block on notification failure
+      console.error("Error sending order notification:", notifyErr);
+    }
+
     // 5. Create payment record
     const { error: paymentError } = await supabase.from("payments").insert({
       order_id: order.id,
