@@ -92,11 +92,12 @@ export function useDocumentFlow(quoteId: string, mode: EditorMode) {
 
     try {
       // Fetch files with analysis and pages
+      // Note: Must specify foreign key explicitly due to multiple relationships
       const { data: filesData, error: filesError } = await supabase
         .from('quote_files')
         .select(`
           *,
-          file_category:file_categories(*),
+          file_category:file_categories!quote_files_file_category_id_fkey(*),
           analysis:ai_analysis_results(*),
           pages:quote_pages(*)
         `)
