@@ -27,11 +27,11 @@ export default function Step2Details() {
     []
   );
 
-  // NEW: State for "Other" intended use
+  // State for "Other" intended use
   const [showOtherInput, setShowOtherInput] = useState(false);
   const [otherIntendedUse, setOtherIntendedUse] = useState(state.otherIntendedUse || "");
 
-  // NEW: State for language tier and calculated rate
+  // State for language tier and calculated rate
   const [languageInfo, setLanguageInfo] = useState<{
     tier: number;
     multiplier: number;
@@ -116,26 +116,37 @@ export default function Step2Details() {
     ];
   }, [countries]);
 
-  // NEW: Fetch base rate from app_settings
+  // Fetch base rate from app_settings
   useEffect(() => {
     const fetchBaseRate = async () => {
       if (!supabase) return;
 
-      const { data } = await supabase
-        .from("app_settings")
-        .select("setting_value")
-        .eq("setting_key", "base_rate")
-        .single();
+      try {
+        // Use maybeSingle() to avoid error if no row found
+        const { data, error } = await supabase
+          .from("app_settings")
+          .select("setting_value")
+          .eq("setting_key", "base_rate")
+          .maybeSingle();
 
-      if (data?.setting_value) {
-        setBaseRate(parseFloat(data.setting_value) || 65);
+        if (error) {
+          console.warn("Could not fetch base_rate from app_settings:", error.message);
+          // Keep default of 65
+          return;
+        }
+
+        if (data?.setting_value) {
+          setBaseRate(parseFloat(data.setting_value) || 65);
+        }
+      } catch (err) {
+        console.warn("Error fetching base rate:", err);
       }
     };
 
     fetchBaseRate();
   }, []);
 
-  // NEW: Fetch language tier and multiplier when source language changes
+  // Fetch language tier and multiplier when source language changes
   useEffect(() => {
     const fetchLanguageInfo = async () => {
       if (!state.sourceLanguageId || !supabase) {
@@ -143,32 +154,41 @@ export default function Step2Details() {
         return;
       }
 
-      const { data: langData } = await supabase
-        .from("languages")
-        .select("tier, multiplier")
-        .eq("id", state.sourceLanguageId)
-        .single();
+      try {
+        const { data: langData, error } = await supabase
+          .from("languages")
+          .select("tier, multiplier")
+          .eq("id", state.sourceLanguageId)
+          .single();
 
-      if (langData) {
-        const tier = langData.tier || 1;
-        const multiplier = parseFloat(langData.multiplier) || 1.0;
-        
-        // Calculate effective rate: base_rate * multiplier, rounded up to nearest 2.5
-        const rawRate = baseRate * multiplier;
-        const effectiveRate = Math.ceil(rawRate / 2.5) * 2.5;
+        if (error) {
+          console.warn("Could not fetch language info:", error.message);
+          return;
+        }
 
-        setLanguageInfo({
-          tier,
-          multiplier,
-          effectiveRate,
-        });
+        if (langData) {
+          const tier = langData.tier || 1;
+          const multiplier = parseFloat(langData.multiplier) || 1.0;
+          
+          // Calculate effective rate: base_rate * multiplier, rounded up to nearest 2.5
+          const rawRate = baseRate * multiplier;
+          const effectiveRate = Math.ceil(rawRate / 2.5) * 2.5;
 
-        // Store in quote state for later use
-        updateState({
-          languageTier: tier,
-          languageMultiplier: multiplier,
-          effectiveRate: effectiveRate,
-        });
+          setLanguageInfo({
+            tier,
+            multiplier,
+            effectiveRate,
+          });
+
+          // Store in quote state for later use
+          updateState({
+            languageTier: tier,
+            languageMultiplier: multiplier,
+            effectiveRate: effectiveRate,
+          });
+        }
+      } catch (err) {
+        console.warn("Error fetching language info:", err);
       }
     };
 
@@ -361,7 +381,7 @@ export default function Step2Details() {
     const hasLanguages = state.sourceLanguageId && state.targetLanguageId;
     const hasIntendedUse = state.intendedUseId || (showOtherInput && otherIntendedUse.trim().length > 0);
     const hasProvince = !showProvinceDropdown || state.serviceProvince;
-    // Country is now OPTIONAL
+    // Country is OPTIONAL
     return hasLanguages && hasIntendedUse && hasProvince;
   }, [
     state.sourceLanguageId,
@@ -456,7 +476,7 @@ export default function Step2Details() {
             placeholder="Search or select source language..."
             required
           />
-          {/* NEW: Show language tier info */}
+          {/* Show language tier info */}
           {languageInfo && (
             <div className="mt-2 text-xs text-cethos-slate flex items-center gap-2">
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -464,7 +484,7 @@ export default function Step2Details() {
               </span>
               <span>
                 Rate: ${languageInfo.effectiveRate.toFixed(2)}/page
-                {languageInfo.multiplier > 1 && (
+                {languageInfo.multiplier !== 1 && (
                   <span className="text-gray-400 ml-1">
                     ({languageInfo.multiplier}x multiplier)
                   </span>
@@ -496,7 +516,7 @@ export default function Step2Details() {
             groupOrder={subcategoryOrder}
           />
 
-          {/* NEW: "Other" text input */}
+          {/* "Other" text input */}
           {showOtherInput && (
             <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
               <input
@@ -531,13 +551,13 @@ export default function Step2Details() {
           </div>
         )}
 
-        {/* Country of Issue - NOW OPTIONAL */}
+        {/* Country of Issue - OPTIONAL */}
         <SearchableDropdown
           options={countryOptions}
           value={state.countryId || ""}
           onChange={handleCountryChange}
-          label="Country where document was issued"
-          placeholder="Search or select country (optional)..."
+          label="Country where document was issued (Optional)"
+          placeholder="Search or select country..."
           required={false}
           groupOrder={["Common Countries", "All Countries"]}
         />
@@ -558,7 +578,7 @@ export default function Step2Details() {
             maxLength={500}
           />
           <div className="mt-2 text-xs text-cethos-slate text-right">
-            {state.specialInstructions.length}/500 characters
+            {state.specialInstructions?.length || 0}/500 characters
           </div>
         </div>
       </div>
