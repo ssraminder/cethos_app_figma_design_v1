@@ -1138,12 +1138,12 @@ export default function Step4ReviewRush() {
                     </span>
                   </div>
                 </div>
-                <div className="text-right ml-4">
-                  <p className="font-semibold text-gray-900">
+                <div className="text-right ml-4 flex-shrink-0">
+                  <p className="font-semibold text-gray-900 whitespace-nowrap">
                     ${parseFloat(doc.line_total).toFixed(2)}
                   </p>
                   {parseFloat(doc.certification_price) > 0 && (
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-gray-500 whitespace-nowrap">
                       +${parseFloat(doc.certification_price).toFixed(2)} cert
                     </p>
                   )}
@@ -1167,11 +1167,6 @@ export default function Step4ReviewRush() {
             </div>
             <div className="text-xs text-gray-500 ml-4 mt-0.5">
               {totalBillablePages.toFixed(1)} pages × ${effectiveRate.toFixed(2)} per page
-              {languageTier > 1 && (
-                <span className="ml-1 text-blue-600">
-                  (Tier {languageTier} - {languageMultiplier}x)
-                </span>
-              )}
             </div>
           </div>
           {totals.certificationTotal > 0 && (
