@@ -128,6 +128,7 @@ export const DocumentFlowEditor: React.FC<DocumentFlowEditorProps> = ({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No session');
 
+      // Step 1: Run AI analysis via process-document
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-document`,
         {
@@ -145,6 +146,54 @@ export const DocumentFlowEditor: React.FC<DocumentFlowEditorProps> = ({
         throw new Error(error.message || 'Analysis failed');
       }
 
+      // Step 2: Fetch the analysis result to get document type
+      const { data: analysisData } = await supabase
+        .from('ai_analysis_results')
+        .select('*')
+        .eq('quote_file_id', fileId)
+        .single();
+
+      // Step 3: Check if a group already exists for this file
+      const { data: existingAssignment } = await supabase
+        .from('quote_page_group_assignments')
+        .select('id')
+        .eq('file_id', fileId)
+        .maybeSingle();
+
+      // Step 4: Auto-create document group if none exists
+      if (!existingAssignment) {
+        const file = files.find(f => f.id === fileId);
+        const groupLabel = file?.original_filename?.replace(/\.[^/.]+$/, '') || 'Document';
+        const docType = analysisData?.detected_document_type || 'document';
+        const complexity = analysisData?.assessed_complexity || 'easy';
+
+        // Create group using RPC function
+        const { data: groupId, error: groupError } = await supabase
+          .rpc('create_document_group', {
+            p_quote_id: quoteId,
+            p_group_label: groupLabel,
+            p_document_type: docType,
+            p_complexity: complexity,
+            p_staff_id: staffId || null,
+          });
+
+        if (groupError) {
+          console.error('Error creating group:', groupError);
+        } else if (groupId) {
+          // Assign file to the group
+          const { error: assignError } = await supabase
+            .rpc('assign_file_to_group', {
+              p_group_id: groupId,
+              p_file_id: fileId,
+              p_staff_id: staffId || null,
+            });
+
+          if (assignError) {
+            console.error('Error assigning file to group:', assignError);
+          }
+        }
+      }
+
       toast.success('Analysis complete');
       await actions.fetchData();
     } catch (error) {
@@ -153,7 +202,7 @@ export const DocumentFlowEditor: React.FC<DocumentFlowEditorProps> = ({
     } finally {
       actions.setAnalyzing(fileId, false);
     }
-  }, [actions]);
+  }, [actions, files, quoteId, staffId]);
 
   // Handle manual entry
   const handleManualEntry = useCallback((fileId: string) => {
@@ -428,25 +477,30 @@ export const DocumentFlowEditor: React.FC<DocumentFlowEditorProps> = ({
             Files to Process ({translatableFiles.length})
           </h3>
           <div className="space-y-4">
-            {translatableFiles.map(file => (
-              <FileAccordion
-                key={file.id}
-                file={file}
-                documentTypes={documentTypes}
-                isExpanded={expandedFileId === file.id}
-                isAnalyzing={analyzingFileIds.has(file.id)}
-                isSubmitted={submittedFileIds.has(file.id)}
-                onToggleExpand={() => actions.setExpandedFile(
-                  expandedFileId === file.id ? null : file.id
-                )}
-                onAnalyze={() => handleAnalyze(file.id)}
-                onManualEntry={() => handleManualEntry(file.id)}
-                onSubmit={(groupings, isMulti, metadata) =>
-                  handleSubmitGroupings(file.id, groupings, isMulti, metadata)
-                }
-                readOnly={readOnly}
-              />
-            ))}
+            {translatableFiles.map(file => {
+              // Check if file has groups (was analyzed and auto-grouped)
+              const fileHasGroups = groups.some(g => g.source_file_id === file.id);
+              return (
+                <FileAccordion
+                  key={file.id}
+                  file={file}
+                  documentTypes={documentTypes}
+                  isExpanded={expandedFileId === file.id}
+                  isAnalyzing={analyzingFileIds.has(file.id)}
+                  isSubmitted={submittedFileIds.has(file.id)}
+                  hasGroups={fileHasGroups}
+                  onToggleExpand={() => actions.setExpandedFile(
+                    expandedFileId === file.id ? null : file.id
+                  )}
+                  onAnalyze={() => handleAnalyze(file.id)}
+                  onManualEntry={() => handleManualEntry(file.id)}
+                  onSubmit={(groupings, isMulti, metadata) =>
+                    handleSubmitGroupings(file.id, groupings, isMulti, metadata)
+                  }
+                  readOnly={readOnly}
+                />
+              );
+            })}
           </div>
         </div>
       )}

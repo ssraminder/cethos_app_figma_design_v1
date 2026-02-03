@@ -5,6 +5,7 @@ import {
   DocumentFlowAction,
   QuoteFile,
   DocumentGroup,
+  GroupPage,
   PricingSettings,
   DEFAULT_PRICING_SETTINGS,
   EditorMode,
@@ -173,7 +174,7 @@ export function useDocumentFlow(quoteId: string, mode: EditorMode) {
         : quoteData?.source_language;
       const languageMultiplier = sourceLanguage?.multiplier || 1.0;
 
-      // Fetch document groups with page assignments
+      // Fetch document groups with file/page assignments
       const { data: groupsData, error: groupsError } = await supabase
         .from('quote_document_groups')
         .select(`
@@ -182,7 +183,7 @@ export function useDocumentFlow(quoteId: string, mode: EditorMode) {
           page_assignments:quote_page_group_assignments(
             *,
             page:quote_pages(*),
-            file:quote_files(id, original_filename)
+            file:quote_files(id, original_filename, file_size, mime_type)
           )
         `)
         .eq('quote_id', quoteId)
@@ -193,6 +194,8 @@ export function useDocumentFlow(quoteId: string, mode: EditorMode) {
         // Don't throw - groups are optional, continue with empty array
       }
 
+      console.log('=== FETCHED GROUPS ===', groupsData);
+
       // Transform files data
       const files: QuoteFile[] = (filesData || []).map(f => ({
         ...f,
@@ -202,24 +205,67 @@ export function useDocumentFlow(quoteId: string, mode: EditorMode) {
 
       // Transform groups data to match DocumentGroup interface
       const groups: DocumentGroup[] = (groupsData || []).map(g => {
-        // Get source file info from first page assignment
-        const firstAssignment = g.page_assignments?.[0];
-        const sourceFile = firstAssignment?.file;
-        const sourceFilename = sourceFile?.original_filename ||
-          filesData?.find(f => f.id === firstAssignment?.file_id)?.original_filename ||
-          'Unknown';
+        // Get assignments - could be file-based or page-based
+        const assignments = g.page_assignments || [];
+        const firstAssignment = assignments[0];
 
-        // Build pages array from assignments
-        const pages = (g.page_assignments || [])
-          .filter((pa: any) => pa.page)
-          .map((pa: any) => ({
-            id: pa.page.id,
-            page_number: pa.page.page_number,
-            word_count: pa.word_count_override || pa.page.word_count || 0,
-            complexity: pa.page.complexity || g.complexity || 'easy',
-            complexity_multiplier: pa.page.complexity_multiplier || g.complexity_multiplier || 1.0,
-            billable_pages: pa.page.billable_pages || 0,
-          }));
+        // Determine source file from assignment (either file_id directly or via page)
+        let sourceFileId = '';
+        let sourceFilename = 'Unknown';
+
+        if (firstAssignment?.file_id && firstAssignment?.file) {
+          // File-based assignment
+          sourceFileId = firstAssignment.file_id;
+          sourceFilename = firstAssignment.file.original_filename || 'Unknown';
+        } else if (firstAssignment?.page?.quote_file_id) {
+          // Page-based assignment - get file from filesData
+          sourceFileId = firstAssignment.page.quote_file_id;
+          const fileInfo = filesData?.find(f => f.id === sourceFileId);
+          sourceFilename = fileInfo?.original_filename || 'Unknown';
+        } else if (firstAssignment?.file_id) {
+          // File ID without join - look it up in filesData
+          sourceFileId = firstAssignment.file_id;
+          const fileInfo = filesData?.find(f => f.id === sourceFileId);
+          sourceFilename = fileInfo?.original_filename || 'Unknown';
+        }
+
+        // Build pages array - handle both file and page assignments
+        const pages: GroupPage[] = [];
+
+        for (const pa of assignments) {
+          if (pa.page) {
+            // Page-based assignment
+            pages.push({
+              id: pa.page.id,
+              page_number: pa.page.page_number,
+              word_count: pa.word_count_override || pa.page.word_count || 0,
+              complexity: pa.page.complexity || g.complexity || 'easy',
+              complexity_multiplier: pa.page.complexity_multiplier || g.complexity_multiplier || 1.0,
+              billable_pages: pa.page.billable_pages || 0,
+            });
+          } else if (pa.file_id) {
+            // File-based assignment - create a synthetic "page" entry from analysis data
+            const fileAnalysis = filesData?.find(f => f.id === pa.file_id)?.analysis?.[0];
+            const pageCount = fileAnalysis?.page_count || g.total_pages || 1;
+
+            // For file assignments, show as a single entry with total info
+            pages.push({
+              id: pa.id, // Use assignment ID as page ID
+              page_number: pageCount === 1 ? 1 : 0, // 0 indicates "all pages"
+              word_count: pa.word_count_override || fileAnalysis?.word_count || g.total_word_count || 0,
+              complexity: g.complexity || fileAnalysis?.assessed_complexity || 'easy',
+              complexity_multiplier: g.complexity_multiplier || fileAnalysis?.complexity_multiplier || 1.0,
+              billable_pages: g.billable_pages || fileAnalysis?.billable_pages || 0,
+            });
+          }
+        }
+
+        // Calculate totals from group data (already calculated by DB trigger)
+        const totalWords = g.total_word_count || 0;
+        const billablePages = parseFloat(g.billable_pages) || 0;
+        const certPrice = g.certification_price || g.certification_type?.price || 0;
+        const lineTotal = parseFloat(g.line_total) || 0;
+        const translationCost = lineTotal - certPrice;
 
         return {
           id: g.id,
@@ -227,17 +273,17 @@ export function useDocumentFlow(quoteId: string, mode: EditorMode) {
           document_type: g.document_type || 'Unknown',
           holder_name: g.holder_name || null,
           country_of_issue: g.country_of_issue || null,
-          source_file_id: firstAssignment?.file_id || '',
+          source_file_id: sourceFileId,
           source_filename: sourceFilename,
-          page_ids: (g.page_assignments || []).map((pa: any) => pa.page_id).filter(Boolean),
+          page_ids: assignments.map((pa: any) => pa.page_id).filter(Boolean),
           pages,
           certification_type_id: g.certification_type_id || '',
           certification_name: g.certification_type?.name || 'Standard',
-          certification_price: g.certification_price || g.certification_type?.price || 0,
-          total_words: g.total_word_count || 0,
-          total_billable_pages: parseFloat(g.billable_pages) || 0,
-          translation_cost: parseFloat(g.line_total) - (g.certification_price || 0),
-          group_total: parseFloat(g.line_total) || 0,
+          certification_price: certPrice,
+          total_words: totalWords,
+          total_billable_pages: Math.max(billablePages, 1), // Minimum 1 billable page
+          translation_cost: translationCost,
+          group_total: lineTotal,
         };
       });
 

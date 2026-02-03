@@ -82,10 +82,12 @@ export const DocumentGroupCard: React.FC<DocumentGroupCardProps> = ({
             ) : (
               group.pages.map((page, idx) => (
                 <tr key={page.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="px-4 py-2">{page.page_number}</td>
-                  <td className="px-4 py-2">{page.word_count}</td>
+                  <td className="px-4 py-2">
+                    {page.page_number === 0 ? 'All' : page.page_number}
+                  </td>
+                  <td className="px-4 py-2">{page.word_count?.toLocaleString() ?? 0}</td>
                   <td className="px-4 py-2">×{page.complexity_multiplier?.toFixed(2) ?? '1.00'}</td>
-                  <td className="px-4 py-2">{page.billable_pages?.toFixed(2) ?? '0.00'}</td>
+                  <td className="px-4 py-2">{(typeof page.billable_pages === 'number' ? page.billable_pages : parseFloat(page.billable_pages as any) || 0).toFixed(2)}</td>
                 </tr>
               ))
             )}
