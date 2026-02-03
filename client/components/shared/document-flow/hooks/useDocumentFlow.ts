@@ -173,6 +173,26 @@ export function useDocumentFlow(quoteId: string, mode: EditorMode) {
         : quoteData?.source_language;
       const languageMultiplier = sourceLanguage?.multiplier || 1.0;
 
+      // Fetch document groups with page assignments
+      const { data: groupsData, error: groupsError } = await supabase
+        .from('quote_document_groups')
+        .select(`
+          *,
+          certification_type:certification_types(*),
+          page_assignments:quote_page_group_assignments(
+            *,
+            page:quote_pages(*),
+            file:quote_files(id, original_filename)
+          )
+        `)
+        .eq('quote_id', quoteId)
+        .order('group_number', { ascending: true });
+
+      if (groupsError) {
+        console.error('Error fetching groups:', groupsError);
+        // Don't throw - groups are optional, continue with empty array
+      }
+
       // Transform files data
       const files: QuoteFile[] = (filesData || []).map(f => ({
         ...f,
@@ -180,10 +200,52 @@ export function useDocumentFlow(quoteId: string, mode: EditorMode) {
         pages: f.pages || [],
       }));
 
+      // Transform groups data to match DocumentGroup interface
+      const groups: DocumentGroup[] = (groupsData || []).map(g => {
+        // Get source file info from first page assignment
+        const firstAssignment = g.page_assignments?.[0];
+        const sourceFile = firstAssignment?.file;
+        const sourceFilename = sourceFile?.original_filename ||
+          filesData?.find(f => f.id === firstAssignment?.file_id)?.original_filename ||
+          'Unknown';
+
+        // Build pages array from assignments
+        const pages = (g.page_assignments || [])
+          .filter((pa: any) => pa.page)
+          .map((pa: any) => ({
+            id: pa.page.id,
+            page_number: pa.page.page_number,
+            word_count: pa.word_count_override || pa.page.word_count || 0,
+            complexity: pa.page.complexity || g.complexity || 'easy',
+            complexity_multiplier: pa.page.complexity_multiplier || g.complexity_multiplier || 1.0,
+            billable_pages: pa.page.billable_pages || 0,
+          }));
+
+        return {
+          id: g.id,
+          name: g.group_label || `Document ${g.group_number}`,
+          document_type: g.document_type || 'Unknown',
+          holder_name: g.holder_name || null,
+          country_of_issue: g.country_of_issue || null,
+          source_file_id: firstAssignment?.file_id || '',
+          source_filename: sourceFilename,
+          page_ids: (g.page_assignments || []).map((pa: any) => pa.page_id).filter(Boolean),
+          pages,
+          certification_type_id: g.certification_type_id || '',
+          certification_name: g.certification_type?.name || 'Standard',
+          certification_price: g.certification_price || g.certification_type?.price || 0,
+          total_words: g.total_word_count || 0,
+          total_billable_pages: parseFloat(g.billable_pages) || 0,
+          translation_cost: parseFloat(g.line_total) - (g.certification_price || 0),
+          group_total: parseFloat(g.line_total) || 0,
+        };
+      });
+
       dispatch({
         type: 'SET_DATA',
         payload: {
           files,
+          groups,
           categories: categoriesData || [],
           certificationTypes: certTypesData || [],
           documentTypes: docTypesData || [],
