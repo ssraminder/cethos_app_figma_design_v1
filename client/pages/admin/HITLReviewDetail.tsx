@@ -44,6 +44,8 @@ import {
   CreateGroupModal,
   EditGroupModal,
   AssignItemsModal,
+  FileAccordion,
+  DocumentGroupsView,
 } from "../../components/admin/hitl";
 import type { DocumentGroup, AssignedItem } from "../../components/admin/hitl/DocumentGroupCard";
 import type { UnassignedItem } from "../../components/admin/hitl/AssignItemsModal";
@@ -360,6 +362,50 @@ const HITLReviewDetail: React.FC = () => {
 
   // Toggle for new unified document editor
   const [useUnifiedEditor, setUseUnifiedEditor] = useState(false);
+
+  // ============================================
+  // FILE ACCORDION FLOW STATE
+  // ============================================
+  interface FileAccordionData {
+    analysisResult?: AnalysisResult;
+    pages?: PageData[];
+    isAnalyzing: boolean;
+    isSubmitted: boolean;
+  }
+
+  interface DocumentGroupForView {
+    id: string;
+    name: string;
+    documentType: string;
+    holderName?: string;
+    countryOfIssue?: string;
+    sourceFile: string;
+    pages: Array<{
+      id: string;
+      pageNumber: number;
+      wordCount: number;
+      complexity: string;
+      complexityMultiplier: number;
+      billablePages: number;
+    }>;
+    certificationTypeId: string;
+    certificationName: string;
+    certificationPrice: number;
+  }
+
+  interface PageGrouping {
+    pageId: string;
+    groupId: string;
+  }
+
+  const [fileAccordionData, setFileAccordionData] = useState<
+    Record<string, FileAccordionData>
+  >({});
+  const [documentGroupsForView, setDocumentGroupsForView] = useState<
+    DocumentGroupForView[]
+  >([]);
+  const [showDocumentGroupsView, setShowDocumentGroupsView] = useState(false);
+  const [toTranslateCategoryId, setToTranslateCategoryId] = useState<string | null>(null);
 
   // ============================================
   // DATA FETCHING
@@ -3227,6 +3273,238 @@ const HITLReviewDetail: React.FC = () => {
   };
 
   // ============================================
+  // FILE ACCORDION FLOW HANDLERS
+  // ============================================
+
+  // Fetch the "to_translate" category ID on mount
+  useEffect(() => {
+    const fetchToTranslateCategory = async () => {
+      const { data } = await supabase
+        .from("file_categories")
+        .select("id")
+        .eq("slug", "to_translate")
+        .single();
+      if (data) {
+        setToTranslateCategoryId(data.id);
+      }
+    };
+    fetchToTranslateCategory();
+  }, []);
+
+  // Filter files to show in accordion (To Translate category only)
+  const translatableFiles = quoteFiles.filter(
+    (f: any) =>
+      f.category?.slug === "to_translate" ||
+      f.category_id === toTranslateCategoryId
+  );
+
+  // Handle AI analysis of a single file
+  const handleAnalyzeFile = async (fileId: string) => {
+    setFileAccordionData((prev) => ({
+      ...prev,
+      [fileId]: { ...prev[fileId], isAnalyzing: true, isSubmitted: false },
+    }));
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-document`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ fileId }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to analyze file");
+      }
+
+      // Refresh data to get analysis results
+      await fetchReviewData();
+
+      // Find the analysis result for this file
+      const updatedAnalysis = analysisResults.find(
+        (a) => a.quote_file_id === fileId
+      );
+      const updatedPages = pageData[fileId] || [];
+
+      setFileAccordionData((prev) => ({
+        ...prev,
+        [fileId]: {
+          ...prev[fileId],
+          analysisResult: updatedAnalysis,
+          pages: updatedPages,
+          isAnalyzing: false,
+        },
+      }));
+    } catch (error) {
+      console.error("Error analyzing file:", error);
+      toast.error("Failed to analyze file");
+      setFileAccordionData((prev) => ({
+        ...prev,
+        [fileId]: { ...prev[fileId], isAnalyzing: false },
+      }));
+    }
+  };
+
+  // Handle manual entry for a file
+  const handleManualEntryForFile = (fileId: string) => {
+    // Open the existing ManualEntryModal
+    // This would integrate with the existing manual entry flow
+    console.log("Opening manual entry for file:", fileId);
+    // TODO: Integrate with existing ManualEntryModal
+  };
+
+  // Handle submitting page groupings
+  const handleSubmitGroupings = async (
+    fileId: string,
+    groupings: PageGrouping[]
+  ) => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      // Save groupings via edge function
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-hitl-correction`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            reviewId,
+            correctionType: "page_groupings",
+            fileId,
+            groupings,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to save groupings");
+      }
+
+      // Mark file as submitted
+      setFileAccordionData((prev) => ({
+        ...prev,
+        [fileId]: { ...prev[fileId], isSubmitted: true },
+      }));
+
+      // Check if all files are submitted
+      const allSubmitted = translatableFiles.every(
+        (f: any) =>
+          fileAccordionData[f.id]?.isSubmitted || f.id === fileId
+      );
+
+      if (allSubmitted) {
+        // Fetch document groups and switch to DocumentGroupsView
+        await refreshDocumentGroups();
+        setShowDocumentGroupsView(true);
+      }
+
+      toast.success("Groupings saved successfully");
+    } catch (error) {
+      console.error("Error saving groupings:", error);
+      toast.error("Failed to save groupings");
+    }
+  };
+
+  // Handle re-analyzing a document group
+  const handleReanalyzeGroupForView = async (groupId: string) => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reanalyze-document-group`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ groupId }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to re-analyze group");
+      }
+
+      await refreshDocumentGroups();
+      toast.success("Group re-analyzed successfully");
+    } catch (error) {
+      console.error("Error re-analyzing group:", error);
+      toast.error("Failed to re-analyze group");
+    }
+  };
+
+  // Handle certification change for document group view
+  const handleCertificationChangeForView = async (
+    groupId: string,
+    certTypeId: string
+  ) => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      // Get the certification type details
+      const certType = certificationTypes.find((ct) => ct.id === certTypeId);
+      if (!certType) return;
+
+      // Update the group certification
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/document_groups?id=eq.${groupId}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            certification_type_id: certTypeId,
+            certification_price: certType.price,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update certification");
+      }
+
+      // Update local state
+      setDocumentGroupsForView((prev) =>
+        prev.map((g) =>
+          g.id === groupId
+            ? {
+                ...g,
+                certificationTypeId: certTypeId,
+                certificationName: certType.name,
+                certificationPrice: certType.price,
+              }
+            : g
+        )
+      );
+
+      // Refresh data to recalculate totals
+      await fetchReviewData();
+      toast.success("Certification updated");
+    } catch (error) {
+      console.error("Error updating certification:", error);
+      toast.error("Failed to update certification");
+    }
+  };
+
+  // ============================================
   // COMPUTED VALUES
   // ============================================
 
@@ -4584,6 +4862,60 @@ const HITLReviewDetail: React.FC = () => {
                     <p className="text-sm text-gray-500 mb-4">
                       Group pages/files that belong to the same logical document. Each group = 1 certification.
                     </p>
+
+                {/* New Document Flow: File Accordions */}
+                {translatableFiles.length > 0 && !showDocumentGroupsView && (
+                  <div className="space-y-4 mb-6">
+                    <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-teal-600" />
+                      Files to Analyze ({translatableFiles.length})
+                    </h3>
+                    {translatableFiles.map((file: any) => (
+                      <FileAccordion
+                        key={file.id}
+                        file={{
+                          id: file.id,
+                          original_filename: file.original_filename,
+                          file_size: file.file_size,
+                          mime_type: file.mime_type,
+                          ai_processing_status: file.ai_processing_status,
+                          category_id: file.category_id,
+                          category: file.category,
+                        }}
+                        analysisResult={
+                          fileAccordionData[file.id]?.analysisResult ||
+                          analysisResults.find((a) => a.quote_file_id === file.id)
+                        }
+                        pages={
+                          fileAccordionData[file.id]?.pages ||
+                          pageData[file.id]?.map((p) => ({
+                            id: p.id,
+                            page_number: p.page_number,
+                            word_count: p.word_count,
+                          })) ||
+                          []
+                        }
+                        isAnalyzing={fileAccordionData[file.id]?.isAnalyzing}
+                        onAnalyze={handleAnalyzeFile}
+                        onManualEntry={handleManualEntryForFile}
+                        onSubmit={handleSubmitGroupings}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Post-Submit: Document Groups View with Pricing */}
+                {showDocumentGroupsView && documentGroupsForView.length > 0 && (
+                  <DocumentGroupsView
+                    groups={documentGroupsForView}
+                    onReanalyze={handleReanalyzeGroupForView}
+                    onCertificationChange={handleCertificationChangeForView}
+                    baseRate={baseRate}
+                    languageMultiplier={
+                      reviewData?.quotes?.source_language_multiplier || 1.0
+                    }
+                  />
+                )}
 
                 {/* Document Groups List */}
                 {isLoadingGroups ? (
