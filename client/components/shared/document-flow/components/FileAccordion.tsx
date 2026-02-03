@@ -9,6 +9,7 @@ interface FileAccordionProps {
   isExpanded: boolean;
   isAnalyzing: boolean;
   isSubmitted: boolean;
+  hasGroups?: boolean; // Whether this file has associated document groups
   onToggleExpand: () => void;
   onAnalyze: () => Promise<void>;
   onManualEntry: () => void;
@@ -26,12 +27,15 @@ export const FileAccordion: React.FC<FileAccordionProps> = ({
   isExpanded,
   isAnalyzing,
   isSubmitted,
+  hasGroups = false,
   onToggleExpand,
   onAnalyze,
   onManualEntry,
   onSubmit,
   readOnly = false,
 }) => {
+  // Determine if this file has been fully processed (has groups assigned)
+  const isProcessed = hasGroups || isSubmitted;
   // State
   const [isOneDocument, setIsOneDocument] = useState(true);
   const [documentGroups, setDocumentGroups] = useState<LocalDocumentGroup[]>([
@@ -109,9 +113,6 @@ export const FileAccordion: React.FC<FileAccordionProps> = ({
   };
 
   const getStatusBadge = () => {
-    if (isSubmitted) {
-      return <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">✓ Submitted</span>;
-    }
     if (isAnalyzing) {
       return (
         <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 flex items-center gap-1">
@@ -119,7 +120,8 @@ export const FileAccordion: React.FC<FileAccordionProps> = ({
         </span>
       );
     }
-    if (file.analysis) {
+    // Show as analyzed if file has groups OR has analysis result
+    if (isProcessed || file.analysis) {
       return <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">✓ Analyzed</span>;
     }
     return <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">○ Not analyzed</span>;
@@ -172,7 +174,7 @@ export const FileAccordion: React.FC<FileAccordionProps> = ({
       {isExpanded && (
         <div className="border-t p-4">
           {/* Not Analyzed State */}
-          {!file.analysis && !isAnalyzing && !readOnly && (
+          {!file.analysis && !isAnalyzing && !isProcessed && !readOnly && (
             <div className="flex gap-4 justify-center py-8">
               <button
                 onClick={(e) => {
@@ -205,8 +207,18 @@ export const FileAccordion: React.FC<FileAccordionProps> = ({
             </div>
           )}
 
-          {/* Analyzed State */}
-          {file.analysis && !isAnalyzing && !isSubmitted && (
+          {/* Processed State - File has groups assigned */}
+          {isProcessed && !isAnalyzing && (
+            <div className="py-4 text-center">
+              <p className="text-green-600 font-medium">✓ Analysis complete</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Document groups created. See "Document Groups" section below.
+              </p>
+            </div>
+          )}
+
+          {/* Analyzed but not yet grouped - show grouping UI */}
+          {file.analysis && !isAnalyzing && !isProcessed && (
             <div className="space-y-6">
               {/* Document Metadata */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -340,13 +352,6 @@ export const FileAccordion: React.FC<FileAccordionProps> = ({
             </div>
           )}
 
-          {/* Submitted State */}
-          {isSubmitted && (
-            <div className="py-4 text-center text-green-600">
-              <p className="font-medium">✓ Groupings submitted successfully</p>
-              <p className="text-sm text-gray-500 mt-1">Created {groupCount} document group(s)</p>
-            </div>
-          )}
         </div>
       )}
     </div>
