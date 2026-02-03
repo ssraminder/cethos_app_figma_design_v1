@@ -1106,14 +1106,14 @@ export default function Step4ReviewRush() {
 
       {/* Document Breakdown */}
       <div className="bg-white rounded-xl border border-cethos-border shadow-cethos-card overflow-hidden mb-6">
-        <div className="px-6 py-4 bg-cethos-bg-light border-b border-cethos-border">
+        <div className="px-4 sm:px-6 py-4 bg-cethos-bg-light border-b border-cethos-border">
           <h2 className="font-semibold text-gray-900">Documents</h2>
         </div>
         <div className="divide-y divide-gray-100">
           {documents.map((doc) => (
-            <div key={doc.id} className="px-6 py-4">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
+            <div key={doc.id} className="px-4 sm:px-6 py-4">
+              <div className="flex justify-between items-start gap-3">
+                <div className="flex-1 min-w-0 overflow-hidden">
                   <p className="font-medium text-gray-900 truncate">
                     {doc.quote_files?.original_filename || "Document"}
                   </p>
@@ -1156,10 +1156,10 @@ export default function Step4ReviewRush() {
 
       {/* Price Breakdown */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+        <div className="px-4 sm:px-6 py-4 bg-gray-50 border-b border-gray-200">
           <h2 className="font-semibold text-gray-900">Price Breakdown</h2>
         </div>
-        <div className="px-6 py-4 space-y-3">
+        <div className="px-4 sm:px-6 py-4 space-y-3">
           <div>
             <div className="flex justify-between text-gray-700">
               <span>Certified Translation</span>
@@ -1187,11 +1187,11 @@ export default function Step4ReviewRush() {
 
       {/* Turnaround Time Section */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+        <div className="px-4 sm:px-6 py-4 bg-gray-50 border-b border-gray-200">
           <h2 className="font-semibold text-gray-900">Turnaround Time</h2>
           <p className="text-sm text-gray-500">Choose your delivery speed</p>
         </div>
-        <div className="px-6 py-4 space-y-3">
+        <div className="px-4 sm:px-6 py-4 space-y-3">
           {/* Debug info */}
           {turnaroundOptions.length === 0 && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -1222,15 +1222,15 @@ export default function Step4ReviewRush() {
                 onChange={() => setTurnaroundType("standard")}
                 className="sr-only"
               />
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                   <div className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-gray-600" />
+                    <Calendar className="w-5 h-5 text-gray-600 flex-shrink-0" />
                     <p className="font-medium text-gray-900">
                       {standardOption.name}
                     </p>
                   </div>
-                  <span className="text-gray-600">Included</span>
+                  <span className="text-gray-600 whitespace-nowrap">Included</span>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">
                   Ready by {format(standardDeliveryDate, "EEEE, MMMM d, yyyy")}
@@ -1265,18 +1265,18 @@ export default function Step4ReviewRush() {
                 onChange={() => setTurnaroundType("rush")}
                 className="sr-only"
               />
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-amber-600" />
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Zap className="w-5 h-5 text-amber-600 flex-shrink-0" />
                     <p className="font-medium text-gray-900">
                       {rushOption.name}
                     </p>
-                    <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
+                    <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded whitespace-nowrap">
                       +{((rushMultiplier - 1) * 100).toFixed(0)}%
                     </span>
                   </div>
-                  <span className="font-semibold text-amber-600">
+                  <span className="font-semibold text-amber-600 whitespace-nowrap">
                     +${(totals.subtotal * (rushMultiplier - 1)).toFixed(2)}
                   </span>
                 </div>
@@ -1318,18 +1318,18 @@ export default function Step4ReviewRush() {
                 disabled={!isSameDayAvailable}
                 className="sr-only"
               />
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-green-600" />
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Sparkles className="w-5 h-5 text-green-600 flex-shrink-0" />
                     <p className="font-medium text-gray-900">
                       {sameDayOption.name}
                     </p>
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded whitespace-nowrap">
                       +{((sameDayMultiplier - 1) * 100).toFixed(0)}%
                     </span>
                   </div>
-                  <span className="font-semibold text-green-600">
+                  <span className="font-semibold text-green-600 whitespace-nowrap">
                     +${(totals.subtotal * (sameDayMultiplier - 1)).toFixed(2)}
                   </span>
                 </div>
@@ -1354,7 +1354,7 @@ export default function Step4ReviewRush() {
       </div>
 
       {/* Total Card */}
-      <div className="bg-gradient-to-r from-cethos-teal to-cethos-teal-light rounded-xl p-6 mb-8 text-white">
+      <div className="bg-gradient-to-r from-cethos-teal to-cethos-teal-light rounded-xl p-4 sm:p-6 mb-8 text-white">
         <div className="space-y-3">
           <div className="flex justify-between items-center text-sm">
             <span className="text-cethos-teal-50">Subtotal</span>
