@@ -19,6 +19,8 @@ export { default as DocumentGroupCard } from "./DocumentGroupCard";
 export { default as CreateGroupModal } from "./CreateGroupModal";
 export { default as EditGroupModal } from "./EditGroupModal";
 export { default as AssignItemsModal } from "./AssignItemsModal";
+export { default as FileAccordion } from "./FileAccordion";
+export { default as DocumentGroupsView } from "./DocumentGroupsView";
 export { default as PricingSummaryBox } from "./PricingSummaryBox";
 export { default as TranslationDetailsCard } from "./TranslationDetailsCard";
 export { default as DocumentCardV2 } from "./DocumentCardV2";

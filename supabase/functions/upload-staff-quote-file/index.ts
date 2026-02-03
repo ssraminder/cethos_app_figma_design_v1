@@ -18,6 +18,7 @@ serve(async (req) => {
     const file = formData.get("file") as File;
     const quoteId = formData.get("quoteId") as string;
     const staffId = formData.get("staffId") as string;
+    const categoryId = formData.get("categoryId") as string | null;
     // Note: processWithAI parameter is deprecated - files are always uploaded without auto-processing
     // Staff must assign files to document groups and manually trigger analysis
     const _processWithAI = formData.get("processWithAI"); // kept for backwards compatibility
@@ -38,6 +39,7 @@ serve(async (req) => {
     console.log(`📁 Uploading file for quote: ${quoteId}`);
     console.log(`📝 File: ${file.name} (${file.size} bytes)`);
     console.log(`📋 File will be uploaded for manual group assignment`);
+    console.log(`📂 Category ID: ${categoryId || "not specified"}`);
 
     // Create Supabase client with service role key
     const supabaseAdmin = createClient(
@@ -133,7 +135,19 @@ serve(async (req) => {
 
     console.log(`✅ File uploaded to storage: ${uploadData.path}`);
 
-    // 4. Create quote_files record
+    // 4. Determine final category ID (default to "to_translate" if not provided)
+    let finalCategoryId = categoryId;
+    if (!finalCategoryId) {
+      const { data: defaultCat } = await supabaseAdmin
+        .from("file_categories")
+        .select("id")
+        .eq("slug", "to_translate")
+        .single();
+      finalCategoryId = defaultCat?.id || null;
+      console.log(`📂 Using default category "to_translate": ${finalCategoryId}`);
+    }
+
+    // 5. Create quote_files record
     // Note: ai_processing_status is always "skipped" - files must be assigned to document groups
     // and analysis triggered via the "Analyze" button on the group
     const now = new Date().toISOString();
@@ -147,6 +161,7 @@ serve(async (req) => {
         mime_type: file.type,
         is_staff_created: true,
         ai_processing_status: "skipped",
+        category_id: finalCategoryId,
         created_at: now,
         updated_at: now,
       })
@@ -175,7 +190,7 @@ serve(async (req) => {
 
     console.log(`✅ Quote file record created: ${quoteFile.id}`);
 
-    // 5. Log staff activity
+    // 6. Log staff activity
     await supabaseAdmin.from("staff_activity_log").insert({
       staff_id: staffId,
       action: "upload_quote_file",

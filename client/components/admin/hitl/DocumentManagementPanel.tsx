@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Upload } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 interface QuoteFile {
   id: string;
@@ -9,6 +10,16 @@ interface QuoteFile {
   storage_path?: string;
   mime_type: string;
   created_at: string;
+  category_id?: string;
+  category?: { slug: string; name: string };
+}
+
+interface FileCategory {
+  id: string;
+  name: string;
+  slug: string;
+  is_billable: boolean;
+  display_order: number;
 }
 
 interface DocumentManagementPanelProps {
@@ -28,6 +39,32 @@ export default function DocumentManagementPanel({
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>(
     {},
   );
+  const [categories, setCategories] = useState<FileCategory[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
+
+  // Fetch file categories on component mount
+  useEffect(() => {
+    const fetchCategories = async () => {
+      const { data, error } = await supabase
+        .from("file_categories")
+        .select("id, name, slug, is_billable, display_order")
+        .eq("is_active", true)
+        .order("display_order");
+
+      if (error) {
+        console.error("Error fetching file categories:", error);
+        return;
+      }
+
+      if (data) {
+        setCategories(data);
+        // Default to "To Translate"
+        const defaultCat = data.find((c) => c.slug === "to_translate");
+        if (defaultCat) setSelectedCategoryId(defaultCat.id);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
@@ -46,6 +83,7 @@ export default function DocumentManagementPanel({
         formData.append("file", file);
         formData.append("quoteId", quoteId);
         formData.append("staffId", staffId || "");
+        formData.append("categoryId", selectedCategoryId);
         // Files are NOT auto-processed - they must be assigned to document groups first
         formData.append("processWithAI", "false");
 
@@ -91,6 +129,24 @@ export default function DocumentManagementPanel({
         <h3 className="text-sm font-semibold text-gray-900">
           Document Management
         </h3>
+      </div>
+
+      {/* File Category Selection */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          File Category
+        </label>
+        <select
+          value={selectedCategoryId}
+          onChange={(e) => setSelectedCategoryId(e.target.value)}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-teal-500 focus:border-teal-500"
+        >
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name} {cat.is_billable ? "(Billable)" : ""}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Upload Section */}
