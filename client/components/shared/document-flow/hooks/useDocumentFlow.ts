@@ -96,7 +96,7 @@ export function useDocumentFlow(quoteId: string, mode: EditorMode) {
         .from('quote_files')
         .select(`
           *,
-          category:file_categories(*),
+          file_category:file_categories(*),
           analysis:ai_analysis_results(*),
           pages:quote_pages(*)
         `)

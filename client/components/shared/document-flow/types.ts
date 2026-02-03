@@ -74,8 +74,8 @@ export interface QuoteFile {
   storage_path: string;
   file_size: number;
   mime_type: string;
-  category_id: string | null;
-  category?: FileCategory;
+  file_category_id: string | null;
+  file_category?: FileCategory;
   ai_processing_status: FileStatus;
   analysis?: AnalysisResult;
   pages: QuotePage[];
