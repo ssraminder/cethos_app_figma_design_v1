@@ -1,6 +1,6 @@
 // HITLReviewDetail.tsx - Complete implementation with certification management
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -371,9 +371,15 @@ const HITLReviewDetail: React.FC = () => {
       navigate("/admin/login");
       return;
     }
+    // Guard against React 18 Strict Mode double-fetch and re-renders
+    if (hasFetchedRef.current) {
+      console.log("🔄 [HITLReviewDetail] Initial fetch already done, skipping...");
+      return;
+    }
+    hasFetchedRef.current = true;
     fetchAllData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staffSession, authLoading, reviewId]);
+  }, [staffSession?.staffId, authLoading, reviewId]);
 
   // Load document groups when quote data is available
   useEffect(() => {
@@ -382,6 +388,12 @@ const HITLReviewDetail: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewData?.quote_id]);
+
+  // ============================================
+  // FETCH GUARD REFS (prevent infinite loops)
+  // ============================================
+  const hasFetchedRef = useRef<boolean>(false);
+  const isRefreshingRef = useRef<boolean>(false);
 
   // ============================================
   // POLLING FOR PROCESSING DOCUMENTS
@@ -533,7 +545,14 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
-  const fetchReviewData = async () => {
+  const fetchReviewData = useCallback(async () => {
+    // Guard against concurrent fetches to prevent infinite loops
+    if (isRefreshingRef.current) {
+      console.log("🔄 [HITLReviewDetail] Fetch already in progress, skipping...");
+      return;
+    }
+    isRefreshingRef.current = true;
+
     console.log("🔄 [HITLReviewDetail] Refreshing files AND analysis data...");
     console.log("🔍 Fetching review data for ID:", reviewId);
     console.log("🔍 SUPABASE_URL:", SUPABASE_URL);
@@ -779,8 +798,22 @@ const HITLReviewDetail: React.FC = () => {
       console.log("🔄 [HITLReviewDetail] Refresh complete!");
     } catch (error) {
       console.error("❌ [HITLReviewDetail] Unexpected error in fetchReviewData:", error);
+    } finally {
+      // Always reset the refresh guard
+      isRefreshingRef.current = false;
     }
-  };
+  }, [reviewId, staffSession?.staffId, SUPABASE_URL, SUPABASE_ANON_KEY]);
+
+  // Memoized callbacks for child components (prevent infinite loops)
+  const handleDetailsChange = useCallback(() => {
+    console.log("🔄 [HITLReviewDetail] Details changed, refreshing...");
+    fetchReviewData();
+  }, [fetchReviewData]);
+
+  const handlePricingUpdate = useCallback(() => {
+    console.log("🔄 [HITLReviewDetail] Pricing update, refreshing...");
+    fetchReviewData();
+  }, [fetchReviewData]);
 
   const fetchCertificationTypes = async () => {
     try {
@@ -3480,10 +3513,7 @@ const HITLReviewDetail: React.FC = () => {
               {/* Translation Details Card - TOP OF MAIN CONTENT */}
               <TranslationDetailsCard
                 quoteId={reviewData.quote_id}
-                onDetailsChange={() => {
-                  // Refresh pricing when language/multiplier changes
-                  fetchReviewData();
-                }}
+                onDetailsChange={handleDetailsChange}
               />
 
               {/* Addresses Section - Compact 2-column layout */}
@@ -4547,10 +4577,7 @@ const HITLReviewDetail: React.FC = () => {
                     mode="hitl"
                     reviewId={reviewId}
                     readOnly={!claimedByMe}
-                    onPricingUpdate={(totals) => {
-                      // Refresh pricing when totals change
-                      fetchReviewData?.();
-                    }}
+                    onPricingUpdate={handlePricingUpdate}
                   />
                 ) : (
                   <>
@@ -4706,10 +4733,7 @@ const HITLReviewDetail: React.FC = () => {
               <PricingSummaryBox
                 quoteId={reviewData.quotes.id}
                 staffId={staffSession?.staffId}
-                onPricingChange={() => {
-                  // Refresh review data when pricing changes
-                  fetchReviewData();
-                }}
+                onPricingChange={handlePricingUpdate}
                 showActions={claimedByMe}
                 isSubmitting={isSubmitting}
                 quoteStatus={reviewData?.quotes?.status}

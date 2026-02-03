@@ -35,6 +35,15 @@ export default function DocumentFilesPanel({
   const pollCountRef = useRef<number>(0);
   const MAX_POLL_COUNT = 24; // Max 4 minutes of polling (24 * 10 seconds)
 
+  // Ref for callback to avoid triggering useEffect on callback reference changes
+  const onRefreshRef = useRef(onRefresh);
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
+
+  // Compute stable dependency for files (only care about processing statuses)
+  const processingStatusesKey = files.map(f => f.ai_processing_status || 'unknown').join(',');
+
   // Polling for processing status updates
   useEffect(() => {
     // Check if any files are currently processing
@@ -96,9 +105,9 @@ export default function DocumentFilesPanel({
             pollIntervalRef.current = null;
           }
 
-          // Trigger full refresh
-          if (onRefresh) {
-            await onRefresh();
+          // Trigger full refresh (use ref to avoid dependency)
+          if (onRefreshRef.current) {
+            await onRefreshRef.current();
           }
         }
       }
@@ -111,7 +120,7 @@ export default function DocumentFilesPanel({
         pollIntervalRef.current = null;
       }
     };
-  }, [files, quoteId, onRefresh]);
+  }, [processingStatusesKey, quoteId]); // Use stable key instead of files array
 
   const handleDeleteFile = async (file: QuoteFile) => {
     // Confirmation dialog
@@ -155,8 +164,8 @@ export default function DocumentFilesPanel({
       toast.success(`"${file.original_filename}" deleted successfully`);
 
       // 4. Refresh file list
-      if (onRefresh) {
-        onRefresh();
+      if (onRefreshRef.current) {
+        onRefreshRef.current();
       }
 
     } catch (error: any) {
@@ -375,9 +384,9 @@ export default function DocumentFilesPanel({
             );
 
             // Refresh data FIRST, then close modal
-            if (onRefresh) {
+            if (onRefreshRef.current) {
               console.log("🟠 [DocumentFilesPanel] Calling onRefresh...");
-              await onRefresh();
+              await onRefreshRef.current();
               console.log("🟠 [DocumentFilesPanel] onRefresh completed!");
             }
 
