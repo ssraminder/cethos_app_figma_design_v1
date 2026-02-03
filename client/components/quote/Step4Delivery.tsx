@@ -252,21 +252,8 @@ export default function Step4Delivery() {
   };
 
   const checkRushAvailability = () => {
-    const now = new Date();
-    const mstTime = new Date(
-      now.toLocaleString("en-US", { timeZone: "America/Edmonton" }),
-    );
-
-    if (
-      mstTime.getHours() < rushCutoffHour ||
-      (mstTime.getHours() === rushCutoffHour &&
-        mstTime.getMinutes() < rushCutoffMinute)
-    ) {
-      const dayOfWeek = mstTime.getDay();
-      setRushAvailable(dayOfWeek >= 1 && dayOfWeek <= 5);
-    } else {
-      setRushAvailable(false);
-    }
+    // Rush is always available - ignore cutoff time
+    setRushAvailable(true);
   };
 
   const recalculatePricing = async () => {
@@ -500,14 +487,8 @@ export default function Step4Delivery() {
             </div>
           </label>
 
-          {/* Rush */}
-          <label
-            className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer hover:border-blue-300 transition-colors ${
-              !rushAvailable
-                ? "opacity-50 cursor-not-allowed"
-                : "border-gray-200"
-            }`}
-          >
+          {/* Rush - Always Available */}
+          <label className="flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer hover:border-blue-300 transition-colors border-gray-200">
             <input
               type="radio"
               name="deliverySpeed"
@@ -516,7 +497,6 @@ export default function Step4Delivery() {
               onChange={(e) =>
                 updateState({ deliverySpeed: e.target.value as any })
               }
-              disabled={!rushAvailable}
               className="mt-1"
             />
             <div className="flex-1">
@@ -536,14 +516,8 @@ export default function Step4Delivery() {
                 </span>
               </div>
               <p className="text-sm text-gray-600">
-                1 day faster • Order by {rushCutoffHour}:
-                {rushCutoffMinute.toString().padStart(2, "0")} MST today
+                1 day faster turnaround
               </p>
-              {!rushAvailable && (
-                <p className="text-xs text-red-600 mt-1">
-                  Rush delivery is not available at this time
-                </p>
-              )}
             </div>
           </label>
 
