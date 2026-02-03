@@ -279,11 +279,10 @@ export default function UploadStep2() {
           </div>
         )}
 
-        {/* Country of Issue */}
+        {/* Country of Issue - OPTIONAL */}
         <div>
           <label className="block text-cethos-slate-dark font-semibold text-sm mb-2">
-            Country where document was issued{" "}
-            <span className="text-red-500">*</span>
+            Country where document was issued (Optional)
           </label>
           <select
             value={state.countryId || ""}
@@ -360,14 +359,12 @@ export default function UploadStep2() {
               !state.sourceLanguageId ||
               !state.targetLanguageId ||
               !state.intendedUseId ||
-              !state.countryId ||
               (showProvinceDropdown && !state.serviceProvince)
             }
             className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
               state.sourceLanguageId &&
               state.targetLanguageId &&
               state.intendedUseId &&
-              state.countryId &&
               (!showProvinceDropdown || state.serviceProvince)
                 ? "bg-cethos-teal hover:bg-cethos-teal-light"
                 : "bg-gray-300 cursor-not-allowed"
