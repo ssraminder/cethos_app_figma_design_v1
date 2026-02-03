@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import CustomerInfoPanel from "./CustomerInfoPanel";
-import DocumentFilesPanel from "./DocumentFilesPanel";
+// OLD DOCUMENT MANAGEMENT - DISABLED 2026-02-03
+// import DocumentFilesPanel from "./DocumentFilesPanel";
 import AddressesDeliveryPanel from "./AddressesDeliveryPanel";
 import InternalNotesPanel from "./InternalNotesPanel";
 import MessagePanel from "../../messaging/MessagePanel";
-import DocumentManagementPanel from "./DocumentManagementPanel";
+// OLD DOCUMENT MANAGEMENT - DISABLED 2026-02-03
+// import DocumentManagementPanel from "./DocumentManagementPanel";
 
 interface QuoteFile {
   id: string;
@@ -87,10 +89,10 @@ export default function HITLPanelLayout({
   children,
 }: HITLPanelLayoutProps) {
   // Collapsible sections state - default expand important sections
+  // Note: "documents" removed - now handled by DocumentFlowEditor in HITLReviewDetail.tsx
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set([
       "customer",
-      "documents",
       "analysis",
       "addresses",
     ]),
@@ -166,7 +168,12 @@ export default function HITLPanelLayout({
         />
       </CollapsibleSection>
 
-      {/* Document Management */}
+      {/* ========== OLD DOCUMENT MANAGEMENT - HIDDEN 2026-02-03 ==========
+         Document Management is now handled by DocumentFlowEditor in HITLReviewDetail.tsx
+         This section showed duplicate "Document Management" panel with:
+         - File Category dropdown
+         - "Upload Additional Files" area
+         - "Documents (N)" list
       {reviewData?.id && onRefreshFiles && (
         <CollapsibleSection id="documents" title="Document Management">
           <div className="space-y-4">
@@ -185,6 +192,7 @@ export default function HITLPanelLayout({
           </div>
         </CollapsibleSection>
       )}
+      ========== END OLD DOCUMENT MANAGEMENT ========== */}
 
       {/* Document Analysis & Pricing */}
       <CollapsibleSection id="analysis" title="Document Analysis & Pricing">
