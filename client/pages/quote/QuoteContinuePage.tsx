@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { Loader2, CheckCircle, Clock, AlertCircle, XCircle } from "lucide-react";
@@ -29,6 +29,17 @@ export default function QuoteContinuePage() {
   const [errorType, setErrorType] = useState<"not_found" | "expired" | "converted" | "generic" | null>(null);
   const [processingStarted, setProcessingStarted] = useState(false);
   const [showSkipButton, setShowSkipButton] = useState(false);
+
+  // Ref to track if component is still mounted (prevents state updates after unmount)
+  const isMountedRef = useRef(true);
+
+  // Track mount state
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Calculate progress
   const completedCount = files.filter(
@@ -106,12 +117,24 @@ export default function QuoteContinuePage() {
         setLoading(false);
         return;
       }
-    } catch (err) {
+    } catch (err: any) {
+      // Handle AbortError gracefully
+      if (err?.name === "AbortError" || err?.message?.includes("AbortError")) {
+        console.log("Quote data fetch aborted - component likely unmounted");
+        return;
+      }
+
       console.error("Error loading quote:", err);
-      setError("Failed to load quote data. Please try again.");
-      setErrorType("generic");
+
+      // Only update state if still mounted
+      if (isMountedRef.current) {
+        setError("Failed to load quote data. Please try again.");
+        setErrorType("generic");
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [quoteId, navigate]);
 
@@ -163,13 +186,21 @@ export default function QuoteContinuePage() {
 
     // Process files sequentially to avoid overwhelming the server
     for (const file of pendingFiles) {
+      // Check if component is still mounted before processing
+      if (!isMountedRef.current) {
+        console.log("Component unmounted, stopping AI processing");
+        return;
+      }
+
       try {
         // Update local state to show processing
-        setFiles((prev) =>
-          prev.map((f) =>
-            f.id === file.id ? { ...f, ai_processing_status: "processing" as const } : f
-          )
-        );
+        if (isMountedRef.current) {
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === file.id ? { ...f, ai_processing_status: "processing" as const } : f
+            )
+          );
+        }
 
         // Call process-document Edge Function
         const { data, error } = await supabase.functions.invoke("process-document", {
@@ -178,6 +209,12 @@ export default function QuoteContinuePage() {
             quoteId: quoteId,
           },
         });
+
+        // Check if component is still mounted before updating state
+        if (!isMountedRef.current) {
+          console.log("Component unmounted during processing, skipping state update");
+          return;
+        }
 
         if (error) {
           console.error("Error processing file:", file.id, error);
@@ -194,13 +231,23 @@ export default function QuoteContinuePage() {
             )
           );
         }
-      } catch (err) {
+      } catch (err: any) {
+        // Handle AbortError gracefully - this happens when component unmounts during fetch
+        if (err?.name === "AbortError" || err?.message?.includes("AbortError")) {
+          console.log("Fetch aborted for file:", file.id, "- component likely unmounted");
+          return; // Stop processing, don't update state
+        }
+
         console.error("Error processing file:", file.id, err);
-        setFiles((prev) =>
-          prev.map((f) =>
-            f.id === file.id ? { ...f, ai_processing_status: "failed" as const } : f
-          )
-        );
+
+        // Only update state if still mounted
+        if (isMountedRef.current) {
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === file.id ? { ...f, ai_processing_status: "failed" as const } : f
+            )
+          );
+        }
       }
     }
   };
