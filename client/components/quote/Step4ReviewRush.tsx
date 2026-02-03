@@ -113,12 +113,17 @@ export default function Step4ReviewRush() {
 
   // Language/document info for same-day eligibility
   const [sourceLanguage, setSourceLanguage] = useState("");
+  const [sourceLanguageName, setSourceLanguageName] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("");
   const [targetLanguageName, setTargetLanguageName] = useState("");
   const [documentType, setDocumentType] = useState("");
   const [intendedUse, setIntendedUse] = useState("");
   const [baseRate, setBaseRate] = useState(65);
   const [languageMultiplier, setLanguageMultiplier] = useState(1.0);
+  const [languageTier, setLanguageTier] = useState(1);
+  
+  // NEW: Calculated effective rate (base_rate * multiplier, rounded to nearest 2.5)
+  const [effectiveRate, setEffectiveRate] = useState(65);
 
   // Delivery dates
   const [standardDays, setStandardDays] = useState(2);
@@ -137,6 +142,14 @@ export default function Step4ReviewRush() {
       checkAvailability();
     }
   }, [sourceLanguage, targetLanguage, documentType, intendedUse, standardDays]);
+
+  // NEW: Calculate effective rate when baseRate or languageMultiplier changes
+  useEffect(() => {
+    const rawRate = baseRate * languageMultiplier;
+    const calculated = Math.ceil(rawRate / 2.5) * 2.5;
+    setEffectiveRate(calculated);
+    console.log(`💰 Effective rate calculation: $${baseRate} × ${languageMultiplier} = $${rawRate} → rounded to $${calculated}`);
+  }, [baseRate, languageMultiplier]);
 
   // Auto-polling effect
   useEffect(() => {
@@ -312,6 +325,38 @@ export default function Step4ReviewRush() {
       console.error("Error fetching turnaround options:", err);
       useFallbackOptions();
     }
+  };
+
+  const useFallbackOptions = () => {
+    setTurnaroundOptions([
+      {
+        id: "fallback-standard",
+        code: "standard",
+        name: "Standard Delivery",
+        description: "Standard turnaround based on document length",
+        multiplier: 1.0,
+        days_reduction: 0,
+        is_rush: false,
+      },
+      {
+        id: "fallback-rush",
+        code: "rush",
+        name: "Rush Delivery",
+        description: "1 business day faster",
+        multiplier: rushMultiplier,
+        days_reduction: rushTurnaroundDays,
+        is_rush: true,
+      },
+      {
+        id: "fallback-same-day",
+        code: "same_day",
+        name: "Same-Day Delivery",
+        description: "Ready today",
+        multiplier: sameDayMultiplier,
+        days_reduction: 0,
+        is_rush: true,
+      },
+    ]);
   };
 
   // Helper: Get customer-friendly reason messages
@@ -554,83 +599,105 @@ export default function Step4ReviewRush() {
         },
       }));
 
-      // Calculate totals from merged data
-      const translationSubtotal = mergedData.reduce(
-        (sum, doc) => sum + (parseFloat(doc.line_total) || 0),
+      // Get intended use from quote AND check HITL status AND get language info
+      const { data: quoteData } = await supabase
+        .from("quotes")
+        .select(
+          `intended_use:intended_uses(code), 
+           hitl_required, 
+           hitl_reason, 
+           target_language_id, 
+           source_language_id, 
+           target_language:languages!quotes_target_language_id_fkey(id, name, code), 
+           source_language:languages!quotes_source_language_id_fkey(id, name, code, multiplier, tier)`,
+        )
+        .eq("id", quoteId)
+        .single();
+
+      // Fetch base rate from settings
+      const { data: baseRateSetting } = await supabase
+        .from("app_settings")
+        .select("setting_value")
+        .eq("setting_key", "base_rate")
+        .single();
+
+      const fetchedBaseRate = parseFloat(baseRateSetting?.setting_value || "65");
+      setBaseRate(fetchedBaseRate);
+      console.log(`📊 Base rate from settings: $${fetchedBaseRate}`);
+
+      // Set source language info from quote data (user-selected language)
+      let fetchedMultiplier = 1.0;
+      let fetchedTier = 1;
+      if (quoteData?.source_language) {
+        const srcLang = quoteData.source_language as any;
+        fetchedMultiplier = parseFloat(srcLang?.multiplier || "1.0");
+        fetchedTier = srcLang?.tier || 1;
+        setSourceLanguage(srcLang?.code || "");
+        setSourceLanguageName(srcLang?.name || "");
+        setLanguageMultiplier(fetchedMultiplier);
+        setLanguageTier(fetchedTier);
+        console.log(`📊 Source language: ${srcLang?.name} (Tier ${fetchedTier}, multiplier: ${fetchedMultiplier})`);
+      }
+
+      // Set target language from quote data
+      if (quoteData?.target_language) {
+        setTargetLanguage((quoteData.target_language as any)?.code || "");
+        setTargetLanguageName((quoteData.target_language as any)?.name || "");
+      }
+
+      if (quoteData?.intended_use) {
+        setIntendedUse((quoteData.intended_use as any)?.code || "");
+      }
+
+      // Set HITL status
+      if (quoteData?.hitl_required) {
+        setHitlRequired(true);
+        setHitlReason(quoteData.hitl_reason || "");
+      }
+
+      // Extract document type from first document for same-day check
+      if (mergedData.length > 0) {
+        const firstDoc = mergedData[0];
+        setDocumentType(firstDoc.detected_document_type || "");
+      }
+
+      // Calculate the correct effective rate
+      const rawRate = fetchedBaseRate * fetchedMultiplier;
+      const calculatedEffectiveRate = Math.ceil(rawRate / 2.5) * 2.5;
+      setEffectiveRate(calculatedEffectiveRate);
+      console.log(`💰 Calculated effective rate: $${fetchedBaseRate} × ${fetchedMultiplier} = $${rawRate} → rounded to $${calculatedEffectiveRate}`);
+
+      // RECALCULATE totals using the correct effective rate
+      // This ensures the displayed totals match the user-selected language, not AI-detected
+      const totalBillablePages = mergedData.reduce(
+        (sum, doc) => sum + (doc.billable_pages || 0),
         0,
       );
+      
+      const translationSubtotal = totalBillablePages * calculatedEffectiveRate;
       const certificationTotal = mergedData.reduce(
         (sum, doc) => sum + (parseFloat(doc.certification_price) || 0),
         0,
       );
       const subtotal = translationSubtotal + certificationTotal;
 
-      // Calculate total pages
-      const totalBillablePages = mergedData.reduce(
-        (sum, doc) => sum + (doc.billable_pages || 0),
-        0,
-      );
+      console.log(`📊 Recalculated totals: ${totalBillablePages.toFixed(1)} pages × $${calculatedEffectiveRate} = $${translationSubtotal.toFixed(2)}`);
+
+      // Update documents with recalculated line_total for display
+      const recalculatedDocuments = mergedData.map(doc => ({
+        ...doc,
+        base_rate: calculatedEffectiveRate,
+        line_total: (doc.billable_pages * calculatedEffectiveRate).toFixed(2),
+      }));
 
       // Set documents and totals
-      setDocuments(mergedData);
+      setDocuments(recalculatedDocuments);
       setTotals({
         translationSubtotal,
         certificationTotal,
         subtotal,
       });
       setProcessingState("complete");
-
-      // Extract language/document info from first document for same-day check
-      if (mergedData.length > 0) {
-        const firstDoc = mergedData[0];
-        setSourceLanguage(firstDoc.detected_language || "");
-        setDocumentType(firstDoc.detected_document_type || "");
-
-        // Get intended use from quote AND check HITL status
-        const { data: quoteData } = await supabase
-          .from("quotes")
-          .select(
-            "intended_use:intended_uses(code), hitl_required, hitl_reason, target_language_id, source_language_id, target_language:languages!quotes_target_language_id_fkey(id, name, code), source_language:languages!quotes_source_language_id_fkey(id, name, code, multiplier)",
-          )
-          .eq("id", quoteId)
-          .single();
-
-        // Fetch base rate from settings
-        const { data: baseRateSetting } = await supabase
-          .from("app_settings")
-          .select("setting_value")
-          .eq("setting_key", "base_rate")
-          .single();
-
-        const fetchedBaseRate = parseFloat(
-          baseRateSetting?.setting_value || "65",
-        );
-        setBaseRate(fetchedBaseRate);
-
-        // Set target language from quote data
-        if (quoteData?.target_language) {
-          setTargetLanguage((quoteData.target_language as any)?.code || "");
-          setTargetLanguageName((quoteData.target_language as any)?.name || "");
-        }
-
-        // Set source language multiplier
-        if (quoteData?.source_language) {
-          const multiplier = parseFloat(
-            (quoteData.source_language as any)?.multiplier || "1.0",
-          );
-          setLanguageMultiplier(multiplier);
-        }
-
-        if (quoteData?.intended_use) {
-          setIntendedUse((quoteData.intended_use as any)?.code || "");
-        }
-
-        // Set HITL status
-        if (quoteData?.hitl_required) {
-          setHitlRequired(true);
-          setHitlReason(quoteData.hitl_reason || "");
-        }
-      }
 
       // Calculate delivery dates
       const days = calculateStandardDays(totalBillablePages);
@@ -640,7 +707,7 @@ export default function Step4ReviewRush() {
       setStandardDeliveryDate(standardDate);
       setRushDeliveryDate(rushDate);
 
-      // Update quotes table with totals
+      // Update quotes table with recalculated totals
       await supabase
         .from("quotes")
         .update({
@@ -650,6 +717,7 @@ export default function Step4ReviewRush() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", quoteId);
+
     } catch (err) {
       console.error("Error fetching analysis data:", err);
       setError(
@@ -1075,14 +1143,10 @@ export default function Step4ReviewRush() {
                   </p>
                   <div className="flex flex-wrap gap-2 mt-1">
                     <span className="text-xs bg-cethos-teal-50 text-cethos-teal px-2 py-0.5 rounded">
-                      Detected Language:{" "}
-                      {doc.language_name || doc.detected_language}
-                    </span>
-                    <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
-                      Target Language: {targetLanguageName}
+                      {sourceLanguageName || doc.language_name || doc.detected_language} → {targetLanguageName}
                     </span>
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                      Billable Pages: {doc.billable_pages.toFixed(1)}
+                      {doc.billable_pages.toFixed(1)} pages
                     </span>
                     <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
                       AI Confidence:{" "}
@@ -1126,11 +1190,12 @@ export default function Step4ReviewRush() {
               <span>${totals.translationSubtotal.toFixed(2)}</span>
             </div>
             <div className="text-xs text-gray-500 ml-4 mt-0.5">
-              {totalBillablePages.toFixed(1)} pages × $
-              {totalBillablePages > 0
-                ? (totals.translationSubtotal / totalBillablePages).toFixed(2)
-                : "0.00"}{" "}
-              per page
+              {totalBillablePages.toFixed(1)} pages × ${effectiveRate.toFixed(2)} per page
+              {languageTier > 1 && (
+                <span className="ml-1 text-blue-600">
+                  (Tier {languageTier} - {languageMultiplier}x)
+                </span>
+              )}
             </div>
           </div>
           {totals.certificationTotal > 0 && (
