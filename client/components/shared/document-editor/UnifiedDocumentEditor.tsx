@@ -1,7 +1,18 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Plus, FileText, FolderOpen } from "lucide-react";
+import { 
+  Loader2, 
+  RefreshCw, 
+  Plus, 
+  FileText, 
+  FolderOpen, 
+  Upload, 
+  X,
+  CheckCircle,
+  AlertCircle,
+  File
+} from "lucide-react";
 import FileListWithGroups from "./FileListWithGroups";
 import DocumentGroupsSummary from "./DocumentGroupsSummary";
 import CreateGroupModal from "./CreateGroupModal";
@@ -22,6 +33,28 @@ import {
   DEFAULT_BASE_RATE,
 } from "@/types/document-editor";
 
+// File upload types
+interface UploadingFile {
+  id: string;
+  file: File;
+  progress: number;
+  status: "pending" | "uploading" | "complete" | "error";
+  error?: string;
+}
+
+// Allowed file types
+const ALLOWED_FILE_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+];
+
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+
 export default function UnifiedDocumentEditor({
   quoteId,
   mode,
@@ -29,7 +62,8 @@ export default function UnifiedDocumentEditor({
   orderId,
   onPricingUpdate,
   readOnly = false,
-}: UnifiedDocumentEditorProps) {
+  onFilesChange,
+}: UnifiedDocumentEditorProps & { onFilesChange?: () => void }) {
   // ============================================
   // STATE
   // ============================================
@@ -46,6 +80,11 @@ export default function UnifiedDocumentEditor({
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [expandedFileId, setExpandedFileId] = useState<string | null>(null);
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+
+  // Upload state
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ============================================
   // COMPUTED VALUES
@@ -85,12 +124,19 @@ export default function UnifiedDocumentEditor({
     return files.filter((f) => !assignedFileIds.has(f.id));
   }, [files, groups]);
 
+  // Check if any uploads in progress
+  const isUploading = useMemo(() => {
+    return uploadingFiles.some((f) => f.status === "uploading" || f.status === "pending");
+  }, [uploadingFiles]);
+
   // ============================================
   // DATA FETCHING
   // ============================================
 
   // Fetch all data
   const fetchData = useCallback(async () => {
+    if (!quoteId) return;
+    
     setIsLoading(true);
     try {
       // Fetch files with analysis results and pages
@@ -128,7 +174,7 @@ export default function UnifiedDocumentEditor({
 
       if (assignmentsError) throw assignmentsError;
 
-      // Fetch file categories - FIXED: correct table and column names
+      // Fetch file categories - uses display_order column
       const { data: categoriesData, error: categoriesError } = await supabase
         .from("file_categories")
         .select("*")
@@ -137,12 +183,12 @@ export default function UnifiedDocumentEditor({
 
       if (categoriesError) throw categoriesError;
 
-      // Fetch certification types
+      // Fetch certification types - uses sort_order column
       const { data: certTypesData, error: certTypesError } = await supabase
         .from("certification_types")
         .select("*")
         .eq("is_active", true)
-        .order("display_order", { ascending: true });
+        .order("sort_order", { ascending: true });
 
       if (certTypesError) throw certTypesError;
 
@@ -187,13 +233,18 @@ export default function UnifiedDocumentEditor({
         const totals = calculateTotals(transformedGroups, transformedFiles);
         onPricingUpdate(totals);
       }
+
+      // Notify parent of file changes
+      if (onFilesChange) {
+        onFilesChange();
+      }
     } catch (error) {
       console.error("Error fetching document editor data:", error);
       toast.error("Failed to load document data");
     } finally {
       setIsLoading(false);
     }
-  }, [quoteId, onPricingUpdate]);
+  }, [quoteId, onPricingUpdate, onFilesChange]);
 
   // Initial fetch
   useEffect(() => {
@@ -227,8 +278,200 @@ export default function UnifiedDocumentEditor({
     []
   );
 
+  // Generate unique ID
+  const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  // Validate file
+  const validateFile = (file: File): string | null => {
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      return `Invalid file type: ${file.type}. Allowed: PDF, JPEG, PNG, WebP, HEIC`;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return `File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB. Maximum: 25MB`;
+    }
+    return null;
+  };
+
   // ============================================
-  // EVENT HANDLERS
+  // FILE UPLOAD HANDLERS
+  // ============================================
+
+  // Handle file selection
+  const handleFileSelect = useCallback(
+    async (selectedFiles: FileList | File[]) => {
+      if (!quoteId || readOnly) return;
+
+      const fileArray = Array.from(selectedFiles);
+      const newUploadingFiles: UploadingFile[] = [];
+
+      // Validate and prepare files
+      for (const file of fileArray) {
+        const error = validateFile(file);
+        if (error) {
+          toast.error(error);
+          continue;
+        }
+
+        newUploadingFiles.push({
+          id: generateId(),
+          file,
+          progress: 0,
+          status: "pending",
+        });
+      }
+
+      if (newUploadingFiles.length === 0) return;
+
+      setUploadingFiles((prev) => [...prev, ...newUploadingFiles]);
+
+      // Upload files sequentially
+      for (const uploadFile of newUploadingFiles) {
+        await uploadSingleFile(uploadFile);
+      }
+
+      // Refresh data after all uploads
+      await fetchData();
+    },
+    [quoteId, readOnly, fetchData]
+  );
+
+  // Upload a single file
+  const uploadSingleFile = async (uploadFile: UploadingFile) => {
+    const { id, file } = uploadFile;
+
+    // Update status to uploading
+    setUploadingFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, status: "uploading" as const } : f))
+    );
+
+    try {
+      // Generate storage path
+      const fileExt = file.name.split(".").pop()?.toLowerCase() || "pdf";
+      const timestamp = Date.now();
+      const sanitizedName = file.name
+        .replace(/[^a-zA-Z0-9.-]/g, "_")
+        .substring(0, 50);
+      const storagePath = `quotes/${quoteId}/${timestamp}_${sanitizedName}`;
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("quote-files")
+        .upload(storagePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Update progress
+      setUploadingFiles((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, progress: 50 } : f))
+      );
+
+      // Get the "To Translate" category as default
+      const toTranslateCategory = fileCategories.find(
+        (c) => c.slug === "to_translate" || c.name === "To Translate"
+      );
+
+      // Create quote_files record
+      const { data: fileRecord, error: fileError } = await supabase
+        .from("quote_files")
+        .insert({
+          quote_id: quoteId,
+          original_filename: file.name,
+          storage_path: storagePath,
+          file_size: file.size,
+          mime_type: file.type,
+          upload_status: "complete",
+          processing_status: "pending",
+          file_category_id: toTranslateCategory?.id || null,
+        })
+        .select()
+        .single();
+
+      if (fileError) throw fileError;
+
+      // Update progress to complete
+      setUploadingFiles((prev) =>
+        prev.map((f) =>
+          f.id === id ? { ...f, progress: 100, status: "complete" as const } : f
+        )
+      );
+
+      toast.success(`Uploaded: ${file.name}`);
+
+      // Remove from uploading list after delay
+      setTimeout(() => {
+        setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
+      }, 2000);
+
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      setUploadingFiles((prev) =>
+        prev.map((f) =>
+          f.id === id
+            ? { ...f, status: "error" as const, error: error.message || "Upload failed" }
+            : f
+        )
+      );
+      toast.error(`Failed to upload: ${file.name}`);
+    }
+  };
+
+  // Handle drag events
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
+
+      const droppedFiles = e.dataTransfer.files;
+      if (droppedFiles.length > 0) {
+        handleFileSelect(droppedFiles);
+      }
+    },
+    [handleFileSelect]
+  );
+
+  // Handle file input change
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedFiles = e.target.files;
+      if (selectedFiles && selectedFiles.length > 0) {
+        handleFileSelect(selectedFiles);
+      }
+      // Reset input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    },
+    [handleFileSelect]
+  );
+
+  // Remove uploading file
+  const removeUploadingFile = useCallback((id: string) => {
+    setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
+  }, []);
+
+  // ============================================
+  // DOCUMENT MANAGEMENT HANDLERS
   // ============================================
 
   // Analyze selected files
@@ -288,6 +531,36 @@ export default function UnifiedDocumentEditor({
     [fileCategories]
   );
 
+  // Delete file
+  const handleDeleteFile = useCallback(
+    async (fileId: string) => {
+      try {
+        const file = files.find((f) => f.id === fileId);
+        if (!file) return;
+
+        // Delete from storage
+        if (file.storage_path) {
+          await supabase.storage.from("quote-files").remove([file.storage_path]);
+        }
+
+        // Delete record (cascades to assignments, pages, analysis)
+        const { error } = await supabase
+          .from("quote_files")
+          .delete()
+          .eq("id", fileId);
+
+        if (error) throw error;
+
+        toast.success("File deleted");
+        await fetchData();
+      } catch (error) {
+        console.error("Error deleting file:", error);
+        toast.error("Failed to delete file");
+      }
+    },
+    [files, fetchData]
+  );
+
   // Assign file/pages to a document group
   const handleAssignToGroup = useCallback(
     async (fileId: string, groupId: string) => {
@@ -297,10 +570,11 @@ export default function UnifiedDocumentEditor({
 
         // Get current max sequence order in group
         const group = groups.find((g) => g.id === groupId);
-        const maxSeq = group?.assigned_items?.reduce(
-          (max, item) => Math.max(max, item.sequence_order || 0),
-          0
-        ) || 0;
+        const maxSeq =
+          group?.assigned_items?.reduce(
+            (max, item) => Math.max(max, item.sequence_order || 0),
+            0
+          ) || 0;
 
         // If file has pages, assign each page
         if (file.quote_pages && file.quote_pages.length > 0) {
@@ -591,7 +865,107 @@ export default function UnifiedDocumentEditor({
         </button>
       </div>
 
-      {/* File List Section - Organized by File Type */}
+      {/* File Upload Section */}
+      {!readOnly && (
+        <div
+          className={`relative border-2 border-dashed rounded-lg p-6 transition-colors ${
+            isDragging
+              ? "border-teal-500 bg-teal-50"
+              : "border-gray-300 hover:border-teal-400 hover:bg-gray-50"
+          }`}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+
+          <div className="text-center">
+            <Upload
+              className={`w-10 h-10 mx-auto mb-3 ${
+                isDragging ? "text-teal-600" : "text-gray-400"
+              }`}
+            />
+            <p className="text-sm font-medium text-gray-700 mb-1">
+              {isDragging ? "Drop files here" : "Drag and drop files here"}
+            </p>
+            <p className="text-xs text-gray-500 mb-3">
+              PDF, JPEG, PNG, WebP, HEIC • Max 25MB per file
+            </p>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 inline mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                "Browse Files"
+              )}
+            </button>
+          </div>
+
+          {/* Uploading Files Progress */}
+          {uploadingFiles.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {uploadingFiles.map((uf) => (
+                <div
+                  key={uf.id}
+                  className="flex items-center gap-3 p-2 bg-white rounded border border-gray-200"
+                >
+                  <File className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-700 truncate">
+                      {uf.file.name}
+                    </p>
+                    {uf.status === "uploading" && (
+                      <div className="mt-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-teal-500 transition-all duration-300"
+                          style={{ width: `${uf.progress}%` }}
+                        />
+                      </div>
+                    )}
+                    {uf.status === "error" && (
+                      <p className="text-xs text-red-600 mt-0.5">{uf.error}</p>
+                    )}
+                  </div>
+                  {uf.status === "complete" && (
+                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                  )}
+                  {uf.status === "error" && (
+                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                  )}
+                  {uf.status === "uploading" && (
+                    <Loader2 className="w-5 h-5 text-teal-500 animate-spin flex-shrink-0" />
+                  )}
+                  {(uf.status === "error" || uf.status === "complete") && (
+                    <button
+                      onClick={() => removeUploadingFile(uf.id)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                    >
+                      <X className="w-4 h-4 text-gray-400" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* File List Section */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
           <h4 className="font-medium text-gray-900 flex items-center gap-2">
@@ -608,6 +982,11 @@ export default function UnifiedDocumentEditor({
             <div className="p-8 text-center text-gray-500">
               <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
               <p>No files uploaded yet</p>
+              {!readOnly && (
+                <p className="text-sm mt-1">
+                  Drag and drop files above or click Browse Files
+                </p>
+              )}
             </div>
           ) : (
             <FileListWithGroups
@@ -622,10 +1001,12 @@ export default function UnifiedDocumentEditor({
               onGroupChange={handleGroupChange}
               onCreateGroup={() => setShowCreateGroupModal(true)}
               onFileExpand={handleFileExpand}
+              onDeleteFile={handleDeleteFile}
               expandedFileId={expandedFileId}
               isLoading={false}
               isAnalyzing={isAnalyzing}
               mode={mode}
+              readOnly={readOnly}
             />
           )}
         </div>
@@ -643,7 +1024,8 @@ export default function UnifiedDocumentEditor({
               ) : (
                 <RefreshCw className="w-4 h-4" />
               )}
-              Analyze {selectedFileIds.size} Selected File{selectedFileIds.size > 1 ? "s" : ""}
+              Analyze {selectedFileIds.size} Selected File
+              {selectedFileIds.size > 1 ? "s" : ""}
             </button>
           </div>
         )}
@@ -693,31 +1075,48 @@ export default function UnifiedDocumentEditor({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <span className="text-teal-700">Groups:</span>
-              <span className="ml-2 font-semibold text-teal-900">{groups.length}</span>
+              <span className="ml-2 font-semibold text-teal-900">
+                {groups.length}
+              </span>
             </div>
             <div>
               <span className="text-teal-700">Total Pages:</span>
               <span className="ml-2 font-semibold text-teal-900">
-                {groups.reduce((sum, g) => sum + (g.billable_pages || 0), 0).toFixed(1)}
+                {groups
+                  .reduce((sum, g) => sum + (g.billable_pages || 0), 0)
+                  .toFixed(1)}
               </span>
             </div>
             <div>
               <span className="text-teal-700">Translation:</span>
               <span className="ml-2 font-semibold text-teal-900">
-                ${groups.reduce((sum, g) => sum + (g.line_total || 0) - (g.certification_price || 0), 0).toFixed(2)}
+                $
+                {groups
+                  .reduce(
+                    (sum, g) =>
+                      sum + (g.line_total || 0) - (g.certification_price || 0),
+                    0
+                  )
+                  .toFixed(2)}
               </span>
             </div>
             <div>
               <span className="text-teal-700">Certifications:</span>
               <span className="ml-2 font-semibold text-teal-900">
-                ${groups.reduce((sum, g) => sum + (g.certification_price || 0), 0).toFixed(2)}
+                $
+                {groups
+                  .reduce((sum, g) => sum + (g.certification_price || 0), 0)
+                  .toFixed(2)}
               </span>
             </div>
           </div>
           <div className="mt-3 pt-3 border-t border-teal-200 flex justify-between items-center">
             <span className="font-medium text-teal-900">Subtotal:</span>
             <span className="text-xl font-bold text-teal-900">
-              ${groups.reduce((sum, g) => sum + (g.line_total || 0), 0).toFixed(2)}
+              $
+              {groups
+                .reduce((sum, g) => sum + (g.line_total || 0), 0)
+                .toFixed(2)}
             </span>
           </div>
         </div>
