@@ -51,6 +51,7 @@ import type { DocumentGroup, AssignedItem } from "../../components/admin/hitl/Do
 import type { UnassignedItem } from "../../components/admin/hitl/AssignItemsModal";
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
 import { UnifiedDocumentEditor } from "@/components/shared/document-editor";
+import { DocumentFlowEditor } from "@/components/shared/document-flow";
 
 // ============================================
 // ROLE HIERARCHY FOR CLAIM OVERRIDE
@@ -5036,6 +5037,25 @@ const HITLReviewDetail: React.FC = () => {
                 )}
               </div>
               ========== END OLD DOCUMENT GROUPING UI ========== */}
+
+              {/* Document Flow Editor - New unified document management */}
+              {reviewData?.quotes?.id && (
+                <div className="mt-6">
+                  <DocumentFlowEditor
+                    mode="hitl"
+                    quoteId={reviewData.quotes.id}
+                    reviewId={reviewId}
+                    onPricingChange={(totals) => {
+                      console.log('Pricing updated:', totals);
+                      // Refresh quote data when pricing changes
+                      fetchReviewData();
+                    }}
+                    readOnly={!claimedByMe}
+                    showPricing={true}
+                    allowUpload={claimedByMe}
+                  />
+                </div>
+              )}
             </HITLPanelLayout>
           )}
 
