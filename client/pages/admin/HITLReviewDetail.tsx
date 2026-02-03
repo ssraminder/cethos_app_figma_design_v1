@@ -3938,6 +3938,7 @@ const HITLReviewDetail: React.FC = () => {
                     mode="hitl"
                     quoteId={reviewData.quotes.id}
                     reviewId={reviewId}
+                    staffId={staffSession?.staffId}
                     onPricingChange={(totals) => {
                       console.log('Pricing updated:', totals);
                       // Refresh quote data when pricing changes

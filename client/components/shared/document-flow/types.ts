@@ -140,6 +140,7 @@ export interface DocumentFlowEditorProps {
   quoteId: string;
   reviewId?: string;
   orderId?: string;
+  staffId?: string; // Required for file uploads via edge function
   languageMultiplier?: number;
   onPricingChange?: (totals: PricingTotals) => void;
   onSave?: (groups: DocumentGroup[]) => Promise<void>;

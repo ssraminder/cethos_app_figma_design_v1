@@ -21,6 +21,7 @@ export const DocumentFlowEditor: React.FC<DocumentFlowEditorProps> = ({
   quoteId,
   reviewId,
   orderId,
+  staffId,
   languageMultiplier: propLanguageMultiplier,
   onPricingChange,
   onSave,
@@ -72,12 +73,18 @@ export const DocumentFlowEditor: React.FC<DocumentFlowEditorProps> = ({
 
   // Handle file upload
   const handleFilesSelected = useCallback(async (selectedFiles: File[], categoryId: string) => {
+    if (!staffId) {
+      toast.error('Staff ID not available. Cannot upload files.');
+      return;
+    }
+
     for (const file of selectedFiles) {
       try {
         // Create form data
         const formData = new FormData();
         formData.append('file', file);
         formData.append('quoteId', quoteId);
+        formData.append('staffId', staffId);
         formData.append('categoryId', categoryId);
 
         // Get session
@@ -111,7 +118,7 @@ export const DocumentFlowEditor: React.FC<DocumentFlowEditorProps> = ({
         toast.error(`Failed to upload ${file.name}`);
       }
     }
-  }, [quoteId, actions]);
+  }, [quoteId, staffId, actions]);
 
   // Handle analyze
   const handleAnalyze = useCallback(async (fileId: string) => {
