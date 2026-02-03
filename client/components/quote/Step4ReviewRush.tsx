@@ -824,37 +824,13 @@ export default function Step4ReviewRush() {
     const isEligible = !!data && !error;
     setIsSameDayEligible(isEligible);
 
-    // Check if past daily cutoff (9 PM MST)
-    const now = new Date();
-    const mstTime = new Date(
-      now.toLocaleString("en-US", { timeZone: "America/Edmonton" }),
-    );
-    const isPastDailyCutoff = mstTime.getHours() >= dailyCutoffHour;
+    // Rush is ALWAYS available - ignore cutoff time
+    setIsRushAvailable(true);
 
-    // Calculate actual rush delivery days
-    const rushDeliveryDays = Math.max(1, standardDays - rushTurnaroundDays);
-
-    // Rush availability logic:
-    // Rush cutoff (4:30 PM) only applies when:
-    // - It's a weekday AND before daily cutoff (9 PM) AND rush means next-day delivery
-    // On weekends or after daily cutoff, delivery dates already start from next business day,
-    // so rush is always available (it still provides value - 1 day faster)
-    let rushAvail: boolean;
-    if (isWeekend(mstTime) || isPastDailyCutoff) {
-      // Weekends or after 9 PM: rush is available, dates calculated from next business day
-      rushAvail = true;
-    } else if (rushDeliveryDays <= 1) {
-      // Weekday before 9 PM and rush is next-day: apply 4:30 PM cutoff
-      rushAvail = checkCutoffTime(rushCutoffHour, rushCutoffMinute);
-    } else {
-      // Weekday before 9 PM but rush is 2+ days: no cutoff needed
-      rushAvail = true;
-    }
-
+    // Same-day still respects cutoff
     const sameDayAvail =
       isEligible && checkCutoffTime(sameDayCutoffHour, sameDayCutoffMinute);
 
-    setIsRushAvailable(rushAvail);
     setIsSameDayAvailable(sameDayAvail);
   };
 
@@ -1277,15 +1253,13 @@ export default function Step4ReviewRush() {
             </label>
           )}
 
-          {/* Rush Option */}
+          {/* Rush Option - Always Available */}
           {rushOption && (
             <label
               className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
                 turnaroundType === "rush"
                   ? "border-cethos-teal bg-cethos-teal-50"
-                  : !isRushAvailable
-                    ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
-                    : "border-gray-200 hover:border-gray-300"
+                  : "border-gray-200 hover:border-gray-300"
               }`}
             >
               <input
@@ -1293,8 +1267,7 @@ export default function Step4ReviewRush() {
                 name="turnaround"
                 value="rush"
                 checked={turnaroundType === "rush"}
-                onChange={() => isRushAvailable && setTurnaroundType("rush")}
-                disabled={!isRushAvailable}
+                onChange={() => setTurnaroundType("rush")}
                 className="sr-only"
               />
               <div className="flex-1">
@@ -1317,20 +1290,7 @@ export default function Step4ReviewRush() {
                 </p>
                 <p className="text-xs text-gray-400">
                   {rushTurnaroundDays} day{rushTurnaroundDays !== 1 ? "s" : ""}{" "}
-                  faster
-                  {!isRushAvailable && (
-                    <span className="text-red-500 ml-1">
-                      {isWeekend(
-                        new Date(
-                          new Date().toLocaleString("en-US", {
-                            timeZone: "America/Edmonton",
-                          }),
-                        ),
-                      )
-                        ? "(Unavailable on weekends)"
-                        : "(Cutoff passed)"}
-                    </span>
-                  )}
+                  faster turnaround
                 </p>
               </div>
               {turnaroundType === "rush" && (
