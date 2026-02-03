@@ -167,7 +167,11 @@ export function useDocumentFlow(quoteId: string, mode: EditorMode) {
         .eq('id', quoteId)
         .single();
 
-      const languageMultiplier = quoteData?.source_language?.multiplier || 1.0;
+      // Handle both array and object responses from Supabase join
+      const sourceLanguage = Array.isArray(quoteData?.source_language)
+        ? quoteData?.source_language[0]
+        : quoteData?.source_language;
+      const languageMultiplier = sourceLanguage?.multiplier || 1.0;
 
       // Transform files data
       const files: QuoteFile[] = (filesData || []).map(f => ({
