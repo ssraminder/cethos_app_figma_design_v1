@@ -3368,8 +3368,11 @@ const HITLReviewDetail: React.FC = () => {
     groupings: PageGrouping[]
   ) => {
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData?.session?.access_token;
+      const accessToken = await getAccessToken();
+
+      if (!staffSession?.staffId) {
+        throw new Error("Staff session not available");
+      }
 
       // Save groupings via edge function
       const response = await fetch(
@@ -3382,9 +3385,10 @@ const HITLReviewDetail: React.FC = () => {
           },
           body: JSON.stringify({
             reviewId,
-            correctionType: "page_groupings",
+            staffId: staffSession.staffId,
+            field: "page_groupings",
+            correctedValue: JSON.stringify(groupings),
             fileId,
-            groupings,
           }),
         }
       );
