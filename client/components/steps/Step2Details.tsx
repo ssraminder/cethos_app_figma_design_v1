@@ -27,6 +27,18 @@ export default function Step2Details() {
     []
   );
 
+  // NEW: State for "Other" intended use
+  const [showOtherInput, setShowOtherInput] = useState(false);
+  const [otherIntendedUse, setOtherIntendedUse] = useState(state.otherIntendedUse || "");
+
+  // NEW: State for language tier and calculated rate
+  const [languageInfo, setLanguageInfo] = useState<{
+    tier: number;
+    multiplier: number;
+    effectiveRate: number;
+  } | null>(null);
+  const [baseRate, setBaseRate] = useState(65); // Default base rate
+
   const updateField = (field: string, value: string) => {
     updateState({ [field]: value });
   };
@@ -67,13 +79,22 @@ export default function Step2Details() {
       }));
   }, [targetLanguages, state.sourceLanguageId]);
 
-  // Convert intended uses to grouped dropdown options
+  // Convert intended uses to grouped dropdown options WITH "Other" option
   const intendedUseOptions: DropdownOption[] = useMemo(() => {
-    return intendedUses.map((use) => ({
+    const options = intendedUses.map((use) => ({
       id: use.id,
       label: use.name,
       group: use.subcategory || "Other",
     }));
+
+    // Add "Other" option at the end
+    options.push({
+      id: "other",
+      label: "Other (please specify)",
+      group: "Other",
+    });
+
+    return options;
   }, [intendedUses]);
 
   // Convert provinces to dropdown options
@@ -94,6 +115,65 @@ export default function Step2Details() {
       ...other.map((c) => ({ id: c.id, label: c.name, group: "All Countries" })),
     ];
   }, [countries]);
+
+  // NEW: Fetch base rate from app_settings
+  useEffect(() => {
+    const fetchBaseRate = async () => {
+      if (!supabase) return;
+
+      const { data } = await supabase
+        .from("app_settings")
+        .select("setting_value")
+        .eq("setting_key", "base_rate_per_page")
+        .single();
+
+      if (data?.setting_value) {
+        setBaseRate(parseFloat(data.setting_value) || 65);
+      }
+    };
+
+    fetchBaseRate();
+  }, []);
+
+  // NEW: Fetch language tier and multiplier when source language changes
+  useEffect(() => {
+    const fetchLanguageInfo = async () => {
+      if (!state.sourceLanguageId || !supabase) {
+        setLanguageInfo(null);
+        return;
+      }
+
+      const { data: langData } = await supabase
+        .from("languages")
+        .select("tier, multiplier")
+        .eq("id", state.sourceLanguageId)
+        .single();
+
+      if (langData) {
+        const tier = langData.tier || 1;
+        const multiplier = parseFloat(langData.multiplier) || 1.0;
+        
+        // Calculate effective rate: base_rate * multiplier, rounded up to nearest 2.5
+        const rawRate = baseRate * multiplier;
+        const effectiveRate = Math.ceil(rawRate / 2.5) * 2.5;
+
+        setLanguageInfo({
+          tier,
+          multiplier,
+          effectiveRate,
+        });
+
+        // Store in quote state for later use
+        updateState({
+          languageTier: tier,
+          languageMultiplier: multiplier,
+          effectiveRate: effectiveRate,
+        });
+      }
+    };
+
+    fetchLanguageInfo();
+  }, [state.sourceLanguageId, baseRate]);
 
   // Handle source language change with smart target auto-selection
   const handleSourceLanguageChange = (languageId: string) => {
@@ -117,6 +197,20 @@ export default function Step2Details() {
 
   // Handle intended use change with auto-select certification type
   const handleIntendedUseChange = (useId: string) => {
+    // Check if "Other" was selected
+    if (useId === "other") {
+      setShowOtherInput(true);
+      updateField("intendedUseId", "");
+      updateState({ isOtherIntendedUse: true });
+      setShowProvinceDropdown(false);
+      updateField("serviceProvince", "");
+      return;
+    }
+
+    // Regular intended use selected
+    setShowOtherInput(false);
+    setOtherIntendedUse("");
+    updateState({ isOtherIntendedUse: false, otherIntendedUse: "" });
     updateField("intendedUseId", useId);
 
     // Find the selected intended use
@@ -138,6 +232,12 @@ export default function Step2Details() {
         selectedUse.default_certification_type_id
       );
     }
+  };
+
+  // Handle "Other" intended use text input
+  const handleOtherIntendedUseChange = (value: string) => {
+    setOtherIntendedUse(value);
+    updateState({ otherIntendedUse: value });
   };
 
   // Handle country change
@@ -175,6 +275,14 @@ export default function Step2Details() {
       setShowProvinceDropdown(isProvincial);
     }
   }, [state.intendedUseId, intendedUses]);
+
+  // Check if "Other" was previously selected (on mount)
+  useEffect(() => {
+    if (state.isOtherIntendedUse) {
+      setShowOtherInput(true);
+      setOtherIntendedUse(state.otherIntendedUse || "");
+    }
+  }, []);
 
   // Subscribe to processing status updates
   useEffect(() => {
@@ -247,6 +355,23 @@ export default function Step2Details() {
       }
     };
   }, [state.quoteId]);
+
+  // Validation: Check if form is complete
+  const isFormValid = useMemo(() => {
+    const hasLanguages = state.sourceLanguageId && state.targetLanguageId;
+    const hasIntendedUse = state.intendedUseId || (showOtherInput && otherIntendedUse.trim().length > 0);
+    const hasProvince = !showProvinceDropdown || state.serviceProvince;
+    // Country is now OPTIONAL
+    return hasLanguages && hasIntendedUse && hasProvince;
+  }, [
+    state.sourceLanguageId,
+    state.targetLanguageId,
+    state.intendedUseId,
+    showOtherInput,
+    otherIntendedUse,
+    showProvinceDropdown,
+    state.serviceProvince,
+  ]);
 
   if (loading) {
     return (
@@ -322,14 +447,32 @@ export default function Step2Details() {
       {/* Form Section */}
       <div className="bg-white border-2 border-cethos-border rounded-xl p-6 sm:p-8 space-y-6">
         {/* Source Language */}
-        <SearchableDropdown
-          options={sourceLanguageOptions}
-          value={state.sourceLanguageId || ""}
-          onChange={handleSourceLanguageChange}
-          label="Source Language"
-          placeholder="Search or select source language..."
-          required
-        />
+        <div>
+          <SearchableDropdown
+            options={sourceLanguageOptions}
+            value={state.sourceLanguageId || ""}
+            onChange={handleSourceLanguageChange}
+            label="Source Language"
+            placeholder="Search or select source language..."
+            required
+          />
+          {/* NEW: Show language tier info */}
+          {languageInfo && (
+            <div className="mt-2 text-xs text-cethos-slate flex items-center gap-2">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                Tier {languageInfo.tier}
+              </span>
+              <span>
+                Rate: ${languageInfo.effectiveRate.toFixed(2)}/page
+                {languageInfo.multiplier > 1 && (
+                  <span className="text-gray-400 ml-1">
+                    ({languageInfo.multiplier}x multiplier)
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Target Language */}
         <SearchableDropdown
@@ -342,15 +485,34 @@ export default function Step2Details() {
         />
 
         {/* Purpose of Translation */}
-        <SearchableDropdown
-          options={intendedUseOptions}
-          value={state.intendedUseId || ""}
-          onChange={handleIntendedUseChange}
-          label="Purpose of Translation"
-          placeholder="Search or select intended use..."
-          required
-          groupOrder={subcategoryOrder}
-        />
+        <div>
+          <SearchableDropdown
+            options={intendedUseOptions}
+            value={showOtherInput ? "other" : (state.intendedUseId || "")}
+            onChange={handleIntendedUseChange}
+            label="Purpose of Translation"
+            placeholder="Search or select intended use..."
+            required
+            groupOrder={subcategoryOrder}
+          />
+
+          {/* NEW: "Other" text input */}
+          {showOtherInput && (
+            <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
+              <input
+                type="text"
+                value={otherIntendedUse}
+                onChange={(e) => handleOtherIntendedUseChange(e.target.value)}
+                placeholder="Please specify the purpose of your translation..."
+                className="w-full px-4 py-3 rounded-lg border border-cethos-border focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent text-base"
+                maxLength={200}
+              />
+              <p className="mt-1 text-xs text-cethos-slate">
+                {otherIntendedUse.length}/200 characters
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* Province Dropdown - Conditional */}
         {showProvinceDropdown && (
@@ -369,14 +531,14 @@ export default function Step2Details() {
           </div>
         )}
 
-        {/* Country of Issue */}
+        {/* Country of Issue - NOW OPTIONAL */}
         <SearchableDropdown
           options={countryOptions}
           value={state.countryId || ""}
           onChange={handleCountryChange}
           label="Country where document was issued"
-          placeholder="Search or select country..."
-          required
+          placeholder="Search or select country (optional)..."
+          required={false}
           groupOrder={["Common Countries", "All Countries"]}
         />
 
@@ -415,19 +577,9 @@ export default function Step2Details() {
 
           <button
             onClick={goToNextStep}
-            disabled={
-              !state.sourceLanguageId ||
-              !state.targetLanguageId ||
-              !state.intendedUseId ||
-              !state.countryId ||
-              (showProvinceDropdown && !state.serviceProvince)
-            }
+            disabled={!isFormValid}
             className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
-              state.sourceLanguageId &&
-              state.targetLanguageId &&
-              state.intendedUseId &&
-              state.countryId &&
-              (!showProvinceDropdown || state.serviceProvince)
+              isFormValid
                 ? "bg-cethos-teal hover:bg-cethos-teal-light"
                 : "bg-gray-300 cursor-not-allowed"
             }`}
