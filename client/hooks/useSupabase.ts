@@ -296,6 +296,17 @@ const { error: quoteUpdateError } = await supabase
 
       if (quoteUpdateError) throw quoteUpdateError;
 
+      // Send internal notification for new lead (fire and forget)
+      try {
+        await supabase.functions.invoke("send-internal-notification", {
+          body: { type: "quote_to_lead", quoteId },
+        });
+        console.log("✅ Internal lead notification sent");
+      } catch (notifyErr) {
+        // Don't block on notification failure
+        console.error("Failed to send lead notification:", notifyErr);
+      }
+
       setLoading(false);
       return true;
     } catch (err) {
