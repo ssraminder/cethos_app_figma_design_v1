@@ -50,6 +50,7 @@ serve(async (req) => {
     let order: any = null;
     let customer: any = null;
     let documentCount = 0;
+    const filesWithUrls: { filename: string; size: number; url: string }[] = [];
 
     if (type === "quote_to_lead" && quoteId) {
       const { data: quoteData, error: quoteError } = await supabase
@@ -80,6 +81,31 @@ serve(async (req) => {
         .select("*", { count: "exact", head: true })
         .eq("quote_id", quoteId);
       documentCount = count || 0;
+
+      // Fetch files for this quote
+      const { data: quoteFiles } = await supabase
+        .from("quote_files")
+        .select("id, original_filename, storage_path, file_size")
+        .eq("quote_id", quoteId)
+        .order("created_at");
+
+      // Generate signed URLs
+      if (quoteFiles && quoteFiles.length > 0) {
+        for (const file of quoteFiles) {
+          const { data: signedUrlData } = await supabase
+            .storage
+            .from("quote-files")
+            .createSignedUrl(file.storage_path, 60 * 60 * 24); // 24 hours
+
+          if (signedUrlData) {
+            filesWithUrls.push({
+              filename: file.original_filename,
+              size: file.file_size,
+              url: signedUrlData.signedUrl,
+            });
+          }
+        }
+      }
     } else if (type === "new_order" && orderId) {
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
@@ -115,6 +141,31 @@ serve(async (req) => {
           .select("*", { count: "exact", head: true })
           .eq("quote_id", quote.id);
         documentCount = count || 0;
+
+        // Fetch files for this quote
+        const { data: quoteFiles } = await supabase
+          .from("quote_files")
+          .select("id, original_filename, storage_path, file_size")
+          .eq("quote_id", quote.id)
+          .order("created_at");
+
+        // Generate signed URLs
+        if (quoteFiles && quoteFiles.length > 0) {
+          for (const file of quoteFiles) {
+            const { data: signedUrlData } = await supabase
+              .storage
+              .from("quote-files")
+              .createSignedUrl(file.storage_path, 60 * 60 * 24); // 24 hours
+
+            if (signedUrlData) {
+              filesWithUrls.push({
+                filename: file.original_filename,
+                size: file.file_size,
+                url: signedUrlData.signedUrl,
+              });
+            }
+          }
+        }
       }
     } else {
       return new Response(
@@ -145,6 +196,23 @@ serve(async (req) => {
     const customerEmail = customer?.email || "N/A";
     const sourceLanguage = quote?.source_language?.name || "N/A";
     const targetLanguage = quote?.target_language?.name || "N/A";
+
+    // Generate files HTML section
+    const filesHtml = filesWithUrls.length > 0 ? `
+      <div style="background-color: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <h3 style="margin: 0 0 15px 0; color: #374151; font-size: 16px;">📎 Files (${filesWithUrls.length})</h3>
+        ${filesWithUrls.map(file => `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f3f4f6;">
+            <div>
+              <span style="color: #111827;">📄 ${file.filename}</span>
+              <span style="color: #9ca3af; font-size: 12px; margin-left: 8px;">(${(file.size / 1024).toFixed(1)} KB)</span>
+            </div>
+            <a href="${file.url}" style="background-color: #7c3aed; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500;">Download</a>
+          </div>
+        `).join('')}
+        <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 12px;">⏰ Download links expire in 24 hours</p>
+      </div>
+    ` : '';
 
     let subject: string;
     let emailHtml: string;
@@ -208,6 +276,8 @@ serve(async (req) => {
                   <span class="info-value" style="color: #059669; font-size: 18px;">${formattedTotal}</span>
                 </div>
               </div>
+
+              ${filesHtml}
 
               <div class="highlight">
                 <strong>⏰ Action Required:</strong> Please review this lead in the HITL queue and process the quote.
@@ -298,6 +368,8 @@ serve(async (req) => {
                   <span class="info-value">${documentCount} file(s)</span>
                 </div>
               </div>
+
+              ${filesHtml}
 
               <div style="text-align: center; margin-top: 30px;">
                 <a href="https://portal.cethos.com/admin/orders" class="cta-button">View Orders</a>
