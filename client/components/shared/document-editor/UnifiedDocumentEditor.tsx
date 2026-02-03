@@ -142,7 +142,7 @@ export default function UnifiedDocumentEditor({
         .from("certification_types")
         .select("*")
         .eq("is_active", true)
-        .order("sort_order", { ascending: true });
+        .order("display_order", { ascending: true });
 
       if (certTypesError) throw certTypesError;
 
