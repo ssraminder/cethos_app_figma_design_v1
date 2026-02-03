@@ -349,13 +349,30 @@ export default function PricingSummaryBox({
     }
 
     try {
+      const value = parseFloat(adjustmentForm.value);
+
+      // Calculate the actual amount
+      let calculatedAmount = value;
+
+      if (adjustmentForm.valueType === 'percentage') {
+        // Calculate percentage of subtotal
+        const subtotal = pricing?.subtotal || 0;
+        calculatedAmount = (subtotal * value) / 100;
+      }
+
+      // Make discounts negative
+      if (adjustmentForm.type === 'discount') {
+        calculatedAmount = -Math.abs(calculatedAmount);
+      }
+
       const { error } = await supabase.from("quote_adjustments").insert({
         quote_id: quoteId,
         adjustment_type: adjustmentForm.type,
         value_type: adjustmentForm.valueType,
-        value: parseFloat(adjustmentForm.value),
+        value: value,
+        calculated_amount: calculatedAmount,
         reason: adjustmentForm.reason || null,
-        added_by: staffId || null,
+        created_by_staff_id: staffId || null,
       });
 
       if (error) throw error;
