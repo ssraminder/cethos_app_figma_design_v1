@@ -92,7 +92,7 @@ export default function UnifiedDocumentEditor({
 
       // Fetch file categories
       const { data: categoriesData, error: categoriesError } = await supabase
-        .from("file_categories")
+        .from("display_order")
         .select("*")
         .eq("is_active", true)
         .order("sort_order", { ascending: true });
