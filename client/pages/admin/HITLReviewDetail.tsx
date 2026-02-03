@@ -39,18 +39,21 @@ import {
   HITLPanelLayout,
   PricingSummaryBox,
   TranslationDetailsCard,
-  DocumentCardV2,
-  DocumentGroupCard,
-  CreateGroupModal,
-  EditGroupModal,
-  AssignItemsModal,
-  FileAccordion,
-  DocumentGroupsView,
+  // OLD HITL CODE - DISABLED 2026-02-03
+  // DocumentCardV2,
+  // DocumentGroupCard,
+  // CreateGroupModal,
+  // EditGroupModal,
+  // AssignItemsModal,
+  // FileAccordion,
+  // DocumentGroupsView,
 } from "../../components/admin/hitl";
-import type { DocumentGroup, AssignedItem } from "../../components/admin/hitl/DocumentGroupCard";
-import type { UnassignedItem } from "../../components/admin/hitl/AssignItemsModal";
+// OLD HITL CODE - DISABLED 2026-02-03
+// import type { DocumentGroup, AssignedItem } from "../../components/admin/hitl/DocumentGroupCard";
+// import type { UnassignedItem } from "../../components/admin/hitl/AssignItemsModal";
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
-import { UnifiedDocumentEditor } from "@/components/shared/document-editor";
+// OLD HITL CODE - DISABLED 2026-02-03
+// import { UnifiedDocumentEditor } from "@/components/shared/document-editor";
 import { DocumentFlowEditor } from "@/components/shared/document-flow";
 
 // ============================================
@@ -344,6 +347,7 @@ const HITLReviewDetail: React.FC = () => {
     type: string;
   } | null>(null);
 
+  /* ========== OLD HITL CODE - REMOVED 2026-02-03 ==========
   // ============================================
   // DOCUMENT GROUPING STATE
   // ============================================
@@ -407,6 +411,7 @@ const HITLReviewDetail: React.FC = () => {
   >([]);
   const [showDocumentGroupsView, setShowDocumentGroupsView] = useState(false);
   const [toTranslateCategoryId, setToTranslateCategoryId] = useState<string | null>(null);
+  ========== END OLD HITL CODE ========== */
 
   // ============================================
   // DATA FETCHING
@@ -428,6 +433,7 @@ const HITLReviewDetail: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffSession?.staffId, authLoading, reviewId]);
 
+  /* ========== OLD HITL CODE - REMOVED 2026-02-03 ==========
   // Load document groups when quote data is available
   useEffect(() => {
     if (reviewData?.quote_id) {
@@ -435,6 +441,7 @@ const HITLReviewDetail: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewData?.quote_id]);
+  ========== END OLD HITL CODE ========== */
 
   // ============================================
   // FETCH GUARD REFS (prevent infinite loops)
@@ -2695,6 +2702,7 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
+  /* ========== OLD HITL CODE - REMOVED 2026-02-03 ==========
   // ============================================
   // DOCUMENT GROUPING FUNCTIONS
   // ============================================
@@ -2967,6 +2975,7 @@ const HITLReviewDetail: React.FC = () => {
     setSelectedGroupForEdit(group);
     setShowEditGroupModal(true);
   };
+  ========== END OLD HITL CODE ========== */
 
   // ============================================
   // PRICING CALCULATIONS
@@ -3273,6 +3282,7 @@ const HITLReviewDetail: React.FC = () => {
     }
   };
 
+  /* ========== OLD HITL CODE - REMOVED 2026-02-03 ==========
   // ============================================
   // FILE ACCORDION FLOW HANDLERS
   // ============================================
@@ -3508,6 +3518,7 @@ const HITLReviewDetail: React.FC = () => {
       toast.error("Failed to update certification");
     }
   };
+  ========== END OLD HITL CODE ========== */
 
   // ============================================
   // COMPUTED VALUES
@@ -3879,1169 +3890,29 @@ const HITLReviewDetail: React.FC = () => {
                 </div>
               )}
 
-              {/* Selection Mode Toolbar */}
-              {analysisResults.length > 0 && (
-                <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => {
-                        if (splitMode) {
-                          clearSelection();
-                        } else {
-                          setSplitMode(true);
-                        }
-                      }}
-                      disabled={!claimedByMe}
-                      className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                        splitMode
-                          ? "bg-teal-600 text-white"
-                          : !claimedByMe
-                            ? "bg-gray-200 border border-gray-300 text-gray-400 cursor-not-allowed"
-                            : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
-                      }`}
-                      title={
-                        !claimedByMe ? "Claim this review to enable selection" : ""
-                      }
-                    >
-                      {splitMode ? "✓ Selection Mode" : "Selection Mode"}
-                    </button>
+              {/* ========== OLD HITL CODE REMOVED 2026-02-03 ==========
+                 The following sections have been removed:
+                 - Selection Mode Toolbar
+                 - Document Selection Action Bar
+                 - Document List (analysisResults.map)
+                 - File Analysis Section (FileAccordion)
+                 - DocumentGroupsView
 
-                    {splitMode && selectedPages.size > 0 && (
-                      <>
-                        <span className="text-sm text-gray-600">
-                          {selectedPages.size} page(s) selected
-                        </span>
-                        <button
-                          onClick={() => setShowSplitModal(true)}
-                          className="px-3 py-1.5 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
-                        >
-                          Split to New Document
-                        </button>
-                        <button
-                          onClick={() => setShowCombineModal(true)}
-                          className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700"
-                        >
-                          Combine Into...
-                        </button>
-                        <button
-                          onClick={clearSelection}
-                          className="px-3 py-1.5 text-gray-600 hover:text-gray-800 text-sm"
-                        >
-                          Clear
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
+                 All document management is now handled by DocumentFlowEditor below.
+                 See git history for the removed code.
+              ========== END OLD HITL CODE ========== */}
 
-              {/* Document Selection Action Bar - Shows when documents are selected */}
-              {splitMode && selectedDocuments.length > 0 && (
-                <div className="sticky top-0 z-10 bg-teal-50 border border-teal-200 rounded-lg p-4 mb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <span className="font-medium text-teal-800">
-                      {selectedDocuments.length} document{selectedDocuments.length !== 1 ? "s" : ""} selected
-                    </span>
-                    <button
-                      onClick={selectAllDocuments}
-                      className="text-sm text-teal-600 hover:text-teal-800 underline"
-                    >
-                      {selectedDocuments.length === analysisResults.length ? "Deselect All" : "Select All"}
-                    </button>
-                  </div>
+              {/* NOTE: All old document selection/list/grouping code has been removed.
+                 DocumentFlowEditor now handles all document management.
+                 See git history for the removed code (approx 1000 lines).
 
-                  <div className="flex items-center gap-3">
-                    {/* Combine Button - Only show when 2+ documents selected */}
-                    {selectedDocuments.length >= 2 && (
-                      <button
-                        onClick={handleCombineDocuments}
-                        className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
-                      >
-                        <Layers className="w-4 h-4" />
-                        Combine Selected
-                      </button>
-                    )}
-
-                    {/* Split Button - Only show when 1 multi-page document selected */}
-                    {selectedDocuments.length === 1 && getDocumentPageCount(selectedDocuments[0]) > 1 && (
-                      <button
-                        onClick={() => handleSplitDocument(selectedDocuments[0])}
-                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-                      >
-                        <Scissors className="w-4 h-4" />
-                        Split Document
-                      </button>
-                    )}
-
-                    {/* Cancel Selection */}
-                    <button
-                      onClick={clearSelection}
-                      className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Document List - Only show files that HAVE analysis records */}
-              {/* Files without analysis should only appear in Document Management panel */}
-              <div className="space-y-4">
-                {analysisResults.length === 0 ? (
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                    <p className="text-gray-500">No analyzed documents yet.</p>
-                    <p className="text-sm text-gray-400 mt-2">
-                      Use the Document Management panel to analyze files or add manual entries.
-                    </p>
-                  </div>
-                ) : analysisResults.map((analysis, index) => {
-                  // Get the file data from analysis.quote_file or from quoteFiles
-                  const file = quoteFiles.find((f) => f.id === analysis.quote_file_id) || {
-                    id: analysis.quote_file_id,
-                    original_filename: analysis.quote_file?.original_filename || 'Unknown',
-                    storage_path: analysis.quote_file?.storage_path,
-                    file_size: analysis.quote_file?.file_size || 0,
-                    mime_type: analysis.quote_file?.mime_type || '',
-                    ai_processing_status: 'completed',
-                  };
-                  const pages = pageData[analysis.quote_file_id] || [];
-                  // Use pageData if available, otherwise fall back to analysis values
-                  const totalWords = pages.length > 0
-                    ? pages.reduce((sum, p) => sum + getPageWordCount(p), 0)
-                    : analysis.word_count || 0;
-                  const displayPageCount = pages.length > 0 ? pages.length : (analysis.page_count || 0);
-                  const fileId = analysis.quote_file_id;
-                  const isExpanded = expandedFile === fileId;
-
-                  // Original code for files WITH analysis - keep unchanged
-                  return (
-                    <div
-                      key={fileId}
-                      className={`bg-white rounded-lg border shadow-sm overflow-hidden ${
-                        splitMode && selectedDocuments.includes(analysis.id)
-                          ? "border-teal-400 ring-2 ring-teal-200"
-                          : "border-gray-200"
-                      }`}
-                    >
-                      {/* File Header */}
-                      <div
-                        className="w-full px-4 py-3 flex justify-between items-center bg-gradient-to-r from-gray-50 to-white border-b border-gray-200 hover:from-gray-100 hover:to-gray-50 text-left transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center gap-3">
-                          {/* Selection Checkbox - Only show in selection mode */}
-                          {splitMode && (
-                            <input
-                              type="checkbox"
-                              checked={selectedDocuments.includes(analysis.id)}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                toggleDocumentSelection(analysis.id);
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-5 h-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
-                            />
-                          )}
-                          <div
-                            className="flex items-center gap-3 flex-1"
-                            onClick={() => setExpandedFile(isExpanded ? null : fileId)}
-                          >
-                            <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <FileText className="w-4 h-4 text-teal-600" />
-                            </div>
-                            <div>
-                              <h4 className="font-medium text-gray-900">
-                                {index + 1}.{" "}
-                                {file.original_filename ||
-                                  analysis.quote_file?.original_filename}
-                              </h4>
-                              <p className="text-xs text-gray-500">
-                                {totalWords} words • {displayPageCount} page(s)
-                              </p>
-                            </div>
-                            {hasChanges(analysis.quote_file_id) && (
-                              <span className="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800 font-medium">
-                                Unsaved
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div
-                          className="flex items-center gap-3"
-                          onClick={() => setExpandedFile(isExpanded ? null : fileId)}
-                        >
-                          <span className="text-lg font-semibold text-gray-900">
-                            $
-                            {calculateLineTotal(
-                              analysis.quote_file_id,
-                              analysis,
-                            ).toFixed(2)}
-                          </span>
-                          <span className="text-gray-400">
-                            {isExpanded ? "▼" : "▶"}
-                          </span>
-                          {/* Remove Analysis Button */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveAnalysis(
-                                analysis.id,
-                                analysis.quote_file_id,
-                                file.original_filename || analysis.quote_file?.original_filename || "Unknown"
-                              );
-                            }}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                            title="Remove analysis"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Expanded Content */}
-                      {isExpanded && (
-                        <div className="p-6 border-t">
-                          <div className="grid grid-cols-2 gap-6">
-                            {/* Left Column: Document Preview */}
-                            <div>
-                              <h4 className="font-semibold mb-3">
-                                Document Preview
-                              </h4>
-                              <div className="border rounded-lg overflow-hidden bg-gray-50">
-                                <img
-                                  src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
-                                  alt={analysis.quote_file?.original_filename}
-                                  className="w-full max-h-[400px] object-contain"
-                                  onError={(e) => {
-                                    (
-                                      e.target as HTMLImageElement
-                                    ).style.display = "none";
-                                  }}
-                                />
-                              </div>
-                              <div className="mt-2 space-y-2">
-                                <div className="flex justify-between text-sm text-gray-500">
-                                  <span>
-                                    {(
-                                      analysis.quote_file?.file_size /
-                                      1024 /
-                                      1024
-                                    ).toFixed(2)}{" "}
-                                    MB
-                                  </span>
-                                  <a
-                                    href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`}
-                                    target="_blank"
-                                    className="text-blue-600 hover:underline"
-                                  >
-                                    ↓ Download
-                                  </a>
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    setPreviewDocument({
-                                      url: `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${analysis.quote_file?.storage_path}`,
-                                      name:
-                                        analysis.quote_file
-                                          ?.original_filename || "Document",
-                                      type: analysis.quote_file?.mime_type?.includes(
-                                        "pdf",
-                                      )
-                                        ? "pdf"
-                                        : "image",
-                                    });
-                                  }}
-                                  className="w-full px-3 py-2 bg-blue-50 text-blue-700 text-sm font-medium rounded hover:bg-blue-100 transition-colors"
-                                >
-                                  👁 Full Preview
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Right Column: Analysis & Editing */}
-                            <div className="space-y-4">
-                              {/* Document Type */}
-                              <div>
-                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                                  Document Type
-                                </label>
-                                {claimedByMe ? (
-                                  <input
-                                    type="text"
-                                    value={
-                                      getValue(
-                                        analysis.quote_file_id,
-                                        "detected_document_type",
-                                        analysis.detected_document_type,
-                                      ) || ""
-                                    }
-                                    onChange={(e) =>
-                                      updateLocalEdit(
-                                        analysis.quote_file_id,
-                                        "detected_document_type",
-                                        e.target.value,
-                                      )
-                                    }
-                                    onBlur={(e) => {
-                                      const newValue = e.target.value;
-                                      if (
-                                        newValue !==
-                                        analysis.detected_document_type
-                                      ) {
-                                        handleFieldEdit(
-                                          "detected_document_type",
-                                          analysis.detected_document_type,
-                                          newValue,
-                                          analysis.quote_file_id,
-                                          analysis.id,
-                                        );
-                                      }
-                                    }}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                                  />
-                                ) : (
-                                  <div className="font-medium text-gray-900">
-                                    {analysis.detected_document_type}
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Language */}
-                              <div>
-                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                                  Detected Language
-                                </label>
-                                {claimedByMe ? (
-                                  <select
-                                    value={
-                                      getValue(
-                                        analysis.quote_file_id,
-                                        "detected_language",
-                                        analysis.detected_language,
-                                      ) || ""
-                                    }
-                                    onChange={(e) => {
-                                      const newValue = e.target.value;
-                                      updateLocalEdit(
-                                        analysis.quote_file_id,
-                                        "detected_language",
-                                        newValue,
-                                      );
-                                      if (
-                                        newValue !== analysis.detected_language
-                                      ) {
-                                        handleFieldEdit(
-                                          "detected_language",
-                                          analysis.detected_language,
-                                          newValue,
-                                          analysis.quote_file_id,
-                                          analysis.id,
-                                        );
-                                      }
-                                    }}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                                  >
-                                    {languages.map((lang) => (
-                                      <option key={lang.code} value={lang.code}>
-                                        {lang.name} ({lang.multiplier}x)
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <div className="font-medium text-gray-900">
-                                    {analysis.detected_language}
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Complexity */}
-                              <div>
-                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                                  Complexity
-                                </label>
-                                {claimedByMe ? (
-                                  <select
-                                    value={
-                                      getValue(
-                                        analysis.quote_file_id,
-                                        "assessed_complexity",
-                                        analysis.assessed_complexity,
-                                      ) || "easy"
-                                    }
-                                    onChange={(e) => {
-                                      const newValue = e.target.value;
-                                      handleComplexityChange(
-                                        analysis.quote_file_id,
-                                        newValue,
-                                      );
-                                      if (
-                                        newValue !==
-                                        analysis.assessed_complexity
-                                      ) {
-                                        handleFieldEdit(
-                                          "assessed_complexity",
-                                          analysis.assessed_complexity,
-                                          newValue,
-                                          analysis.quote_file_id,
-                                          analysis.id,
-                                        );
-                                      }
-                                    }}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                                  >
-                                    <option value="easy">Easy (1.0x)</option>
-                                    <option value="medium">
-                                      Medium (1.15x)
-                                    </option>
-                                    <option value="hard">Hard (1.25x)</option>
-                                  </select>
-                                ) : (
-                                  <div className="font-medium text-gray-900 capitalize">
-                                    {analysis.assessed_complexity} (
-                                    {analysis.complexity_multiplier}x)
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Page Breakdown */}
-                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                <p className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-3">
-                                  Page Breakdown ({pages.length} page
-                                  {pages.length !== 1 ? "s" : ""})
-                                </p>
-                                <div className="space-y-2">
-                                  {pages.map((page, idx) => {
-                                    const words = getPageWordCount(page);
-                                    const complexity =
-                                      getValue(
-                                        analysis.quote_file_id,
-                                        "complexity_multiplier",
-                                        analysis.complexity_multiplier,
-                                      ) || 1.0;
-                                    const pageBillable = calculatePageBillable(
-                                      words,
-                                      complexity,
-                                    );
-
-                                    return (
-                                      <div
-                                        key={page.id}
-                                        className={`flex items-center justify-between p-2 rounded ${
-                                          selectedPages.has(page.id)
-                                            ? "bg-blue-50 border border-blue-200"
-                                            : "bg-gray-50"
-                                        }`}
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          {splitMode && (
-                                            <input
-                                              type="checkbox"
-                                              checked={selectedPages.has(
-                                                page.id,
-                                              )}
-                                              onChange={() =>
-                                                togglePageSelection(page.id)
-                                              }
-                                              className="w-4 h-4 text-blue-600 rounded cursor-pointer"
-                                            />
-                                          )}
-                                          <span className="text-sm font-medium">
-                                            Page {idx + 1}
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                          {claimedByMe ? (
-                                            <input
-                                              type="number"
-                                              value={words}
-                                              onChange={(e) =>
-                                                updatePageWordCount(
-                                                  page,
-                                                  parseInt(e.target.value) || 0,
-                                                )
-                                              }
-                                              onBlur={(e) => {
-                                                const newValue =
-                                                  parseInt(e.target.value) || 0;
-                                                if (
-                                                  newValue !== page.word_count
-                                                ) {
-                                                  handleFieldEdit(
-                                                    "page_word_count",
-                                                    page.word_count,
-                                                    newValue,
-                                                    page.quote_file_id,
-                                                    undefined,
-                                                    page.id,
-                                                  );
-                                                }
-                                              }}
-                                              className="w-20 text-right border rounded px-2 py-1 text-sm"
-                                              min="0"
-                                            />
-                                          ) : (
-                                            <span className="text-sm">
-                                              {words}
-                                            </span>
-                                          )}
-                                          <span className="text-xs text-gray-500">
-                                            words
-                                          </span>
-                                          <span className="text-xs text-blue-600 font-medium">
-                                            = {pageBillable.toFixed(2)} bp
-                                          </span>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-
-                                {/* Document Billable Total */}
-                                <div className="flex justify-between mt-3 pt-3 border-t border-blue-200">
-                                  <span className="text-sm font-medium text-blue-700">Document Billable:</span>
-                                  <span className="text-sm font-bold text-blue-700">
-                                    {calculateDocumentBillable(
-                                      analysis.quote_file_id,
-                                      analysis,
-                                    ).toFixed(2)}{" "}
-                                    pages
-                                  </span>
-                                </div>
-                                {calculateDocumentBillable(
-                                  analysis.quote_file_id,
-                                  analysis,
-                                ) === 1.0 &&
-                                  pages.reduce(
-                                    (sum, p) =>
-                                      sum +
-                                      calculatePageBillable(
-                                        getPageWordCount(p),
-                                        getValue(
-                                          analysis.quote_file_id,
-                                          "complexity_multiplier",
-                                          analysis.complexity_multiplier,
-                                        ) || 1.0,
-                                      ),
-                                    0,
-                                  ) < 1.0 && (
-                                    <div className="text-xs text-orange-600 mt-1">
-                                      * Minimum 1.00 applied
-                                    </div>
-                                  )}
-                              </div>
-
-                              {/* CERTIFICATION SECTION */}
-                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                                  Certification
-                                </p>
-
-                                {/* Primary Certification */}
-                                <div className="flex items-center gap-3 mb-3">
-                                  <span className="text-sm font-medium whitespace-nowrap flex-shrink-0">
-                                    Primary:
-                                  </span>
-                                  <div className="flex items-center gap-2 flex-1">
-                                    {claimedByMe ? (
-                                      <select
-                                        value={
-                                          getValue(
-                                            analysis.quote_file_id,
-                                            "certification_type_id",
-                                            analysis.certification_type_id,
-                                          ) || ""
-                                        }
-                                        onChange={(e) =>
-                                          handleCertificationChange(
-                                            analysis.quote_file_id,
-                                            e.target.value,
-                                          )
-                                        }
-                                        className="flex-1 border rounded px-3 py-1 text-sm"
-                                      >
-                                        {certificationTypes.map((cert) => (
-                                          <option key={cert.id} value={cert.id}>
-                                            {cert.name} ($
-                                            {cert.price.toFixed(2)})
-                                          </option>
-                                        ))}
-                                      </select>
-                                    ) : (
-                                      <span className="text-sm flex-1">
-                                        {certificationTypes.find(
-                                          (c) =>
-                                            c.id ===
-                                            analysis.certification_type_id,
-                                        )?.name || "Not set"}
-                                      </span>
-                                    )}
-                                    <span className="text-sm font-medium w-20 text-right">
-                                      $
-                                      {(
-                                        certificationTypes.find(
-                                          (c) =>
-                                            c.id ===
-                                            getValue(
-                                              analysis.quote_file_id,
-                                              "certification_type_id",
-                                              analysis.certification_type_id,
-                                            ),
-                                        )?.price || 0
-                                      ).toFixed(2)}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Additional Certifications */}
-                                <div className="border-t pt-2">
-                                  <div className="text-xs text-gray-500 mb-2">
-                                    Additional Certifications:
-                                  </div>
-
-                                  {(
-                                    additionalCerts[analysis.quote_file_id] ||
-                                    []
-                                  ).length === 0 ? (
-                                    <p className="text-xs text-gray-400 italic">
-                                      None added
-                                    </p>
-                                  ) : (
-                                    <div className="space-y-1">
-                                      {(
-                                        additionalCerts[
-                                          analysis.quote_file_id
-                                        ] || []
-                                      ).map((cert) => (
-                                        <div
-                                          key={cert.id}
-                                          className="flex items-center justify-between py-1 px-2 bg-gray-50 rounded"
-                                        >
-                                          <span className="text-sm">
-                                            {cert.name}
-                                          </span>
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-sm">
-                                              ${cert.price.toFixed(2)}
-                                            </span>
-                                            {claimedByMe && (
-                                              <button
-                                                onClick={() =>
-                                                  removeAdditionalCert(
-                                                    analysis.quote_file_id,
-                                                    cert.id,
-                                                  )
-                                                }
-                                                className="text-red-500 text-xs hover:text-red-700"
-                                              >
-                                                ✕
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-
-                                  {claimedByMe && (
-                                    <button
-                                      onClick={() =>
-                                        setShowAddCertModal(
-                                          analysis.quote_file_id,
-                                        )
-                                      }
-                                      className="text-blue-600 text-sm mt-2 hover:underline"
-                                    >
-                                      + Add Certification
-                                    </button>
-                                  )}
-                                </div>
-
-                                {/* Certification Total */}
-                                <div className="border-t pt-2 mt-3 flex justify-between">
-                                  <span className="text-sm font-medium">
-                                    Certification Total:
-                                  </span>
-                                  <span className="text-sm font-bold">
-                                    $
-                                    {calculateCertificationTotal(
-                                      analysis.quote_file_id,
-                                      analysis,
-                                    ).toFixed(2)}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* PRICING SUMMARY */}
-                              <div className="bg-gradient-to-r from-teal-50 to-green-50 border border-teal-100 rounded-lg p-4">
-                                <p className="text-xs font-medium text-teal-700 uppercase tracking-wide mb-2">
-                                  Document Total
-                                </p>
-                                <div className="space-y-1 text-sm">
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">Billable Pages:</span>
-                                    <span>
-                                      {calculateDocumentBillable(
-                                        analysis.quote_file_id,
-                                        analysis,
-                                      ).toFixed(2)}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">Translation:</span>
-                                    <span>
-                                      $
-                                      {calculateTranslationCost(
-                                        analysis.quote_file_id,
-                                        analysis,
-                                      ).toFixed(2)}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">Certification:</span>
-                                    <span>
-                                      $
-                                      {calculateCertificationTotal(
-                                        analysis.quote_file_id,
-                                        analysis,
-                                      ).toFixed(2)}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between font-semibold border-t border-teal-200 pt-2 mt-2 text-teal-700">
-                                    <span>Line Total:</span>
-                                    <span className="font-bold">
-                                      $
-                                      {calculateLineTotal(
-                                        analysis.quote_file_id,
-                                        analysis,
-                                      ).toFixed(2)}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* AI Processing Details - Collapsible */}
-                          <div className="bg-gray-50 rounded-lg border mt-6">
-                            <button
-                              onClick={() =>
-                                setShowAiDetails((prev) => ({
-                                  ...prev,
-                                  [analysis.id]: !prev[analysis.id],
-                                }))
-                              }
-                              className="w-full flex justify-between items-center p-4 text-left hover:bg-gray-100"
-                            >
-                              <span className="font-medium text-gray-700">
-                                🤖 AI Processing Details
-                              </span>
-                              <span className="text-gray-400 text-lg">
-                                {showAiDetails[analysis.id] ? "−" : "+"}
-                              </span>
-                            </button>
-
-                            {showAiDetails[analysis.id] && (
-                              <div className="px-4 pb-4 border-t">
-                                {/* Processing Info Grid */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                                  <div className="bg-white p-3 rounded border">
-                                    <p className="text-xs text-gray-500 uppercase">
-                                      OCR Provider
-                                    </p>
-                                    <p className="font-medium">
-                                      {analysis?.ocr_provider ||
-                                        "Google Document AI"}
-                                    </p>
-                                  </div>
-
-                                  <div className="bg-white p-3 rounded border">
-                                    <p className="text-xs text-gray-500 uppercase">
-                                      OCR Confidence
-                                    </p>
-                                    <p
-                                      className={`font-medium ${
-                                        (analysis?.ocr_confidence || 0) > 0.8
-                                          ? "text-green-600"
-                                          : (analysis?.ocr_confidence || 0) >
-                                              0.6
-                                            ? "text-yellow-600"
-                                            : "text-red-600"
-                                      }`}
-                                    >
-                                      {analysis?.ocr_confidence
-                                        ? `${(analysis.ocr_confidence * 100).toFixed(1)}%`
-                                        : "N/A"}
-                                    </p>
-                                  </div>
-
-                                  <div className="bg-white p-3 rounded border">
-                                    <p className="text-xs text-gray-500 uppercase">
-                                      AI Model
-                                    </p>
-                                    <p className="font-medium">
-                                      {analysis?.llm_model || "Claude Sonnet"}
-                                    </p>
-                                  </div>
-
-                                  <div className="bg-white p-3 rounded border">
-                                    <p className="text-xs text-gray-500 uppercase">
-                                      Processing Time
-                                    </p>
-                                    <p className="font-medium">
-                                      {analysis?.processing_time_ms
-                                        ? `${(analysis.processing_time_ms / 1000).toFixed(1)}s`
-                                        : "N/A"}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                {/* Confidence Scores */}
-                                <div className="mt-4">
-                                  <p className="text-sm font-medium text-gray-700 mb-2">
-                                    AI Confidence Scores
-                                  </p>
-                                  <div className="grid grid-cols-3 gap-3">
-                                    <div className="bg-white p-3 rounded border">
-                                      <div className="flex justify-between">
-                                        <span className="text-sm text-gray-600">
-                                          Language
-                                        </span>
-                                        <span
-                                          className={`text-sm font-medium ${
-                                            (analysis?.language_confidence ||
-                                              0) > 0.9
-                                              ? "text-green-600"
-                                              : (analysis?.language_confidence ||
-                                                    0) > 0.8
-                                                ? "text-yellow-600"
-                                                : "text-red-600"
-                                          }`}
-                                        >
-                                          {analysis?.language_confidence
-                                            ? `${(analysis.language_confidence * 100).toFixed(0)}%`
-                                            : "N/A"}
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="bg-white p-3 rounded border">
-                                      <div className="flex justify-between">
-                                        <span className="text-sm text-gray-600">
-                                          Document Type
-                                        </span>
-                                        <span
-                                          className={`text-sm font-medium ${
-                                            (analysis?.document_type_confidence ||
-                                              0) > 0.85
-                                              ? "text-green-600"
-                                              : (analysis?.document_type_confidence ||
-                                                    0) > 0.7
-                                                ? "text-yellow-600"
-                                                : "text-red-600"
-                                          }`}
-                                        >
-                                          {analysis?.document_type_confidence
-                                            ? `${(analysis.document_type_confidence * 100).toFixed(0)}%`
-                                            : "N/A"}
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="bg-white p-3 rounded border">
-                                      <div className="flex justify-between">
-                                        <span className="text-sm text-gray-600">
-                                          Complexity
-                                        </span>
-                                        <span
-                                          className={`text-sm font-medium ${
-                                            (analysis?.complexity_confidence ||
-                                              0) > 0.8
-                                              ? "text-green-600"
-                                              : (analysis?.complexity_confidence ||
-                                                    0) > 0.6
-                                                ? "text-yellow-600"
-                                                : "text-red-600"
-                                          }`}
-                                        >
-                                          {analysis?.complexity_confidence
-                                            ? `${(analysis.complexity_confidence * 100).toFixed(0)}%`
-                                            : "N/A"}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* HITL Trigger Reasons */}
-                                {reviewData?.trigger_reasons?.length > 0 && (
-                                  <div className="mt-4">
-                                    <p className="text-sm font-medium text-gray-700 mb-2">
-                                      Why HITL Was Triggered
-                                    </p>
-                                    <div className="flex flex-wrap gap-2">
-                                      {reviewData.trigger_reasons.map(
-                                        (reason: string, idx: number) => (
-                                          <span
-                                            key={idx}
-                                            className="px-3 py-1 bg-amber-100 text-amber-800 text-sm rounded-full"
-                                          >
-                                            {reason
-                                              .replace(/_/g, " ")
-                                              .replace(/\b\w/g, (l) =>
-                                                l.toUpperCase(),
-                                              )}
-                                          </span>
-                                        ),
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Request Better Scan Button - Inside Document Card */}
-                          {claimedByMe && (
-                            <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
-                              <button
-                                onClick={() => setShowRejectModal(true)}
-                                disabled={isSubmitting}
-                                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm transition-colors disabled:opacity-50"
-                              >
-                                <Camera className="w-4 h-4" />
-                                Request Better Scan
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* ============================================ */}
-              {/* FILE ANALYSIS SECTION */}
-              {/* ============================================ */}
-
-              {/* New Document Flow: File Accordions */}
-              {translatableFiles.length > 0 && !showDocumentGroupsView && (
-                <div className="bg-white border rounded-xl p-6 mt-6">
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-teal-600" />
-                      Files to Analyze ({translatableFiles.length})
-                    </h3>
-                    {translatableFiles.map((file: any) => (
-                      <FileAccordion
-                        key={file.id}
-                        file={{
-                          id: file.id,
-                          original_filename: file.original_filename,
-                          file_size: file.file_size,
-                          mime_type: file.mime_type,
-                          ai_processing_status: file.ai_processing_status,
-                          category_id: file.category_id,
-                          category: file.category,
-                        }}
-                        analysisResult={
-                          fileAccordionData[file.id]?.analysisResult ||
-                          analysisResults.find((a) => a.quote_file_id === file.id)
-                        }
-                        pages={
-                          fileAccordionData[file.id]?.pages ||
-                          pageData[file.id]?.map((p) => ({
-                            id: p.id,
-                            page_number: p.page_number,
-                            word_count: p.word_count,
-                          })) ||
-                          []
-                        }
-                        isAnalyzing={fileAccordionData[file.id]?.isAnalyzing}
-                        onAnalyze={handleAnalyzeFile}
-                        onManualEntry={handleManualEntryForFile}
-                        onSubmit={handleSubmitGroupings}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Empty state when no To Translate files */}
-              {translatableFiles.length === 0 && !showDocumentGroupsView && (
-                <div className="border rounded-lg p-6 bg-gray-50 text-center mt-6">
-                  <p className="text-gray-600">No "To Translate" files uploaded yet.</p>
-                  <p className="text-gray-500 text-sm mt-1">
-                    Upload files with the "To Translate" category to begin analysis.
-                  </p>
-                </div>
-              )}
-
-              {/* Post-Submit: Document Groups View with Pricing */}
-              {showDocumentGroupsView && documentGroupsForView.length > 0 && (
-                <div className="mt-6">
-                  <DocumentGroupsView
-                    groups={documentGroupsForView}
-                    onReanalyze={handleReanalyzeGroupForView}
-                    onCertificationChange={handleCertificationChangeForView}
-                    baseRate={baseRate}
-                    languageMultiplier={
-                      reviewData?.quotes?.source_language_multiplier || 1.0
-                    }
-                  />
-                </div>
-              )}
-
-              {/* ========== OLD DOCUMENT GROUPING UI - HIDDEN ==========
-              <div className="bg-white border rounded-xl p-6 mt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <Layers className="w-5 h-5 text-teal-600" />
-                    Document Grouping
-                  </h3>
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={useUnifiedEditor}
-                        onChange={(e) => setUseUnifiedEditor(e.target.checked)}
-                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                      />
-                      Use Unified Editor
-                    </label>
-                    {!useUnifiedEditor && (
-                      <button
-                        onClick={() => setShowCreateGroupModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={!claimedByMe}
-                      >
-                        <Plus className="w-4 h-4" />
-                        New Document Group
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {useUnifiedEditor && reviewData?.quote_id ? (
-                  <UnifiedDocumentEditor
-                    quoteId={reviewData.quote_id}
-                    mode="hitl"
-                    reviewId={reviewId}
-                    readOnly={!claimedByMe}
-                    onPricingUpdate={handlePricingUpdate}
-                  />
-                ) : (
-                  <>
-                    <p className="text-sm text-gray-500 mb-4">
-                      Group pages/files that belong to the same logical document. Each group = 1 certification.
-                    </p>
-
-                {isLoadingGroups ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-teal-600" />
-                  </div>
-                ) : documentGroups.length === 0 ? (
-                  <div className="text-center py-8 bg-gray-50 rounded-lg">
-                    <Layers className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500">No document groups yet</p>
-                    <p className="text-sm text-gray-400">
-                      Create a group to organize pages/files
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {documentGroups.map((group) => (
-                      <DocumentGroupCard
-                        key={group.group_id}
-                        group={group}
-                        isExpanded={expandedGroups.has(group.group_id)}
-                        onToggleExpand={() => toggleGroupExpand(group.group_id)}
-                        onEdit={() => openEditModal(group)}
-                        onDelete={() => handleDeleteGroup(group.group_id)}
-                        onAnalyze={() => handleAnalyzeGroup(group.group_id)}
-                        onAssignItems={() => openAssignModal(group.group_id)}
-                        onRemoveItem={(assignmentId) =>
-                          handleRemoveFromGroup(assignmentId)
-                        }
-                        isAnalyzing={analyzingGroupId === group.group_id}
-                        isEditable={claimedByMe}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {unassignedItems.length > 0 && (
-                  <div className="mt-6 pt-6 border-t">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 text-amber-500" />
-                      Unassigned Pages/Files ({unassignedItems.length})
-                    </h4>
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                      <div className="space-y-2">
-                        {unassignedItems.map((item) => (
-                          <div
-                            key={item.item_id}
-                            className="flex items-center justify-between bg-white p-3 rounded border"
-                          >
-                            <div className="flex items-center gap-3">
-                              <FileText className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm font-medium">
-                                {item.file_name}
-                                {item.page_number &&
-                                  ` - Page ${item.page_number}`}
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                ({item.word_count || 0} words)
-                              </span>
-                            </div>
-                            <select
-                              onChange={(e) =>
-                                handleQuickAssign(item, e.target.value)
-                              }
-                              className="text-sm border rounded px-2 py-1"
-                              disabled={!claimedByMe}
-                              defaultValue=""
-                            >
-                              <option value="" disabled>
-                                Assign to...
-                              </option>
-                              {documentGroups.map((g) => (
-                                <option key={g.group_id} value={g.group_id}>
-                                  Document {g.group_number}: {g.group_label}
-                                </option>
-                              ))}
-                              <option value="__new__">+ Create new group</option>
-                            </select>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {documentGroups.length > 0 && (
-                  <div className="mt-6 pt-4 border-t bg-gray-50 rounded-lg p-4">
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-700">
-                        Total: {documentGroups.length} document
-                        {documentGroups.length !== 1 ? "s" : ""} (
-                        {documentGroups.length} certification
-                        {documentGroups.length !== 1 ? "s" : ""})
-                      </span>
-                      <span className="text-xl font-bold text-teal-600">
-                        $
-                        {documentGroups
-                          .reduce((sum, g) => sum + (g.line_total || 0), 0)
-                          .toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                  </>
-                )}
-              </div>
-              ========== END OLD DOCUMENT GROUPING UI ========== */}
-
+                 Removed sections:
+                 - Document Selection Action Bar
+                 - Document List (analysisResults.map with expanded file details)
+                 - File Analysis Section (FileAccordion)
+                 - DocumentGroupsView
+                 - Old Document Grouping UI
+              */}
               {/* Document Flow Editor - New unified document management */}
               {reviewData?.quotes?.id && (
                 <div className="mt-6">
@@ -5878,7 +4749,8 @@ const HITLReviewDetail: React.FC = () => {
         />
       )}
 
-      {/* Document Grouping Modals */}
+      {/* ========== OLD HITL CODE - DISABLED 2026-02-03 ========== */}
+      {/* Document Grouping Modals - No longer needed, DocumentFlowEditor handles this
       <CreateGroupModal
         isOpen={showCreateGroupModal}
         onClose={() => {
@@ -5912,6 +4784,7 @@ const HITLReviewDetail: React.FC = () => {
         unassignedItems={unassignedItems}
         onAssign={handleAssignMultipleToGroup}
       />
+      ========== END OLD HITL CODE ========== */}
 
       {/* Claim Override Confirmation Modal */}
       {showOverrideConfirm && (
