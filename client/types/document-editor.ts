@@ -38,9 +38,11 @@ export interface QuoteFile {
 export interface FileCategory {
   id: string;
   name: string;
-  code: FileCategoryCode;
+  slug: FileCategoryCode;
   description?: string;
   is_billable: boolean;
+  display_order?: number;
+  is_active?: boolean;
 }
 
 // ============================================

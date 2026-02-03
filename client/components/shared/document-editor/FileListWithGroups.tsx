@@ -32,7 +32,7 @@ export default function FileListWithGroups({
   const billableFiles = useMemo(() => {
     return files.filter((f) => {
       const category = fileCategories.find((c) => c.id === f.file_category_id);
-      return !category || category.code === "to_translate";
+      return !category || category.slug === "to_translate";
     });
   }, [files, fileCategories]);
 
