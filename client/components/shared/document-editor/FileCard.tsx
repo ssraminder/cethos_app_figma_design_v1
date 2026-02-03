@@ -85,7 +85,7 @@ export default function FileCard({
   const currentCategory = fileCategories.find(
     (c) => c.id === file.file_category_id
   );
-  const categoryCode = (currentCategory?.code || "to_translate") as FileCategoryCode;
+  const categoryCode = (currentCategory?.slug || "to_translate") as FileCategoryCode;
   const isBillable = categoryCode === "to_translate";
 
   // Get status display info
