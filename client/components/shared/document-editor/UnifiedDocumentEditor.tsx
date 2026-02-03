@@ -86,6 +86,20 @@ export default function UnifiedDocumentEditor({
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Refs for stable callback references (prevent infinite loops)
+  const onPricingUpdateRef = useRef(onPricingUpdate);
+  const onFilesChangeRef = useRef(onFilesChange);
+  const hasFetchedRef = useRef(false);
+
+  // Keep refs up to date
+  useEffect(() => {
+    onPricingUpdateRef.current = onPricingUpdate;
+  }, [onPricingUpdate]);
+
+  useEffect(() => {
+    onFilesChangeRef.current = onFilesChange;
+  }, [onFilesChange]);
+
   // ============================================
   // COMPUTED VALUES
   // ============================================
@@ -228,15 +242,15 @@ export default function UnifiedDocumentEditor({
       setFileCategories(categoriesData || []);
       setCertificationTypes(certTypesData || []);
 
-      // Update pricing totals
-      if (onPricingUpdate) {
+      // Update pricing totals (use ref to avoid dependency)
+      if (onPricingUpdateRef.current) {
         const totals = calculateTotals(transformedGroups, transformedFiles);
-        onPricingUpdate(totals);
+        onPricingUpdateRef.current(totals);
       }
 
-      // Notify parent of file changes
-      if (onFilesChange) {
-        onFilesChange();
+      // Notify parent of file changes (use ref to avoid dependency)
+      if (onFilesChangeRef.current) {
+        onFilesChangeRef.current();
       }
     } catch (error) {
       console.error("Error fetching document editor data:", error);
@@ -244,10 +258,12 @@ export default function UnifiedDocumentEditor({
     } finally {
       setIsLoading(false);
     }
-  }, [quoteId, onPricingUpdate, onFilesChange]);
+  }, [quoteId, calculateTotals]); // Removed callback dependencies - using refs instead
 
-  // Initial fetch
+  // Initial fetch with guard for React 18 Strict Mode
   useEffect(() => {
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
     fetchData();
   }, [fetchData]);
 
@@ -809,15 +825,15 @@ export default function UnifiedDocumentEditor({
           )
         );
 
-        // Recalculate totals
-        if (onPricingUpdate) {
+        // Recalculate totals (use ref to avoid dependency issues)
+        if (onPricingUpdateRef.current) {
           const updatedGroups = groups.map((g) =>
             g.id === groupId
               ? { ...g, certification_type_id: certTypeId, certification_price: certPrice }
               : g
           );
           const totals = calculateTotals(updatedGroups, files);
-          onPricingUpdate(totals);
+          onPricingUpdateRef.current(totals);
         }
 
         toast.success("Certification updated");
@@ -826,7 +842,7 @@ export default function UnifiedDocumentEditor({
         toast.error("Failed to update certification");
       }
     },
-    [certificationTypes, groups, files, onPricingUpdate, calculateTotals]
+    [certificationTypes, groups, files, calculateTotals]
   );
 
   // Handle file expand/collapse
