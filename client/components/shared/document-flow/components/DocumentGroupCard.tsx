@@ -38,11 +38,16 @@ export const DocumentGroupCard: React.FC<DocumentGroupCardProps> = ({
             {group.country_of_issue && <span>Country: {group.country_of_issue}</span>}
           </div>
           <div className="text-sm text-gray-500 mt-1">
-            Source: {group.source_filename} (
-            {group.pages.length === 1
-              ? `Page ${group.pages[0].page_number}`
-              : `Pages ${group.pages[0].page_number}-${group.pages[group.pages.length - 1].page_number}`}
-            )
+            Source: {group.source_filename}
+            {group.pages.length > 0 && (
+              <span>
+                {' '}(
+                {group.pages.length === 1
+                  ? `Page ${group.pages[0].page_number}`
+                  : `Pages ${group.pages[0].page_number}-${group.pages[group.pages.length - 1].page_number}`}
+                )
+              </span>
+            )}
           </div>
         </div>
         {!readOnly && (
@@ -68,20 +73,28 @@ export const DocumentGroupCard: React.FC<DocumentGroupCardProps> = ({
             </tr>
           </thead>
           <tbody>
-            {group.pages.map((page, idx) => (
-              <tr key={page.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                <td className="px-4 py-2">{page.page_number}</td>
-                <td className="px-4 py-2">{page.word_count}</td>
-                <td className="px-4 py-2">×{page.complexity_multiplier.toFixed(2)}</td>
-                <td className="px-4 py-2">{page.billable_pages.toFixed(2)}</td>
+            {group.pages.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-4 text-center text-gray-500">
+                  No page details available
+                </td>
               </tr>
-            ))}
+            ) : (
+              group.pages.map((page, idx) => (
+                <tr key={page.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-4 py-2">{page.page_number}</td>
+                  <td className="px-4 py-2">{page.word_count}</td>
+                  <td className="px-4 py-2">×{page.complexity_multiplier?.toFixed(2) ?? '1.00'}</td>
+                  <td className="px-4 py-2">{page.billable_pages?.toFixed(2) ?? '0.00'}</td>
+                </tr>
+              ))
+            )}
             {/* Total Row */}
             <tr className="bg-gray-100 font-medium">
               <td className="px-4 py-2" colSpan={3}>
                 Total:
               </td>
-              <td className="px-4 py-2">{group.total_billable_pages.toFixed(2)}</td>
+              <td className="px-4 py-2">{group.total_billable_pages?.toFixed(2) ?? '0.00'}</td>
             </tr>
           </tbody>
         </table>
@@ -94,10 +107,10 @@ export const DocumentGroupCard: React.FC<DocumentGroupCardProps> = ({
           <div className="flex items-center gap-2">
             <span>Certification:</span>
             {readOnly ? (
-              <span className="font-medium">{group.certification_name}</span>
+              <span className="font-medium">{group.certification_name || 'Standard'}</span>
             ) : (
               <select
-                value={group.certification_type_id}
+                value={group.certification_type_id || ''}
                 onChange={(e) => onCertificationChange(e.target.value)}
                 className="border border-gray-300 rounded px-2 py-1"
               >
@@ -109,22 +122,22 @@ export const DocumentGroupCard: React.FC<DocumentGroupCardProps> = ({
               </select>
             )}
           </div>
-          <span className="font-medium">${group.certification_price.toFixed(2)}</span>
+          <span className="font-medium">${(group.certification_price ?? 0).toFixed(2)}</span>
         </div>
 
         {/* Translation */}
         <div className="flex items-center justify-between">
           <span className="text-gray-600">
-            Translation: {group.total_billable_pages.toFixed(2)} × ${baseRate.toFixed(2)} ×{' '}
-            {languageMultiplier.toFixed(2)} =
+            Translation: {(group.total_billable_pages ?? 0).toFixed(2)} × ${(baseRate ?? 65).toFixed(2)} ×{' '}
+            {(languageMultiplier ?? 1).toFixed(2)} =
           </span>
-          <span className="font-medium">${group.translation_cost.toFixed(2)}</span>
+          <span className="font-medium">${(group.translation_cost ?? 0).toFixed(2)}</span>
         </div>
 
         {/* Document Total */}
         <div className="flex items-center justify-between pt-2 border-t">
           <span className="font-semibold">Document Total:</span>
-          <span className="font-semibold text-lg">${group.group_total.toFixed(2)}</span>
+          <span className="font-semibold text-lg">${(group.group_total ?? 0).toFixed(2)}</span>
         </div>
       </div>
     </div>
