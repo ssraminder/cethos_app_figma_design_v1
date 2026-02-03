@@ -64,9 +64,9 @@ export const DocumentFlowEditor: React.FC<DocumentFlowEditorProps> = ({
   const translatableFiles = useMemo(() => {
     const toTranslateCat = categories.find(c => c.slug === 'to_translate');
     return files.filter(f =>
-      f.category?.slug === 'to_translate' ||
-      f.category_id === toTranslateCat?.id ||
-      !f.category_id // Include files with no category (legacy)
+      f.file_category?.slug === 'to_translate' ||
+      f.file_category_id === toTranslateCat?.id ||
+      !f.file_category_id // Include files with no category (legacy)
     );
   }, [files, categories]);
 
