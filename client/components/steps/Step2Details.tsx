@@ -124,7 +124,7 @@ export default function Step2Details() {
       const { data } = await supabase
         .from("app_settings")
         .select("setting_value")
-        .eq("setting_key", "base_rate_per_page")
+        .eq("setting_key", "base_rate")
         .single();
 
       if (data?.setting_value) {
