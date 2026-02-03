@@ -48,6 +48,7 @@ import {
 import type { DocumentGroup, AssignedItem } from "../../components/admin/hitl/DocumentGroupCard";
 import type { UnassignedItem } from "../../components/admin/hitl/AssignItemsModal";
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
+import { UnifiedDocumentEditor } from "@/components/shared/document-editor";
 
 // ============================================
 // ROLE HIERARCHY FOR CLAIM OVERRIDE
@@ -356,6 +357,9 @@ const HITLReviewDetail: React.FC = () => {
   const [selectedGroupForEdit, setSelectedGroupForEdit] = useState<DocumentGroup | null>(null);
   const [analyzingGroupId, setAnalyzingGroupId] = useState<string | null>(null);
   const [pendingAssignItem, setPendingAssignItem] = useState<UnassignedItem | null>(null);
+
+  // Toggle for new unified document editor
+  const [useUnifiedEditor, setUseUnifiedEditor] = useState(false);
 
   // ============================================
   // DATA FETCHING
@@ -4512,19 +4516,47 @@ const HITLReviewDetail: React.FC = () => {
                     <Layers className="w-5 h-5 text-teal-600" />
                     Document Grouping
                   </h3>
-                  <button
-                    onClick={() => setShowCreateGroupModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={!claimedByMe}
-                  >
-                    <Plus className="w-4 h-4" />
-                    New Document Group
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {/* Toggle between classic and unified editor */}
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={useUnifiedEditor}
+                        onChange={(e) => setUseUnifiedEditor(e.target.checked)}
+                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                      />
+                      Use Unified Editor
+                    </label>
+                    {!useUnifiedEditor && (
+                      <button
+                        onClick={() => setShowCreateGroupModal(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={!claimedByMe}
+                      >
+                        <Plus className="w-4 h-4" />
+                        New Document Group
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <p className="text-sm text-gray-500 mb-4">
-                  Group pages/files that belong to the same logical document. Each group = 1 certification.
-                </p>
+                {/* Unified Document Editor (New) */}
+                {useUnifiedEditor && reviewData?.quote_id ? (
+                  <UnifiedDocumentEditor
+                    quoteId={reviewData.quote_id}
+                    mode="hitl"
+                    reviewId={reviewId}
+                    readOnly={!claimedByMe}
+                    onPricingUpdate={(totals) => {
+                      // Refresh pricing when totals change
+                      fetchReviewData?.();
+                    }}
+                  />
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-500 mb-4">
+                      Group pages/files that belong to the same logical document. Each group = 1 certification.
+                    </p>
 
                 {/* Document Groups List */}
                 {isLoadingGroups ? (
@@ -4629,6 +4661,8 @@ const HITLReviewDetail: React.FC = () => {
                       </span>
                     </div>
                   </div>
+                )}
+                  </>
                 )}
               </div>
             </HITLPanelLayout>

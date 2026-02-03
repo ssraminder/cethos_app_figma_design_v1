@@ -38,6 +38,7 @@ import DocumentPreviewModal from "@/components/admin/DocumentPreviewModal";
 import OrderUploadModal from "@/components/admin/OrderUploadModal";
 import RecordOrderPaymentModal from "@/components/admin/RecordOrderPaymentModal";
 import { AnalyzeDocumentModal, ManualEntryModal } from "@/components/admin/hitl";
+import { UnifiedDocumentEditor } from "@/components/shared/document-editor";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 
 interface OrderDetail {
@@ -222,6 +223,9 @@ export default function AdminOrderDetail() {
 
   // Recalculate state
   const [recalculating, setRecalculating] = useState(false);
+
+  // Unified document editor toggle
+  const [useUnifiedEditor, setUseUnifiedEditor] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -732,16 +736,42 @@ export default function AdminOrderDetail() {
                 <FileText className="w-5 h-5 text-gray-400" />
                 Documents ({quoteFiles.length})
               </h2>
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add Document
-              </button>
+              <div className="flex items-center gap-3">
+                {/* Toggle for unified editor */}
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useUnifiedEditor}
+                    onChange={(e) => setUseUnifiedEditor(e.target.checked)}
+                    className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                  />
+                  Unified Editor
+                </label>
+                {!useUnifiedEditor && (
+                  <button
+                    onClick={() => setShowUploadModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Document
+                  </button>
+                )}
+              </div>
             </div>
 
-            {loadingDocs ? (
+            {/* Unified Document Editor */}
+            {useUnifiedEditor && order?.quote_id ? (
+              <UnifiedDocumentEditor
+                quoteId={order.quote_id}
+                mode="order-edit"
+                orderId={order.id}
+                readOnly={order.status === "cancelled"}
+                onPricingUpdate={(totals) => {
+                  // Refresh order details when pricing updates
+                  fetchOrderDetails?.();
+                }}
+              />
+            ) : loadingDocs ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-teal-600" />
               </div>

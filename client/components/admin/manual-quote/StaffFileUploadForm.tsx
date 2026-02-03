@@ -38,6 +38,7 @@ import {
   ManualEntryModal,
 } from "@/components/shared/analysis";
 import { calculatePerPageRate, getPricingBreakdown, formatCurrency, BASE_RATE_PER_PAGE } from "@/utils/pricing";
+import { UnifiedDocumentEditor } from "@/components/shared/document-editor";
 
 // ============================================================================
 // TYPES
@@ -496,6 +497,9 @@ export default function StaffFileUploadForm({
   const [editGroupLabel, setEditGroupLabel] = useState("");
   const [editGroupDocType, setEditGroupDocType] = useState("");
   const [editGroupComplexity, setEditGroupComplexity] = useState("");
+
+  // Toggle for unified document editor
+  const [useUnifiedEditor, setUseUnifiedEditor] = useState(false);
 
   // ============================================================================
   // DATA LOADING
@@ -2248,7 +2252,34 @@ export default function StaffFileUploadForm({
       {/* ================================================================== */}
       {/* DOCUMENT GROUPS SUMMARY */}
       {/* ================================================================== */}
-      {quoteId && documentGroups.length > 0 && (
+
+      {/* Unified Editor Toggle */}
+      {quoteId && (
+        <div className="flex justify-end mb-2">
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useUnifiedEditor}
+              onChange={(e) => setUseUnifiedEditor(e.target.checked)}
+              className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+            />
+            Use Unified Editor
+          </label>
+        </div>
+      )}
+
+      {/* Unified Document Editor (New) */}
+      {quoteId && useUnifiedEditor ? (
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <UnifiedDocumentEditor
+            quoteId={quoteId}
+            mode="manual-quote"
+            onPricingUpdate={(totals) => {
+              onPricingRefresh?.();
+            }}
+          />
+        </div>
+      ) : quoteId && documentGroups.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <button
             onClick={() => setDocumentGroupsExpanded(!documentGroupsExpanded)}
