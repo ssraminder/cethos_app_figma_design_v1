@@ -13,6 +13,21 @@ if (!hasCredentials) {
   console.error("VITE_SUPABASE_ANON_KEY:", supabaseAnonKey ? "SET" : "MISSING");
 }
 
+// Suppress AbortError from Supabase's Web Locks API during auth initialization
+// This is a known issue with Supabase Auth v2.x when the page reloads or navigates
+// quickly, causing the lock acquisition to be aborted. These errors are harmless.
+if (typeof window !== "undefined") {
+  window.addEventListener("unhandledrejection", (event) => {
+    if (
+      event.reason?.name === "AbortError" &&
+      event.reason?.message?.includes("aborted")
+    ) {
+      // Suppress the error - it's expected during rapid page transitions
+      event.preventDefault();
+    }
+  });
+}
+
 // Log initialization (only once)
 console.log("=== SUPABASE CLIENT INITIALIZATION ===");
 console.log("VITE_SUPABASE_URL:", supabaseUrl);
