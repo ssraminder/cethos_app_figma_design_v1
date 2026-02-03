@@ -161,7 +161,7 @@ serve(async (req) => {
         mime_type: file.type,
         is_staff_created: true,
         ai_processing_status: "skipped",
-        category_id: finalCategoryId,
+        file_category_id: finalCategoryId,
         created_at: now,
         updated_at: now,
       })

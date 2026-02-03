@@ -277,20 +277,101 @@ export const DocumentFlowEditor: React.FC<DocumentFlowEditorProps> = ({
     toast.success('Certification updated');
   }, [groups, certificationTypes, recalculate, actions]);
 
-  // Handle re-analyze
+  // Handle re-analyze - re-runs AI analysis and updates group pricing
   const handleReanalyze = useCallback(async (groupId: string) => {
     const group = groups.find(g => g.id === groupId);
     if (!group) return;
 
-    await handleAnalyze(group.source_file_id);
-  }, [groups, handleAnalyze]);
+    const fileId = group.source_file_id;
+    actions.setAnalyzing(fileId, true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No session');
+
+      // Run AI analysis
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-document`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ fileId }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Analysis failed');
+      }
+
+      // Fetch fresh file data with updated pages
+      const { data: freshFile, error: fetchError } = await supabase
+        .from('quote_files')
+        .select(`
+          *,
+          file_category:file_categories!quote_files_file_category_id_fkey(*),
+          analysis:ai_analysis_results(*),
+          pages:quote_pages(*)
+        `)
+        .eq('id', fileId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Update all groups that use this file
+      const affectedGroups = groups.filter(g => g.source_file_id === fileId);
+      const updatedGroups = [...groups];
+
+      for (const affectedGroup of affectedGroups) {
+        const groupIndex = updatedGroups.findIndex(g => g.id === affectedGroup.id);
+        if (groupIndex === -1) continue;
+
+        // Rebuild pages from fresh data
+        const pageIds = affectedGroup.page_ids;
+        const freshPages = (freshFile.pages || []).filter((p: any) => pageIds.includes(p.id));
+        const groupPages = buildGroupPages(freshPages, pricingSettings);
+
+        // Recalculate pricing
+        const updatedGroup = recalculateGroup(
+          { ...affectedGroup, pages: groupPages },
+          pricingSettings.base_rate,
+          languageMultiplier,
+          affectedGroup.certification_price,
+          pricingSettings
+        );
+
+        updatedGroups[groupIndex] = updatedGroup;
+      }
+
+      // Update state
+      actions.setGroups(updatedGroups);
+      await actions.fetchData();
+
+      toast.success('Re-analysis complete - pricing updated');
+    } catch (error) {
+      console.error('Re-analyze error:', error);
+      toast.error('Failed to re-analyze document');
+    } finally {
+      actions.setAnalyzing(fileId, false);
+    }
+  }, [groups, pricingSettings, languageMultiplier, actions]);
 
   // Handle re-analyze all
   const handleReanalyzeAll = useCallback(async () => {
-    for (const group of groups) {
-      await handleAnalyze(group.source_file_id);
+    // Get unique file IDs from all groups
+    const fileIds = [...new Set(groups.map(g => g.source_file_id))];
+
+    for (const fileId of fileIds) {
+      // Find first group using this file to trigger re-analyze
+      const group = groups.find(g => g.source_file_id === fileId);
+      if (group) {
+        await handleReanalyze(group.id);
+      }
     }
-  }, [groups, handleAnalyze]);
+  }, [groups, handleReanalyze]);
 
   // Loading state
   if (isLoading) {
