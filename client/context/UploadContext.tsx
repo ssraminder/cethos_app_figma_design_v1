@@ -193,13 +193,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Step 2 -> 3: Update quote details
+    // Step 2 -> 3: Update quote details (countryId is OPTIONAL)
     if (currentStep === 2) {
       if (
         !state.sourceLanguageId ||
         !state.targetLanguageId ||
-        !state.intendedUseId ||
-        !state.countryId
+        !state.intendedUseId
       ) {
         return { success: false };
       }
