@@ -3941,8 +3941,8 @@ const HITLReviewDetail: React.FC = () => {
                     staffId={staffSession?.staffId}
                     onPricingChange={(totals) => {
                       console.log('Pricing updated:', totals);
-                      // Refresh quote data when pricing changes
-                      fetchReviewData();
+                      // Note: Don't call fetchReviewData() here - it causes an infinite loop
+                      // The pricing totals are already calculated by DocumentFlowEditor
                     }}
                     readOnly={!claimedByMe}
                     showPricing={true}
