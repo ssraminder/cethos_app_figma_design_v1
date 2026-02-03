@@ -30,6 +30,12 @@ export interface QuoteFile {
   mime_type: string;
   file_size: number;
   file_category_id: string | null;
+  category?: {
+    id: string;
+    name: string;
+    slug: string;
+    is_billable: boolean;
+  };
   ai_processing_status: FileProcessingStatus | null;
   created_at: string;
   updated_at?: string;
@@ -78,6 +84,9 @@ export interface AIAnalysisResult {
   extracted_document_number: string | null;
   extracted_issuing_country: string | null;
   holder_extraction_confidence: number | null;
+  // HITL document flow fields
+  country_of_issue: string | null;
+  is_multi_document: boolean;
   // Processing metadata
   processing_status: string;
   ocr_provider?: string;
