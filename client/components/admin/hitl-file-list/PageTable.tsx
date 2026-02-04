@@ -7,12 +7,14 @@ interface PageTableProps {
   pages: QuotePage[];
   readOnly: boolean;
   onUpdatePage: (update: PageUpdateData) => void;
+  onAddPage: () => void;
 }
 
 export function PageTable({
   pages,
   readOnly,
   onUpdatePage,
+  onAddPage,
 }: PageTableProps) {
   const handleChange = (pageId: string, field: PageUpdateData['field'], value: string | boolean) => {
     let parsedValue: number | string | boolean = value;
@@ -127,6 +129,21 @@ export function PageTable({
 
       {pages.length === 0 && (
         <p className="text-center py-4 text-gray-500 text-sm">No pages found</p>
+      )}
+
+      {/* Add Page Button */}
+      {!readOnly && (
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={onAddPage}
+            className="px-3 py-1.5 text-sm text-teal-600 hover:text-teal-700 hover:bg-teal-50 rounded border border-teal-300 flex items-center gap-1"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Page
+          </button>
+        </div>
       )}
     </div>
   );
