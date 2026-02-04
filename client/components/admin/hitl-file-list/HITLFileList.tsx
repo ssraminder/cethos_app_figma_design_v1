@@ -25,6 +25,7 @@ export function HITLFileList({
     uploadFile,
     deleteFile,
     updatePage,
+    addPage,
     removeUncheckedPages,
     analyzeFile,
     setExpandedFile,
@@ -106,6 +107,7 @@ export function HITLFileList({
               onDelete={() => deleteFile(file.id)}
               onAnalyze={() => analyzeFile(file.id)}
               onUpdatePage={updatePage}
+              onAddPage={() => addPage(file.id)}
               onRemoveUncheckedPages={() => removeUncheckedPages(file.id)}
               onRefresh={fetchFiles}
             />

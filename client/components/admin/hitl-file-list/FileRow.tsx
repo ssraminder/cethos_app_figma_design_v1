@@ -31,6 +31,7 @@ interface FileRowProps {
   onDelete: () => void;
   onAnalyze: () => void;
   onUpdatePage: (update: PageUpdateData) => void;
+  onAddPage: () => void;
   onRemoveUncheckedPages: () => void;
   onRefresh: () => void;
 }
@@ -44,6 +45,7 @@ export function FileRow({
   onDelete,
   onAnalyze,
   onUpdatePage,
+  onAddPage,
   onRemoveUncheckedPages,
   onRefresh,
 }: FileRowProps) {
@@ -212,6 +214,7 @@ export function FileRow({
               pages={file.pages}
               readOnly={readOnly}
               onUpdatePage={onUpdatePage}
+              onAddPage={onAddPage}
             />
 
             {/* Summary & Remove Button */}

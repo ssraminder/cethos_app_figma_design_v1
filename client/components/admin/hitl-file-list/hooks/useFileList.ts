@@ -236,14 +236,28 @@ export function useFileList(quoteId: string) {
 
   // Delete file
   const deleteFile = useCallback(async (fileId: string) => {
+    const file = files.find(f => f.id === fileId);
+
     try {
-      // Delete pages first
+      // 1. Delete pages first
       await supabase.from('quote_pages').delete().eq('quote_file_id', fileId);
 
-      // Delete analysis
+      // 2. Delete AI analysis
       await supabase.from('ai_analysis_results').delete().eq('quote_file_id', fileId);
 
-      // Delete file record
+      // 3. Delete from storage bucket
+      if (file?.storage_path) {
+        const { error: storageError } = await supabase.storage
+          .from('quote-files')
+          .remove([file.storage_path]);
+
+        if (storageError) {
+          console.warn('Storage delete warning:', storageError);
+          // Continue anyway - DB cleanup is more important
+        }
+      }
+
+      // 4. Delete file record
       const { error } = await supabase.from('quote_files').delete().eq('id', fileId);
 
       if (error) throw error;
@@ -254,7 +268,7 @@ export function useFileList(quoteId: string) {
       console.error('Delete error:', err);
       toast.error('Failed to delete file');
     }
-  }, [fetchFiles]);
+  }, [files, fetchFiles]);
 
   // Update page
   const updatePage = useCallback(async (update: PageUpdateData) => {
@@ -458,6 +472,42 @@ export function useFileList(quoteId: string) {
     }
   }, [fetchFiles]);
 
+  // Add new page manually
+  const addPage = useCallback(async (fileId: string) => {
+    const file = files.find(f => f.id === fileId);
+    if (!file) return;
+
+    // Determine next page number
+    const maxPageNumber = file.pages.reduce((max, p) => Math.max(max, p.page_number), 0);
+    const newPageNumber = maxPageNumber + 1;
+
+    try {
+      const newPageData = {
+        quote_file_id: fileId,
+        page_number: newPageNumber,
+        word_count: 0,
+        billable_pages: 1.0, // Default required value
+        complexity: 'easy',
+        complexity_multiplier: 1.0,
+        is_included: true,
+      };
+
+      const { error } = await supabase
+        .from('quote_pages')
+        .insert(newPageData)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast.success(`Added page ${newPageNumber}`);
+      await fetchFiles();
+    } catch (err) {
+      console.error('Add page error:', err);
+      toast.error('Failed to add page');
+    }
+  }, [files, fetchFiles]);
+
   // Calculate totals
   const totals = useMemo<FileTotals>(() => {
     let totalPages = 0;
@@ -492,6 +542,7 @@ export function useFileList(quoteId: string) {
     uploadFile,
     deleteFile,
     updatePage,
+    addPage,
     removeUncheckedPages,
     analyzeFile,
     updateFilename,
