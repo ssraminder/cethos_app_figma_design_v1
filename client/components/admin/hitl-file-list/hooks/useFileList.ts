@@ -209,16 +209,12 @@ export function useFileList(quoteId: string) {
 
       const result = await response.json();
 
-      // Create page records with defaults
+      // Create page records with only existing DB columns
       if (pageCount > 0) {
         const pageRecords = Array.from({ length: pageCount }, (_, i) => ({
           quote_file_id: result.fileId,
           page_number: i + 1,
           word_count: 0,
-          billable_pages: 0,
-          complexity: 'easy',
-          complexity_multiplier: 1.0,
-          is_included: true,
         }));
 
         const { error: pagesError } = await supabase.from('quote_pages').insert(pageRecords);
@@ -297,16 +293,12 @@ export function useFileList(quoteId: string) {
           throw new Error('Virtual page not found');
         }
 
-        // Create the page record in the database
-        const newPageData = {
+        // Create the page record in the database - only insert columns that exist
+        // Virtual properties (billable_pages, complexity, etc.) are computed on fetch
+        const newPageData: Record<string, unknown> = {
           quote_file_id: fileId,
           page_number: pageNumber,
-          word_count: virtualPage.word_count,
-          billable_pages: virtualPage.billable_pages,
-          complexity: virtualPage.complexity,
-          complexity_multiplier: virtualPage.complexity_multiplier,
-          is_included: virtualPage.is_included,
-          ...updateData, // Apply the update
+          word_count: field === 'word_count' ? value : (virtualPage.word_count || 0),
         };
 
         const { data: insertedPage, error: insertError } = await supabase
@@ -346,13 +338,22 @@ export function useFileList(quoteId: string) {
         return;
       }
 
-      // Regular update for existing pages
-      const { error } = await supabase
-        .from('quote_pages')
-        .update(updateData)
-        .eq('id', pageId);
+      // Regular update for existing pages - only update columns that exist in DB
+      // word_count is the only editable column that exists in quote_pages
+      const dbUpdateData: Record<string, unknown> = {};
+      if ('word_count' in updateData) {
+        dbUpdateData.word_count = updateData.word_count;
+      }
 
-      if (error) throw error;
+      // Only perform DB update if there's something to update
+      if (Object.keys(dbUpdateData).length > 0) {
+        const { error } = await supabase
+          .from('quote_pages')
+          .update(dbUpdateData)
+          .eq('id', pageId);
+
+        if (error) throw error;
+      }
 
       // Update local state immediately for responsiveness
       setFiles(prev => prev.map(file => {
@@ -482,14 +483,11 @@ export function useFileList(quoteId: string) {
     const newPageNumber = maxPageNumber + 1;
 
     try {
+      // Only insert columns that exist in the database
       const newPageData = {
         quote_file_id: fileId,
         page_number: newPageNumber,
         word_count: 0,
-        billable_pages: 1.0, // Default required value
-        complexity: 'easy',
-        complexity_multiplier: 1.0,
-        is_included: true,
       };
 
       const { error } = await supabase
