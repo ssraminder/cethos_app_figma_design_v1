@@ -18,9 +18,9 @@ export function usePdfPages() {
         // Dynamic import to avoid SSR issues
         const pdfjsLib = await import('pdfjs-dist');
 
-        // Set worker path - use CDN with .mjs for PDF.js v5.x compatibility
+        // Set worker path - use CDN with .js extension (cdnjs only has .js, not .mjs)
         const version = pdfjsLib.version;
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.mjs`;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.js`;
 
         console.log('[usePdfPages] PDF.js version:', version);
         console.log('[usePdfPages] Worker src:', pdfjsLib.GlobalWorkerOptions.workerSrc);
