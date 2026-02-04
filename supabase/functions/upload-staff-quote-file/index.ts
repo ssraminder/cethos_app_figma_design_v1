@@ -93,14 +93,14 @@ serve(async (req) => {
     const isOwner = quote.created_by_staff_id === staffId;
     const isManualQuote = quote.is_manual_quote;
 
-    // Check HITL queue - use quote_number, NOT quote_id
+    // Check HITL queue - use quote_id (UUID), the table uses quote_id not quote_number
     const { data: hitlReview } = await supabaseAdmin
       .from("hitl_reviews")
       .select("id, assigned_to, status")
-      .eq("quote_number", quote.quote_number)
+      .eq("quote_id", quoteId)
       .maybeSingle();
 
-    console.log(`HITL Review lookup for ${quote.quote_number}:`, hitlReview);
+    console.log(`HITL Review lookup for quote ${quoteId}:`, hitlReview);
 
     // Allow upload if:
     // 1. Staff owns the quote (created it)
