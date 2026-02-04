@@ -69,6 +69,8 @@ import AIKnowledgeBase from "./pages/admin/AIKnowledgeBase";
 import AccountsReceivable from "./pages/admin/AccountsReceivable";
 import CustomersList from "./pages/admin/CustomersList";
 import CustomerDetail from "./pages/admin/CustomerDetail";
+import OCRWordCountPage from "./pages/admin/OCRWordCountPage";
+import OCRBatchResultsPage from "./pages/admin/OCRBatchResultsPage";
 
 // Admin Settings pages
 import PricingSettings from "./pages/admin/settings/PricingSettings";
@@ -285,6 +287,8 @@ const App = () => (
                     <Route path="ar" element={<AccountsReceivable />} />
                     <Route path="customers" element={<CustomersList />} />
                     <Route path="customers/:id" element={<CustomerDetail />} />
+                    <Route path="ocr-word-count" element={<OCRWordCountPage />} />
+                    <Route path="ocr-word-count/:batchId" element={<OCRBatchResultsPage />} />
 
                     {/* Admin Settings screens */}
                     <Route

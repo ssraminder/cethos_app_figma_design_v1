@@ -17,6 +17,7 @@ import {
   Plus,
   DollarSign,
   UserCircle,
+  FileSearch,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -53,6 +54,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "HITL Queue",
     path: "/admin/hitl",
     icon: ClipboardCheck,
+    section: "Main",
+  },
+  {
+    label: "OCR Word Count",
+    path: "/admin/ocr-word-count",
+    icon: FileSearch,
     section: "Main",
   },
   {
