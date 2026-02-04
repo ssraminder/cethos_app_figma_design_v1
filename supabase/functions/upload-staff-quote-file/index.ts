@@ -69,6 +69,7 @@ serve(async (req) => {
     }
 
     console.log(`Uploading file for quote: ${quoteId}`);
+    console.log(`QuoteId type: ${typeof quoteId}, value: "${quoteId}"`);
     console.log(`File: ${file.name} (${file.size} bytes)`);
     console.log(`Category ID: ${categoryId || "not specified"}`);
 
@@ -79,10 +80,12 @@ serve(async (req) => {
       .eq("id", quoteId)
       .single();
 
+    console.log(`Quote lookup result - data: ${JSON.stringify(quote)}, error: ${JSON.stringify(quoteError)}`);
+
     if (quoteError || !quote) {
       console.error("Quote not found:", quoteError);
       return new Response(
-        JSON.stringify({ success: false, error: "Quote not found" }),
+        JSON.stringify({ success: false, error: "Quote not found", quoteId, quoteError: quoteError?.message }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -93,14 +96,14 @@ serve(async (req) => {
     const isOwner = quote.created_by_staff_id === staffId;
     const isManualQuote = quote.is_manual_quote;
 
-    // Check HITL queue - use quote_number, NOT quote_id
+    // Check HITL queue - use quote_id (UUID), the table uses quote_id not quote_number
     const { data: hitlReview } = await supabaseAdmin
       .from("hitl_reviews")
       .select("id, assigned_to, status")
-      .eq("quote_number", quote.quote_number)
+      .eq("quote_id", quoteId)
       .maybeSingle();
 
-    console.log(`HITL Review lookup for ${quote.quote_number}:`, hitlReview);
+    console.log(`HITL Review lookup for quote ${quoteId}:`, hitlReview);
 
     // Allow upload if:
     // 1. Staff owns the quote (created it)
