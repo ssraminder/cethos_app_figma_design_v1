@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { ChevronDown, ChevronUp, AlertCircle, FileText, Loader2 } from "lucide-react";
+import { AlertCircle, FileText, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { FileWithAnalysis } from "./StaffFileUploadForm";
 
 export interface FilePrice {
   fileId: string;
@@ -79,7 +78,6 @@ interface AnalysisResult extends Omit<AnalysisResultRaw, 'quote_files'> {
 
 interface StaffPricingFormProps {
   quoteId: string;
-  files: FileWithAnalysis[];
   value: QuotePricing;
   onChange: (pricing: QuotePricing) => void;
   refreshKey?: number; // Increment to trigger re-fetch of analysis data
@@ -89,7 +87,6 @@ const DEFAULT_TAX_RATE = 0.05; // 5% GST fallback
 
 export default function StaffPricingForm({
   quoteId,
-  files,
   value,
   onChange,
   refreshKey = 0,

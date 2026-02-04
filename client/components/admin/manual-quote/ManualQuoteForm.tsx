@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
-import { supabase } from "@/lib/supabase";
 import { CheckCircle, ChevronRight, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import StaffCustomerForm from "./StaffCustomerForm";
-import StaffTranslationDetailsForm from "./StaffTranslationDetailsForm";
-import StaffFileUploadForm, { FileWithAnalysis } from "./StaffFileUploadForm";
+import ManualQuoteFilesStep, { TranslationSettings } from "./ManualQuoteFilesStep";
 import StaffPricingForm, { QuotePricing } from "./StaffPricingForm";
 import StaffReviewForm from "./StaffReviewForm";
+import { FileTotals } from "../hitl-file-list/types";
 
 interface CustomerData {
   id?: string;
@@ -17,14 +16,6 @@ interface CustomerData {
   customerType: "individual" | "business";
   companyName?: string;
   quoteSourceId?: string;
-}
-
-interface QuoteData {
-  sourceLanguageId?: string;
-  targetLanguageId?: string;
-  intendedUseId?: string;
-  countryOfIssue?: string;
-  specialInstructions?: string;
 }
 
 interface ManualQuoteFormProps {
@@ -41,11 +32,26 @@ export default function ManualQuoteForm({
 
   const [currentStep, setCurrentStep] = useState(1);
   const [customer, setCustomer] = useState<CustomerData | null>(null);
-  const [quote, setQuote] = useState<QuoteData>({});
-  const [files, setFiles] = useState<FileWithAnalysis[]>([]);
-  const [processWithAI, setProcessWithAI] = useState(true);
   const [quoteId, setQuoteId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Translation settings (now part of step 2)
+  const [translationSettings, setTranslationSettings] = useState<TranslationSettings>({
+    sourceLanguageId: null,
+    targetLanguageId: null,
+    intendedUseId: null,
+    specialInstructions: '',
+  });
+
+  // File totals from HITLFileList
+  const [fileTotals, setFileTotals] = useState<FileTotals>({
+    totalFiles: 0,
+    totalPages: 0,
+    totalWords: 0,
+    totalBillable: 0,
+  });
+
+  // Pricing
   const [pricing, setPricing] = useState<QuotePricing>({
     filePrices: [],
     documentSubtotal: 0,
@@ -63,20 +69,16 @@ export default function ManualQuoteForm({
     total: 0,
   });
   const [staffNotes, setStaffNotes] = useState("");
-  
+
   // Pricing refresh key - increments to trigger re-fetch in StaffPricingForm
   const [pricingRefreshKey, setPricingRefreshKey] = useState(0);
 
+  // NEW: 4 steps instead of 5
   const steps = [
     { id: 1, name: "Customer Info", description: "Enter customer details" },
-    {
-      id: 2,
-      name: "Translation Details",
-      description: "Select languages and options",
-    },
-    { id: 3, name: "Upload Files", description: "Add documents (optional)" },
-    { id: 4, name: "Pricing", description: "Calculate and review pricing" },
-    { id: 5, name: "Review", description: "Finalize and create quote" },
+    { id: 2, name: "Files & Translation", description: "Upload files and set languages" },
+    { id: 3, name: "Pricing", description: "Calculate and review pricing" },
+    { id: 4, name: "Review", description: "Finalize and create quote" },
   ];
 
   const validateStep = (step: number): boolean => {
@@ -106,28 +108,25 @@ export default function ManualQuoteForm({
 
       case 2:
         if (
-          !quote.sourceLanguageId ||
-          !quote.targetLanguageId ||
-          !quote.intendedUseId
+          !translationSettings.sourceLanguageId ||
+          !translationSettings.targetLanguageId ||
+          !translationSettings.intendedUseId
         ) {
-          toast.error("Please fill in all required translation details");
+          toast.error("Please set source language, target language, and intended use");
           return false;
         }
-        if (quote.sourceLanguageId === quote.targetLanguageId) {
+        if (translationSettings.sourceLanguageId === translationSettings.targetLanguageId) {
           toast.error("Source and target languages must be different");
           return false;
         }
         return true;
 
       case 3:
-        // Files are optional, always valid
+        // Pricing always valid
         return true;
 
       case 4:
-        // Pricing validation will be added when we implement Step 4
-        return true;
-
-      case 5:
+        // Review always valid
         return true;
 
       default:
@@ -135,6 +134,7 @@ export default function ManualQuoteForm({
     }
   };
 
+  // Create quote when moving from Step 1 → Step 2
   const createInitialQuote = async () => {
     if (!staffId || !customer) {
       toast.error("Missing required information");
@@ -144,7 +144,6 @@ export default function ManualQuoteForm({
     console.log("📝 [CREATE QUOTE] Creating initial quote");
     console.log("  - Staff ID:", staffId);
     console.log("  - Customer:", customer);
-    console.log("  - Quote data:", quote);
 
     try {
       const response = await fetch(
@@ -158,7 +157,6 @@ export default function ManualQuoteForm({
           body: JSON.stringify({
             staffId,
             customerData: customer,
-            quoteData: quote,
             quoteSourceId: customer.quoteSourceId,
             entryPoint: "staff_manual",
           }),
@@ -175,7 +173,7 @@ export default function ManualQuoteForm({
       console.log("✅ [CREATE QUOTE] Success:", result);
 
       setQuoteId(result.quoteId);
-      toast.success("Quote created - you can now upload files");
+      toast.success("Quote created - now add files and translation details");
       return result.quoteId;
     } catch (error) {
       console.error("❌ [CREATE QUOTE] Error:", error);
@@ -190,16 +188,16 @@ export default function ManualQuoteForm({
       return;
     }
 
-    // Create quote when moving from Step 2 → Step 3
-    if (currentStep === 2 && !quoteId && staffId && customer) {
+    // Create quote when leaving Step 1
+    if (currentStep === 1 && !quoteId) {
       const newQuoteId = await createInitialQuote();
       if (!newQuoteId) {
         return; // Don't proceed if quote creation failed
       }
     }
 
-    // Refresh pricing data when moving from Step 3 to Step 4
-    if (currentStep === 3) {
+    // Refresh pricing when entering Step 3
+    if (currentStep === 2) {
       setPricingRefreshKey((prev) => prev + 1);
     }
 
@@ -277,12 +275,6 @@ export default function ManualQuoteForm({
     }
   };
 
-  // Callback to refresh pricing when analysis/certifications change in Step 3
-  const handlePricingRefresh = () => {
-    console.log("🔄 [PRICING REFRESH] Triggered from file upload form");
-    setPricingRefreshKey((prev) => prev + 1);
-  };
-
   const canProceed = () => {
     switch (currentStep) {
       case 1:
@@ -292,15 +284,14 @@ export default function ManualQuoteForm({
         );
       case 2:
         return (
-          quote.sourceLanguageId &&
-          quote.targetLanguageId &&
-          quote.intendedUseId
+          translationSettings.sourceLanguageId &&
+          translationSettings.targetLanguageId &&
+          translationSettings.intendedUseId &&
+          translationSettings.sourceLanguageId !== translationSettings.targetLanguageId
         );
       case 3:
-        return true; // Files are optional
-      case 4:
         return true; // Pricing validation
-      case 5:
+      case 4:
         return true;
       default:
         return false;
@@ -320,7 +311,7 @@ export default function ManualQuoteForm({
           </p>
         </div>
 
-        {/* Steps Indicator */}
+        {/* Steps Indicator - now 4 steps */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
             {steps.map((step, index) => (
@@ -369,38 +360,30 @@ export default function ManualQuoteForm({
             <StaffCustomerForm value={customer} onChange={setCustomer} />
           )}
 
-          {currentStep === 2 && (
-            <StaffTranslationDetailsForm value={quote} onChange={setQuote} />
-          )}
-
-          {currentStep === 3 && staffId && (
-            <StaffFileUploadForm
+          {currentStep === 2 && quoteId && (
+            <ManualQuoteFilesStep
               quoteId={quoteId}
-              staffId={staffId}
-              value={files}
-              onChange={setFiles}
-              processWithAI={processWithAI}
-              onProcessWithAIChange={setProcessWithAI}
-              onPricingRefresh={handlePricingRefresh}
+              value={translationSettings}
+              onChange={setTranslationSettings}
+              onTotalsChange={setFileTotals}
             />
           )}
 
-          {currentStep === 4 && quoteId && (
+          {currentStep === 3 && quoteId && (
             <StaffPricingForm
               key={`pricing-${pricingRefreshKey}`}
               quoteId={quoteId}
-              files={files}
               value={pricing}
               onChange={setPricing}
               refreshKey={pricingRefreshKey}
             />
           )}
 
-          {currentStep === 5 && (
+          {currentStep === 4 && (
             <StaffReviewForm
               customer={customer}
-              quote={quote}
-              files={files}
+              translationSettings={translationSettings}
+              fileTotals={fileTotals}
               pricing={pricing}
               staffNotes={staffNotes}
               onStaffNotesChange={setStaffNotes}
@@ -409,26 +392,24 @@ export default function ManualQuoteForm({
                   case "customer":
                     setCurrentStep(1);
                     break;
+                  case "files":
                   case "translation":
                     setCurrentStep(2);
                     break;
-                  case "files":
-                    setCurrentStep(3);
-                    break;
                   case "pricing":
-                    setCurrentStep(4);
+                    setCurrentStep(3);
                     break;
                 }
               }}
-              onPrevious={() => setCurrentStep(4)}
+              onPrevious={() => setCurrentStep(3)}
               onSubmit={handleFinalSubmit}
               submitting={isSubmitting}
             />
           )}
         </div>
 
-        {/* Action Buttons - Hidden on Step 5 (Review) as StaffReviewForm has its own buttons */}
-        {currentStep !== 5 && (
+        {/* Action Buttons - Hidden on Step 4 (Review) as StaffReviewForm has its own buttons */}
+        {currentStep !== 4 && (
           <div className="flex items-center justify-between">
             <button
               onClick={handleCancel}
