@@ -103,7 +103,7 @@ serve(async (req) => {
       .eq("quote_id", quoteId)
       .maybeSingle();
 
-    console.log(`HITL Review lookup for quote ${quoteId}:`, hitlReview);
+    console.log(`HITL Review lookup for quote ${quoteId}:`, JSON.stringify(hitlReview));
 
     // Allow upload if:
     // 1. Staff owns the quote (created it)
@@ -114,7 +114,15 @@ serve(async (req) => {
     const isUnassignedHITL = hitlReview && !hitlReview.assigned_to;
     const isInHITLQueue = isClaimedByStaff || isUnassignedHITL;
 
-    console.log(`Auth check - isOwner: ${isOwner}, isManualQuote: ${isManualQuote}, isClaimedByStaff: ${isClaimedByStaff}, isUnassignedHITL: ${isUnassignedHITL}`);
+    console.log(`Auth check details:`);
+    console.log(`  - staffId from token: ${staffId}`);
+    console.log(`  - hitlReview.assigned_to: ${hitlReview?.assigned_to}`);
+    console.log(`  - quote.created_by_staff_id: ${quote.created_by_staff_id}`);
+    console.log(`  - isOwner: ${isOwner}`);
+    console.log(`  - isManualQuote: ${isManualQuote}`);
+    console.log(`  - isClaimedByStaff: ${isClaimedByStaff}`);
+    console.log(`  - isUnassignedHITL: ${isUnassignedHITL}`);
+    console.log(`  - isInHITLQueue: ${isInHITLQueue}`);
 
     if (!isOwner && !isManualQuote && !isInHITLQueue) {
       console.error(`Authorization failed for staff ${staffId} on quote ${quoteId}`);
