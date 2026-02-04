@@ -54,7 +54,8 @@ import {
 import DocumentPreviewModal from "../../components/admin/DocumentPreviewModal";
 // OLD HITL CODE - DISABLED 2026-02-03
 // import { UnifiedDocumentEditor } from "@/components/shared/document-editor";
-import { DocumentFlowEditor } from "@/components/shared/document-flow";
+// import { DocumentFlowEditor } from "@/components/shared/document-flow";
+import { HITLFileList } from "@/components/admin/hitl-file-list";
 
 // ============================================
 // ROLE HIERARCHY FOR CLAIM OVERRIDE
@@ -3931,22 +3932,16 @@ const HITLReviewDetail: React.FC = () => {
                  - DocumentGroupsView
                  - Old Document Grouping UI
               */}
-              {/* Document Flow Editor - New unified document management */}
+              {/* HITLFileList - Simplified file management for HITL Review */}
               {reviewData?.quotes?.id && (
                 <div className="mt-6">
-                  <DocumentFlowEditor
-                    mode="hitl"
+                  <HITLFileList
                     quoteId={reviewData.quotes.id}
-                    reviewId={reviewId}
-                    staffId={staffSession?.staffId}
-                    onPricingChange={(totals) => {
-                      console.log('Pricing updated:', totals);
-                      // Note: Don't call fetchReviewData() here - it causes an infinite loop
-                      // The pricing totals are already calculated by DocumentFlowEditor
-                    }}
                     readOnly={!claimedByMe}
-                    showPricing={true}
-                    allowUpload={claimedByMe}
+                    onTotalsChange={(totals) => {
+                      console.log('File totals:', totals);
+                      // Optionally update pricing summary here
+                    }}
                   />
                 </div>
               )}
