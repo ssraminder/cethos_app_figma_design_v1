@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { Edit2, AlertCircle } from "lucide-react";
+import { Edit2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { FileWithAnalysis } from "./StaffFileUploadForm";
 import { QuotePricing } from "./StaffPricingForm";
+import { TranslationSettings } from "./ManualQuoteFilesStep";
+import { FileTotals } from "../hitl-file-list/types";
 
 interface CustomerData {
   id?: string;
@@ -11,14 +12,6 @@ interface CustomerData {
   fullName: string;
   customerType: "individual" | "business";
   companyName?: string;
-}
-
-interface QuoteData {
-  sourceLanguageId?: string;
-  targetLanguageId?: string;
-  intendedUseId?: string;
-  countryOfIssue?: string;
-  specialInstructions?: string;
 }
 
 interface Language {
@@ -47,8 +40,8 @@ interface CertificationType {
 
 interface StaffReviewFormProps {
   customer: CustomerData | null;
-  quote: QuoteData;
-  files: FileWithAnalysis[];
+  translationSettings: TranslationSettings;
+  fileTotals: FileTotals;
   pricing: QuotePricing;
   staffNotes: string;
   onStaffNotesChange: (notes: string) => void;
@@ -62,8 +55,8 @@ interface StaffReviewFormProps {
 
 export default function StaffReviewForm({
   customer,
-  quote,
-  files,
+  translationSettings,
+  fileTotals,
   pricing,
   staffNotes,
   onStaffNotesChange,
@@ -202,8 +195,8 @@ export default function StaffReviewForm({
                 Source Language
               </p>
               <p className="text-gray-900">
-                {languages[quote.sourceLanguageId!]?.name ||
-                  quote.sourceLanguageId}
+                {languages[translationSettings.sourceLanguageId!]?.name ||
+                  translationSettings.sourceLanguageId || "Not selected"}
               </p>
             </div>
             <div>
@@ -211,8 +204,8 @@ export default function StaffReviewForm({
                 Target Language
               </p>
               <p className="text-gray-900">
-                {languages[quote.targetLanguageId!]?.name ||
-                  quote.targetLanguageId}
+                {languages[translationSettings.targetLanguageId!]?.name ||
+                  translationSettings.targetLanguageId || "Not selected"}
               </p>
             </div>
             <div>
@@ -220,8 +213,8 @@ export default function StaffReviewForm({
                 Language Pair
               </p>
               <p className="text-gray-900">
-                {languages[quote.sourceLanguageId!]?.name} →{" "}
-                {languages[quote.targetLanguageId!]?.name}
+                {languages[translationSettings.sourceLanguageId!]?.name || "?"} →{" "}
+                {languages[translationSettings.targetLanguageId!]?.name || "?"}
               </p>
             </div>
             <div>
@@ -229,28 +222,28 @@ export default function StaffReviewForm({
                 Intended Use
               </p>
               <p className="text-gray-900">
-                {intendedUses[quote.intendedUseId!]?.name ||
-                  quote.intendedUseId}
+                {intendedUses[translationSettings.intendedUseId!]?.name ||
+                  translationSettings.intendedUseId || "Not selected"}
               </p>
             </div>
-            {quote.countryOfIssue && (
+            {translationSettings.countryOfIssue && (
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                   Country of Issue
                 </p>
                 <p className="text-gray-900">
-                  {countries[quote.countryOfIssue]?.name ||
-                    quote.countryOfIssue}
+                  {countries[translationSettings.countryOfIssue]?.name ||
+                    translationSettings.countryOfIssue}
                 </p>
               </div>
             )}
-            {quote.specialInstructions && (
+            {translationSettings.specialInstructions && (
               <div className="sm:col-span-2">
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                   Special Instructions
                 </p>
                 <p className="text-gray-900 whitespace-pre-wrap">
-                  {quote.specialInstructions}
+                  {translationSettings.specialInstructions}
                 </p>
               </div>
             )}
@@ -262,7 +255,7 @@ export default function StaffReviewForm({
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-b border-gray-200">
           <h3 className="font-semibold text-gray-900">
-            Files & Analysis ({pricing.filePrices.length > 0 ? pricing.filePrices.length : files.length} files)
+            Files & Analysis ({pricing.filePrices.length > 0 ? pricing.filePrices.length : fileTotals.totalFiles} files)
           </h3>
           <button
             onClick={() => onEditSection("files")}
@@ -273,7 +266,7 @@ export default function StaffReviewForm({
           </button>
         </div>
         <div className="p-6 space-y-4">
-          {pricing.filePrices.length === 0 && files.length === 0 ? (
+          {pricing.filePrices.length === 0 && fileTotals.totalFiles === 0 ? (
             <div className="text-gray-600 italic">No files uploaded</div>
           ) : pricing.filePrices.length > 0 ? (
             // Show files with analysis from pricing data
@@ -318,55 +311,30 @@ export default function StaffReviewForm({
               </div>
             ))
           ) : (
-            // Fallback to showing files without analysis data
-            files.map((file) => (
-              <div
-                key={file.id}
-                className="border border-gray-200 rounded-md p-4 space-y-3"
-              >
-                <div className="font-medium text-gray-900">{file.name}</div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  {file.detectedLanguage && (
-                    <div>
-                      <p className="text-gray-600">Detected Language</p>
-                      <p className="font-medium text-gray-900">
-                        {file.detectedLanguage}
-                      </p>
-                    </div>
-                  )}
-                  {file.detectedDocumentType && (
-                    <div>
-                      <p className="text-gray-600">Document Type</p>
-                      <p className="font-medium text-gray-900">
-                        {file.detectedDocumentType}
-                      </p>
-                    </div>
-                  )}
-                  {file.pageCount && (
-                    <div>
-                      <p className="text-gray-600">Pages</p>
-                      <p className="font-medium text-gray-900">
-                        {file.pageCount}
-                      </p>
-                    </div>
-                  )}
-                  {file.complexity && (
-                    <div>
-                      <p className="text-gray-600">Complexity</p>
-                      <p className="font-medium text-gray-900 capitalize">
-                        {file.complexity}
-                      </p>
-                    </div>
-                  )}
+            // Show file totals summary when no pricing data but files exist
+            <div className="border border-gray-200 rounded-md p-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-600">Total Files</p>
+                  <p className="font-medium text-gray-900">{fileTotals.totalFiles}</p>
                 </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <div className="flex items-center gap-2 text-amber-700">
-                    <AlertCircle className="w-4 h-4" />
-                    Analysis Not Available
-                  </div>
+                <div>
+                  <p className="text-gray-600">Total Pages</p>
+                  <p className="font-medium text-gray-900">{fileTotals.totalPages}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Total Words</p>
+                  <p className="font-medium text-gray-900">{fileTotals.totalWords.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Billable Pages</p>
+                  <p className="font-medium text-gray-900">{fileTotals.totalBillable.toFixed(2)}</p>
                 </div>
               </div>
-            ))
+              <p className="text-sm text-gray-500 mt-3">
+                Detailed pricing breakdown will be generated when you proceed to the Pricing step.
+              </p>
+            </div>
           )}
         </div>
       </div>
