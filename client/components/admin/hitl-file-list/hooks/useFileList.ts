@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { FileWithPages, QuotePage, FileTotals, PageUpdateData, FileCategory } from '../types';
-import { COMPLEXITY_MULTIPLIERS } from '@/types/document-editor';
+import { Complexity, COMPLEXITY_MULTIPLIERS } from '@/types/document-editor';
 
 export function useFileList(quoteId: string) {
   const [files, setFiles] = useState<FileWithPages[]>([]);
@@ -51,9 +51,9 @@ export function useFileList(quoteId: string) {
 
       if (filesError) throw filesError;
 
-      // Fetch pages for all files
       const fileIds = (filesData || []).map(f => f.id);
 
+      // Fetch pages for all files
       let pagesData: QuotePage[] = [];
       if (fileIds.length > 0) {
         const { data: pages, error: pagesError } = await supabase
@@ -66,29 +66,90 @@ export function useFileList(quoteId: string) {
         pagesData = pages || [];
       }
 
-      // Check which files have analysis
-      let analyzedFileIds = new Set<string>();
+      // Fetch AI analysis results for all files
+      interface AIAnalysisResult {
+        quote_file_id: string;
+        word_count: number;
+        billable_pages: number;
+        assessed_complexity: string;
+        complexity_multiplier: number;
+        page_count: number;
+      }
+      let analysisData: AIAnalysisResult[] = [];
       if (fileIds.length > 0) {
-        const { data: analysisData } = await supabase
+        const { data: analysis, error: analysisError } = await supabase
           .from('ai_analysis_results')
-          .select('quote_file_id')
+          .select('quote_file_id, word_count, billable_pages, assessed_complexity, complexity_multiplier, page_count')
           .in('quote_file_id', fileIds);
 
-        analyzedFileIds = new Set((analysisData || []).map(a => a.quote_file_id));
+        if (!analysisError && analysis) {
+          analysisData = analysis;
+        }
       }
+
+      // Create a map of file ID to AI analysis
+      const analysisMap = new Map<string, AIAnalysisResult>();
+      analysisData.forEach(a => analysisMap.set(a.quote_file_id, a));
 
       // Combine data
       const combinedFiles: FileWithPages[] = (filesData || []).map(file => {
-        const pages: QuotePage[] = pagesData
+        const aiAnalysis = analysisMap.get(file.id);
+        const hasAnalysis = !!aiAnalysis;
+
+        // Get pages for this file
+        let pages: QuotePage[] = pagesData
           .filter(p => p.quote_file_id === file.id)
-          .map(p => ({
-            ...p,
-            is_included: p.is_included ?? true,
-            complexity: p.complexity || 'easy',
-            complexity_multiplier: p.complexity_multiplier || 1.0,
-            word_count: p.word_count || 0,
-            billable_pages: p.billable_pages || 0,
+          .map(p => {
+            // If page has no data but AI analysis exists, use AI data
+            // This handles the case where quote_pages was created with defaults
+            let wordCount = p.word_count || 0;
+            let billablePages = p.billable_pages || 0;
+            let complexity: Complexity = (p.complexity as Complexity) || 'easy';
+            let complexityMultiplier = p.complexity_multiplier || 1.0;
+
+            // If this page has no data and AI analysis exists, use AI values as defaults
+            if (aiAnalysis && wordCount === 0 && billablePages === 0) {
+              // For multi-page files, distribute evenly
+              // For single page, use full values
+              const pageCount = aiAnalysis.page_count || 1;
+              wordCount = Math.round((aiAnalysis.word_count || 0) / pageCount);
+              billablePages = (aiAnalysis.billable_pages || 0) / pageCount;
+              complexity = (aiAnalysis.assessed_complexity as Complexity) || 'easy';
+              complexityMultiplier = aiAnalysis.complexity_multiplier || 1.0;
+            }
+
+            // Auto-calculate billable if still 0 but has words
+            if (billablePages === 0 && wordCount > 0) {
+              billablePages = Math.ceil((wordCount / 225) * 10) / 10;
+            }
+
+            return {
+              ...p,
+              word_count: wordCount,
+              billable_pages: billablePages,
+              complexity: complexity,
+              complexity_multiplier: complexityMultiplier,
+              is_included: p.is_included ?? true,
+            };
+          });
+
+        // If no pages exist but AI analysis does, create virtual page entries
+        if (pages.length === 0 && aiAnalysis) {
+          const pageCount = aiAnalysis.page_count || 1;
+          const wordsPerPage = Math.round((aiAnalysis.word_count || 0) / pageCount);
+          const billablePerPage = (aiAnalysis.billable_pages || 0) / pageCount;
+
+          pages = Array.from({ length: pageCount }, (_, i) => ({
+            id: `virtual-${file.id}-${i + 1}`, // Virtual ID - will be created on first edit
+            quote_file_id: file.id,
+            page_number: i + 1,
+            word_count: wordsPerPage,
+            billable_pages: billablePerPage || Math.ceil((wordsPerPage / 225) * 10) / 10,
+            complexity: (aiAnalysis.assessed_complexity as Complexity) || 'easy',
+            complexity_multiplier: aiAnalysis.complexity_multiplier || 1.0,
+            is_included: true,
           }));
+        }
 
         const includedPages = pages.filter(p => p.is_included);
         const totalWords = includedPages.reduce((sum, p) => sum + (p.word_count || 0), 0);
@@ -97,7 +158,7 @@ export function useFileList(quoteId: string) {
         return {
           ...file,
           pages,
-          hasAnalysis: analyzedFileIds.has(file.id),
+          hasAnalysis,
           totalWords,
           totalBillable: Math.max(totalBillable, pages.length > 0 ? 1.0 : 0),
         };
@@ -207,6 +268,71 @@ export function useFileList(quoteId: string) {
         updateData.complexity_multiplier = COMPLEXITY_MULTIPLIERS[value as keyof typeof COMPLEXITY_MULTIPLIERS] || 1.0;
       }
 
+      // Check if this is a virtual page (created from AI analysis, not in DB yet)
+      if (pageId.startsWith('virtual-')) {
+        // Extract file ID and page number from virtual ID
+        const parts = pageId.split('-');
+        const fileId = parts[1];
+        const pageNumber = parseInt(parts[2]);
+
+        // Find the file to get current values
+        const file = files.find(f => f.id === fileId);
+        const virtualPage = file?.pages.find(p => p.id === pageId);
+
+        if (!virtualPage) {
+          throw new Error('Virtual page not found');
+        }
+
+        // Create the page record in the database
+        const newPageData = {
+          quote_file_id: fileId,
+          page_number: pageNumber,
+          word_count: virtualPage.word_count,
+          billable_pages: virtualPage.billable_pages,
+          complexity: virtualPage.complexity,
+          complexity_multiplier: virtualPage.complexity_multiplier,
+          is_included: virtualPage.is_included,
+          ...updateData, // Apply the update
+        };
+
+        const { data: insertedPage, error: insertError } = await supabase
+          .from('quote_pages')
+          .insert(newPageData)
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+
+        // Update local state with the real page ID
+        setFiles(prev => prev.map(f => {
+          if (f.id !== fileId) return f;
+
+          const updatedPages = f.pages.map(page => {
+            if (page.id !== pageId) return page;
+            return {
+              ...page,
+              ...updateData,
+              id: insertedPage.id, // Replace virtual ID with real ID
+            } as QuotePage;
+          });
+
+          const includedPages = updatedPages.filter(p => p.is_included);
+          const totalWords = includedPages.reduce((sum, p) => sum + (p.word_count || 0), 0);
+          const totalBillable = includedPages.reduce((sum, p) => sum + (p.billable_pages || 0), 0);
+
+          return {
+            ...f,
+            pages: updatedPages,
+            totalWords,
+            totalBillable: Math.max(totalBillable, 1.0),
+          };
+        }));
+
+        toast.success('Page saved');
+        return;
+      }
+
+      // Regular update for existing pages
       const { error } = await supabase
         .from('quote_pages')
         .update(updateData)
@@ -234,7 +360,7 @@ export function useFileList(quoteId: string) {
       console.error('Update page error:', err);
       toast.error('Failed to update page');
     }
-  }, []);
+  }, [files]);
 
   // Remove unchecked pages
   const removeUncheckedPages = useCallback(async (fileId: string) => {
