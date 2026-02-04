@@ -69,6 +69,7 @@ serve(async (req) => {
     }
 
     console.log(`Uploading file for quote: ${quoteId}`);
+    console.log(`QuoteId type: ${typeof quoteId}, value: "${quoteId}"`);
     console.log(`File: ${file.name} (${file.size} bytes)`);
     console.log(`Category ID: ${categoryId || "not specified"}`);
 
@@ -79,10 +80,12 @@ serve(async (req) => {
       .eq("id", quoteId)
       .single();
 
+    console.log(`Quote lookup result - data: ${JSON.stringify(quote)}, error: ${JSON.stringify(quoteError)}`);
+
     if (quoteError || !quote) {
       console.error("Quote not found:", quoteError);
       return new Response(
-        JSON.stringify({ success: false, error: "Quote not found" }),
+        JSON.stringify({ success: false, error: "Quote not found", quoteId, quoteError: quoteError?.message }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
