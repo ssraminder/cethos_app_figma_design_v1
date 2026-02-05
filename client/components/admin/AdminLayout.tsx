@@ -18,6 +18,7 @@ import {
   DollarSign,
   UserCircle,
   FileSearch,
+  Scissors,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -60,6 +61,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "OCR Word Count",
     path: "/admin/ocr-word-count",
     icon: FileSearch,
+    section: "Main",
+  },
+  {
+    label: "Preprocess & OCR",
+    path: "/admin/preprocess-ocr",
+    icon: Scissors,
     section: "Main",
   },
   {
