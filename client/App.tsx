@@ -71,6 +71,7 @@ import CustomersList from "./pages/admin/CustomersList";
 import CustomerDetail from "./pages/admin/CustomerDetail";
 import OCRWordCountPage from "./pages/admin/OCRWordCountPage";
 import OCRBatchResultsPage from "./pages/admin/OCRBatchResultsPage";
+import PreprocessOCRPage from "./pages/admin/PreprocessOCRPage";
 
 // Admin Settings pages
 import PricingSettings from "./pages/admin/settings/PricingSettings";
@@ -289,6 +290,7 @@ const App = () => (
                     <Route path="customers/:id" element={<CustomerDetail />} />
                     <Route path="ocr-word-count" element={<OCRWordCountPage />} />
                     <Route path="ocr-word-count/:batchId" element={<OCRBatchResultsPage />} />
+                    <Route path="preprocess-ocr" element={<PreprocessOCRPage />} />
 
                     {/* Admin Settings screens */}
                     <Route
