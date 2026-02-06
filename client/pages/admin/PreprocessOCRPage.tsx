@@ -237,9 +237,22 @@ export default function PreprocessOCRPage() {
     });
 
     try {
-      const uploadedFiles: { filename: string; storagePath: string; fileSize: number }[] = [];
+      const uploadedFiles: {
+        filename: string;
+        storagePath: string;
+        fileSize: number;
+        fileGroupId: string | null;
+        originalFilename: string | null;
+        chunkIndex: number | null;
+      }[] = [];
 
       for (const uploadFile of readyFiles) {
+        // Generate a group UUID for files that were split into multiple chunks
+        // Files with only 1 chunk (not split) get null
+        const wasSplit = uploadFile.chunks.length > 1;
+        const fileGroupId = wasSplit ? crypto.randomUUID() : null;
+        const originalFilename = wasSplit ? uploadFile.name : null;
+
         const needsSplitting = uploadFile.chunks.length > 1 ||
           (uploadFile.chunks.length === 1 && uploadFile.chunks[0].status === 'pending');
 
@@ -267,6 +280,10 @@ export default function PreprocessOCRPage() {
             filename: chunk.name,
             storagePath,
             fileSize: uploadFile.size,
+            // Group metadata (null for unsplit files)
+            fileGroupId: null,
+            originalFilename: null,
+            chunkIndex: null,
           });
 
           uploadedCount++;
@@ -331,6 +348,10 @@ export default function PreprocessOCRPage() {
               filename: chunk.name,
               storagePath,
               fileSize: chunkBytes.length,
+              // Group metadata for split files
+              fileGroupId: fileGroupId,           // same UUID for all chunks of this file
+              originalFilename: originalFilename, // e.g. "contract.pdf"
+              chunkIndex: i + 1,                  // 1-based index
             });
 
             uploadedCount++;
