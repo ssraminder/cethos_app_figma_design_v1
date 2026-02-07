@@ -222,8 +222,9 @@ export default function OcrResultsModal({
   const totalWords = pageData.reduce((sum, p) => sum + (p.word_count || 0), 0);
   const avgConfidence =
     pageData.length > 0
-      ? pageData.reduce((sum, p) => sum + (p.confidence_score || 0), 0) /
-        pageData.length
+      ? (pageData.reduce((sum, p) => sum + (p.confidence_score || 0), 0) /
+          pageData.length) *
+        100
       : 0;
   const primaryLanguage = getMostCommonLanguage(pageData);
 
@@ -540,10 +541,10 @@ export default function OcrResultsModal({
                               </td>
                               <td className="px-4 py-3">
                                 <span
-                                  className={`font-medium ${confidenceColor(page.confidence_score || 0)}`}
+                                  className={`font-medium ${confidenceColor((page.confidence_score || 0) * 100)}`}
                                 >
                                   {page.confidence_score != null
-                                    ? `${page.confidence_score.toFixed(1)}%`
+                                    ? `${(page.confidence_score * 100).toFixed(1)}%`
                                     : "N/A"}
                                 </span>
                               </td>
