@@ -244,7 +244,7 @@ export default function OcrResultsModal({
       }
 
       const response = await fetch(
-        `${supabaseUrl}/functions/v1/ocr-batch-results?batchId=${encodeURIComponent(fileId)}&includeText=true`,
+        `${supabaseUrl}/functions/v1/ocr-batch-results?fileId=${encodeURIComponent(fileId)}&includeText=true`,
         {
           method: "GET",
           headers: {
@@ -260,14 +260,12 @@ export default function OcrResultsModal({
 
       const data = await response.json();
 
-      // Extract page data from the response files array
-      const file = data.files?.find(
-        (f: { id: string }) => f.id === fileId
-      );
-      const pages: OcrPageData[] = (file?.pages || data.files?.[0]?.pages || []).map(
+      // Response structure: { success: true, file: { ...fileData, pages: [...] } }
+      const pages: OcrPageData[] = (data.file?.pages || []).map(
         (p: {
           page_number: number;
           word_count: number;
+          character_count?: number;
           confidence_score?: number;
           raw_text?: string;
           detected_language?: string;
