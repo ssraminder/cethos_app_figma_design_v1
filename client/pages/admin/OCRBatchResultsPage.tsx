@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { OcrResultsModal } from '../../components/shared/analysis';
 import {
   ArrowLeft,
   Download,
@@ -10,7 +11,8 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Eye
 } from 'lucide-react';
 
 interface PageResult {
@@ -65,6 +67,8 @@ export default function OCRBatchResultsPage() {
   const [files, setFiles] = useState<FileResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const [selectedFile, setSelectedFile] = useState<{ id: string; name: string } | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     if (batchId) fetchResults();
@@ -340,13 +344,39 @@ export default function OCRBatchResultsPage() {
                   </div>
                 </div>
 
-                {group.status === 'completed' ? (
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                ) : group.status === 'failed' ? (
-                  <XCircle className="w-5 h-5 text-red-500" />
-                ) : (
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
-                )}
+                <div className="flex items-center gap-2">
+                  {group.status === 'completed' && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const file = group.files[0];
+                        setSelectedFile({ id: file.id, name: group.displayName });
+                        setShowModal(true);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.stopPropagation();
+                          const file = group.files[0];
+                          setSelectedFile({ id: file.id, name: group.displayName });
+                          setShowModal(true);
+                        }
+                      }}
+                      className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      <Eye className="w-4 h-4" />
+                      View Details
+                    </span>
+                  )}
+                  {group.status === 'completed' ? (
+                    <CheckCircle className="w-5 h-5 text-green-500" />
+                  ) : group.status === 'failed' ? (
+                    <XCircle className="w-5 h-5 text-red-500" />
+                  ) : (
+                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  )}
+                </div>
               </button>
 
               {/* Expanded Content */}
@@ -368,11 +398,25 @@ export default function OCRBatchResultsPage() {
                                 ({file.page_count} pages, {(file.word_count || 0).toLocaleString()} words)
                               </span>
                             </div>
-                            {file.status === 'completed' ? (
-                              <CheckCircle className="w-4 h-4 text-green-400" />
-                            ) : (
-                              <XCircle className="w-4 h-4 text-red-400" />
-                            )}
+                            <div className="flex items-center gap-2">
+                              {file.status === 'completed' && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedFile({ id: file.id, name: file.filename });
+                                    setShowModal(true);
+                                  }}
+                                  className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  View Details
+                                </button>
+                              )}
+                              {file.status === 'completed' ? (
+                                <CheckCircle className="w-4 h-4 text-green-400" />
+                              ) : (
+                                <XCircle className="w-4 h-4 text-red-400" />
+                              )}
+                            </div>
                           </div>
 
                           {/* Per-page table for this chunk */}
@@ -480,6 +524,15 @@ export default function OCRBatchResultsPage() {
           ))}
         </div>
       </div>
+
+      {selectedFile && (
+        <OcrResultsModal
+          isOpen={showModal}
+          onClose={() => setShowModal(false)}
+          fileId={selectedFile.id}
+          fileName={selectedFile.name}
+        />
+      )}
     </div>
   );
 }
