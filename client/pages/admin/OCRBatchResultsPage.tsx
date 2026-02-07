@@ -67,7 +67,6 @@ export default function OCRBatchResultsPage() {
   const [files, setFiles] = useState<FileResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
-  const [selectedFile, setSelectedFile] = useState<{ id: string; name: string } | null>(null);
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
@@ -351,15 +350,11 @@ export default function OCRBatchResultsPage() {
                       tabIndex={0}
                       onClick={(e) => {
                         e.stopPropagation();
-                        const file = group.files[0];
-                        setSelectedFile({ id: file.id, name: group.displayName });
                         setShowModal(true);
                       }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.stopPropagation();
-                          const file = group.files[0];
-                          setSelectedFile({ id: file.id, name: group.displayName });
                           setShowModal(true);
                         }
                       }}
@@ -402,7 +397,6 @@ export default function OCRBatchResultsPage() {
                               {file.status === 'completed' && (
                                 <button
                                   onClick={() => {
-                                    setSelectedFile({ id: file.id, name: file.filename });
                                     setShowModal(true);
                                   }}
                                   className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium"
@@ -525,12 +519,12 @@ export default function OCRBatchResultsPage() {
         </div>
       </div>
 
-      {selectedFile && (
+      {batchId && (
         <OcrResultsModal
           isOpen={showModal}
           onClose={() => setShowModal(false)}
-          fileId={selectedFile.id}
-          fileName={selectedFile.name}
+          batchId={batchId}
+          showActions
         />
       )}
     </div>
