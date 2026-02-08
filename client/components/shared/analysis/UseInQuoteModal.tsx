@@ -455,6 +455,7 @@ export default function UseInQuoteModal({
           sourceLanguageId: selectedSourceLanguageId,
           targetLanguageId: selectedTargetLanguageId,
           intendedUseId: selectedIntendedUseId || null,
+          certificationTypeId: pricingRows[0]?.defaultCertTypeId || "",
           countryOfIssue: countryOfIssue || null,
           customerId: selectedCustomer.id,
           customerNote: customerNote.trim() || null,
