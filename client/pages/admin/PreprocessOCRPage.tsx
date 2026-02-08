@@ -1,7 +1,7 @@
 // client/pages/admin/PreprocessOCRPage.tsx
 
-import { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PDFDocument } from 'pdf-lib';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -16,7 +16,11 @@ import {
   XCircle,
   Clock,
   Eye,
-  Info
+  Info,
+  Search,
+  Plus,
+  X,
+  RefreshCw
 } from 'lucide-react';
 
 // ============================================================================
@@ -65,12 +69,137 @@ interface SubmitProgress {
   message: string;
 }
 
+interface QuoteSearchResult {
+  id: string;
+  quote_number: string;
+  status: string;
+  total: number | null;
+  subtotal: number | null;
+  created_at: string;
+  source_language_name: string | null;
+  target_language_name: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  customer_phone: string | null;
+  file_count: number;
+  is_rush: boolean;
+}
+
+// ============================================================================
+// QUOTE STATUS & FILTER CONFIG
+// ============================================================================
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
+  draft: { label: "Draft", color: "bg-gray-100 text-gray-700", dot: "bg-gray-400" },
+  details_pending: { label: "Lead", color: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-400" },
+  processing: { label: "Processing", color: "bg-blue-100 text-blue-700", dot: "bg-blue-400" },
+  hitl_pending: { label: "HITL Pending", color: "bg-amber-100 text-amber-700", dot: "bg-amber-400" },
+  hitl_in_review: { label: "In Review", color: "bg-amber-100 text-amber-700", dot: "bg-amber-400" },
+  quote_ready: { label: "Quote Ready", color: "bg-green-100 text-green-700", dot: "bg-green-400" },
+  awaiting_payment: { label: "Awaiting Payment", color: "bg-teal-100 text-teal-700", dot: "bg-teal-400" },
+  converted: { label: "Converted", color: "bg-purple-100 text-purple-700", dot: "bg-purple-400" },
+  expired: { label: "Expired", color: "bg-red-100 text-red-700", dot: "bg-red-400" },
+};
+
+const FILTER_GROUPS = [
+  { key: "all", label: "All Quotes", statuses: null },
+  { key: "needs_review", label: "Needs Review", statuses: ["hitl_pending", "hitl_in_review", "processing"] },
+  { key: "leads", label: "Leads", statuses: ["draft", "details_pending"] },
+  { key: "ready", label: "Ready / Awaiting", statuses: ["quote_ready", "awaiting_payment"] },
+  { key: "closed", label: "Closed", statuses: ["converted", "expired"] },
+];
+
+// Normalize the Supabase nested join response into flat QuoteSearchResult
+const normalizeQuoteResult = (row: any): QuoteSearchResult => ({
+  id: row.id,
+  quote_number: row.quote_number,
+  status: row.status,
+  total: row.total,
+  subtotal: row.subtotal,
+  created_at: row.created_at,
+  is_rush: row.is_rush || false,
+  source_language_name: row.source_language?.name || null,
+  target_language_name: row.target_language?.name || null,
+  customer_name: row.customer?.full_name || null,
+  customer_email: row.customer?.email || null,
+  customer_phone: row.customer?.phone || null,
+  file_count: row.quote_files?.[0]?.count || 0,
+});
+
+// ============================================================================
+// SELECTED QUOTE CARD COMPONENT
+// ============================================================================
+
+function SelectedQuoteCard({
+  quote,
+  onDeselect,
+}: {
+  quote: QuoteSearchResult;
+  onDeselect: () => void;
+}) {
+  const statusCfg = STATUS_CONFIG[quote.status] || STATUS_CONFIG.draft;
+
+  return (
+    <div className="border-2 border-teal-200 bg-teal-50 rounded-lg p-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <FileText className="w-5 h-5 text-teal-600" />
+            <span className="font-semibold text-teal-900 text-lg">
+              {quote.quote_number}
+            </span>
+            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusCfg.color}`}>
+              {statusCfg.label}
+            </span>
+            {quote.is_rush && (
+              <span className="text-xs text-amber-600 font-medium">⚡ Rush</span>
+            )}
+          </div>
+
+          {/* Customer Info */}
+          <div className="text-sm text-gray-700 space-y-0.5 ml-7">
+            {quote.customer_name && (
+              <p className="font-medium">{quote.customer_name}</p>
+            )}
+            <div className="flex items-center gap-3 text-gray-500 text-xs">
+              {quote.customer_email && <span>{quote.customer_email}</span>}
+              {quote.customer_phone && <span>{quote.customer_phone}</span>}
+            </div>
+          </div>
+
+          {/* Quote Details */}
+          <div className="flex items-center gap-4 mt-2 ml-7 text-xs text-gray-600">
+            {quote.source_language_name && quote.target_language_name && (
+              <span>{quote.source_language_name} → {quote.target_language_name}</span>
+            )}
+            <span>{quote.file_count} file{quote.file_count !== 1 ? 's' : ''}</span>
+            {quote.total != null && quote.total > 0 && (
+              <span className="font-medium">Current total: ${quote.total.toFixed(2)}</span>
+            )}
+            <span>Created: {new Date(quote.created_at).toLocaleDateString()}</span>
+          </div>
+        </div>
+
+        {/* Deselect button */}
+        <button
+          onClick={onDeselect}
+          className="text-gray-400 hover:text-gray-600 p-1"
+          title="Deselect quote"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
 export default function PreprocessOCRPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [progress, setProgress] = useState<SubmitProgress>({
@@ -84,7 +213,266 @@ export default function PreprocessOCRPage() {
   });
   const [batchId, setBatchId] = useState<string | null>(null);
 
+  // Mode & selection
+  const [mode, setMode] = useState<'existing' | 'new'>('new');
+  const [selectedQuote, setSelectedQuote] = useState<QuoteSearchResult | null>(null);
+
+  // Search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<QuoteSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [filterCounts, setFilterCounts] = useState<Record<string, number>>({});
+
+  // Keyboard navigation
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   const isProcessing = progress.phase !== 'idle' && progress.phase !== 'done' && progress.phase !== 'error';
+
+  // ============================================================================
+  // QUOTE SEARCH
+  // ============================================================================
+
+  const searchQuotes = useCallback(async (query: string, statusFilter: string | null) => {
+    setSearchLoading(true);
+    try {
+      let dbQuery = supabase
+        .from('quotes')
+        .select(`
+          id,
+          quote_number,
+          status,
+          total,
+          subtotal,
+          created_at,
+          is_rush,
+          source_language:languages!quotes_source_language_id_fkey(name),
+          target_language:languages!quotes_target_language_id_fkey(name),
+          customer:customers!quotes_customer_id_fkey(full_name, email, phone),
+          quote_files(count)
+        `)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      // Apply status filter
+      if (statusFilter && statusFilter !== 'all') {
+        const group = FILTER_GROUPS.find(g => g.key === statusFilter);
+        if (group?.statuses) {
+          dbQuery = dbQuery.in('status', group.statuses);
+        }
+      }
+
+      // Apply text search
+      if (query.trim()) {
+        dbQuery = dbQuery.or(
+          `quote_number.ilike.%${query}%,` +
+          `customer.full_name.ilike.%${query}%,` +
+          `customer.email.ilike.%${query}%,` +
+          `customer.phone.ilike.%${query}%`
+        );
+      }
+
+      const { data, error } = await dbQuery;
+
+      if (error) {
+        console.error('Quote search error:', error);
+
+        // FALLBACK: If the joined or() filter fails, do a simpler approach
+        const results: QuoteSearchResult[] = [];
+
+        let quoteQuery = supabase
+          .from('quotes')
+          .select(`
+            id, quote_number, status, total, subtotal, created_at, is_rush,
+            source_language:languages!quotes_source_language_id_fkey(name),
+            target_language:languages!quotes_target_language_id_fkey(name),
+            customer:customers!quotes_customer_id_fkey(full_name, email, phone),
+            quote_files(count)
+          `)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (statusFilter && statusFilter !== 'all') {
+          const group = FILTER_GROUPS.find(g => g.key === statusFilter);
+          if (group?.statuses) {
+            quoteQuery = quoteQuery.in('status', group.statuses);
+          }
+        }
+
+        if (query.trim()) {
+          quoteQuery = quoteQuery.ilike('quote_number', `%${query}%`);
+        }
+
+        const { data: quoteResults } = await quoteQuery;
+        if (quoteResults) {
+          results.push(...quoteResults.map(normalizeQuoteResult));
+        }
+
+        // If searching by text (not just quote number), also search customers
+        if (query.trim() && !query.startsWith('QT-')) {
+          const { data: customers } = await supabase
+            .from('customers')
+            .select('id')
+            .or(`full_name.ilike.%${query}%,email.ilike.%${query}%,phone.ilike.%${query}%`)
+            .limit(10);
+
+          if (customers && customers.length > 0) {
+            const customerIds = customers.map(c => c.id);
+            let custQuoteQuery = supabase
+              .from('quotes')
+              .select(`
+                id, quote_number, status, total, subtotal, created_at, is_rush,
+                source_language:languages!quotes_source_language_id_fkey(name),
+                target_language:languages!quotes_target_language_id_fkey(name),
+                customer:customers!quotes_customer_id_fkey(full_name, email, phone),
+                quote_files(count)
+              `)
+              .is('deleted_at', null)
+              .in('customer_id', customerIds)
+              .order('created_at', { ascending: false })
+              .limit(20);
+
+            if (statusFilter && statusFilter !== 'all') {
+              const group = FILTER_GROUPS.find(g => g.key === statusFilter);
+              if (group?.statuses) {
+                custQuoteQuery = custQuoteQuery.in('status', group.statuses);
+              }
+            }
+
+            const { data: custQuotes } = await custQuoteQuery;
+            if (custQuotes) {
+              const existingIds = new Set(results.map(r => r.id));
+              const newResults = custQuotes
+                .filter(q => !existingIds.has(q.id))
+                .map(normalizeQuoteResult);
+              results.push(...newResults);
+            }
+          }
+        }
+
+        setSearchResults(results);
+        setSearchLoading(false);
+        return;
+      }
+
+      const normalized = (data || []).map(normalizeQuoteResult);
+      setSearchResults(normalized);
+    } catch (err) {
+      console.error('Search error:', err);
+      setSearchResults([]);
+    }
+    setSearchLoading(false);
+  }, []);
+
+  const loadQuoteById = useCallback(async (quoteId: string) => {
+    const { data } = await supabase
+      .from('quotes')
+      .select(`
+        id, quote_number, status, total, subtotal, created_at, is_rush,
+        source_language:languages!quotes_source_language_id_fkey(name),
+        target_language:languages!quotes_target_language_id_fkey(name),
+        customer:customers!quotes_customer_id_fkey(full_name, email, phone),
+        quote_files(count)
+      `)
+      .eq('id', quoteId)
+      .single();
+
+    if (data) {
+      setSelectedQuote(normalizeQuoteResult(data));
+    }
+  }, []);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (mode === 'existing') {
+        searchQuotes(searchQuery, activeFilter);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, activeFilter, mode, searchQuotes]);
+
+  // Load filter counts when entering existing mode
+  useEffect(() => {
+    if (mode !== 'existing') return;
+
+    const loadCounts = async () => {
+      const counts: Record<string, number> = {};
+
+      for (const group of FILTER_GROUPS) {
+        let query = supabase
+          .from('quotes')
+          .select('id', { count: 'exact', head: true })
+          .is('deleted_at', null);
+
+        if (group.statuses) {
+          query = query.in('status', group.statuses);
+        }
+
+        const { count } = await query;
+        counts[group.key] = count || 0;
+      }
+
+      setFilterCounts(counts);
+    };
+
+    loadCounts();
+  }, [mode]);
+
+  // Auto-select from URL parameter
+  useEffect(() => {
+    const quoteId = searchParams.get('quoteId');
+    if (quoteId) {
+      setMode('existing');
+      loadQuoteById(quoteId);
+    }
+  }, [searchParams, loadQuoteById]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node) &&
+        searchInputRef.current &&
+        !searchInputRef.current.contains(e.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (!showDropdown) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(prev => Math.min(prev + 1, searchResults.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prev => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+      e.preventDefault();
+      handleSelectQuote(searchResults[highlightedIndex]);
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false);
+      setHighlightedIndex(-1);
+    }
+  };
+
+  const handleSelectQuote = (quote: QuoteSearchResult) => {
+    setSelectedQuote(quote);
+    setShowDropdown(false);
+    setSearchQuery('');
+    setHighlightedIndex(-1);
+  };
 
   // ============================================================================
   // FILE HANDLING
@@ -378,6 +766,7 @@ export default function PreprocessOCRPage() {
           body: JSON.stringify({
             files: uploadedFiles,
             notes: `Preprocessed batch. Original files: ${readyFiles.map(f => `${f.name} (${f.pageCount} pages)`).join(', ')}`,
+            quote_id: mode === 'existing' && selectedQuote ? selectedQuote.id : null,
           }),
         }
       );
@@ -422,6 +811,8 @@ export default function PreprocessOCRPage() {
       message: '',
     });
     setBatchId(null);
+    setSelectedQuote(null);
+    setMode('new');
   };
 
   // ============================================================================
@@ -485,12 +876,200 @@ export default function PreprocessOCRPage() {
           </div>
         </div>
 
+        {/* Mode Toggle */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <button
+            onClick={() => setMode('existing')}
+            className={`p-4 rounded-lg border-2 text-left transition-all ${
+              mode === 'existing'
+                ? 'border-teal-500 bg-teal-50'
+                : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                mode === 'existing' ? 'bg-teal-100' : 'bg-gray-100'
+              }`}>
+                <Search className={`w-5 h-5 ${mode === 'existing' ? 'text-teal-600' : 'text-gray-400'}`} />
+              </div>
+              <div>
+                <p className={`font-semibold ${mode === 'existing' ? 'text-teal-900' : 'text-gray-900'}`}>
+                  Use Existing Quote
+                </p>
+                <p className="text-sm text-gray-500">Search for a quote to process its files</p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => { setMode('new'); setSelectedQuote(null); }}
+            className={`p-4 rounded-lg border-2 text-left transition-all ${
+              mode === 'new'
+                ? 'border-teal-500 bg-teal-50'
+                : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                mode === 'new' ? 'bg-teal-100' : 'bg-gray-100'
+              }`}>
+                <Plus className={`w-5 h-5 ${mode === 'new' ? 'text-teal-600' : 'text-gray-400'}`} />
+              </div>
+              <div>
+                <p className={`font-semibold ${mode === 'new' ? 'text-teal-900' : 'text-gray-900'}`}>
+                  Create New Quote
+                </p>
+                <p className="text-sm text-gray-500">Upload files and create a new quote</p>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        {/* Quote Selector (Mode A only) */}
+        {mode === 'existing' && (
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Select a Quote</h2>
+
+            {/* Search Input */}
+            <div className="relative mb-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowDropdown(true);
+                    setHighlightedIndex(-1);
+                  }}
+                  onFocus={() => {
+                    setShowDropdown(true);
+                    if (!searchQuery && searchResults.length === 0) {
+                      searchQuotes('', activeFilter);
+                    }
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="Search by quote #, customer name, email, or phone..."
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                />
+                {searchLoading && (
+                  <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
+                )}
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex gap-2 mt-3 flex-wrap">
+                {FILTER_GROUPS.map((group) => (
+                  <button
+                    key={group.key}
+                    onClick={() => {
+                      setActiveFilter(group.key);
+                      setShowDropdown(true);
+                      setHighlightedIndex(-1);
+                    }}
+                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                      activeFilter === group.key
+                        ? 'bg-teal-100 text-teal-700 border border-teal-300'
+                        : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    {group.label}
+                    {filterCounts[group.key] !== undefined && (
+                      <span className="ml-1 opacity-70">({filterCounts[group.key]})</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Results Dropdown */}
+              {showDropdown && (
+                <div
+                  ref={dropdownRef}
+                  className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto"
+                >
+                  {searchLoading && searchResults.length === 0 ? (
+                    <div className="p-4 text-center text-gray-500">
+                      <RefreshCw className="w-4 h-4 animate-spin inline mr-2" />
+                      Searching...
+                    </div>
+                  ) : searchResults.length === 0 ? (
+                    <div className="p-4 text-center text-gray-500">
+                      {searchQuery ? 'No quotes found' : 'Type to search or click a filter'}
+                    </div>
+                  ) : (
+                    searchResults.map((quote, index) => {
+                      const statusCfg = STATUS_CONFIG[quote.status] || STATUS_CONFIG.draft;
+                      return (
+                        <button
+                          key={quote.id}
+                          onClick={() => handleSelectQuote(quote)}
+                          className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 transition-colors ${
+                            highlightedIndex === index
+                              ? 'bg-teal-50'
+                              : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-gray-900 text-sm">
+                                    {quote.quote_number}
+                                  </span>
+                                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusCfg.color}`}>
+                                    {statusCfg.label}
+                                  </span>
+                                  {quote.is_rush && (
+                                    <span className="text-xs text-amber-600">⚡ Rush</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  {quote.customer_name || 'No customer'}
+                                  {quote.customer_email && (
+                                    <span className="ml-2">{quote.customer_email}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0 ml-4">
+                              <div className="text-sm font-medium text-gray-900">
+                                {quote.total ? `$${quote.total.toFixed(2)}` : '\u2014'}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {quote.file_count} file{quote.file_count !== 1 ? 's' : ''}
+                                {quote.source_language_name && quote.target_language_name && (
+                                  <span className="ml-1">
+                                    · {quote.source_language_name} → {quote.target_language_name}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Selected Quote Card */}
+            {selectedQuote && (
+              <SelectedQuoteCard
+                quote={selectedQuote}
+                onDeselect={() => setSelectedQuote(null)}
+              />
+            )}
+          </div>
+        )}
+
         {/* Upload Section */}
         {progress.phase === 'idle' && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
               <Upload className="w-5 h-5" />
-              Upload Files
+              {mode === 'existing' ? 'Upload Additional Files' : 'Upload Files'}
             </h2>
 
             {/* Drop Zone */}
