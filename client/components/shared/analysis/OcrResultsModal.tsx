@@ -18,6 +18,7 @@ import {
   DollarSign,
   Pencil,
   ArrowRight,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -121,6 +122,22 @@ interface AnalysisResult {
   }>;
   processingStatus: "completed" | "failed";
   errorMessage: string | null;
+
+  // Saved pricing overrides (from DB)
+  pricingBillablePages: number | null;
+  pricingComplexity: "easy" | "medium" | "hard" | null;
+  pricingComplexityMultiplier: number | null;
+  pricingBaseRate: number | null;
+  pricingCertificationTypeId: string | null;
+  pricingCertificationUnitPrice: number | null;
+  pricingIsExcluded: boolean | null;
+  pricingIsBillableOverridden: boolean | null;
+  pricingDocumentCertifications: Array<{
+    index: number;
+    certTypeId: string;
+    price: number;
+  }> | null;
+  pricingSavedAt: string | null;
 }
 
 interface DocumentCertification {
@@ -532,6 +549,9 @@ export default function OcrResultsModal({
   const [pricingRatesLoaded, setPricingRatesLoaded] = useState(false);
   const [showUseInQuoteModal, setShowUseInQuoteModal] = useState(false);
   const [expandedCertRows, setExpandedCertRows] = useState<Set<string>>(new Set());
+  const [isSavingPricing, setIsSavingPricing] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Grouped display rows
   const displayRows = useMemo(() => groupFiles(files), [files]);
@@ -781,6 +801,9 @@ export default function OcrResultsModal({
       setPricingRatesLoaded(false);
       setShowUseInQuoteModal(false);
       setExpandedCertRows(new Set());
+      setIsSavingPricing(false);
+      setLastSavedAt(null);
+      setHasUnsavedChanges(false);
     }
   }, [isOpen, batchId, fileId, fetchBatchData, fetchSingleFileData]);
 
@@ -897,30 +920,95 @@ export default function OcrResultsModal({
     const defaultCert = certificationTypes.find(c => c.code === "notarization") || certificationTypes[0];
 
     const rows: PricingRow[] = completedResults.map((r) => {
-      const mult = complexityMultipliers[r.complexity] || 1.0;
-      const billable =
-        r.billablePages ||
-        recalcBillablePages(r.wordCount, mult, pricingWordsPerPage);
-      const transCost = calcTranslationCost(billable, pricingBaseRate);
+      const hasSaved = !!r.pricingSavedAt;
+
+      // Use saved values if available, otherwise calculate defaults
+      const complexity: "easy" | "medium" | "hard" =
+        hasSaved && r.pricingComplexity ? r.pricingComplexity : r.complexity;
+      const mult =
+        hasSaved && r.pricingComplexityMultiplier != null
+          ? r.pricingComplexityMultiplier
+          : complexityMultipliers[complexity] || 1.0;
+      const baseRate =
+        hasSaved && r.pricingBaseRate != null
+          ? r.pricingBaseRate
+          : pricingBaseRate;
+      const isExcluded = hasSaved ? !!r.pricingIsExcluded : false;
+      const isBillableOverridden = hasSaved ? !!r.pricingIsBillableOverridden : false;
+
+      let billable: number;
+      if (hasSaved && r.pricingBillablePages != null) {
+        billable = r.pricingBillablePages;
+      } else {
+        billable =
+          r.billablePages ||
+          recalcBillablePages(r.wordCount, mult, pricingWordsPerPage);
+      }
+
+      // Certification — use saved if available
+      let rowCertTypeId: string;
+      let rowCertTypeName: string;
+      let rowCertUnitPrice: number;
+
+      if (hasSaved && r.pricingCertificationTypeId) {
+        const savedCert = certificationTypes.find(
+          (c) => c.id === r.pricingCertificationTypeId
+        );
+        rowCertTypeId = savedCert?.id || defaultCert?.id || "";
+        rowCertTypeName = savedCert?.name || defaultCert?.name || "";
+        rowCertUnitPrice =
+          r.pricingCertificationUnitPrice ?? savedCert?.price ?? defaultCert?.price ?? 0;
+      } else {
+        rowCertTypeId = defaultCert?.id || "";
+        rowCertTypeName = defaultCert?.name || "";
+        rowCertUnitPrice = defaultCert?.price || 0;
+      }
 
       const docCount = r.documentCount || 1;
       const subDocs = r.subDocuments || [];
+      const savedDocCerts = hasSaved ? r.pricingDocumentCertifications : null;
 
-      // Build per-document certifications initialized with default
+      // Build per-document certifications
       const docCerts: DocumentCertification[] = [];
       for (let i = 0; i < docCount; i++) {
         const subDoc = subDocs[i];
-        docCerts.push({
-          index: i,
-          subDocumentType: subDoc?.type || r.documentType || "other",
-          subDocumentHolderName: subDoc?.holderName || r.holderName || `Document ${i + 1}`,
-          certificationTypeId: defaultCert?.id || "",
-          certificationTypeName: defaultCert?.name || "",
-          certificationPrice: defaultCert?.price || 0,
-        });
+        const savedDC = savedDocCerts?.find(
+          (dc: { index: number }) => dc.index === i
+        );
+
+        if (savedDC) {
+          const savedCertType = certificationTypes.find(
+            (c) => c.id === savedDC.certTypeId
+          );
+          docCerts.push({
+            index: i,
+            subDocumentType: subDoc?.type || r.documentType || "other",
+            subDocumentHolderName:
+              subDoc?.holderName || r.holderName || `Document ${i + 1}`,
+            certificationTypeId: savedDC.certTypeId,
+            certificationTypeName: savedCertType?.name || "",
+            certificationPrice: savedDC.price,
+          });
+        } else {
+          docCerts.push({
+            index: i,
+            subDocumentType: subDoc?.type || r.documentType || "other",
+            subDocumentHolderName:
+              subDoc?.holderName || r.holderName || `Document ${i + 1}`,
+            certificationTypeId: rowCertTypeId,
+            certificationTypeName: rowCertTypeName,
+            certificationPrice: isExcluded ? 0 : rowCertUnitPrice,
+          });
+        }
       }
 
-      const certCost = docCerts.reduce((sum, dc) => sum + dc.certificationPrice, 0);
+      const certCost = isExcluded
+        ? 0
+        : docCerts.reduce((sum, dc) => sum + dc.certificationPrice, 0);
+      const transCost =
+        isExcluded || billable === 0
+          ? 0
+          : calcTranslationCost(billable, baseRate);
 
       return {
         analysisId: r.id,
@@ -932,24 +1020,36 @@ export default function OcrResultsModal({
         documentCount: docCount,
         subDocuments: r.subDocuments,
         billablePages: billable,
-        billablePagesOverridden: false,
-        complexity: r.complexity,
+        billablePagesOverridden: isBillableOverridden,
+        complexity,
         complexityMultiplier: mult,
-        baseRate: pricingBaseRate,
-        baseRateOverridden: false,
-        defaultCertTypeId: defaultCert?.id || "",
-        defaultCertTypeName: defaultCert?.name || "",
-        defaultCertUnitPrice: defaultCert?.price || 0,
+        baseRate,
+        baseRateOverridden: hasSaved && r.pricingBaseRate != null,
+        defaultCertTypeId: rowCertTypeId,
+        defaultCertTypeName: rowCertTypeName,
+        defaultCertUnitPrice: rowCertUnitPrice,
         documentCertifications: docCerts,
-        hasPerDocCertOverrides: false,
+        hasPerDocCertOverrides: !!savedDocCerts,
         certificationCost: certCost,
         translationCost: transCost,
         lineTotal: transCost + certCost,
-        isExcluded: false,
+        isExcluded,
       };
     });
 
     setPricingRows(rows);
+    setHasUnsavedChanges(false);
+
+    // Show "last saved" indicator if data was loaded from saved state
+    const savedResults = completedResults.filter((r) => r.pricingSavedAt);
+    if (savedResults.length > 0) {
+      const latest = savedResults.sort(
+        (a, b) =>
+          new Date(b.pricingSavedAt!).getTime() -
+          new Date(a.pricingSavedAt!).getTime()
+      )[0];
+      setLastSavedAt(new Date(latest.pricingSavedAt!));
+    }
   }, [analysisResults, pricingRatesLoaded, pricingBaseRate, pricingWordsPerPage, certificationTypes]);
 
   // -------------------------------------------------------------------------
@@ -1039,6 +1139,7 @@ export default function OcrResultsModal({
         return updated;
       })
     );
+    setHasUnsavedChanges(true);
   };
 
   // -------------------------------------------------------------------------
@@ -1079,6 +1180,7 @@ export default function OcrResultsModal({
         return updated;
       })
     );
+    setHasUnsavedChanges(true);
   };
 
   const handleDocCertChange = (
@@ -1117,6 +1219,7 @@ export default function OcrResultsModal({
         };
       })
     );
+    setHasUnsavedChanges(true);
   };
 
   const toggleCertExpand = (rowId: string) => {
@@ -1135,11 +1238,82 @@ export default function OcrResultsModal({
         return { ...row, isExcluded: !row.isExcluded };
       })
     );
+    setHasUnsavedChanges(true);
   };
 
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
+
+  const handleSavePricing = async () => {
+    if (pricingRows.length === 0) return;
+
+    setIsSavingPricing(true);
+    try {
+      const staffSession = JSON.parse(
+        localStorage.getItem("staffSession") || "{}"
+      );
+
+      const updates = pricingRows.map((row) => ({
+        analysisId: row.analysisId,
+        pricingBillablePages: row.billablePages,
+        pricingComplexity: row.complexity,
+        pricingComplexityMultiplier: row.complexityMultiplier,
+        pricingBaseRate: row.baseRate,
+        pricingCertificationTypeId: row.defaultCertTypeId,
+        pricingCertificationUnitPrice: row.defaultCertUnitPrice,
+        pricingIsExcluded: row.isExcluded,
+        pricingIsBillableOverridden: row.billablePagesOverridden,
+        pricingDocumentCertifications: row.documentCertifications.map((dc) => ({
+          index: dc.index,
+          certTypeId: dc.certificationTypeId,
+          price: dc.certificationPrice,
+        })),
+      }));
+
+      for (const upd of updates) {
+        const { error } = await supabase
+          .from("ocr_ai_analysis")
+          .update({
+            pricing_billable_pages: upd.pricingBillablePages,
+            pricing_complexity: upd.pricingComplexity,
+            pricing_complexity_multiplier: upd.pricingComplexityMultiplier,
+            pricing_base_rate: upd.pricingBaseRate,
+            pricing_certification_type_id: upd.pricingCertificationTypeId,
+            pricing_certification_unit_price: upd.pricingCertificationUnitPrice,
+            pricing_is_excluded: upd.pricingIsExcluded,
+            pricing_is_billable_overridden: upd.pricingIsBillableOverridden,
+            pricing_document_certifications: upd.pricingDocumentCertifications,
+            pricing_saved_at: new Date().toISOString(),
+            pricing_saved_by: staffSession.staffName || null,
+          })
+          .eq("id", upd.analysisId);
+
+        if (error) throw error;
+      }
+
+      setLastSavedAt(new Date());
+      setHasUnsavedChanges(false);
+      toast.success("Pricing saved successfully");
+    } catch (err: unknown) {
+      console.error("Failed to save pricing:", err);
+      toast.error(
+        `Failed to save pricing: ${err instanceof Error ? err.message : "Unknown error"}`
+      );
+    } finally {
+      setIsSavingPricing(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (hasUnsavedChanges) {
+      const confirmClose = window.confirm(
+        "You have unsaved pricing changes. Close anyway?"
+      );
+      if (!confirmClose) return;
+    }
+    onClose();
+  };
 
   const handleAnalyse = async () => {
     if (selectedFileIds.size === 0) return;
@@ -2689,7 +2863,7 @@ export default function OcrResultsModal({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
             aria-label="Close modal"
           >
@@ -2796,7 +2970,36 @@ export default function OcrResultsModal({
                   Export Pricing CSV
                 </button>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
+                {lastSavedAt && !hasUnsavedChanges && (
+                  <span className="text-xs text-green-600 flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    Saved {Math.round((Date.now() - lastSavedAt.getTime()) / 60000) < 1 ? "just now" : `${Math.round((Date.now() - lastSavedAt.getTime()) / 60000)}m ago`}
+                  </span>
+                )}
+                {hasUnsavedChanges && (
+                  <span className="text-xs text-amber-600 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                    Unsaved changes
+                  </span>
+                )}
+                <button
+                  onClick={handleSavePricing}
+                  disabled={isSavingPricing || pricingRows.length === 0}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSavingPricing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Save Pricing
+                    </>
+                  )}
+                </button>
                 <button
                   onClick={() => setShowUseInQuoteModal(true)}
                   disabled={pricingActiveRows.length === 0}
@@ -2806,7 +3009,7 @@ export default function OcrResultsModal({
                   <ArrowRight className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={onClose}
+                  onClick={handleClose}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
                 >
                   Close
@@ -2872,7 +3075,7 @@ export default function OcrResultsModal({
                   )}
                 </button>
                 <button
-                  onClick={onClose}
+                  onClick={handleClose}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
                 >
                   Close
