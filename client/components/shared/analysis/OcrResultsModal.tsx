@@ -1465,7 +1465,9 @@ export default function OcrResultsModal({
         localStorage.getItem("staffSession") || "{}"
       );
 
-      const updates = pricingRows.map((row) => ({
+      const updates = pricingRows
+  .filter((row) => !row.analysisId.startsWith("temp-"))
+  .map((row) => ({
         analysisId: row.analysisId,
         pricingBillablePages: row.billablePages,
         pricingComplexity: row.complexity,
