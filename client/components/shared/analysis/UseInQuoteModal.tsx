@@ -15,6 +15,15 @@ import { supabase } from "@/lib/supabase";
 // Types (local to this component)
 // ---------------------------------------------------------------------------
 
+interface DocumentCertification {
+  index: number;
+  subDocumentType: string;
+  subDocumentHolderName: string;
+  certificationTypeId: string;
+  certificationTypeName: string;
+  certificationPrice: number;
+}
+
 interface PricingRow {
   analysisId: string;
   fileId: string;
@@ -29,6 +38,12 @@ interface PricingRow {
   complexityMultiplier: number;
   baseRate: number;
   baseRateOverridden: boolean;
+  defaultCertTypeId: string;
+  defaultCertTypeName: string;
+  defaultCertUnitPrice: number;
+  documentCertifications: DocumentCertification[];
+  hasPerDocCertOverrides: boolean;
+  certificationCost: number;
   translationCost: number;
   lineTotal: number;
 }
@@ -100,14 +115,6 @@ interface IntendedUse {
   is_active: boolean;
 }
 
-interface CertificationType {
-  id: string;
-  name: string;
-  code: string;
-  price: number;
-  is_active: boolean;
-}
-
 interface Customer {
   id: string;
   full_name: string;
@@ -176,7 +183,6 @@ export default function UseInQuoteModal({
     useState<string>("");
   const [selectedIntendedUseId, setSelectedIntendedUseId] =
     useState<string>("");
-  const [selectedCertTypeId, setSelectedCertTypeId] = useState<string>("");
   const [countryOfIssue, setCountryOfIssue] = useState<string>("");
 
   // Customer state
@@ -200,9 +206,6 @@ export default function UseInQuoteModal({
   // Reference data
   const [languages, setLanguages] = useState<Language[]>([]);
   const [intendedUses, setIntendedUses] = useState<IntendedUse[]>([]);
-  const [certificationTypes, setCertificationTypes] = useState<
-    CertificationType[]
-  >([]);
   const [refDataLoaded, setRefDataLoaded] = useState(false);
 
   // Submit state
@@ -225,7 +228,6 @@ export default function UseInQuoteModal({
       setSelectedSourceLanguageId("");
       setSelectedTargetLanguageId("");
       setSelectedIntendedUseId("");
-      setSelectedCertTypeId("");
       setCountryOfIssue("");
       setCustomerSearch("");
       setSearchResults([]);
@@ -247,7 +249,7 @@ export default function UseInQuoteModal({
     }
 
     const fetchReferenceData = async () => {
-      const [langsRes, usesRes, certsRes] = await Promise.all([
+      const [langsRes, usesRes] = await Promise.all([
         supabase
           .from("languages")
           .select("id, name, code, price_multiplier, is_active")
@@ -260,20 +262,13 @@ export default function UseInQuoteModal({
           )
           .eq("is_active", true)
           .order("sort_order"),
-        supabase
-          .from("certification_types")
-          .select("id, name, code, price, is_active")
-          .eq("is_active", true)
-          .order("sort_order"),
       ]);
 
       const langs = langsRes.data || [];
       const uses = usesRes.data || [];
-      const certs = certsRes.data || [];
 
       setLanguages(langs);
       setIntendedUses(uses);
-      setCertificationTypes(certs);
 
       // Pre-fill from AI detection
       const detectedCode = detectMostCommonLanguage(analysisResults);
@@ -298,21 +293,6 @@ export default function UseInQuoteModal({
 
     fetchReferenceData();
   }, [isOpen, analysisResults]);
-
-  // -------------------------------------------------------------------------
-  // Intended use → auto-set certification type
-  // -------------------------------------------------------------------------
-
-  useEffect(() => {
-    if (!selectedIntendedUseId) return;
-
-    const selectedUse = intendedUses.find(
-      (u) => u.id === selectedIntendedUseId
-    );
-    if (selectedUse?.default_certification_type_id) {
-      setSelectedCertTypeId(selectedUse.default_certification_type_id);
-    }
-  }, [selectedIntendedUseId, intendedUses]);
 
   // -------------------------------------------------------------------------
   // Customer search
@@ -442,10 +422,6 @@ export default function UseInQuoteModal({
       setError("Source and target languages must be different");
       return;
     }
-    if (!selectedCertTypeId) {
-      setError("Certification type is required");
-      return;
-    }
     if (!selectedCustomer) {
       setError("Please select or create a customer");
       return;
@@ -467,12 +443,16 @@ export default function UseInQuoteModal({
           complexity: r.complexity,
           complexityMultiplier: r.complexityMultiplier,
           baseRate: r.baseRate,
+          documentCertifications: r.documentCertifications.map((dc) => ({
+            index: dc.index,
+            certificationTypeId: dc.certificationTypeId,
+            certificationPrice: dc.certificationPrice,
+          })),
         })),
         quoteDetails: {
           sourceLanguageId: selectedSourceLanguageId,
           targetLanguageId: selectedTargetLanguageId,
           intendedUseId: selectedIntendedUseId || null,
-          certificationTypeId: selectedCertTypeId,
           countryOfIssue: countryOfIssue || null,
           customerId: selectedCustomer.id,
         },
@@ -519,9 +499,10 @@ export default function UseInQuoteModal({
     (sum, r) => sum + r.documentCount,
     0
   );
-  const selectedCertPrice =
-    certificationTypes.find((c) => c.id === selectedCertTypeId)?.price || 0;
-  const certificationTotal = totalDocuments * selectedCertPrice;
+  const certificationTotal = pricingRows.reduce(
+    (sum, r) => sum + r.certificationCost,
+    0
+  );
   const estimatedTotal = translationSubtotal + certificationTotal;
 
   // -------------------------------------------------------------------------
@@ -621,26 +602,6 @@ export default function UseInQuoteModal({
                   {intendedUses.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Certification Type */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Certification Type{" "}
-                  <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={selectedCertTypeId}
-                  onChange={(e) => setSelectedCertTypeId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select certification...</option>
-                  {certificationTypes.map((ct) => (
-                    <option key={ct.id} value={ct.id}>
-                      {ct.name} (${ct.price.toFixed(2)})
                     </option>
                   ))}
                 </select>
@@ -941,13 +902,6 @@ export default function UseInQuoteModal({
               </p>
               <p>
                 Certification: ${certificationTotal.toFixed(2)}
-                {selectedCertPrice > 0 && (
-                  <span className="text-gray-500">
-                    {" "}
-                    ({totalDocuments} &times; ${selectedCertPrice.toFixed(2)}
-                    )
-                  </span>
-                )}
                 {" \u00B7 "}
                 <span className="font-semibold text-gray-900">
                   Est. Total: ${estimatedTotal.toFixed(2)}
