@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   X,
   FileText,
@@ -21,6 +22,7 @@ import {
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { supabase } from "@/lib/supabase";
+import UseInQuoteModal from "./UseInQuoteModal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -461,6 +463,7 @@ export default function OcrResultsModal({
   mode = "view",
 }: OcrResultsModalProps) {
   const isBatchMode = !!batchId;
+  const navigate = useNavigate();
 
   // Existing states
   const [isLoading, setIsLoading] = useState(true);
@@ -1310,6 +1313,20 @@ export default function OcrResultsModal({
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  // -------------------------------------------------------------------------
+  // Quote creation callback
+  // -------------------------------------------------------------------------
+
+  const handleQuoteCreated = useCallback(
+    (quoteId: string, quoteNumber: string) => {
+      setShowUseInQuoteModal(false);
+      onClose();
+      toast.success(`Quote ${quoteNumber} created successfully`);
+      navigate(`/admin/quotes/${quoteId}`);
+    },
+    [onClose, navigate],
+  );
 
   // -------------------------------------------------------------------------
   // Render: Pricing tab content
@@ -2540,6 +2557,19 @@ export default function OcrResultsModal({
           )}
         </div>
       </div>
+
+      {/* Use in Quote modal (rendered on top at z-60) */}
+      {showUseInQuoteModal && batchId && analysisJob && (
+        <UseInQuoteModal
+          isOpen={showUseInQuoteModal}
+          onClose={() => setShowUseInQuoteModal(false)}
+          pricingRows={pricingRows}
+          analysisJob={analysisJob}
+          batchId={batchId}
+          analysisResults={analysisResults}
+          onQuoteCreated={handleQuoteCreated}
+        />
+      )}
     </div>
   );
 }
