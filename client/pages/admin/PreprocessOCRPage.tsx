@@ -1155,6 +1155,19 @@ export default function PreprocessOCRPage() {
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
             <Scissors className="w-8 h-8 text-blue-600" />
             Preprocess & OCR
+            {mode === 'existing' && selectedQuote ? (
+              <span className="ml-1 px-3 py-1 bg-teal-100 text-teal-800 text-sm font-semibold rounded-full border border-teal-300">
+                {selectedQuote.quote_number}
+              </span>
+            ) : mode === 'existing' ? (
+              <span className="ml-1 px-3 py-1 bg-amber-100 text-amber-800 text-sm font-semibold rounded-full border border-amber-300">
+                Select a Quote
+              </span>
+            ) : (
+              <span className="ml-1 px-3 py-1 bg-gray-100 text-gray-600 text-sm font-medium rounded-full border border-gray-300">
+                New Quote
+              </span>
+            )}
           </h1>
           <p className="text-gray-600 mt-2">
             Upload large PDFs — they'll be automatically split into smaller chunks (≤10 pages each)
@@ -1425,6 +1438,15 @@ export default function PreprocessOCRPage() {
         {/* File List */}
         {files.length > 0 && progress.phase === 'idle' && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            {mode === 'existing' && selectedQuote && (
+              <div className="flex items-center gap-2 mb-4 text-sm text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+                <FileText className="w-4 h-4" />
+                Processing files for <strong>{selectedQuote.quote_number}</strong>
+                {selectedQuote.customer_name && (
+                  <span className="text-teal-600">&mdash; {selectedQuote.customer_name}</span>
+                )}
+              </div>
+            )}
             <h2 className="text-xl font-semibold mb-4">
               Files ({files.length})
             </h2>
