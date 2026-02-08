@@ -184,6 +184,7 @@ export default function UseInQuoteModal({
   const [selectedIntendedUseId, setSelectedIntendedUseId] =
     useState<string>("");
   const [countryOfIssue, setCountryOfIssue] = useState<string>("");
+  const [customerNote, setCustomerNote] = useState<string>("");
 
   // Customer state
   const [customerSearch, setCustomerSearch] = useState("");
@@ -229,6 +230,7 @@ export default function UseInQuoteModal({
       setSelectedTargetLanguageId("");
       setSelectedIntendedUseId("");
       setCountryOfIssue("");
+      setCustomerNote("");
       setCustomerSearch("");
       setSearchResults([]);
       setSelectedCustomer(null);
@@ -455,6 +457,7 @@ export default function UseInQuoteModal({
           intendedUseId: selectedIntendedUseId || null,
           countryOfIssue: countryOfIssue || null,
           customerId: selectedCustomer.id,
+          customerNote: customerNote.trim() || null,
         },
         staffId: staffSession.staffId,
         staffName: staffSession.staffName,
@@ -628,6 +631,27 @@ export default function UseInQuoteModal({
                 placeholder="e.g. Mexico, Canada..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
+            </div>
+          </div>
+
+          {/* ── Customer Note ── */}
+          <div className="border-t border-gray-200 pt-4 mt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Customer Note
+              <span className="text-xs text-gray-400 ml-1">
+                (visible to customer on quote)
+              </span>
+            </label>
+            <textarea
+              value={customerNote}
+              onChange={(e) => setCustomerNote(e.target.value)}
+              placeholder="e.g. Rush delivery included per your request. Please review and approve at your earliest convenience."
+              rows={3}
+              maxLength={1000}
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
+            />
+            <div className="text-xs text-gray-400 text-right mt-1">
+              {customerNote.length}/1000
             </div>
           </div>
 
