@@ -14,6 +14,9 @@ import {
   Search,
   RefreshCw,
   Sparkles,
+  DollarSign,
+  Pencil,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -116,6 +119,28 @@ interface AnalysisResult {
   }>;
   processingStatus: "completed" | "failed";
   errorMessage: string | null;
+}
+
+interface PricingRow {
+  analysisId: string;
+  fileId: string;
+  originalFilename: string;
+  documentType: string;
+  wordCount: number;
+  pageCount: number;
+  documentCount: number;
+
+  // Editable (initialized from AI analysis + settings)
+  billablePages: number;
+  billablePagesOverridden: boolean;
+  complexity: "easy" | "medium" | "hard";
+  complexityMultiplier: number;
+  baseRate: number;
+  baseRateOverridden: boolean;
+
+  // Calculated
+  translationCost: number;
+  lineTotal: number;
 }
 
 interface OcrResultsModalProps {
@@ -299,6 +324,34 @@ const actionableIcons: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Pricing helpers
+// ---------------------------------------------------------------------------
+
+const complexityMultipliers: Record<string, number> = {
+  easy: 1.0,
+  medium: 1.15,
+  hard: 1.25,
+};
+
+function recalcBillablePages(
+  wordCount: number,
+  complexityMultiplier: number,
+  wordsPerPage: number
+): number {
+  const raw = (wordCount / wordsPerPage) * complexityMultiplier;
+  const rounded = Math.ceil(raw * 10) / 10;
+  return Math.max(rounded, 1.0);
+}
+
+function calcTranslationCost(
+  billablePages: number,
+  baseRate: number,
+  languageMultiplier: number = 1.0
+): number {
+  return Math.ceil((billablePages * baseRate * languageMultiplier) / 2.5) * 2.5;
+}
+
+// ---------------------------------------------------------------------------
 // File grouping
 // ---------------------------------------------------------------------------
 
@@ -436,6 +489,14 @@ export default function OcrResultsModal({
   const [analyseError, setAnalyseError] = useState<string | null>(null);
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
+
+  // Pricing state (batch mode only)
+  const [pricingRows, setPricingRows] = useState<PricingRow[]>([]);
+  const [pricingBaseRate, setPricingBaseRate] = useState<number>(0);
+  const [pricingWordsPerPage, setPricingWordsPerPage] = useState<number>(225);
+  const [pricingCertPrice, setPricingCertPrice] = useState<number>(50);
+  const [pricingRatesLoaded, setPricingRatesLoaded] = useState(false);
+  const [showUseInQuoteModal, setShowUseInQuoteModal] = useState(false);
 
   // Grouped display rows
   const displayRows = useMemo(() => groupFiles(files), [files]);
@@ -681,6 +742,9 @@ export default function OcrResultsModal({
       setActiveTab("ocr");
       setAnalyseError(null);
       setSingleFilePages([]);
+      setPricingRows([]);
+      setPricingRatesLoaded(false);
+      setShowUseInQuoteModal(false);
     }
   }, [isOpen, batchId, fileId, fetchBatchData, fetchSingleFileData]);
 
@@ -726,6 +790,177 @@ export default function OcrResultsModal({
 
     return () => clearInterval(interval);
   }, [analysisJob?.id, analysisJob?.status]);
+
+  // -------------------------------------------------------------------------
+  // Pricing: fetch rate data
+  // -------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!isBatchMode || pricingRatesLoaded) return;
+
+    const completedResults = analysisResults.filter(
+      (r) => r.processingStatus === "completed"
+    );
+    if (completedResults.length === 0) return;
+
+    const fetchRates = async () => {
+      try {
+        const { data: settings } = await supabase
+          .from("app_settings")
+          .select("setting_key, setting_value")
+          .in("setting_key", ["base_rate", "words_per_page"]);
+
+        const br = parseFloat(
+          settings?.find((s: { setting_key: string }) => s.setting_key === "base_rate")
+            ?.setting_value || "65"
+        );
+        const wpp = parseInt(
+          settings?.find((s: { setting_key: string }) => s.setting_key === "words_per_page")
+            ?.setting_value || "225",
+          10
+        );
+
+        setPricingBaseRate(br);
+        setPricingWordsPerPage(wpp);
+
+        const { data: defaultCert } = await supabase
+          .from("certification_types")
+          .select("id, name, price")
+          .eq("code", "notarization")
+          .single();
+
+        setPricingCertPrice(defaultCert?.price || 50);
+        setPricingRatesLoaded(true);
+      } catch {
+        // Use defaults
+        setPricingBaseRate(65);
+        setPricingWordsPerPage(225);
+        setPricingCertPrice(50);
+        setPricingRatesLoaded(true);
+      }
+    };
+
+    fetchRates();
+  }, [isBatchMode, analysisResults, pricingRatesLoaded]);
+
+  // -------------------------------------------------------------------------
+  // Pricing: initialize rows when analysis results + rates are ready
+  // -------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!pricingRatesLoaded || pricingBaseRate === 0) return;
+
+    const completedResults = analysisResults.filter(
+      (r) => r.processingStatus === "completed"
+    );
+    if (completedResults.length === 0) {
+      setPricingRows([]);
+      return;
+    }
+
+    const rows: PricingRow[] = completedResults.map((r) => {
+      const mult = complexityMultipliers[r.complexity] || 1.0;
+      const billable =
+        r.billablePages ||
+        recalcBillablePages(r.wordCount, mult, pricingWordsPerPage);
+      const transCost = calcTranslationCost(billable, pricingBaseRate);
+
+      return {
+        analysisId: r.id,
+        fileId: r.fileId,
+        originalFilename: r.originalFilename,
+        documentType: r.documentType,
+        wordCount: r.wordCount,
+        pageCount: r.pageCount,
+        documentCount: r.documentCount || 1,
+        billablePages: billable,
+        billablePagesOverridden: false,
+        complexity: r.complexity,
+        complexityMultiplier: mult,
+        baseRate: pricingBaseRate,
+        baseRateOverridden: false,
+        translationCost: transCost,
+        lineTotal: transCost,
+      };
+    });
+
+    setPricingRows(rows);
+  }, [analysisResults, pricingRatesLoaded, pricingBaseRate, pricingWordsPerPage]);
+
+  // -------------------------------------------------------------------------
+  // Pricing: computed totals
+  // -------------------------------------------------------------------------
+
+  const pricingTotalDocuments = useMemo(
+    () => pricingRows.reduce((sum, r) => sum + r.documentCount, 0),
+    [pricingRows]
+  );
+  const pricingTranslationSubtotal = useMemo(
+    () => pricingRows.reduce((sum, r) => sum + r.translationCost, 0),
+    [pricingRows]
+  );
+  const pricingCertificationEstimate = pricingTotalDocuments * pricingCertPrice;
+  const pricingEstimatedTotal =
+    pricingTranslationSubtotal + pricingCertificationEstimate;
+
+  // Whether pricing tab should be visible
+  const showPricingTab =
+    isBatchMode &&
+    analysisResults.length > 0 &&
+    analysisResults.some((r) => r.processingStatus === "completed");
+
+  // -------------------------------------------------------------------------
+  // Pricing: row update handler
+  // -------------------------------------------------------------------------
+
+  const updatePricingRow = (
+    analysisId: string,
+    field: string,
+    value: string | number
+  ) => {
+    setPricingRows((prev) =>
+      prev.map((row) => {
+        if (row.analysisId !== analysisId) return row;
+
+        const updated = { ...row };
+
+        if (field === "complexity") {
+          const cVal = value as "easy" | "medium" | "hard";
+          updated.complexity = cVal;
+          updated.complexityMultiplier = complexityMultipliers[cVal] || 1.0;
+          // Recalc billable pages unless manually overridden
+          if (!updated.billablePagesOverridden) {
+            updated.billablePages = recalcBillablePages(
+              updated.wordCount,
+              updated.complexityMultiplier,
+              pricingWordsPerPage
+            );
+          }
+        } else if (field === "billablePages") {
+          const numVal = parseFloat(value as string);
+          if (!isNaN(numVal) && numVal >= 0) {
+            updated.billablePages = numVal;
+            updated.billablePagesOverridden = true;
+          }
+        } else if (field === "baseRate") {
+          const numVal = parseFloat(value as string);
+          if (!isNaN(numVal) && numVal >= 0) {
+            updated.baseRate = numVal;
+            updated.baseRateOverridden = true;
+          }
+        }
+
+        // Recalculate costs
+        updated.translationCost = calcTranslationCost(
+          updated.billablePages,
+          updated.baseRate
+        );
+        updated.lineTotal = updated.translationCost;
+
+        return updated;
+      })
+    );
+  };
 
   // -------------------------------------------------------------------------
   // Actions
@@ -996,6 +1231,317 @@ export default function OcrResultsModal({
 
   const toggleExpandedPage = (pageNum: number) => {
     setExpandedPage((prev) => (prev === pageNum ? null : pageNum));
+  };
+
+  // -------------------------------------------------------------------------
+  // Pricing: Export CSV
+  // -------------------------------------------------------------------------
+
+  const exportPricingCSV = () => {
+    if (pricingRows.length === 0) return;
+
+    const headers = [
+      "Filename",
+      "Document Type",
+      "Words",
+      "Billable Pages",
+      "Complexity",
+      "Base Rate",
+      "Translation Cost",
+      "Doc Count",
+    ];
+    const rows = pricingRows.map((r) => [
+      r.originalFilename,
+      documentTypeLabels[r.documentType] || r.documentType,
+      r.wordCount,
+      r.billablePages,
+      r.complexity,
+      r.baseRate.toFixed(2),
+      r.translationCost.toFixed(2),
+      r.documentCount,
+    ]);
+
+    // Summary rows
+    rows.push([] as unknown as (string | number)[]);
+    rows.push([
+      "Translation Subtotal",
+      "",
+      "",
+      "",
+      "",
+      "",
+      pricingTranslationSubtotal.toFixed(2),
+      "",
+    ]);
+    rows.push([
+      "Certification Estimate",
+      "",
+      "",
+      "",
+      "",
+      "",
+      pricingCertificationEstimate.toFixed(2),
+      pricingTotalDocuments,
+    ]);
+    rows.push([
+      "Estimated Total",
+      "",
+      "",
+      "",
+      "",
+      "",
+      pricingEstimatedTotal.toFixed(2),
+      "",
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) =>
+        row
+          .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pricing-estimate-${batchId?.slice(0, 8) || "export"}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // -------------------------------------------------------------------------
+  // Render: Pricing tab content
+  // -------------------------------------------------------------------------
+
+  const renderPricingTab = () => {
+    if (pricingRows.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="p-4 bg-gray-100 rounded-full mb-4">
+            <DollarSign className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No pricing data available
+          </h3>
+          <p className="text-sm text-gray-500 text-center max-w-md">
+            Run AI analysis on the Analysis tab first, then pricing will be
+            generated automatically.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">
+              Pricing Estimate
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Based on AI analysis &middot; Edit values below before creating
+              quote
+            </p>
+          </div>
+          <button
+            onClick={() => setShowUseInQuoteModal(true)}
+            disabled={pricingRows.length === 0}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            Use in Quote
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Editable Table */}
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2.5 text-left font-medium text-gray-700">
+                    File
+                  </th>
+                  <th className="px-3 py-2.5 text-left font-medium text-gray-700">
+                    Type
+                  </th>
+                  <th className="px-3 py-2.5 text-right font-medium text-gray-700">
+                    Words
+                  </th>
+                  <th className="px-3 py-2.5 text-right font-medium text-gray-700">
+                    Billable
+                  </th>
+                  <th className="px-3 py-2.5 text-center font-medium text-gray-700">
+                    Complexity
+                  </th>
+                  <th className="px-3 py-2.5 text-right font-medium text-gray-700">
+                    Rate
+                  </th>
+                  <th className="px-3 py-2.5 text-right font-medium text-gray-700">
+                    Total
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {pricingRows.map((row) => {
+                  const docTypeLabel =
+                    documentTypeLabels[row.documentType] || row.documentType;
+                  return (
+                    <React.Fragment key={row.analysisId}>
+                      <tr className="hover:bg-gray-50">
+                        <td className="px-3 py-2.5">
+                          <div
+                            className="font-medium text-gray-900 truncate max-w-[180px]"
+                            title={row.originalFilename}
+                          >
+                            {row.originalFilename}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
+                          {docTypeLabel}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-gray-700 tabular-nums">
+                          {row.wordCount.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              value={row.billablePages}
+                              onChange={(e) =>
+                                updatePricingRow(
+                                  row.analysisId,
+                                  "billablePages",
+                                  e.target.value
+                                )
+                              }
+                              className={`w-[72px] px-2 py-1 border rounded text-right text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                                row.billablePagesOverridden
+                                  ? "bg-amber-50 border-amber-400"
+                                  : "border-gray-300"
+                              }`}
+                            />
+                            {row.billablePagesOverridden && (
+                              <Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <select
+                            value={row.complexity}
+                            onChange={(e) =>
+                              updatePricingRow(
+                                row.analysisId,
+                                "complexity",
+                                e.target.value
+                              )
+                            }
+                            className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="easy">Easy</option>
+                            <option value="medium">Medium</option>
+                            <option value="hard">Hard</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <span className="text-gray-400 text-xs">$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={row.baseRate}
+                              onChange={(e) =>
+                                updatePricingRow(
+                                  row.analysisId,
+                                  "baseRate",
+                                  e.target.value
+                                )
+                              }
+                              className={`w-[72px] px-2 py-1 border rounded text-right text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                                row.baseRateOverridden
+                                  ? "bg-amber-50 border-amber-400"
+                                  : "border-gray-300"
+                              }`}
+                            />
+                            {row.baseRateOverridden && (
+                              <Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-medium text-gray-900 tabular-nums whitespace-nowrap">
+                          ${row.translationCost.toFixed(2)}
+                        </td>
+                      </tr>
+                      {/* Document count sub-row */}
+                      <tr className="bg-gray-50/50">
+                        <td
+                          colSpan={7}
+                          className={`px-3 py-1 pl-6 text-xs ${
+                            row.documentCount > 1
+                              ? "text-amber-600 font-medium"
+                              : "text-gray-500"
+                          }`}
+                        >
+                          {row.documentCount > 1
+                            ? `\u2514 ${row.documentCount} docs \u26A0\uFE0F`
+                            : `\u2514 1 doc`}
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Summary Box */}
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">Summary</h4>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Translation Subtotal:</span>
+              <span className="font-medium text-gray-900 tabular-nums">
+                ${pricingTranslationSubtotal.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">
+                Certification Estimate:
+              </span>
+              <span className="font-medium text-gray-900 tabular-nums">
+                ${pricingCertificationEstimate.toFixed(2)}
+                <span className="text-xs text-gray-500 ml-1">
+                  ({pricingTotalDocuments} doc
+                  {pricingTotalDocuments !== 1 ? "s" : ""} &times; $
+                  {pricingCertPrice.toFixed(2)})
+                </span>
+              </span>
+            </div>
+            <div className="flex justify-between pt-2 mt-2 border-t-2 border-gray-200">
+              <span className="text-lg font-semibold text-gray-900">
+                Estimated Total:
+              </span>
+              <span className="text-lg font-semibold text-gray-900 tabular-nums">
+                ${pricingEstimatedTotal.toFixed(2)}
+              </span>
+            </div>
+          </div>
+          <p className="text-xs text-gray-400 mt-3 flex items-start gap-1">
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            Final total may vary based on language tier, certification type,
+            rush fees, delivery, and tax. These are applied when creating
+            quote.
+          </p>
+        </div>
+      </div>
+    );
   };
 
   // -------------------------------------------------------------------------
@@ -1846,6 +2392,22 @@ export default function OcrResultsModal({
                     <Loader2 className="ml-1.5 w-3.5 h-3.5 animate-spin text-violet-600 inline" />
                   )}
                 </TabsTrigger>
+                {showPricingTab && (
+                  <TabsTrigger
+                    value="pricing"
+                    role="tab"
+                    aria-selected={activeTab === "pricing"}
+                    className="rounded-none border-b-2 border-transparent px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300 data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none data-[state=active]:bg-transparent"
+                  >
+                    Pricing
+                    {pricingRows.length > 0 && (
+                      <span className="ml-1.5 text-xs text-gray-400">
+                        ({pricingTotalDocuments} doc
+                        {pricingTotalDocuments !== 1 ? "s" : ""})
+                      </span>
+                    )}
+                  </TabsTrigger>
+                )}
               </TabsList>
             </div>
 
@@ -1865,71 +2427,117 @@ export default function OcrResultsModal({
             >
               {renderAnalysisTab()}
             </TabsContent>
+            {showPricingTab && (
+              <TabsContent
+                value="pricing"
+                role="tabpanel"
+                aria-labelledby="pricing"
+                className="flex-1 px-6 py-4 mt-0"
+              >
+                {renderPricingTab()}
+              </TabsContent>
+            )}
           </Tabs>
         </div>
 
         {/* Footer */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
-          <div className="flex items-center gap-2">
-            {showActions && !isLoading && !error && displayRows.length > 0 && (
-              <button
-                onClick={handleCopyAllText}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
-              >
-                {copiedAll ? (
-                  <>
-                    <Check className="w-4 h-4 text-green-600" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    Copy All Text
-                  </>
+          {activeTab === "pricing" ? (
+            <>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={exportPricingCSV}
+                  disabled={pricingRows.length === 0}
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Download className="w-4 h-4" />
+                  Export Pricing CSV
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowUseInQuoteModal(true)}
+                  disabled={pricingRows.length === 0}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  Use in Quote
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                {showActions && !isLoading && !error && displayRows.length > 0 && (
+                  <button
+                    onClick={handleCopyAllText}
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
+                  >
+                    {copiedAll ? (
+                      <>
+                        <Check className="w-4 h-4 text-green-600" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4" />
+                        Copy All Text
+                      </>
+                    )}
+                  </button>
                 )}
-              </button>
-            )}
-            {showActions && onApplyToQuote && !isLoading && !error && (
-              <button
-                onClick={handleApplyToQuote}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Apply to Quote
-              </button>
-            )}
-          </div>
+                {showActions && onApplyToQuote && !isLoading && !error && (
+                  <button
+                    onClick={handleApplyToQuote}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Apply to Quote
+                  </button>
+                )}
+              </div>
 
-          <div className="flex items-center gap-2">
-            {analyseError && (
-              <span className="text-xs text-red-600 mr-2">{analyseError}</span>
-            )}
-            <button
-              onClick={handleAnalyse}
-              disabled={selectedFileIds.size === 0 || isAnalysing}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed bg-violet-600 text-white hover:bg-violet-700"
-            >
-              {isAnalysing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Analysing {selectedFileIds.size} file
-                  {selectedFileIds.size !== 1 ? "s" : ""}...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  Analyse Selected
-                  {selectedFileIds.size > 0 && ` (${selectedFileIds.size})`}
-                </>
-              )}
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
-            >
-              Close
-            </button>
-          </div>
+              <div className="flex items-center gap-2">
+                {analyseError && (
+                  <span className="text-xs text-red-600 mr-2">
+                    {analyseError}
+                  </span>
+                )}
+                <button
+                  onClick={handleAnalyse}
+                  disabled={selectedFileIds.size === 0 || isAnalysing}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed bg-violet-600 text-white hover:bg-violet-700"
+                >
+                  {isAnalysing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Analysing {selectedFileIds.size} file
+                      {selectedFileIds.size !== 1 ? "s" : ""}...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Analyse Selected
+                      {selectedFileIds.size > 0 &&
+                        ` (${selectedFileIds.size})`}
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
