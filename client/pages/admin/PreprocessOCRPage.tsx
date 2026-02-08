@@ -20,7 +20,8 @@ import {
   Search,
   Plus,
   X,
-  RefreshCw
+  RefreshCw,
+  Download
 } from 'lucide-react';
 
 // ============================================================================
@@ -85,6 +86,17 @@ interface QuoteSearchResult {
   is_rush: boolean;
 }
 
+interface QuoteFileRecord {
+  id: string;
+  displayName: string;
+  storagePath: string;
+  bucket: string;
+  bucketPath: string;
+  fileSize: number;
+  mimeType: string;
+  source: 'quote' | 'ocr';
+}
+
 // ============================================================================
 // QUOTE STATUS & FILTER CONFIG
 // ============================================================================
@@ -126,6 +138,13 @@ const normalizeQuoteResult = (row: any): QuoteSearchResult => ({
   file_count: row.quote_files?.[0]?.count || 0,
 });
 
+// Extract clean filename from OCR storage_path by stripping timestamp prefix
+const extractFilename = (storagePath: string): string => {
+  if (!storagePath) return 'Unknown file';
+  const match = storagePath.match(/^\d+-[a-z0-9]+-(.+)$/);
+  return match ? match[1].replace(/_/g, ' ') : storagePath;
+};
+
 // ============================================================================
 // SELECTED QUOTE CARD COMPONENT
 // ============================================================================
@@ -133,9 +152,17 @@ const normalizeQuoteResult = (row: any): QuoteSearchResult => ({
 function SelectedQuoteCard({
   quote,
   onDeselect,
+  onLoadFiles,
+  loadingFiles,
+  loadProgress,
+  filesLoaded,
 }: {
   quote: QuoteSearchResult;
   onDeselect: () => void;
+  onLoadFiles: () => void;
+  loadingFiles: boolean;
+  loadProgress: { loaded: number; total: number };
+  filesLoaded: boolean;
 }) {
   const statusCfg = STATUS_CONFIG[quote.status] || STATUS_CONFIG.draft;
 
@@ -189,6 +216,42 @@ function SelectedQuoteCard({
           <X className="w-5 h-5" />
         </button>
       </div>
+
+      {/* Load Files Button */}
+      <div className="mt-3 ml-7">
+        {filesLoaded ? (
+          <div className="flex items-center gap-2 text-sm text-green-600">
+            <CheckCircle className="w-4 h-4" />
+            <span>Files loaded into queue below</span>
+          </div>
+        ) : loadingFiles ? (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-sm text-blue-600">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>
+                Downloading files... {loadProgress.loaded}/{loadProgress.total}
+              </span>
+            </div>
+            {/* Progress bar */}
+            {loadProgress.total > 0 && (
+              <div className="flex-1 max-w-xs bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-500 h-2 rounded-full transition-all"
+                  style={{ width: `${(loadProgress.loaded / loadProgress.total) * 100}%` }}
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={onLoadFiles}
+            className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Load & Process Files
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -224,6 +287,11 @@ export default function PreprocessOCRPage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
   const [filterCounts, setFilterCounts] = useState<Record<string, number>>({});
+
+  // Quote file loading
+  const [loadingQuoteFiles, setLoadingQuoteFiles] = useState(false);
+  const [quoteFileLoadProgress, setQuoteFileLoadProgress] = useState({ loaded: 0, total: 0 });
+  const [quoteFilesLoaded, setQuoteFilesLoaded] = useState(false);
 
   // Keyboard navigation
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -472,6 +540,238 @@ export default function PreprocessOCRPage() {
     setShowDropdown(false);
     setSearchQuery('');
     setHighlightedIndex(-1);
+    // Clear previous quote's files
+    setFiles([]);
+    setQuoteFilesLoaded(false);
+    setQuoteFileLoadProgress({ loaded: 0, total: 0 });
+  };
+
+  // ============================================================================
+  // QUOTE FILE LOADING
+  // ============================================================================
+
+  const fetchQuoteFileRecords = async (quoteId: string): Promise<QuoteFileRecord[]> => {
+    const allFiles: QuoteFileRecord[] = [];
+
+    // 1. Query quote_files (customer upload route)
+    const { data: quoteFiles, error: qfError } = await supabase
+      .from('quote_files')
+      .select('id, original_filename, storage_path, file_size, mime_type')
+      .eq('quote_id', quoteId)
+      .eq('upload_status', 'completed');
+
+    if (!qfError && quoteFiles && quoteFiles.length > 0) {
+      allFiles.push(...quoteFiles.map(f => ({
+        id: f.id,
+        displayName: f.original_filename || f.storage_path || 'Unknown file',
+        storagePath: f.storage_path,
+        bucket: 'quote-files' as const,
+        bucketPath: `${quoteId}/${f.storage_path}`,
+        fileSize: f.file_size || 0,
+        mimeType: f.mime_type || 'application/pdf',
+        source: 'quote' as const,
+      })));
+    }
+
+    // 2. Also query ocr_batch_files via ocr_batches
+    const { data: ocrFiles, error: ocrError } = await supabase
+      .from('ocr_batch_files')
+      .select(`
+        id, filename, original_filename, storage_path, file_size, mime_type,
+        ocr_batches!inner(quote_id)
+      `)
+      .eq('ocr_batches.quote_id', quoteId)
+      .in('status', ['completed', 'pending', 'processing']);
+
+    if (!ocrError && ocrFiles && ocrFiles.length > 0) {
+      allFiles.push(...ocrFiles.map(f => ({
+        id: f.id,
+        displayName: f.filename || f.original_filename || extractFilename(f.storage_path),
+        storagePath: f.storage_path,
+        bucket: 'ocr-uploads' as const,
+        bucketPath: f.storage_path,
+        fileSize: f.file_size || 0,
+        mimeType: f.mime_type || 'application/pdf',
+        source: 'ocr' as const,
+      })));
+    }
+
+    // 3. Deduplicate by display name (same file may exist in both tables)
+    const seen = new Map<string, QuoteFileRecord>();
+    for (const file of allFiles) {
+      const key = file.displayName.toLowerCase();
+      if (!seen.has(key)) {
+        seen.set(key, file);
+      }
+      // If duplicate, keep the first one (quote_files takes priority since queried first)
+    }
+
+    return Array.from(seen.values());
+  };
+
+  const loadQuoteFiles = async () => {
+    if (!selectedQuote) return;
+
+    setLoadingQuoteFiles(true);
+    setQuoteFilesLoaded(false);
+    setQuoteFileLoadProgress({ loaded: 0, total: 0 });
+
+    try {
+      // 1. Get file records from DB
+      const fileRecords = await fetchQuoteFileRecords(selectedQuote.id);
+
+      if (fileRecords.length === 0) {
+        toast.warning('No files found for this quote. You can upload files manually.');
+        setLoadingQuoteFiles(false);
+        return;
+      }
+
+      // Filter to PDFs only (the processing pipeline only handles PDFs)
+      const pdfRecords = fileRecords.filter(f =>
+        f.mimeType === 'application/pdf' || f.displayName.toLowerCase().endsWith('.pdf')
+      );
+
+      if (pdfRecords.length === 0) {
+        toast.warning('No PDF files found for this quote. Only PDFs can be OCR-processed.');
+        setLoadingQuoteFiles(false);
+        return;
+      }
+
+      setQuoteFileLoadProgress({ loaded: 0, total: pdfRecords.length });
+
+      // 2. Download each file and create File objects
+      const downloadedFiles: File[] = [];
+
+      for (let i = 0; i < pdfRecords.length; i++) {
+        const record = pdfRecords[i];
+
+        try {
+          // Get signed URL
+          const { data: signedData, error: signError } = await supabase.storage
+            .from(record.bucket)
+            .createSignedUrl(record.bucketPath, 600); // 10 min expiry
+
+          if (signError || !signedData?.signedUrl) {
+            console.error(`Failed to get signed URL for ${record.displayName}:`, signError);
+            toast.error(`Failed to access ${record.displayName}`);
+            continue;
+          }
+
+          // Download the file
+          const response = await fetch(signedData.signedUrl);
+          if (!response.ok) {
+            console.error(`Download failed for ${record.displayName}: ${response.status}`);
+            toast.error(`Failed to download ${record.displayName}`);
+            continue;
+          }
+
+          const blob = await response.blob();
+
+          // Create a File object from the blob
+          const file = new File(
+            [blob],
+            record.displayName,
+            { type: 'application/pdf' }
+          );
+
+          downloadedFiles.push(file);
+          setQuoteFileLoadProgress(prev => ({ ...prev, loaded: i + 1 }));
+
+        } catch (err) {
+          console.error(`Error downloading ${record.displayName}:`, err);
+          toast.error(`Error loading ${record.displayName}`);
+        }
+      }
+
+      if (downloadedFiles.length === 0) {
+        toast.error('Failed to load any files. Check storage permissions.');
+        setLoadingQuoteFiles(false);
+        return;
+      }
+
+      // 3. Clear any existing files in queue
+      setFiles([]);
+
+      // 4. Analyze inline before setting state (avoids React state timing issues)
+      const analyzedFiles: UploadedFile[] = [];
+
+      for (const file of downloadedFiles) {
+        const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+          const pageCount = pdfDoc.getPageCount();
+
+          // Plan chunks (same logic as existing analyzeFile)
+          const chunks: ChunkInfo[] = [];
+
+          if (pageCount <= MAX_PAGES_PER_CHUNK) {
+            chunks.push({
+              id: `${id}-chunk-1`,
+              name: file.name,
+              pageStart: 1,
+              pageEnd: pageCount,
+              pageCount: pageCount,
+              blob: null,
+              size: file.size,
+              status: 'ready' as const,
+            });
+          } else {
+            const numChunks = Math.ceil(pageCount / MAX_PAGES_PER_CHUNK);
+            for (let c = 0; c < numChunks; c++) {
+              const start = c * MAX_PAGES_PER_CHUNK + 1;
+              const end = Math.min((c + 1) * MAX_PAGES_PER_CHUNK, pageCount);
+              const baseName = file.name.replace(/\.pdf$/i, '');
+              chunks.push({
+                id: `${id}-chunk-${c + 1}`,
+                name: `${baseName}_p${start}-${end}.pdf`,
+                pageStart: start,
+                pageEnd: end,
+                pageCount: end - start + 1,
+                blob: null,
+                size: 0,
+                status: 'pending' as const,
+              });
+            }
+          }
+
+          analyzedFiles.push({
+            id,
+            file,
+            name: file.name,
+            size: file.size,
+            pageCount,
+            status: 'ready' as const,
+            chunks,
+          });
+
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : 'Failed to read PDF';
+          console.error(`Error analyzing ${file.name}:`, err);
+          analyzedFiles.push({
+            id,
+            file,
+            name: file.name,
+            size: file.size,
+            pageCount: null,
+            status: 'error' as const,
+            error: errorMessage,
+            chunks: [],
+          });
+        }
+      }
+
+      setFiles(analyzedFiles);
+      setQuoteFilesLoaded(true);
+      toast.success(`Loaded ${downloadedFiles.length} file(s) from ${selectedQuote.quote_number}`);
+
+    } catch (err: unknown) {
+      console.error('Load quote files error:', err);
+      toast.error('Failed to load quote files');
+    }
+
+    setLoadingQuoteFiles(false);
   };
 
   // ============================================================================
@@ -812,6 +1112,8 @@ export default function PreprocessOCRPage() {
     });
     setBatchId(null);
     setSelectedQuote(null);
+    setQuoteFilesLoaded(false);
+    setQuoteFileLoadProgress({ loaded: 0, total: 0 });
     setMode('new');
   };
 
@@ -902,7 +1204,13 @@ export default function PreprocessOCRPage() {
           </button>
 
           <button
-            onClick={() => { setMode('new'); setSelectedQuote(null); }}
+            onClick={() => {
+              setMode('new');
+              setSelectedQuote(null);
+              setFiles([]);
+              setQuoteFilesLoaded(false);
+              setQuoteFileLoadProgress({ loaded: 0, total: 0 });
+            }}
             className={`p-4 rounded-lg border-2 text-left transition-all ${
               mode === 'new'
                 ? 'border-teal-500 bg-teal-50'
@@ -1058,7 +1366,15 @@ export default function PreprocessOCRPage() {
             {selectedQuote && (
               <SelectedQuoteCard
                 quote={selectedQuote}
-                onDeselect={() => setSelectedQuote(null)}
+                onDeselect={() => {
+                  setSelectedQuote(null);
+                  setFiles([]);
+                  setQuoteFilesLoaded(false);
+                }}
+                onLoadFiles={loadQuoteFiles}
+                loadingFiles={loadingQuoteFiles}
+                loadProgress={quoteFileLoadProgress}
+                filesLoaded={quoteFilesLoaded}
               />
             )}
           </div>
@@ -1069,15 +1385,23 @@ export default function PreprocessOCRPage() {
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
               <Upload className="w-5 h-5" />
-              {mode === 'existing' ? 'Upload Additional Files' : 'Upload Files'}
+              {mode === 'existing' && quoteFilesLoaded
+                ? 'Upload Additional Files (Optional)'
+                : mode === 'existing'
+                ? 'Or Upload Files Directly'
+                : 'Upload Files'}
             </h2>
 
             {/* Drop Zone */}
             <div
-              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer"
-              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-              onDrop={handleFileDrop}
-              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                loadingQuoteFiles
+                  ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
+                  : 'border-gray-300 hover:border-blue-500 cursor-pointer'
+              }`}
+              onDragOver={loadingQuoteFiles ? undefined : (e) => { e.preventDefault(); e.stopPropagation(); }}
+              onDrop={loadingQuoteFiles ? undefined : handleFileDrop}
+              onClick={loadingQuoteFiles ? undefined : () => fileInputRef.current?.click()}
             >
               <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600 mb-2">
@@ -1093,6 +1417,7 @@ export default function PreprocessOCRPage() {
                 multiple
                 className="hidden"
                 onChange={handleFileSelect}
+                disabled={loadingQuoteFiles}
               />
             </div>
           </div>
@@ -1184,7 +1509,12 @@ export default function PreprocessOCRPage() {
 
                   <button
                     onClick={submitBatch}
-                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                    disabled={loadingQuoteFiles}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium ${
+                      loadingQuoteFiles
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
                   >
                     <Send className="w-4 h-4" />
                     Process {totalChunks} Chunk(s)
