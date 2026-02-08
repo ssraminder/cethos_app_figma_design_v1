@@ -244,6 +244,7 @@ export default function AdminQuoteDetail() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showResendModal, setShowResendModal] = useState(false);
   const [previewFile, setPreviewFile] = useState<QuoteFile | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resendCustomMessage, setResendCustomMessage] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [isSendingLink, setIsSendingLink] = useState(false);
@@ -452,6 +453,38 @@ export default function AdminQuoteDetail() {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const openPreview = async (file: QuoteFile) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('quote-files')
+        .createSignedUrl(file.storage_path, 3600);
+      if (error) throw error;
+      setPreviewUrl(data.signedUrl);
+      setPreviewFile(file);
+    } catch (err) {
+      console.error('Preview error:', err);
+      alert('Failed to load file preview');
+    }
+  };
+
+  const handleDownloadFile = async (file: QuoteFile) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('quote-files')
+        .createSignedUrl(file.storage_path, 3600);
+      if (error) throw error;
+      const link = document.createElement('a');
+      link.href = data.signedUrl;
+      link.download = file.original_filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Download error:', err);
+      alert('Failed to download file');
+    }
   };
 
   const hitlReview = hitlReviews[0] || null;
@@ -1186,7 +1219,7 @@ export default function AdminQuoteDetail() {
                     }`}
                     onClick={() => {
                       if (file.mime_type === 'application/pdf' || file.mime_type.startsWith('image/')) {
-                        setPreviewFile(file);
+                        openPreview(file);
                       }
                     }}
                   >
@@ -1202,22 +1235,20 @@ export default function AdminQuoteDetail() {
                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                       {(file.mime_type === 'application/pdf' || file.mime_type.startsWith('image/')) && (
                         <button
-                          onClick={() => setPreviewFile(file)}
+                          onClick={() => openPreview(file)}
                           className="text-blue-600 hover:text-blue-700"
                           title="Preview"
                         >
                           <Eye className="w-5 h-5" />
                         </button>
                       )}
-                      <a
-                        href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${file.storage_path}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => handleDownloadFile(file)}
                         className="text-teal-600 hover:text-teal-700"
                         title="Download"
                       >
                         <Download className="w-5 h-5" />
-                      </a>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -2071,7 +2102,7 @@ export default function AdminQuoteDetail() {
       )}
 
       {/* File Preview Modal */}
-      {previewFile && (
+      {previewFile && previewUrl && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg w-[90vw] h-[90vh] max-w-5xl flex flex-col">
             {/* Header */}
@@ -2086,17 +2117,15 @@ export default function AdminQuoteDetail() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <a
-                  href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${previewFile.storage_path}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => handleDownloadFile(previewFile)}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm text-teal-600 border border-teal-300 rounded-md hover:bg-teal-50"
                 >
                   <Download className="w-4 h-4" />
                   Download
-                </a>
+                </button>
                 <button
-                  onClick={() => setPreviewFile(null)}
+                  onClick={() => { setPreviewFile(null); setPreviewUrl(null); }}
                   className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
                 >
                   Close
@@ -2108,14 +2137,14 @@ export default function AdminQuoteDetail() {
             <div className="flex-1 overflow-auto p-1 bg-gray-100">
               {previewFile.mime_type === 'application/pdf' ? (
                 <iframe
-                  src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${previewFile.storage_path}#toolbar=1`}
+                  src={`${previewUrl}#toolbar=1`}
                   className="w-full h-full rounded"
                   title={previewFile.original_filename}
                 />
               ) : previewFile.mime_type.startsWith('image/') ? (
                 <div className="flex items-center justify-center h-full">
                   <img
-                    src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${previewFile.storage_path}`}
+                    src={previewUrl}
                     alt={previewFile.original_filename}
                     className="max-w-full max-h-full object-contain"
                   />
