@@ -558,8 +558,7 @@ export default function PreprocessOCRPage() {
       .from('quote_files')
       .select('id, original_filename, storage_path, file_size, mime_type')
       .eq('quote_id', quoteId)
-      .eq('upload_status', 'completed');
-
+.in('upload_status', ['completed', 'uploaded']);
     if (!qfError && quoteFiles && quoteFiles.length > 0) {
       allFiles.push(...quoteFiles.map(f => ({
         id: f.id,
