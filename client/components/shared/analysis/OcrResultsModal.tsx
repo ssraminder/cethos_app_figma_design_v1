@@ -220,10 +220,104 @@ interface OcrResultsModalProps {
 function normalizeAnalysisResults(
   results: Record<string, unknown>[]
 ): AnalysisResult[] {
-  return results.map((r) => {
+  return results.map((r, index) => {
     const result = r as AnalysisResult & Record<string, unknown>;
     return {
       ...result,
+
+      // Core identification — ensure camelCase and never undefined
+      id:
+        result.id ??
+        (result.analysis_id as string) ??
+        `temp-${Date.now()}-${index}`,
+      fileId:
+        result.fileId ??
+        (result.file_id as string) ??
+        (result.batch_file_id as string) ??
+        "",
+      originalFilename:
+        result.originalFilename ??
+        (result.original_filename as string) ??
+        "Unknown",
+      fileGroupId:
+        result.fileGroupId ??
+        (result.file_group_id as string | null) ??
+        null,
+      chunkCount:
+        result.chunkCount ?? (Number(result.chunk_count) || 0),
+
+      // Document details — normalize snake_case from edge function
+      documentType:
+        result.documentType ??
+        (result.document_type as string) ??
+        (result.detected_document_type as string) ??
+        "document",
+      documentTypeConfidence:
+        result.documentTypeConfidence ?? (Number(result.document_type_confidence) || 0),
+      holderName:
+        result.holderName ?? (result.holder_name as string) ?? "",
+      holderNameNormalized:
+        result.holderNameNormalized ?? (result.holder_name_normalized as string) ?? "",
+      language:
+        result.language ?? (result.detected_language as string) ?? "unknown",
+      languageName:
+        result.languageName ?? (result.language_name as string) ?? "",
+      issuingCountry:
+        result.issuingCountry ?? (result.issuing_country as string) ?? "",
+      issuingCountryCode:
+        result.issuingCountryCode ?? (result.issuing_country_code as string) ?? "",
+      issuingAuthority:
+        result.issuingAuthority ?? (result.issuing_authority as string) ?? "",
+      documentDate:
+        result.documentDate ?? (result.document_date as string | null) ?? null,
+      documentNumber:
+        result.documentNumber ?? (result.document_number as string | null) ?? null,
+
+      // Counts
+      wordCount:
+        result.wordCount ?? (Number(result.word_count || result.ocr_word_count) || 0),
+      pageCount:
+        result.pageCount ?? (Number(result.page_count || result.ocr_page_count) || 0),
+      billablePages:
+        result.billablePages ?? (Number(result.billable_pages) || 0),
+
+      // Complexity
+      complexity:
+        result.complexity ??
+        (result.assessed_complexity as AnalysisResult["complexity"]) ??
+        "easy",
+      complexityConfidence:
+        result.complexityConfidence ?? (Number(result.complexity_confidence) || 0),
+      complexityFactors:
+        result.complexityFactors ?? (result.complexity_factors as string[]) ?? [],
+      complexityReasoning:
+        result.complexityReasoning ?? (result.complexity_reasoning as string) ?? "",
+
+      // Multi-document
+      documentCount:
+        result.documentCount ?? (Number(result.document_count) || 1),
+      subDocuments:
+        result.subDocuments ??
+        (result.sub_documents as AnalysisResult["subDocuments"]) ??
+        null,
+      actionableItems:
+        result.actionableItems ??
+        (result.actionable_items as AnalysisResult["actionableItems"]) ??
+        [],
+
+      // Processing info
+      entryMethod:
+        result.entryMethod ??
+        (result.entry_method as AnalysisResult["entryMethod"]) ??
+        "ocr",
+      processingStatus:
+        result.processingStatus ??
+        (result.processing_status as AnalysisResult["processingStatus"]) ??
+        "completed",
+      errorMessage:
+        result.errorMessage ?? (result.error_message as string | null) ?? null,
+
+      // Saved pricing overrides
       pricingSavedAt:
         result.pricingSavedAt ?? (result.pricing_saved_at as string | null) ?? null,
       pricingBillablePages:
@@ -266,14 +360,6 @@ function normalizeAnalysisResults(
         result.pricingDocumentCertifications ??
         (result.pricing_document_certifications as AnalysisResult["pricingDocumentCertifications"]) ??
         null,
-      entryMethod:
-        result.entryMethod ??
-        (result.entry_method as AnalysisResult["entryMethod"]) ??
-        "ocr",
-      processingStatus:
-        result.processingStatus ??
-        (result.processing_status as AnalysisResult["processingStatus"]) ??
-        "completed",
     };
   });
 }
@@ -749,18 +835,28 @@ export default function OcrResultsModal({
         console.log("No existing analysis for batch");
       }
 
-      // 3. Check if batch is linked to an existing quote
+      // 3. Check if batch is linked to an existing quote (separate queries to avoid FK/RLS issues)
       try {
         const { data: batchRow } = await supabase
           .from('ocr_batches')
-          .select('quote_id, quotes(quote_number)')
+          .select('quote_id')
           .eq('id', batchId)
           .single();
 
         if (batchRow?.quote_id) {
-          setLinkedQuoteId(batchRow.quote_id);
-          const quoteData = batchRow.quotes as unknown as { quote_number: string } | null;
-          setLinkedQuoteNumber(quoteData?.quote_number || null);
+          const { data: linkedQuote } = await supabase
+            .from('quotes')
+            .select('id, quote_number, status')
+            .eq('id', batchRow.quote_id)
+            .single();
+
+          if (linkedQuote) {
+            setLinkedQuoteId(linkedQuote.id);
+            setLinkedQuoteNumber(linkedQuote.quote_number);
+          } else {
+            setLinkedQuoteId(null);
+            setLinkedQuoteNumber(null);
+          }
         } else {
           setLinkedQuoteId(null);
           setLinkedQuoteNumber(null);
@@ -2064,8 +2160,13 @@ export default function OcrResultsModal({
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">
+            <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
               Pricing Estimate
+              {linkedQuoteNumber && (
+                <span className="text-sm font-normal text-teal-600">
+                  for {linkedQuoteNumber}
+                </span>
+              )}
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
               Based on AI analysis &middot; Edit values below before creating
@@ -3265,9 +3366,20 @@ export default function OcrResultsModal({
               <FileText className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">
-                OCR Batch Results
-              </h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  OCR Batch Results
+                </h2>
+                {linkedQuoteId && linkedQuoteNumber ? (
+                  <span className="px-3 py-1 bg-teal-100 text-teal-800 text-sm font-semibold rounded-full border border-teal-300">
+                    {linkedQuoteNumber}
+                  </span>
+                ) : (
+                  <span className="px-3 py-1 bg-gray-100 text-gray-600 text-sm font-medium rounded-full border border-gray-300">
+                    New Quote
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-gray-500 mt-0.5">
                 {!isLoading && (
                   <>
