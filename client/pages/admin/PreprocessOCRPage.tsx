@@ -565,7 +565,7 @@ export default function PreprocessOCRPage() {
         displayName: f.original_filename || f.storage_path || 'Unknown file',
         storagePath: f.storage_path,
         bucket: 'quote-files' as const,
-        bucketPath: `${quoteId}/${f.storage_path}`,
+        bucketPath: `uploads/${f.original_filename}`,
         fileSize: f.file_size || 0,
         mimeType: f.mime_type || 'application/pdf',
         source: 'quote' as const,
