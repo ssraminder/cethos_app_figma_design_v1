@@ -9,6 +9,7 @@ import {
   CreditCard,
   DollarSign,
   Download,
+  Eye,
   ExternalLink,
   FileText,
   Languages,
@@ -72,10 +73,10 @@ interface QuoteDetail {
 
 interface QuoteFile {
   id: string;
-  file_name: string;
+  original_filename: string;
+  storage_path: string;
   file_size: number;
   mime_type: string;
-  file_path: string;
   upload_status: string;
   created_at: string;
 }
@@ -242,6 +243,7 @@ export default function AdminQuoteDetail() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showResendModal, setShowResendModal] = useState(false);
+  const [previewFile, setPreviewFile] = useState<QuoteFile | null>(null);
   const [resendCustomMessage, setResendCustomMessage] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [isSendingLink, setIsSendingLink] = useState(false);
@@ -1177,25 +1179,46 @@ export default function AdminQuoteDetail() {
                 {files.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg ${
+                      file.mime_type === 'application/pdf' || file.mime_type.startsWith('image/')
+                        ? 'cursor-pointer hover:bg-gray-100 transition-colors'
+                        : ''
+                    }`}
+                    onClick={() => {
+                      if (file.mime_type === 'application/pdf' || file.mime_type.startsWith('image/')) {
+                        setPreviewFile(file);
+                      }
+                    }}
                   >
                     <div className="flex items-center gap-3">
                       <FileText className="w-5 h-5 text-gray-400" />
                       <div>
-                        <p className="font-medium text-sm">{file.file_name}</p>
+                        <p className="font-medium text-sm">{file.original_filename}</p>
                         <p className="text-xs text-gray-500">
                           {formatFileSize(file.file_size)} • {file.mime_type}
                         </p>
                       </div>
                     </div>
-                    <a
-                      href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${file.file_path}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-teal-600 hover:text-teal-700"
-                    >
-                      <Download className="w-5 h-5" />
-                    </a>
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      {(file.mime_type === 'application/pdf' || file.mime_type.startsWith('image/')) && (
+                        <button
+                          onClick={() => setPreviewFile(file)}
+                          className="text-blue-600 hover:text-blue-700"
+                          title="Preview"
+                        >
+                          <Eye className="w-5 h-5" />
+                        </button>
+                      )}
+                      <a
+                        href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${file.storage_path}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-teal-600 hover:text-teal-700"
+                        title="Download"
+                      >
+                        <Download className="w-5 h-5" />
+                      </a>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1226,7 +1249,7 @@ export default function AdminQuoteDetail() {
                             : "border-transparent text-gray-500 hover:text-gray-700"
                         }`}
                       >
-                        {file?.file_name || `Document ${index + 1}`}
+                        {file?.original_filename || `Document ${index + 1}`}
                       </button>
                     );
                   })}
@@ -1573,9 +1596,9 @@ export default function AdminQuoteDetail() {
                       >
                         <span
                           className="text-gray-600 truncate max-w-[60%]"
-                          title={file?.file_name}
+                          title={file?.original_filename}
                         >
-                          {file?.file_name || `Document ${index + 1}`}
+                          {file?.original_filename || `Document ${index + 1}`}
                         </span>
                         <span className="font-medium">
                           ${Number(item.line_total || 0).toFixed(2)}
@@ -2042,6 +2065,66 @@ export default function AdminQuoteDetail() {
                 <Send className="w-4 h-4" />
                 {isResending ? "Sending..." : "Send Quote"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Preview Modal */}
+      {previewFile && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-[90vw] h-[90vh] max-w-5xl flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-gray-400" />
+                <h3 className="font-medium text-gray-900 truncate max-w-md">
+                  {previewFile.original_filename}
+                </h3>
+                <span className="text-xs text-gray-500">
+                  ({formatFileSize(previewFile.file_size)})
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${previewFile.storage_path}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-teal-600 border border-teal-300 rounded-md hover:bg-teal-50"
+                >
+                  <Download className="w-4 h-4" />
+                  Download
+                </a>
+                <button
+                  onClick={() => setPreviewFile(null)}
+                  className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-auto p-1 bg-gray-100">
+              {previewFile.mime_type === 'application/pdf' ? (
+                <iframe
+                  src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${previewFile.storage_path}#toolbar=1`}
+                  className="w-full h-full rounded"
+                  title={previewFile.original_filename}
+                />
+              ) : previewFile.mime_type.startsWith('image/') ? (
+                <div className="flex items-center justify-center h-full">
+                  <img
+                    src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${previewFile.storage_path}`}
+                    alt={previewFile.original_filename}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  Preview not available for this file type
+                </div>
+              )}
             </div>
           </div>
         </div>
