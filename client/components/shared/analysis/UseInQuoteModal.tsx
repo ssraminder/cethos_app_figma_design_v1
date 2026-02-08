@@ -46,6 +46,7 @@ interface PricingRow {
   certificationCost: number;
   translationCost: number;
   lineTotal: number;
+  isExcluded: boolean;
 }
 
 interface AnalysisJob {
@@ -436,10 +437,12 @@ export default function UseInQuoteModal({
         localStorage.getItem("staffSession") || "{}"
       );
 
+      const activeRows = pricingRows.filter((r) => !r.isExcluded);
+
       const requestBody = {
         jobId: analysisJob.id,
-        analysisIds: pricingRows.map((r) => r.analysisId),
-        pricingOverrides: pricingRows.map((r) => ({
+        analysisIds: activeRows.map((r) => r.analysisId),
+        pricingOverrides: activeRows.map((r) => ({
           analysisId: r.analysisId,
           billablePages: r.billablePages,
           complexity: r.complexity,
@@ -455,7 +458,7 @@ export default function UseInQuoteModal({
           sourceLanguageId: selectedSourceLanguageId,
           targetLanguageId: selectedTargetLanguageId,
           intendedUseId: selectedIntendedUseId || null,
-          certificationTypeId: pricingRows[0]?.defaultCertTypeId || "",
+          certificationTypeId: activeRows[0]?.defaultCertTypeId || "",
           countryOfIssue: countryOfIssue || null,
           customerId: selectedCustomer.id,
           customerNote: customerNote.trim() || null,
@@ -495,15 +498,16 @@ export default function UseInQuoteModal({
   // Pricing summary calculations
   // -------------------------------------------------------------------------
 
-  const translationSubtotal = pricingRows.reduce(
+  const activeRowsForSummary = pricingRows.filter((r) => !r.isExcluded);
+  const translationSubtotal = activeRowsForSummary.reduce(
     (sum, r) => sum + r.translationCost,
     0
   );
-  const totalDocuments = pricingRows.reduce(
+  const totalDocuments = activeRowsForSummary.reduce(
     (sum, r) => sum + r.documentCount,
     0
   );
-  const certificationTotal = pricingRows.reduce(
+  const certificationTotal = activeRowsForSummary.reduce(
     (sum, r) => sum + r.certificationCost,
     0
   );

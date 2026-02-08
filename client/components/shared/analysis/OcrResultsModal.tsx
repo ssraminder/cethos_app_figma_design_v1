@@ -171,6 +171,9 @@ interface PricingRow {
   certificationCost: number;
   translationCost: number;
   lineTotal: number;
+
+  // Exclude from pricing/quote
+  isExcluded: boolean;
 }
 
 interface OcrResultsModalProps {
@@ -942,6 +945,7 @@ export default function OcrResultsModal({
         certificationCost: certCost,
         translationCost: transCost,
         lineTotal: transCost + certCost,
+        isExcluded: false,
       };
     });
 
@@ -952,17 +956,22 @@ export default function OcrResultsModal({
   // Pricing: computed totals
   // -------------------------------------------------------------------------
 
-  const pricingTotalDocuments = useMemo(
-    () => pricingRows.reduce((sum, r) => sum + r.documentCount, 0),
+  const pricingActiveRows = useMemo(
+    () => pricingRows.filter((r) => !r.isExcluded),
     [pricingRows]
+  );
+  const pricingExcludedCount = pricingRows.length - pricingActiveRows.length;
+  const pricingTotalDocuments = useMemo(
+    () => pricingActiveRows.reduce((sum, r) => sum + r.documentCount, 0),
+    [pricingActiveRows]
   );
   const pricingTranslationSubtotal = useMemo(
-    () => pricingRows.reduce((sum, r) => sum + r.translationCost, 0),
-    [pricingRows]
+    () => pricingActiveRows.reduce((sum, r) => sum + r.translationCost, 0),
+    [pricingActiveRows]
   );
   const pricingCertificationTotal = useMemo(
-    () => pricingRows.reduce((sum, r) => sum + r.certificationCost, 0),
-    [pricingRows]
+    () => pricingActiveRows.reduce((sum, r) => sum + r.certificationCost, 0),
+    [pricingActiveRows]
   );
   const pricingEstimatedTotal =
     pricingTranslationSubtotal + pricingCertificationTotal;
@@ -1015,11 +1024,17 @@ export default function OcrResultsModal({
         }
 
         // Recalculate costs
-        updated.translationCost = calcTranslationCost(
-          updated.billablePages,
-          updated.baseRate
-        );
-        updated.lineTotal = updated.translationCost + updated.certificationCost;
+        if (updated.billablePages === 0) {
+          updated.translationCost = 0;
+          updated.certificationCost = 0;
+          updated.lineTotal = 0;
+        } else {
+          updated.translationCost = calcTranslationCost(
+            updated.billablePages,
+            updated.baseRate
+          );
+          updated.lineTotal = updated.translationCost + updated.certificationCost;
+        }
 
         return updated;
       })
@@ -1111,6 +1126,15 @@ export default function OcrResultsModal({
       else next.add(rowId);
       return next;
     });
+  };
+
+  const handleToggleExclude = (rowId: string) => {
+    setPricingRows((prev) =>
+      prev.map((row) => {
+        if (row.analysisId !== rowId) return row;
+        return { ...row, isExcluded: !row.isExcluded };
+      })
+    );
   };
 
   // -------------------------------------------------------------------------
@@ -1394,6 +1418,7 @@ export default function OcrResultsModal({
     const headers = [
       "Filename",
       "Document Type",
+      "Status",
       "Words",
       "Billable Pages",
       "Complexity",
@@ -1409,15 +1434,16 @@ export default function OcrResultsModal({
       rows.push([
         r.originalFilename,
         documentTypeLabels[r.documentType] || r.documentType,
+        r.isExcluded ? "Excluded" : "Included",
         r.wordCount,
-        r.billablePages,
+        r.isExcluded ? 0 : r.billablePages,
         r.complexity,
         r.defaultCertTypeName,
-        r.certificationCost.toFixed(2),
+        r.isExcluded ? "0.00" : r.certificationCost.toFixed(2),
         r.baseRate.toFixed(2),
-        r.translationCost.toFixed(2),
+        r.isExcluded ? "0.00" : r.translationCost.toFixed(2),
         r.documentCount,
-        r.lineTotal.toFixed(2),
+        r.isExcluded ? "0.00" : r.lineTotal.toFixed(2),
       ]);
     });
 
@@ -1425,6 +1451,7 @@ export default function OcrResultsModal({
     rows.push([]);
     rows.push([
       "Translation Subtotal",
+      "",
       "",
       "",
       "",
@@ -1443,6 +1470,7 @@ export default function OcrResultsModal({
       "",
       "",
       "",
+      "",
       pricingCertificationTotal.toFixed(2),
       "",
       "",
@@ -1451,6 +1479,7 @@ export default function OcrResultsModal({
     ]);
     rows.push([
       "Estimated Total",
+      "",
       "",
       "",
       "",
@@ -1531,7 +1560,7 @@ export default function OcrResultsModal({
           </div>
           <button
             onClick={() => setShowUseInQuoteModal(true)}
-            disabled={pricingRows.length === 0}
+            disabled={pricingActiveRows.length === 0}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             Use in Quote
@@ -1545,6 +1574,7 @@ export default function OcrResultsModal({
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="w-8 px-2 py-2.5" />
                   <th className="px-3 py-2.5 text-left font-medium text-gray-700">
                     File
                   </th>
@@ -1575,9 +1605,19 @@ export default function OcrResultsModal({
                 {pricingRows.map((row) => {
                   const docTypeLabel =
                     documentTypeLabels[row.documentType] || row.documentType;
+                  const excluded = row.isExcluded;
                   return (
                     <React.Fragment key={row.analysisId}>
-                      <tr className="hover:bg-gray-50">
+                      <tr className={excluded ? "opacity-40 bg-gray-50" : "hover:bg-gray-50"}>
+                        <td className="px-2 py-2.5">
+                          <input
+                            type="checkbox"
+                            checked={!excluded}
+                            onChange={() => handleToggleExclude(row.analysisId)}
+                            title={excluded ? "Include in quote" : "Exclude from quote"}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </td>
                         <td className="px-3 py-2.5">
                           <div
                             className="font-medium text-gray-900 truncate max-w-[160px]"
@@ -1599,6 +1639,7 @@ export default function OcrResultsModal({
                               step="0.1"
                               min="0"
                               value={row.billablePages}
+                              disabled={excluded}
                               onChange={(e) =>
                                 updatePricingRow(
                                   row.analysisId,
@@ -1607,12 +1648,14 @@ export default function OcrResultsModal({
                                 )
                               }
                               className={`w-[72px] px-2 py-1 border rounded text-right text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
-                                row.billablePagesOverridden
-                                  ? "bg-amber-50 border-amber-400"
-                                  : "border-gray-300"
+                                excluded
+                                  ? "bg-gray-100 border-gray-200 cursor-not-allowed"
+                                  : row.billablePagesOverridden
+                                    ? "bg-amber-50 border-amber-400"
+                                    : "border-gray-300"
                               }`}
                             />
-                            {row.billablePagesOverridden && (
+                            {!excluded && row.billablePagesOverridden && (
                               <Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" />
                             )}
                           </div>
@@ -1620,6 +1663,7 @@ export default function OcrResultsModal({
                         <td className="px-3 py-2.5 text-center">
                           <select
                             value={row.complexity}
+                            disabled={excluded}
                             onChange={(e) =>
                               updatePricingRow(
                                 row.analysisId,
@@ -1627,7 +1671,9 @@ export default function OcrResultsModal({
                                 e.target.value
                               )
                             }
-                            className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                            className={`px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                              excluded ? "bg-gray-100 cursor-not-allowed" : ""
+                            }`}
                           >
                             <option value="easy">Easy</option>
                             <option value="medium">Medium</option>
@@ -1636,6 +1682,9 @@ export default function OcrResultsModal({
                         </td>
                         {/* Certification column */}
                         <td className="px-3 py-2.5">
+                          {excluded ? (
+                            <span className="text-xs text-gray-400">&mdash;</span>
+                          ) : (
                           <div className="flex flex-col gap-1">
                             <select
                               value={row.defaultCertTypeId}
@@ -1731,6 +1780,7 @@ export default function OcrResultsModal({
                               </div>
                             )}
                           </div>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-right">
                           <div className="inline-flex items-center gap-1">
@@ -1740,6 +1790,7 @@ export default function OcrResultsModal({
                               step="0.01"
                               min="0"
                               value={row.baseRate}
+                              disabled={excluded}
                               onChange={(e) =>
                                 updatePricingRow(
                                   row.analysisId,
@@ -1748,22 +1799,31 @@ export default function OcrResultsModal({
                                 )
                               }
                               className={`w-[72px] px-2 py-1 border rounded text-right text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
-                                row.baseRateOverridden
-                                  ? "bg-amber-50 border-amber-400"
-                                  : "border-gray-300"
+                                excluded
+                                  ? "bg-gray-100 border-gray-200 cursor-not-allowed"
+                                  : row.baseRateOverridden
+                                    ? "bg-amber-50 border-amber-400"
+                                    : "border-gray-300"
                               }`}
                             />
-                            {row.baseRateOverridden && (
+                            {!excluded && row.baseRateOverridden && (
                               <Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" />
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-right font-medium text-gray-900 tabular-nums whitespace-nowrap">
-                          ${row.lineTotal.toFixed(2)}
+                        <td className="px-3 py-2.5 text-right font-medium tabular-nums whitespace-nowrap">
+                          {excluded ? (
+                            <span className="text-gray-400">&mdash;</span>
+                          ) : (
+                            <span className="text-gray-900">
+                              ${row.lineTotal.toFixed(2)}
+                            </span>
+                          )}
                         </td>
                       </tr>
                       {/* Document count sub-row */}
-                      <tr className="bg-gray-50/50">
+                      <tr className={excluded ? "opacity-40 bg-gray-50" : "bg-gray-50/50"}>
+                        <td />
                         <td
                           colSpan={8}
                           className={`px-3 py-1 pl-6 text-xs ${
@@ -1810,6 +1870,12 @@ export default function OcrResultsModal({
               </span>
             </div>
           </div>
+          {pricingExcludedCount > 0 && (
+            <div className="text-xs text-gray-400 mt-2">
+              {pricingExcludedCount} document
+              {pricingExcludedCount !== 1 ? "s" : ""} excluded from pricing
+            </div>
+          )}
           <p className="text-xs text-gray-400 mt-3 flex items-start gap-1">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
             Final total may vary based on language tier, rush fees, delivery,
@@ -2733,7 +2799,7 @@ export default function OcrResultsModal({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowUseInQuoteModal(true)}
-                  disabled={pricingRows.length === 0}
+                  disabled={pricingActiveRows.length === 0}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Use in Quote
