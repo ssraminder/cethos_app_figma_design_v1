@@ -52,6 +52,7 @@ interface QuoteDetail {
   certification_total: number;
   rush_fee: number;
   delivery_fee: number;
+  tax_rate_id: string | null;
   tax_amount: number;
   tax_rate: number;
   total: number;
@@ -244,6 +245,14 @@ export default function AdminQuoteDetail() {
   const [resendCustomMessage, setResendCustomMessage] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [isSendingLink, setIsSendingLink] = useState(false);
+  const [taxRates, setTaxRates] = useState<Array<{
+    id: string;
+    region_code: string;
+    region_name: string;
+    tax_name: string;
+    rate: number;
+  }>>([]);
+  const [isSavingTax, setIsSavingTax] = useState(false);
 
   const { session: currentStaff } = useAdminAuthContext();
 
@@ -413,6 +422,14 @@ export default function AdminQuoteDetail() {
         .order("created_at");
       setAdjustments(adjustmentsData || []);
 
+      // Fetch active tax rates
+      const { data: taxRatesData } = await supabase
+        .from("tax_rates")
+        .select("id, region_code, region_name, tax_name, rate")
+        .eq("is_active", true)
+        .order("region_name");
+      setTaxRates(taxRatesData || []);
+
       if (quoteData?.status === "converted") {
         const { data: orderData } = await supabase
           .from("orders")
@@ -447,6 +464,50 @@ export default function AdminQuoteDetail() {
           : segment,
       )
       .join(" ");
+  };
+
+  const handleTaxRateChange = async (newTaxRateId: string) => {
+    if (!quote || !id) return;
+
+    const selectedRate = taxRates.find(t => t.id === newTaxRateId);
+    if (!selectedRate) return;
+
+    setIsSavingTax(true);
+
+    try {
+      // Tax is applied to subtotal + rush_fee + delivery_fee (not certification_total)
+      const baseForTax = (quote.subtotal || 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0);
+      const newTaxAmount = parseFloat((baseForTax * selectedRate.rate).toFixed(2));
+      const newTotal = parseFloat(
+        ((quote.subtotal || 0) + (quote.certification_total || 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0) + newTaxAmount).toFixed(2)
+      );
+
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          tax_rate_id: selectedRate.id,
+          tax_rate: selectedRate.rate,
+          tax_amount: newTaxAmount,
+          total: newTotal,
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      // Update local state immediately
+      setQuote(prev => prev ? {
+        ...prev,
+        tax_rate_id: selectedRate.id,
+        tax_rate: selectedRate.rate,
+        tax_amount: newTaxAmount,
+        total: newTotal,
+      } : null);
+    } catch (err) {
+      console.error("Failed to update tax rate:", err);
+      alert("Failed to update tax rate");
+    } finally {
+      setIsSavingTax(false);
+    }
   };
 
   const startReview = async () => {
@@ -1601,11 +1662,25 @@ export default function AdminQuoteDetail() {
                 </div>
               )}
 
-              {/* Tax */}
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">
-                  Tax ({((quote.tax_rate || 0) * 100).toFixed(0)}%)
-                </span>
+              {/* Tax — editable dropdown */}
+              <div className="flex justify-between items-center text-sm">
+                <div className="flex items-center gap-1">
+                  <select
+                    value={quote.tax_rate_id || taxRates.find(t => Math.abs(t.rate - (quote.tax_rate || 0)) < 0.001)?.id || ""}
+                    onChange={(e) => handleTaxRateChange(e.target.value)}
+                    disabled={isSavingTax}
+                    className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50 max-w-[200px]"
+                  >
+                    {taxRates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.region_name} {t.tax_name} ({(t.rate * 100).toFixed(t.rate * 100 % 1 === 0 ? 0 : 2)}%)
+                      </option>
+                    ))}
+                  </select>
+                  {isSavingTax && (
+                    <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                  )}
+                </div>
                 <span>${quote.tax_amount?.toFixed(2) || "0.00"}</span>
               </div>
 
