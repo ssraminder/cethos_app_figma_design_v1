@@ -627,6 +627,11 @@ export default function OcrResultsModal({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // Linked quote state (for "Update Existing Quote" flow)
+  const [linkedQuoteId, setLinkedQuoteId] = useState<string | null>(null);
+  const [linkedQuoteNumber, setLinkedQuoteNumber] = useState<string | null>(null);
+  const [isUpdatingQuote, setIsUpdatingQuote] = useState(false);
+
   // Grouped display rows
   const displayRows = useMemo(() => groupFiles(files), [files]);
 
@@ -742,6 +747,27 @@ export default function OcrResultsModal({
       } catch {
         // No analysis yet - that's fine
         console.log("No existing analysis for batch");
+      }
+
+      // 3. Check if batch is linked to an existing quote
+      try {
+        const { data: batchRow } = await supabase
+          .from('ocr_batches')
+          .select('quote_id, quotes(quote_number)')
+          .eq('id', batchId)
+          .single();
+
+        if (batchRow?.quote_id) {
+          setLinkedQuoteId(batchRow.quote_id);
+          const quoteData = batchRow.quotes as unknown as { quote_number: string } | null;
+          setLinkedQuoteNumber(quoteData?.quote_number || null);
+        } else {
+          setLinkedQuoteId(null);
+          setLinkedQuoteNumber(null);
+        }
+      } catch {
+        // No linked quote - that's fine
+        console.log("No linked quote for batch");
       }
     } catch (err) {
       console.error("Error fetching batch data:", err);
@@ -1927,6 +1953,89 @@ export default function OcrResultsModal({
   );
 
   // -------------------------------------------------------------------------
+  // Update existing quote handler
+  // -------------------------------------------------------------------------
+
+  const handleUpdateExistingQuote = useCallback(async () => {
+    if (!linkedQuoteId || !linkedQuoteNumber || !batchId) return;
+
+    const activeRows = pricingRows.filter((r) => !r.isExcluded);
+    if (activeRows.length === 0) {
+      toast.error("No active documents to update the quote with");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Update ${linkedQuoteNumber} with ${activeRows.length} document(s)?\n\n` +
+      `This will overwrite the existing pricing on the quote and set status to "Awaiting Payment".`
+    );
+    if (!confirmed) return;
+
+    setIsUpdatingQuote(true);
+
+    try {
+      const documentPayload = activeRows.map((row) => ({
+        filename: row.originalFilename || "Unknown",
+        ocrBatchFileId: row.fileId || null,
+
+        // Analysis
+        detectedLanguage: analysisResults.find((r) => r.id === row.analysisId)?.language || "unknown",
+        languageName: analysisResults.find((r) => r.id === row.analysisId)?.languageName || "Unknown",
+        detectedDocumentType: row.documentType || "document",
+        assessedComplexity: row.complexity || "easy",
+
+        // Counts
+        wordCount: row.wordCount || 0,
+        pageCount: row.pageCount || 1,
+
+        // Pricing
+        billablePages: row.billablePages || 1.0,
+        complexityMultiplier: row.complexityMultiplier || 1.0,
+        baseRate: row.baseRate || 65.0,
+        perPageRate: row.baseRate * row.complexityMultiplier || 65.0,
+        translationCost: row.translationCost || 0,
+
+        // Certification
+        certificationTypeId: row.defaultCertTypeId || null,
+        certificationPrice: row.certificationCost || 0,
+      }));
+
+      const staffId = localStorage.getItem("staffUserId") || null;
+
+      const { data, error } = await supabase.functions.invoke("update-quote-from-analysis", {
+        body: {
+          quoteId: linkedQuoteId,
+          batchId: batchId,
+          staffId: staffId,
+          documents: documentPayload,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || "Edge function call failed");
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || "Update failed");
+      }
+
+      toast.success(
+        `${linkedQuoteNumber} updated! ${data.documentsProcessed} document(s), ` +
+        `total: $${data.totals?.total?.toFixed(2) || "0.00"}`
+      );
+
+      onClose();
+      navigate(`/admin/quotes/${linkedQuoteId}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to update quote";
+      console.error("Update quote error:", err);
+      toast.error(message);
+    } finally {
+      setIsUpdatingQuote(false);
+    }
+  }, [linkedQuoteId, linkedQuoteNumber, batchId, pricingRows, analysisResults, onClose, navigate]);
+
+  // -------------------------------------------------------------------------
   // Render: Pricing tab content
   // -------------------------------------------------------------------------
 
@@ -1979,6 +2088,25 @@ export default function OcrResultsModal({
               Use in Quote
               <ArrowRight className="w-4 h-4" />
             </button>
+            {linkedQuoteId && linkedQuoteNumber && (
+              <button
+                onClick={handleUpdateExistingQuote}
+                disabled={isUpdatingQuote || pricingActiveRows.length === 0}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isUpdatingQuote ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    Update {linkedQuoteNumber}
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -3298,6 +3426,25 @@ export default function OcrResultsModal({
                   Use in Quote
                   <ArrowRight className="w-4 h-4" />
                 </button>
+                {linkedQuoteId && linkedQuoteNumber && (
+                  <button
+                    onClick={handleUpdateExistingQuote}
+                    disabled={isUpdatingQuote || pricingActiveRows.length === 0}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isUpdatingQuote ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        Update {linkedQuoteNumber}
+                      </>
+                    )}
+                  </button>
+                )}
                 <button
                   onClick={handleClose}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
