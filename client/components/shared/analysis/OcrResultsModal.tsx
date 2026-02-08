@@ -7,6 +7,7 @@ import {
   Globe,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   Eye,
   EyeOff,
   Copy,
@@ -19,6 +20,8 @@ import {
   Pencil,
   ArrowRight,
   Save,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -120,8 +123,9 @@ interface AnalysisResult {
     type: "warning" | "note" | "suggestion";
     message: string;
   }>;
-  processingStatus: "completed" | "failed";
+  processingStatus: "completed" | "failed" | "manual";
   errorMessage: string | null;
+  entryMethod: "ocr" | "manual" | "ai_failed";
 
   // Saved pricing overrides (from DB)
   pricingBillablePages: number | null;
@@ -166,6 +170,8 @@ interface PricingRow {
   pageCount: number;
   documentCount: number;
   subDocuments: SubDocument[] | null;
+  entryMethod: "ocr" | "manual" | "ai_failed";
+  processingStatus: string;
 
   // Editable (initialized from AI analysis + settings)
   billablePages: number;
@@ -260,6 +266,14 @@ function normalizeAnalysisResults(
         result.pricingDocumentCertifications ??
         (result.pricing_document_certifications as AnalysisResult["pricingDocumentCertifications"]) ??
         null,
+      entryMethod:
+        result.entryMethod ??
+        (result.entry_method as AnalysisResult["entryMethod"]) ??
+        "ocr",
+      processingStatus:
+        result.processingStatus ??
+        (result.processing_status as AnalysisResult["processingStatus"]) ??
+        "completed",
     };
   });
 }
@@ -969,8 +983,13 @@ export default function OcrResultsModal({
   useEffect(() => {
     if (!pricingRatesLoaded || pricingBaseRate === 0) return;
 
+    // Include completed, manual, and failed rows (not just completed)
     const completedResults = analysisResults.filter(
-      (r) => r.processingStatus === "completed"
+      (r) =>
+        r.processingStatus === "completed" ||
+        r.processingStatus === "manual" ||
+        r.entryMethod === "manual" ||
+        r.processingStatus === "failed"
     );
     if (completedResults.length === 0) {
       setPricingRows([]);
@@ -1079,6 +1098,8 @@ export default function OcrResultsModal({
         pageCount: r.pageCount,
         documentCount: docCount,
         subDocuments: r.subDocuments,
+        entryMethod: r.entryMethod || "ocr",
+        processingStatus: r.processingStatus,
         billablePages: billable,
         billablePagesOverridden: isBillableOverridden,
         complexity,
@@ -1136,11 +1157,19 @@ export default function OcrResultsModal({
   const pricingEstimatedTotal =
     pricingTranslationSubtotal + pricingCertificationTotal;
 
-  // Whether pricing tab should be visible
+  // Whether pricing tab should be visible — show when there are any analysis
+  // results (completed, manual, or failed) OR when pricing rows exist (manual docs)
   const showPricingTab =
     isBatchMode &&
-    analysisResults.length > 0 &&
-    analysisResults.some((r) => r.processingStatus === "completed");
+    (pricingRows.length > 0 ||
+      (analysisResults.length > 0 &&
+        analysisResults.some(
+          (r) =>
+            r.processingStatus === "completed" ||
+            r.processingStatus === "manual" ||
+            r.entryMethod === "manual" ||
+            r.processingStatus === "failed"
+        )));
 
   // -------------------------------------------------------------------------
   // Pricing: row update handler
@@ -1362,6 +1391,146 @@ export default function OcrResultsModal({
       );
     } finally {
       setIsSavingPricing(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Manual document handlers
+  // -------------------------------------------------------------------------
+
+  const handleAddManualDocument = async () => {
+    if (!batchId) return;
+
+    const nextIndex = pricingRows.length;
+    const defaultCert =
+      certificationTypes.find((c) => c.code === "notarization") ||
+      certificationTypes[0];
+    const baseRate = pricingBaseRate || 65;
+
+    try {
+      const { data, error } = await supabase
+        .from("ocr_ai_analysis")
+        .insert({
+          batch_id: batchId,
+          file_id: null,
+          job_id: null,
+          entry_method: "manual",
+          processing_status: "manual",
+          document_index: nextIndex,
+          original_filename: `Manual Document ${nextIndex + 1}`,
+          ocr_word_count: 0,
+          ocr_page_count: 1,
+          assessed_complexity: "easy",
+          complexity_multiplier: 1.0,
+          billable_pages: 1.0,
+          base_rate: baseRate,
+          certification_price: 0,
+          is_excluded: false,
+          document_type: "other",
+          document_type_confidence: 1.0,
+          holder_name: "",
+          holder_name_normalized: "",
+          language: "en",
+          language_name: "English",
+          issuing_country: "",
+          issuing_country_code: "",
+          issuing_authority: "",
+          complexity_confidence: 1.0,
+          complexity_factors: [],
+          complexity_reasoning: "Manual entry",
+          document_count: 1,
+          actionable_items: [],
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Add new row directly to local state
+      const certUnitPrice = defaultCert?.price ?? 0;
+      const translationCost = calcTranslationCost(1.0, baseRate);
+      const certCost = certUnitPrice;
+      const newRow: PricingRow = {
+        analysisId: data.id,
+        fileId: "",
+        originalFilename: `Manual Document ${nextIndex + 1}`,
+        documentType: "other",
+        wordCount: 0,
+        pageCount: 1,
+        documentCount: 1,
+        subDocuments: null,
+        entryMethod: "manual",
+        processingStatus: "manual",
+        billablePages: 1.0,
+        billablePagesOverridden: false,
+        complexity: "easy",
+        complexityMultiplier: 1.0,
+        baseRate,
+        baseRateOverridden: false,
+        defaultCertTypeId: defaultCert?.id || "",
+        defaultCertTypeName: defaultCert?.name || "",
+        defaultCertUnitPrice: certUnitPrice,
+        documentCertifications: [
+          {
+            index: 0,
+            subDocumentType: "other",
+            subDocumentHolderName: "Document 1",
+            certificationTypeId: defaultCert?.id || "",
+            certificationTypeName: defaultCert?.name || "",
+            certificationPrice: certUnitPrice,
+          },
+        ],
+        hasPerDocCertOverrides: false,
+        certificationCost: certCost,
+        translationCost,
+        lineTotal: translationCost + certCost,
+        isExcluded: false,
+      };
+
+      setPricingRows((prev) => [...prev, newRow]);
+      setHasUnsavedChanges(true);
+      toast.success("Manual document added");
+    } catch (err) {
+      console.error("Failed to add manual document:", err);
+      toast.error("Failed to add document. Please try again.");
+    }
+  };
+
+  const handleDeleteManualDocument = async (analysisId: string) => {
+    if (!confirm("Delete this manual document?")) return;
+
+    try {
+      const { error } = await supabase
+        .from("ocr_ai_analysis")
+        .delete()
+        .eq("id", analysisId)
+        .eq("entry_method", "manual");
+
+      if (error) throw error;
+
+      setPricingRows((prev) => prev.filter((r) => r.analysisId !== analysisId));
+      setHasUnsavedChanges(true);
+      toast.success("Manual document deleted");
+    } catch (err) {
+      console.error("Failed to delete manual document:", err);
+      toast.error("Failed to delete document.");
+    }
+  };
+
+  const handleManualDocNameBlur = async (
+    analysisId: string,
+    name: string
+  ) => {
+    try {
+      await supabase
+        .from("ocr_ai_analysis")
+        .update({
+          original_filename: name,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", analysisId);
+    } catch (err) {
+      console.error("Failed to update document name:", err);
     }
   };
 
@@ -1764,17 +1933,19 @@ export default function OcrResultsModal({
   const renderPricingTab = () => {
     if (pricingRows.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="p-4 bg-gray-100 rounded-full mb-4">
-            <DollarSign className="w-8 h-8 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No pricing data available
-          </h3>
-          <p className="text-sm text-gray-500 text-center max-w-md">
-            Run AI analysis on the Analysis tab first, then pricing will be
-            generated automatically.
+        <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+          <FileText className="w-12 h-12 text-gray-300 mb-3" />
+          <p className="text-sm font-medium mb-1">No documents to price</p>
+          <p className="text-xs text-gray-400 mb-4">
+            OCR processing may have failed, or no files were uploaded.
           </p>
+          <button
+            onClick={handleAddManualDocument}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Document Manually
+          </button>
         </div>
       );
     }
@@ -1792,14 +1963,23 @@ export default function OcrResultsModal({
               quote
             </p>
           </div>
-          <button
-            onClick={() => setShowUseInQuoteModal(true)}
-            disabled={pricingActiveRows.length === 0}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            Use in Quote
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleAddManualDocument}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-md hover:bg-teal-100 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Document
+            </button>
+            <button
+              onClick={() => setShowUseInQuoteModal(true)}
+              disabled={pricingActiveRows.length === 0}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              Use in Quote
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Editable Table */}
@@ -1833,6 +2013,7 @@ export default function OcrResultsModal({
                   <th className="px-3 py-2.5 text-right font-medium text-gray-700">
                     Total
                   </th>
+                  <th className="w-10 px-2 py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -1853,11 +2034,46 @@ export default function OcrResultsModal({
                           />
                         </td>
                         <td className="px-3 py-2.5">
-                          <div
-                            className="font-medium text-gray-900 truncate max-w-[160px]"
-                            title={row.originalFilename}
-                          >
-                            {row.originalFilename}
+                          <div className="flex items-center gap-2">
+                            {row.entryMethod === "manual" && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded flex-shrink-0">
+                                Manual
+                              </span>
+                            )}
+                            {row.processingStatus === "failed" && row.entryMethod !== "manual" && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded flex-shrink-0">
+                                <AlertTriangle className="w-3 h-3" />
+                                OCR Failed
+                              </span>
+                            )}
+                            {row.entryMethod === "manual" ? (
+                              <input
+                                type="text"
+                                value={row.originalFilename || ""}
+                                onChange={(e) => {
+                                  const newName = e.target.value;
+                                  setPricingRows((prev) =>
+                                    prev.map((r) =>
+                                      r.analysisId === row.analysisId
+                                        ? { ...r, originalFilename: newName }
+                                        : r
+                                    )
+                                  );
+                                }}
+                                onBlur={(e) =>
+                                  handleManualDocNameBlur(row.analysisId, e.target.value)
+                                }
+                                className="text-sm border border-gray-200 rounded px-2 py-1 w-40 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                placeholder="Document name"
+                              />
+                            ) : (
+                              <div
+                                className="font-medium text-gray-900 truncate max-w-[160px]"
+                                title={row.originalFilename}
+                              >
+                                {row.originalFilename}
+                              </div>
+                            )}
                           </div>
                         </td>
                         <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
@@ -2054,12 +2270,26 @@ export default function OcrResultsModal({
                             </span>
                           )}
                         </td>
+                        <td className="px-2 py-2.5 text-center">
+                          {row.entryMethod === "manual" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteManualDocument(row.analysisId);
+                              }}
+                              className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="Delete manual document"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
                       </tr>
                       {/* Document count sub-row */}
                       <tr className={excluded ? "opacity-40 bg-gray-50" : "bg-gray-50/50"}>
                         <td />
                         <td
-                          colSpan={8}
+                          colSpan={9}
                           className={`px-3 py-1 pl-6 text-xs ${
                             row.documentCount > 1
                               ? "text-amber-600 font-medium"
