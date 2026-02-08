@@ -81,6 +81,17 @@ interface QuoteFile {
   created_at: string;
 }
 
+interface NormalizedFile {
+  id: string;
+  displayName: string;
+  storagePath: string;
+  bucket: string;
+  bucketPath: string;
+  fileSize: number;
+  mimeType: string;
+  source: 'quote' | 'ocr';
+}
+
 interface AIAnalysis {
   id: string;
   quote_file_id: string;
@@ -222,12 +233,20 @@ const getExpiryBadge = (expiresAt: string | null) => {
   }
 };
 
+// Helper: extract clean filename from storage_path by stripping timestamp prefix
+const extractFilename = (storagePath: string): string => {
+  if (!storagePath) return 'Unknown file';
+  const match = storagePath.match(/^\d+-[a-z0-9]+-(.+)$/);
+  return match ? match[1].replace(/_/g, ' ') : storagePath;
+};
+
 export default function AdminQuoteDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
   const [files, setFiles] = useState<QuoteFile[]>([]);
+  const [normalizedFiles, setNormalizedFiles] = useState<NormalizedFile[]>([]);
   const [analysis, setAnalysis] = useState<AIAnalysis[]>([]);
   const [hitlReviews, setHitlReviews] = useState<HITLReview[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -243,8 +262,9 @@ export default function AdminQuoteDetail() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showResendModal, setShowResendModal] = useState(false);
-  const [previewFile, setPreviewFile] = useState<QuoteFile | null>(null);
+  const [previewFile, setPreviewFile] = useState<NormalizedFile | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [resendCustomMessage, setResendCustomMessage] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [isSendingLink, setIsSendingLink] = useState(false);
@@ -258,6 +278,52 @@ export default function AdminQuoteDetail() {
   const [isSavingTax, setIsSavingTax] = useState(false);
 
   const { session: currentStaff } = useAdminAuthContext();
+
+  const fetchQuoteFiles = async (quoteId: string): Promise<NormalizedFile[]> => {
+    // Try quote_files first (customer upload route)
+    const { data: quoteFiles, error: qfError } = await supabase
+      .from('quote_files')
+      .select('id, original_filename, storage_path, file_size, mime_type')
+      .eq('quote_id', quoteId);
+
+    if (!qfError && quoteFiles && quoteFiles.length > 0) {
+      return quoteFiles.map(f => ({
+        id: f.id,
+        displayName: f.original_filename || f.storage_path,
+        storagePath: f.storage_path,
+        bucket: 'quote-files',
+        bucketPath: f.storage_path.includes('/') ? f.storage_path : `${quoteId}/${f.storage_path}`,
+        fileSize: f.file_size || 0,
+        mimeType: f.mime_type || 'application/pdf',
+        source: 'quote' as const,
+      }));
+    }
+
+    // Fallback: check ocr_batch_files via ocr_batches
+    const { data: ocrFiles, error: ocrError } = await supabase
+      .from('ocr_batch_files')
+      .select(`
+        id, filename, original_filename, storage_path, file_size, mime_type,
+        ocr_batches!inner(quote_id)
+      `)
+      .eq('ocr_batches.quote_id', quoteId)
+      .in('status', ['completed', 'pending', 'processing']);
+
+    if (!ocrError && ocrFiles && ocrFiles.length > 0) {
+      return ocrFiles.map((f: any) => ({
+        id: f.id,
+        displayName: f.filename || f.original_filename || extractFilename(f.storage_path),
+        storagePath: f.storage_path,
+        bucket: 'ocr-uploads',
+        bucketPath: f.storage_path,
+        fileSize: f.file_size || 0,
+        mimeType: f.mime_type || 'application/pdf',
+        source: 'ocr' as const,
+      }));
+    }
+
+    return [];
+  };
 
   useEffect(() => {
     if (id) {
@@ -289,12 +355,17 @@ export default function AdminQuoteDetail() {
       if (quoteError) throw quoteError;
       setQuote(quoteData as QuoteDetail);
 
+      // Fetch raw quote_files for certifications and analysis lookups
       const { data: filesData } = await supabase
         .from("quote_files")
         .select("*")
         .eq("quote_id", id)
         .order("sort_order");
       setFiles(filesData || []);
+
+      // Fetch normalized files from both sources for display/download
+      const normalized = await fetchQuoteFiles(id!);
+      setNormalizedFiles(normalized);
 
       const { data: analysisData } = await supabase
         .from("ai_analysis_results")
@@ -455,43 +526,39 @@ export default function AdminQuoteDetail() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const getStoragePath = (file: QuoteFile) => {
-    // If storage_path already includes a /, it's a full path; otherwise prefix with quote ID
-    return file.storage_path.includes('/')
-      ? file.storage_path
-      : `${id}/${file.storage_path}`;
-  };
+  const getSignedUrl = async (file: NormalizedFile): Promise<string | null> => {
+    const { data, error } = await supabase.storage
+      .from(file.bucket)
+      .createSignedUrl(file.bucketPath, 3600);
 
-  const openPreview = async (file: QuoteFile) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from('quote-files')
-        .createSignedUrl(getStoragePath(file), 3600);
-      if (error) throw error;
-      setPreviewUrl(data.signedUrl);
-      setPreviewFile(file);
-    } catch (err) {
-      console.error('Preview error:', err);
-      alert('Failed to load file preview');
+    if (error) {
+      console.error('Signed URL error:', error, 'bucket:', file.bucket, 'path:', file.bucketPath);
+      return null;
     }
+    return data?.signedUrl || null;
   };
 
-  const handleDownloadFile = async (file: QuoteFile) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from('quote-files')
-        .createSignedUrl(getStoragePath(file), 3600);
-      if (error) throw error;
+  const handleDownload = async (file: NormalizedFile) => {
+    const url = await getSignedUrl(file);
+    if (url) {
       const link = document.createElement('a');
-      link.href = data.signedUrl;
-      link.download = file.original_filename;
+      link.href = url;
+      link.download = file.displayName;
+      link.target = '_blank';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } catch (err) {
-      console.error('Download error:', err);
-      alert('Failed to download file');
+    } else {
+      alert('Failed to generate download URL');
     }
+  };
+
+  const handlePreview = async (file: NormalizedFile) => {
+    setPreviewFile(file);
+    setPreviewLoading(true);
+    const url = await getSignedUrl(file);
+    setPreviewUrl(url);
+    setPreviewLoading(false);
   };
 
   const hitlReview = hitlReviews[0] || null;
@@ -1211,38 +1278,42 @@ export default function AdminQuoteDetail() {
           <div className="bg-white rounded-lg border p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <FileText className="w-5 h-5 text-gray-400" />
-              Uploaded Files ({files.length})
+              Uploaded Files ({normalizedFiles.length})
             </h2>
 
-            {files.length > 0 ? (
+            {normalizedFiles.length > 0 ? (
               <div className="space-y-2">
-                {files.map((file) => (
+                {normalizedFiles.map((file) => (
                   <div
                     key={file.id}
                     className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg ${
-                      file.mime_type === 'application/pdf' || file.mime_type.startsWith('image/')
+                      file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')
                         ? 'cursor-pointer hover:bg-gray-100 transition-colors'
                         : ''
                     }`}
                     onClick={() => {
-                      if (file.mime_type === 'application/pdf' || file.mime_type.startsWith('image/')) {
-                        openPreview(file);
+                      if (file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) {
+                        handlePreview(file);
                       }
                     }}
                   >
                     <div className="flex items-center gap-3">
                       <FileText className="w-5 h-5 text-gray-400" />
                       <div>
-                        <p className="font-medium text-sm">{file.original_filename}</p>
+                        <p className="font-medium text-sm">{file.displayName}</p>
                         <p className="text-xs text-gray-500">
-                          {formatFileSize(file.file_size)} • {file.mime_type}
+                          {file.fileSize > 0 ? formatFileSize(file.fileSize) : ''}
+                          {file.fileSize > 0 && ' • '}{file.mimeType}
+                          {file.source === 'ocr' && (
+                            <span className="ml-2 text-purple-600">via OCR</span>
+                          )}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      {(file.mime_type === 'application/pdf' || file.mime_type.startsWith('image/')) && (
+                      {(file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) && (
                         <button
-                          onClick={() => openPreview(file)}
+                          onClick={() => handlePreview(file)}
                           className="text-blue-600 hover:text-blue-700"
                           title="Preview"
                         >
@@ -1250,7 +1321,7 @@ export default function AdminQuoteDetail() {
                         </button>
                       )}
                       <button
-                        onClick={() => handleDownloadFile(file)}
+                        onClick={() => handleDownload(file)}
                         className="text-teal-600 hover:text-teal-700"
                         title="Download"
                       >
@@ -1261,7 +1332,7 @@ export default function AdminQuoteDetail() {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500">No files uploaded</p>
+              <p className="text-gray-500 italic">No files uploaded</p>
             )}
           </div>
 
@@ -1276,7 +1347,8 @@ export default function AdminQuoteDetail() {
               {analysis.length > 1 && (
                 <div className="flex border-b mb-4 overflow-x-auto">
                   {analysis.map((item, index) => {
-                    const file = files.find((f) => f.id === item.quote_file_id);
+                    const nf = normalizedFiles.find((f) => f.id === item.quote_file_id);
+                    const qf = files.find((f) => f.id === item.quote_file_id);
                     return (
                       <button
                         key={item.id}
@@ -1287,7 +1359,7 @@ export default function AdminQuoteDetail() {
                             : "border-transparent text-gray-500 hover:text-gray-700"
                         }`}
                       >
-                        {file?.original_filename || `Document ${index + 1}`}
+                        {nf?.displayName || qf?.original_filename || `Document ${index + 1}`}
                       </button>
                     );
                   })}
@@ -1624,9 +1696,13 @@ export default function AdminQuoteDetail() {
                     Documents
                   </p>
                   {analysis.map((item, index) => {
-                    const file = files.find(
+                    const nf = normalizedFiles.find(
                       (f) => f.id === item.quote_file_id,
                     );
+                    const qf = files.find(
+                      (f) => f.id === item.quote_file_id,
+                    );
+                    const fileName = nf?.displayName || qf?.original_filename || `Document ${index + 1}`;
                     return (
                       <div
                         key={item.id}
@@ -1634,9 +1710,9 @@ export default function AdminQuoteDetail() {
                       >
                         <span
                           className="text-gray-600 truncate max-w-[60%]"
-                          title={file?.original_filename}
+                          title={fileName}
                         >
-                          {file?.original_filename || `Document ${index + 1}`}
+                          {fileName}
                         </span>
                         <span className="font-medium">
                           ${Number(item.line_total || 0).toFixed(2)}
@@ -2109,23 +2185,30 @@ export default function AdminQuoteDetail() {
       )}
 
       {/* File Preview Modal */}
-      {previewFile && previewUrl && (
+      {previewFile && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg w-[90vw] h-[90vh] max-w-5xl flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-gray-400" />
-                <h3 className="font-medium text-gray-900 truncate max-w-md">
-                  {previewFile.original_filename}
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                <h3 className="font-medium text-gray-900 truncate">
+                  {previewFile.displayName}
                 </h3>
-                <span className="text-xs text-gray-500">
-                  ({formatFileSize(previewFile.file_size)})
-                </span>
+                {previewFile.fileSize > 0 && (
+                  <span className="text-xs text-gray-500 flex-shrink-0">
+                    ({formatFileSize(previewFile.fileSize)})
+                  </span>
+                )}
+                {previewFile.source === 'ocr' && (
+                  <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded flex-shrink-0">
+                    OCR
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <button
-                  onClick={() => handleDownloadFile(previewFile)}
+                  onClick={() => handleDownload(previewFile)}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm text-teal-600 border border-teal-300 rounded-md hover:bg-teal-50"
                 >
                   <Download className="w-4 h-4" />
@@ -2142,23 +2225,32 @@ export default function AdminQuoteDetail() {
 
             {/* Content */}
             <div className="flex-1 overflow-auto p-1 bg-gray-100">
-              {previewFile.mime_type === 'application/pdf' ? (
+              {previewLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-500">Loading preview...</span>
+                </div>
+              ) : !previewUrl ? (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-gray-500">Failed to load preview. Try downloading instead.</p>
+                </div>
+              ) : previewFile.mimeType === 'application/pdf' ? (
                 <iframe
                   src={`${previewUrl}#toolbar=1`}
                   className="w-full h-full rounded"
-                  title={previewFile.original_filename}
+                  title={previewFile.displayName}
                 />
-              ) : previewFile.mime_type.startsWith('image/') ? (
-                <div className="flex items-center justify-center h-full">
+              ) : previewFile.mimeType.startsWith('image/') ? (
+                <div className="flex items-center justify-center h-full p-4">
                   <img
                     src={previewUrl}
-                    alt={previewFile.original_filename}
-                    className="max-w-full max-h-full object-contain"
+                    alt={previewFile.displayName}
+                    className="max-w-full max-h-full object-contain rounded shadow-lg"
                   />
                 </div>
               ) : (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  Preview not available for this file type
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-gray-500">Preview not available for this file type. Use download.</p>
                 </div>
               )}
             </div>
