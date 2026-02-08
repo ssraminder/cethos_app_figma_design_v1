@@ -71,9 +71,17 @@ interface AnalysisJob {
   totalFiles?: number;
   completedFiles?: number;
   failedFiles?: number;
+  totalDocumentsFound?: number;
   startedAt?: string;
   completedAt?: string;
   staffName?: string;
+}
+
+interface SubDocument {
+  type: string;
+  holderName: string;
+  pageRange: string;
+  language: string;
 }
 
 interface AnalysisResult {
@@ -85,6 +93,7 @@ interface AnalysisResult {
   documentType: string;
   documentTypeConfidence: number;
   holderName: string;
+  holderNameNormalized: string;
   language: string;
   languageName: string;
   issuingCountry: string;
@@ -97,20 +106,29 @@ interface AnalysisResult {
   billablePages: number;
   complexity: "easy" | "medium" | "hard";
   complexityConfidence: number;
+  complexityFactors: string[];
   complexityReasoning: string;
+  documentCount: number;
+  subDocuments: SubDocument[] | null;
   actionableItems: Array<{
     type: "warning" | "note" | "suggestion";
     message: string;
   }>;
+  processingStatus: "completed" | "failed";
+  errorMessage: string | null;
 }
 
 interface OcrResultsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  batchId: string;
+  // Existing single-file mode
+  fileId?: string;
+  fileName?: string;
   showActions?: boolean;
   onApplyToQuote?: (data: OcrApplyData) => void;
   mode?: "view" | "select";
+  // Batch mode
+  batchId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -382,11 +400,15 @@ function SkeletonTable() {
 export default function OcrResultsModal({
   isOpen,
   onClose,
+  fileId,
+  fileName,
   batchId,
   showActions = false,
   onApplyToQuote,
   mode = "view",
 }: OcrResultsModalProps) {
+  const isBatchMode = !!batchId;
+
   // Existing states
   const [isLoading, setIsLoading] = useState(true);
   const [files, setFiles] = useState<OcrBatchFile[]>([]);
@@ -400,13 +422,16 @@ export default function OcrResultsModal({
   const [expandedPage, setExpandedPage] = useState<number | null>(null);
   const [copiedPage, setCopiedPage] = useState<number | null>(null);
 
-  // Tab state
+  // Single-file mode states
+  const [singleFilePages, setSingleFilePages] = useState<OcrPageData[]>([]);
+
+  // Tab state (batch mode only)
   const [activeTab, setActiveTab] = useState<string>("ocr");
 
-  // Selection state
+  // Selection state (batch mode only)
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
 
-  // Analysis state
+  // Analysis state (batch mode only)
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState<string | null>(null);
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
@@ -589,9 +614,60 @@ export default function OcrResultsModal({
     [filePageData]
   );
 
+  // Fetch single file page data
+  const fetchSingleFileData = useCallback(async () => {
+    if (!fileId) return;
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/ocr-batch-results?fileId=${encodeURIComponent(fileId)}&includeText=true`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file results (${response.status})`);
+      }
+
+      const data = await response.json();
+      const pages: OcrPageData[] = (data.file?.pages || []).map(
+        (p: Record<string, unknown>) => ({
+          page_number: p.page_number as number,
+          word_count: (p.word_count as number) || 0,
+          confidence_score: (p.confidence_score as number) ?? null,
+          raw_text: (p.raw_text as string) ?? null,
+          detected_language: (p.detected_language as string) ?? null,
+          language_confidence: (p.language_confidence as number) ?? null,
+        })
+      );
+
+      setSingleFilePages(pages);
+    } catch (err) {
+      console.error("Error fetching single file data:", err);
+      setError((err as Error).message || "Failed to load file results");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fileId]);
+
   useEffect(() => {
     if (isOpen && batchId) {
       fetchBatchData();
+    } else if (isOpen && fileId) {
+      fetchSingleFileData();
     }
     if (!isOpen) {
       setFiles([]);
@@ -604,8 +680,9 @@ export default function OcrResultsModal({
       setSelectedFileIds(new Set());
       setActiveTab("ocr");
       setAnalyseError(null);
+      setSingleFilePages([]);
     }
-  }, [isOpen, batchId, fetchBatchData]);
+  }, [isOpen, batchId, fileId, fetchBatchData, fetchSingleFileData]);
 
   // -------------------------------------------------------------------------
   // Polling for background jobs
@@ -684,8 +761,18 @@ export default function OcrResultsModal({
       if (data.mode === "sync") {
         setAnalysisResults(data.results as AnalysisResult[]);
         setAnalysisJob({
-          ...(data as unknown as AnalysisJob),
+          id: data.jobId as string,
           status: "completed",
+          totalFiles: fileIdsToSend.length,
+          completedFiles: (data.results as AnalysisResult[]).filter(
+            (r: AnalysisResult) => r.processingStatus === "completed"
+          ).length,
+          failedFiles: (data.results as AnalysisResult[]).filter(
+            (r: AnalysisResult) => r.processingStatus === "failed"
+          ).length,
+          totalDocumentsFound: (data.totalDocumentsFound as number) || undefined,
+          completedAt: new Date().toISOString(),
+          staffName: staffSession.staffName,
         });
         setActiveTab("analysis");
         toast.success("AI analysis complete");
@@ -779,17 +866,29 @@ export default function OcrResultsModal({
   };
 
   const handleCopyAllText = async () => {
-    // Copy all loaded text from all expanded files
     const allText: string[] = [];
-    for (const row of displayRows) {
-      for (const file of row.files) {
-        const pages = filePageData[file.id];
-        if (pages) {
-          for (const p of pages) {
-            if (p.raw_text) {
-              allText.push(
-                `--- ${row.filename} - Page ${p.page_number} ---\n${p.raw_text}`
-              );
+
+    if (!isBatchMode && singleFilePages.length > 0) {
+      // Single-file mode: copy all page text
+      for (const p of singleFilePages) {
+        if (p.raw_text) {
+          allText.push(
+            `--- ${fileName || "File"} - Page ${p.page_number} ---\n${p.raw_text}`
+          );
+        }
+      }
+    } else {
+      // Batch mode: copy all loaded text from expanded files
+      for (const row of displayRows) {
+        for (const file of row.files) {
+          const pages = filePageData[file.id];
+          if (pages) {
+            for (const p of pages) {
+              if (p.raw_text) {
+                allText.push(
+                  `--- ${row.filename} - Page ${p.page_number} ---\n${p.raw_text}`
+                );
+              }
             }
           }
         }
@@ -797,7 +896,11 @@ export default function OcrResultsModal({
     }
 
     if (allText.length === 0) {
-      toast.error("No text available. Expand files to load their text first.");
+      toast.error(
+        isBatchMode
+          ? "No text available. Expand files to load their text first."
+          : "No text available."
+      );
       return;
     }
 
@@ -814,7 +917,20 @@ export default function OcrResultsModal({
   const handleApplyToQuote = () => {
     if (!onApplyToQuote) return;
 
-    // Get all page data across all files
+    if (!isBatchMode) {
+      // Single-file mode
+      const sfPages = singleFilePages.reduce((s, p) => s + (p.page_number ? 1 : 0), 0);
+      const sfWords = singleFilePages.reduce((s, p) => s + p.word_count, 0);
+      const primaryLanguage = getMostCommonLanguage(singleFilePages);
+      onApplyToQuote({
+        pages: sfPages || singleFilePages.length,
+        words: sfWords,
+        language: primaryLanguage || "en",
+      });
+      return;
+    }
+
+    // Batch mode: get all page data across all files
     const allPages: OcrPageData[] = [];
     for (const row of displayRows) {
       for (const file of row.files) {
@@ -844,6 +960,7 @@ export default function OcrResultsModal({
       "Words",
       "Billable Pages",
       "Complexity",
+      "Doc Count",
       "Notes",
     ];
     const rows = analysisResults.map((r) => [
@@ -856,6 +973,7 @@ export default function OcrResultsModal({
       r.wordCount,
       r.billablePages,
       r.complexity || "",
+      r.documentCount || 1,
       (r.actionableItems || []).map((a) => a.message).join("; "),
     ]);
 
@@ -871,13 +989,268 @@ export default function OcrResultsModal({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ai-analysis-${batchId.slice(0, 8)}.csv`;
+    a.download = `ai-analysis-${batchId?.slice(0, 8) || "export"}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const toggleExpandedPage = (pageNum: number) => {
     setExpandedPage((prev) => (prev === pageNum ? null : pageNum));
+  };
+
+  // -------------------------------------------------------------------------
+  // Render: Single-file view (no tabs, no checkboxes)
+  // -------------------------------------------------------------------------
+
+  const renderSingleFileView = () => {
+    if (isLoading) {
+      return (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+          <SkeletonTable />
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center py-12">
+          <div className="p-3 bg-red-50 rounded-full mb-4">
+            <AlertCircle className="w-8 h-8 text-red-500" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Failed to Load Results
+          </h3>
+          <p className="text-sm text-gray-600 mb-4 text-center max-w-md">
+            {error}
+          </p>
+          <button
+            onClick={fetchSingleFileData}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    if (singleFilePages.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-12">
+          <div className="p-3 bg-gray-100 rounded-full mb-4">
+            <FileText className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No OCR Results
+          </h3>
+          <p className="text-sm text-gray-600 text-center max-w-md">
+            No page data was found for this file.
+          </p>
+        </div>
+      );
+    }
+
+    const sfTotalPages = singleFilePages.length;
+    const sfTotalWords = singleFilePages.reduce(
+      (sum, p) => sum + p.word_count,
+      0
+    );
+    const sfAvgConfidence =
+      singleFilePages.filter((p) => p.confidence_score != null).length > 0
+        ? singleFilePages.reduce(
+            (sum, p) => sum + (p.confidence_score || 0),
+            0
+          ) /
+          singleFilePages.filter((p) => p.confidence_score != null).length
+        : 0;
+    const sfPrimaryLang = getMostCommonLanguage(singleFilePages);
+
+    return (
+      <div className="space-y-4">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <FileText className="w-4 h-4 text-blue-600" />
+              <span className="text-xs font-medium text-blue-700">Pages</span>
+            </div>
+            <div className="text-xl font-bold text-blue-900">{sfTotalPages}</div>
+          </div>
+
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <CheckCircle className="w-4 h-4 text-green-600" />
+              <span className="text-xs font-medium text-green-700">Words</span>
+            </div>
+            <div className="text-xl font-bold text-green-900">
+              {sfTotalWords.toLocaleString()}
+            </div>
+          </div>
+
+          <div
+            className={`p-3 border rounded-lg ${confidenceBgColor(sfAvgConfidence * 100)}`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <CheckCircle
+                className={`w-4 h-4 ${confidenceIconColor(sfAvgConfidence * 100)}`}
+              />
+              <span className="text-xs font-medium text-gray-700">
+                Confidence
+              </span>
+            </div>
+            <div
+              className={`text-xl font-bold ${confidenceColor(sfAvgConfidence * 100)}`}
+            >
+              {sfAvgConfidence > 0
+                ? `${(sfAvgConfidence * 100).toFixed(1)}%`
+                : "N/A"}
+            </div>
+          </div>
+
+          <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <Globe className="w-4 h-4 text-purple-600" />
+              <span className="text-xs font-medium text-purple-700">
+                Language
+              </span>
+            </div>
+            <div className="text-lg font-bold text-purple-900">
+              {sfPrimaryLang
+                ? `${getLanguageFlag(sfPrimaryLang)} ${getLanguageName(sfPrimaryLang)}`
+                : "Unknown"}
+            </div>
+          </div>
+        </div>
+
+        {/* Per-page results table */}
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-700">
+                    Page
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-700">
+                    Words
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-700">
+                    Confidence
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-700">
+                    Language
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-700">
+                    Text
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {singleFilePages.map((page) => (
+                  <React.Fragment key={page.page_number}>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-4 py-2 font-medium text-gray-900">
+                        {page.page_number}
+                      </td>
+                      <td className="px-4 py-2 text-gray-700">
+                        {page.word_count.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span
+                          className={`font-medium ${confidenceColor(
+                            (page.confidence_score || 0) * 100
+                          )}`}
+                        >
+                          {page.confidence_score != null
+                            ? `${(page.confidence_score * 100).toFixed(1)}%`
+                            : "N/A"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-gray-700">
+                        {page.detected_language ? (
+                          <span>
+                            {getLanguageFlag(page.detected_language)}{" "}
+                            {getLanguageName(page.detected_language)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">N/A</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2">
+                        {page.raw_text ? (
+                          <button
+                            onClick={() => toggleExpandedPage(page.page_number)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                          >
+                            {expandedPage === page.page_number ? (
+                              <>
+                                <EyeOff className="w-3.5 h-3.5" />
+                                Hide
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="w-3.5 h-3.5" />
+                                View
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">No text</span>
+                        )}
+                      </td>
+                    </tr>
+
+                    {expandedPage === page.page_number && page.raw_text && (
+                      <tr>
+                        <td colSpan={5} className="p-0">
+                          <div className="mx-4 my-3 border border-gray-200 rounded-lg overflow-hidden">
+                            <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
+                              <span className="text-sm font-medium text-gray-700">
+                                Page {page.page_number} Text
+                              </span>
+                              <button
+                                onClick={() =>
+                                  handleCopyPageText(
+                                    page.page_number,
+                                    page.raw_text!
+                                  )
+                                }
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                              >
+                                {copiedPage === page.page_number ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-green-600" />
+                                    Copied
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    Copy
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                            <div className="p-4 max-h-[300px] overflow-y-auto bg-white">
+                              <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono leading-relaxed">
+                                {page.raw_text}
+                              </pre>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // -------------------------------------------------------------------------
@@ -1247,23 +1620,35 @@ export default function OcrResultsModal({
       <div className="space-y-4">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-gray-600">
-            Analysis completed{" "}
-            {analysisJob.completedAt
-              ? new Date(analysisJob.completedAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                }) +
-                " at " +
-                new Date(analysisJob.completedAt).toLocaleTimeString([], {
-                  hour: "numeric",
-                  minute: "2-digit",
-                })
-              : ""}{" "}
-            ({analysisResults.length} document
-            {analysisResults.length !== 1 ? "s" : ""})
-          </p>
+          <div className="text-sm text-gray-600">
+            <p>
+              Analysis completed{" "}
+              {analysisJob.completedAt
+                ? new Date(analysisJob.completedAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  }) +
+                  " at " +
+                  new Date(analysisJob.completedAt).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })
+                : ""}
+            </p>
+            <p>
+              {analysisResults.length} file
+              {analysisResults.length !== 1 ? "s" : ""} analyzed
+              {analysisJob.totalDocumentsFound != null &&
+                analysisJob.totalDocumentsFound > 0 && (
+                  <>
+                    {" \u00B7 "}
+                    {analysisJob.totalDocumentsFound} document
+                    {analysisJob.totalDocumentsFound !== 1 ? "s" : ""} detected
+                  </>
+                )}
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleReanalyse}
@@ -1308,6 +1693,88 @@ export default function OcrResultsModal({
 
   if (!isOpen) return null;
 
+  // ---------------------------------------------------------------------------
+  // Single-file mode render
+  // ---------------------------------------------------------------------------
+  if (!isBatchMode) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <FileText className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  OCR Results
+                </h2>
+                {fileName && (
+                  <p className="text-sm text-gray-500 mt-0.5">{fileName}</p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {renderSingleFileView()}
+          </div>
+
+          {/* Footer */}
+          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+            <div className="flex items-center gap-2">
+              {showActions && !isLoading && !error && singleFilePages.length > 0 && (
+                <button
+                  onClick={handleCopyAllText}
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
+                >
+                  {copiedAll ? (
+                    <>
+                      <Check className="w-4 h-4 text-green-600" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      Copy All Text
+                    </>
+                  )}
+                </button>
+              )}
+              {showActions && onApplyToQuote && !isLoading && !error && singleFilePages.length > 0 && (
+                <button
+                  onClick={handleApplyToQuote}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Apply to Quote
+                </button>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Batch mode render
+  // ---------------------------------------------------------------------------
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -1656,18 +2123,26 @@ function AnalysisResultCardComponent({
   const cStyle = complexityStyles[result.complexity] || complexityStyles.medium;
   const docLabel =
     documentTypeLabels[result.documentType] || result.documentType;
+  const docCount = result.documentCount || 1;
 
   return (
     <article className="border border-gray-200 rounded-lg p-4 bg-white hover:border-gray-300 hover:shadow-sm transition-all">
       {/* Filename header */}
-      <div className="flex items-center gap-2 mb-3">
-        <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
-        <h4 className="font-semibold text-gray-900 text-sm">
-          {result.originalFilename}
-        </h4>
-        {result.chunkCount > 1 && (
-          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
-            {result.chunkCount} chunks reassembled
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
+          <h4 className="font-semibold text-gray-900 text-sm truncate">
+            {result.originalFilename}
+          </h4>
+          {result.chunkCount > 1 && (
+            <span className="flex-shrink-0 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+              {result.chunkCount} chunks reassembled
+            </span>
+          )}
+        </div>
+        {docCount > 1 && (
+          <span className="flex-shrink-0 text-xs font-medium bg-blue-50 text-blue-600 px-2 py-0.5 rounded ml-2">
+            {docCount} docs detected
           </span>
         )}
       </div>
@@ -1735,6 +2210,40 @@ function AnalysisResultCardComponent({
           </span>
         </div>
       </div>
+
+      {/* Sub-Documents */}
+      {result.subDocuments && result.subDocuments.length > 0 && (
+        <div className="border-t border-gray-100 pt-3 mt-1 mb-1">
+          <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+            Sub-Documents
+          </p>
+          <ul className="space-y-1">
+            {result.subDocuments.map((sub, idx) => {
+              const subTypeLabel =
+                documentTypeLabels[sub.type] || sub.type;
+              return (
+                <li
+                  key={idx}
+                  className="flex items-start gap-1.5 text-sm text-gray-700"
+                >
+                  <span className="flex-shrink-0">{"\u2022"}</span>
+                  <span>
+                    {subTypeLabel}
+                    {sub.holderName && <> &mdash; {sub.holderName}</>}
+                    {sub.pageRange && (
+                      <span className="text-gray-400">
+                        {" "}
+                        (pp. {sub.pageRange}
+                        {sub.language && `, ${sub.language}`})
+                      </span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {/* Actionable Items */}
       {result.actionableItems && result.actionableItems.length > 0 && (
