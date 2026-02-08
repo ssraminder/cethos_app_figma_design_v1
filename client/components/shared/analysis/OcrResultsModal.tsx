@@ -207,6 +207,64 @@ interface OcrResultsModalProps {
 }
 
 // ---------------------------------------------------------------------------
+// Normalize analysis results — map snake_case pricing fields to camelCase
+// (Edge function may not map newly-added pricing columns)
+// ---------------------------------------------------------------------------
+
+function normalizeAnalysisResults(
+  results: Record<string, unknown>[]
+): AnalysisResult[] {
+  return results.map((r) => {
+    const result = r as AnalysisResult & Record<string, unknown>;
+    return {
+      ...result,
+      pricingSavedAt:
+        result.pricingSavedAt ?? (result.pricing_saved_at as string | null) ?? null,
+      pricingBillablePages:
+        result.pricingBillablePages ??
+        (result.pricing_billable_pages != null
+          ? Number(result.pricing_billable_pages)
+          : null),
+      pricingComplexity:
+        result.pricingComplexity ??
+        (result.pricing_complexity as AnalysisResult["pricingComplexity"]) ??
+        null,
+      pricingComplexityMultiplier:
+        result.pricingComplexityMultiplier ??
+        (result.pricing_complexity_multiplier != null
+          ? Number(result.pricing_complexity_multiplier)
+          : null),
+      pricingBaseRate:
+        result.pricingBaseRate ??
+        (result.pricing_base_rate != null
+          ? Number(result.pricing_base_rate)
+          : null),
+      pricingCertificationTypeId:
+        result.pricingCertificationTypeId ??
+        (result.pricing_certification_type_id as string | null) ??
+        null,
+      pricingCertificationUnitPrice:
+        result.pricingCertificationUnitPrice ??
+        (result.pricing_certification_unit_price != null
+          ? Number(result.pricing_certification_unit_price)
+          : null),
+      pricingIsExcluded:
+        result.pricingIsExcluded ??
+        (result.pricing_is_excluded as boolean | null) ??
+        null,
+      pricingIsBillableOverridden:
+        result.pricingIsBillableOverridden ??
+        (result.pricing_is_billable_overridden as boolean | null) ??
+        null,
+      pricingDocumentCertifications:
+        result.pricingDocumentCertifications ??
+        (result.pricing_document_certifications as AnalysisResult["pricingDocumentCertifications"]) ??
+        null,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Language helpers
 // ---------------------------------------------------------------------------
 
@@ -662,7 +720,7 @@ export default function OcrResultsModal({
           const analysisData = await analysisRes.json();
           if (analysisData.success && analysisData.job) {
             setAnalysisJob(analysisData.job);
-            setAnalysisResults(analysisData.results || []);
+            setAnalysisResults(normalizeAnalysisResults(analysisData.results || []));
           }
         }
       } catch {
@@ -836,7 +894,7 @@ export default function OcrResultsModal({
         const data = await res.json();
         if (data.success && data.job) {
           setAnalysisJob(data.job);
-          setAnalysisResults(data.results || []);
+          setAnalysisResults(normalizeAnalysisResults(data.results || []));
 
           if (["completed", "failed", "partial"].includes(data.job.status)) {
             clearInterval(interval);
@@ -1343,7 +1401,7 @@ export default function OcrResultsModal({
       const data = response.data as Record<string, unknown>;
 
       if (data.mode === "sync") {
-        setAnalysisResults(data.results as AnalysisResult[]);
+        setAnalysisResults(normalizeAnalysisResults(data.results as Record<string, unknown>[]));
         setAnalysisJob({
           id: data.jobId as string,
           status: "completed",
@@ -1404,7 +1462,7 @@ export default function OcrResultsModal({
       const data = await res.json();
       if (data.success && data.job) {
         setAnalysisJob(data.job);
-        setAnalysisResults(data.results || []);
+        setAnalysisResults(normalizeAnalysisResults(data.results || []));
       }
     } catch {
       toast.error("Failed to refresh status");
