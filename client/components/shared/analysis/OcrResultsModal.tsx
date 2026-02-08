@@ -1285,7 +1285,7 @@ export default function OcrResultsModal({
             pricing_is_billable_overridden: upd.pricingIsBillableOverridden,
             pricing_document_certifications: upd.pricingDocumentCertifications,
             pricing_saved_at: new Date().toISOString(),
-            pricing_saved_by: staffSession.staffName || null,
+            pricing_saved_by_staff_id: staffSession.staffId || null,
           })
           .eq("id", upd.analysisId);
 
