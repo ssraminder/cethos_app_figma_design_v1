@@ -36,16 +36,17 @@ export function calculateDocumentBillable(
 
 /**
  * Calculate translation cost for a document
- * Formula: CEIL(billable × base_rate × lang_mult / 2.50) × 2.50
+ * Formula: billable × CEIL(base_rate × lang_mult / 2.50) × 2.50
+ * Rounding applies to the per-page rate, NOT the final total.
  */
 export function calculateTranslationCost(
   billablePages: number,
   baseRate: number,
   languageMultiplier: number
 ): number {
-  const raw = billablePages * baseRate * languageMultiplier;
-  // Round UP to nearest $2.50
-  return Math.ceil(raw / 2.5) * 2.5;
+  if (billablePages === 0) return 0;
+  const perPageRate = Math.ceil((baseRate * languageMultiplier) / 2.5) * 2.5;
+  return billablePages * perPageRate;
 }
 
 /**
