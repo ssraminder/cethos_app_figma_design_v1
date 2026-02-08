@@ -265,7 +265,7 @@ export default function AdminQuoteDetail() {
           *,
           customer:customers(id, full_name, email, phone, customer_type),
           quote_source:quote_sources(id, code, name),
-          source_language:languages!source_language_id(id, name, code),
+          source_language:languages!source_language_id(id, name, code, price_multiplier),
           target_language:languages!target_language_id(id, name, code),
           delivery_option:delivery_options!delivery_option_id(id, name, price, description),
           physical_delivery_option:delivery_options!physical_delivery_option_id(id, name, price)
@@ -1347,10 +1347,14 @@ export default function AdminQuoteDetail() {
                       </div>
                       <div className="p-4 space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Base Rate:</span>
+                          <span className="text-gray-500">Per Page Rate:</span>
                           <span className="font-medium">
                             $
-                            {Number(currentAnalysis.base_rate || 65).toFixed(2)}
+                            {(() => {
+                              const baseRate = Number(currentAnalysis.base_rate || 65);
+                              const langMult = (quote as any).source_language?.price_multiplier || 1.0;
+                              return (Math.ceil(baseRate * langMult / 2.5) * 2.5).toFixed(2);
+                            })()}
                             /page
                           </span>
                         </div>
