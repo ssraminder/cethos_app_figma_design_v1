@@ -1065,7 +1065,7 @@ export default function PreprocessOCRPage() {
           body: JSON.stringify({
             files: uploadedFiles,
             notes: `Preprocessed batch. Original files: ${readyFiles.map(f => `${f.name} (${f.pageCount} pages)`).join(', ')}`,
-            quote_id: mode === 'existing' && selectedQuote ? selectedQuote.id : null,
+            quoteId: mode === 'existing' && selectedQuote ? selectedQuote.id : null,
           }),
         }
       );
