@@ -455,11 +455,18 @@ export default function AdminQuoteDetail() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const getStoragePath = (file: QuoteFile) => {
+    // If storage_path already includes a /, it's a full path; otherwise prefix with quote ID
+    return file.storage_path.includes('/')
+      ? file.storage_path
+      : `${id}/${file.storage_path}`;
+  };
+
   const openPreview = async (file: QuoteFile) => {
     try {
       const { data, error } = await supabase.storage
         .from('quote-files')
-        .createSignedUrl(file.storage_path, 3600);
+        .createSignedUrl(getStoragePath(file), 3600);
       if (error) throw error;
       setPreviewUrl(data.signedUrl);
       setPreviewFile(file);
@@ -473,7 +480,7 @@ export default function AdminQuoteDetail() {
     try {
       const { data, error } = await supabase.storage
         .from('quote-files')
-        .createSignedUrl(file.storage_path, 3600);
+        .createSignedUrl(getStoragePath(file), 3600);
       if (error) throw error;
       const link = document.createElement('a');
       link.href = data.signedUrl;
