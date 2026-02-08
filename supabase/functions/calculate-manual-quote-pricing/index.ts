@@ -218,9 +218,9 @@ serve(async (req) => {
 
         // Get complexity multiplier
         const complexityMultipliers: Record<string, number> = {
-          easy: 0.8,
-          medium: 1.0,
-          hard: 1.5,
+          easy: 1.0,
+          medium: 1.15,
+          hard: 1.25,
         };
         const complexityMultiplier =
           complexityMultipliers[pricingData.complexity] || 1.0;

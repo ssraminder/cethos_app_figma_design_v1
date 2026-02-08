@@ -456,7 +456,9 @@ function calcTranslationCost(
   baseRate: number,
   languageMultiplier: number = 1.0
 ): number {
-  return Math.ceil((billablePages * baseRate * languageMultiplier) / 2.5) * 2.5;
+  if (billablePages === 0) return 0;
+  const perPageRate = Math.ceil((baseRate * languageMultiplier) / 2.5) * 2.5;
+  return billablePages * perPageRate;
 }
 
 // ---------------------------------------------------------------------------
