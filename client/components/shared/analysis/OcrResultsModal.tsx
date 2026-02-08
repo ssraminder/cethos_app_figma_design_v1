@@ -123,6 +123,23 @@ interface AnalysisResult {
   errorMessage: string | null;
 }
 
+interface DocumentCertification {
+  index: number;
+  subDocumentType: string;
+  subDocumentHolderName: string;
+  certificationTypeId: string;
+  certificationTypeName: string;
+  certificationPrice: number;
+}
+
+interface CertificationType {
+  id: string;
+  name: string;
+  code: string;
+  price: number;
+  is_active: boolean;
+}
+
 interface PricingRow {
   analysisId: string;
   fileId: string;
@@ -131,6 +148,7 @@ interface PricingRow {
   wordCount: number;
   pageCount: number;
   documentCount: number;
+  subDocuments: SubDocument[] | null;
 
   // Editable (initialized from AI analysis + settings)
   billablePages: number;
@@ -140,7 +158,17 @@ interface PricingRow {
   baseRate: number;
   baseRateOverridden: boolean;
 
+  // Certification — row-level default
+  defaultCertTypeId: string;
+  defaultCertTypeName: string;
+  defaultCertUnitPrice: number;
+
+  // Certification — per-document overrides
+  documentCertifications: DocumentCertification[];
+  hasPerDocCertOverrides: boolean;
+
   // Calculated
+  certificationCost: number;
   translationCost: number;
   lineTotal: number;
 }
@@ -497,9 +525,10 @@ export default function OcrResultsModal({
   const [pricingRows, setPricingRows] = useState<PricingRow[]>([]);
   const [pricingBaseRate, setPricingBaseRate] = useState<number>(0);
   const [pricingWordsPerPage, setPricingWordsPerPage] = useState<number>(225);
-  const [pricingCertPrice, setPricingCertPrice] = useState<number>(50);
+  const [certificationTypes, setCertificationTypes] = useState<CertificationType[]>([]);
   const [pricingRatesLoaded, setPricingRatesLoaded] = useState(false);
   const [showUseInQuoteModal, setShowUseInQuoteModal] = useState(false);
+  const [expandedCertRows, setExpandedCertRows] = useState<Set<string>>(new Set());
 
   // Grouped display rows
   const displayRows = useMemo(() => groupFiles(files), [files]);
@@ -748,6 +777,7 @@ export default function OcrResultsModal({
       setPricingRows([]);
       setPricingRatesLoaded(false);
       setShowUseInQuoteModal(false);
+      setExpandedCertRows(new Set());
     }
   }, [isOpen, batchId, fileId, fetchBatchData, fetchSingleFileData]);
 
@@ -826,19 +856,19 @@ export default function OcrResultsModal({
         setPricingBaseRate(br);
         setPricingWordsPerPage(wpp);
 
-        const { data: defaultCert } = await supabase
+        const { data: certTypes } = await supabase
           .from("certification_types")
-          .select("id, name, price")
-          .eq("code", "notarization")
-          .single();
+          .select("id, name, code, price, is_active")
+          .eq("is_active", true)
+          .order("sort_order");
 
-        setPricingCertPrice(defaultCert?.price || 50);
+        setCertificationTypes(certTypes || []);
         setPricingRatesLoaded(true);
       } catch {
         // Use defaults
         setPricingBaseRate(65);
         setPricingWordsPerPage(225);
-        setPricingCertPrice(50);
+        setCertificationTypes([]);
         setPricingRatesLoaded(true);
       }
     };
@@ -861,12 +891,33 @@ export default function OcrResultsModal({
       return;
     }
 
+    const defaultCert = certificationTypes.find(c => c.code === "notarization") || certificationTypes[0];
+
     const rows: PricingRow[] = completedResults.map((r) => {
       const mult = complexityMultipliers[r.complexity] || 1.0;
       const billable =
         r.billablePages ||
         recalcBillablePages(r.wordCount, mult, pricingWordsPerPage);
       const transCost = calcTranslationCost(billable, pricingBaseRate);
+
+      const docCount = r.documentCount || 1;
+      const subDocs = r.subDocuments || [];
+
+      // Build per-document certifications initialized with default
+      const docCerts: DocumentCertification[] = [];
+      for (let i = 0; i < docCount; i++) {
+        const subDoc = subDocs[i];
+        docCerts.push({
+          index: i,
+          subDocumentType: subDoc?.type || r.documentType || "other",
+          subDocumentHolderName: subDoc?.holderName || r.holderName || `Document ${i + 1}`,
+          certificationTypeId: defaultCert?.id || "",
+          certificationTypeName: defaultCert?.name || "",
+          certificationPrice: defaultCert?.price || 0,
+        });
+      }
+
+      const certCost = docCerts.reduce((sum, dc) => sum + dc.certificationPrice, 0);
 
       return {
         analysisId: r.id,
@@ -875,20 +926,27 @@ export default function OcrResultsModal({
         documentType: r.documentType,
         wordCount: r.wordCount,
         pageCount: r.pageCount,
-        documentCount: r.documentCount || 1,
+        documentCount: docCount,
+        subDocuments: r.subDocuments,
         billablePages: billable,
         billablePagesOverridden: false,
         complexity: r.complexity,
         complexityMultiplier: mult,
         baseRate: pricingBaseRate,
         baseRateOverridden: false,
+        defaultCertTypeId: defaultCert?.id || "",
+        defaultCertTypeName: defaultCert?.name || "",
+        defaultCertUnitPrice: defaultCert?.price || 0,
+        documentCertifications: docCerts,
+        hasPerDocCertOverrides: false,
+        certificationCost: certCost,
         translationCost: transCost,
-        lineTotal: transCost,
+        lineTotal: transCost + certCost,
       };
     });
 
     setPricingRows(rows);
-  }, [analysisResults, pricingRatesLoaded, pricingBaseRate, pricingWordsPerPage]);
+  }, [analysisResults, pricingRatesLoaded, pricingBaseRate, pricingWordsPerPage, certificationTypes]);
 
   // -------------------------------------------------------------------------
   // Pricing: computed totals
@@ -902,9 +960,12 @@ export default function OcrResultsModal({
     () => pricingRows.reduce((sum, r) => sum + r.translationCost, 0),
     [pricingRows]
   );
-  const pricingCertificationEstimate = pricingTotalDocuments * pricingCertPrice;
+  const pricingCertificationTotal = useMemo(
+    () => pricingRows.reduce((sum, r) => sum + r.certificationCost, 0),
+    [pricingRows]
+  );
   const pricingEstimatedTotal =
-    pricingTranslationSubtotal + pricingCertificationEstimate;
+    pricingTranslationSubtotal + pricingCertificationTotal;
 
   // Whether pricing tab should be visible
   const showPricingTab =
@@ -958,11 +1019,98 @@ export default function OcrResultsModal({
           updated.billablePages,
           updated.baseRate
         );
-        updated.lineTotal = updated.translationCost;
+        updated.lineTotal = updated.translationCost + updated.certificationCost;
 
         return updated;
       })
     );
+  };
+
+  // -------------------------------------------------------------------------
+  // Pricing: certification handlers
+  // -------------------------------------------------------------------------
+
+  const handleRowCertChange = (rowId: string, certTypeId: string) => {
+    const cert = certificationTypes.find((c) => c.id === certTypeId);
+    if (!cert) return;
+
+    setPricingRows((prev) =>
+      prev.map((row) => {
+        if (row.analysisId !== rowId) return row;
+
+        const updated = {
+          ...row,
+          defaultCertTypeId: cert.id,
+          defaultCertTypeName: cert.name,
+          defaultCertUnitPrice: cert.price,
+        };
+
+        // If no per-doc overrides yet, apply to all documents
+        if (!row.hasPerDocCertOverrides) {
+          updated.documentCertifications = row.documentCertifications.map((dc) => ({
+            ...dc,
+            certificationTypeId: cert.id,
+            certificationTypeName: cert.name,
+            certificationPrice: cert.price,
+          }));
+        }
+
+        updated.certificationCost = updated.documentCertifications.reduce(
+          (sum, dc) => sum + dc.certificationPrice,
+          0
+        );
+        updated.lineTotal = updated.translationCost + updated.certificationCost;
+
+        return updated;
+      })
+    );
+  };
+
+  const handleDocCertChange = (
+    rowId: string,
+    docIndex: number,
+    certTypeId: string
+  ) => {
+    const cert = certificationTypes.find((c) => c.id === certTypeId);
+    if (!cert) return;
+
+    setPricingRows((prev) =>
+      prev.map((row) => {
+        if (row.analysisId !== rowId) return row;
+
+        const updatedDocCerts = row.documentCertifications.map((dc) => {
+          if (dc.index !== docIndex) return dc;
+          return {
+            ...dc,
+            certificationTypeId: cert.id,
+            certificationTypeName: cert.name,
+            certificationPrice: cert.price,
+          };
+        });
+
+        const certCost = updatedDocCerts.reduce(
+          (sum, dc) => sum + dc.certificationPrice,
+          0
+        );
+
+        return {
+          ...row,
+          documentCertifications: updatedDocCerts,
+          hasPerDocCertOverrides: true,
+          certificationCost: certCost,
+          lineTotal: row.translationCost + certCost,
+        };
+      })
+    );
+  };
+
+  const toggleCertExpand = (rowId: string) => {
+    setExpandedCertRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
   };
 
   // -------------------------------------------------------------------------
@@ -1249,23 +1397,32 @@ export default function OcrResultsModal({
       "Words",
       "Billable Pages",
       "Complexity",
+      "Certification",
+      "Cert Cost",
       "Base Rate",
       "Translation Cost",
       "Doc Count",
+      "Line Total",
     ];
-    const rows = pricingRows.map((r) => [
-      r.originalFilename,
-      documentTypeLabels[r.documentType] || r.documentType,
-      r.wordCount,
-      r.billablePages,
-      r.complexity,
-      r.baseRate.toFixed(2),
-      r.translationCost.toFixed(2),
-      r.documentCount,
-    ]);
+    const rows: (string | number)[][] = [];
+    pricingRows.forEach((r) => {
+      rows.push([
+        r.originalFilename,
+        documentTypeLabels[r.documentType] || r.documentType,
+        r.wordCount,
+        r.billablePages,
+        r.complexity,
+        r.defaultCertTypeName,
+        r.certificationCost.toFixed(2),
+        r.baseRate.toFixed(2),
+        r.translationCost.toFixed(2),
+        r.documentCount,
+        r.lineTotal.toFixed(2),
+      ]);
+    });
 
     // Summary rows
-    rows.push([] as unknown as (string | number)[]);
+    rows.push([]);
     rows.push([
       "Translation Subtotal",
       "",
@@ -1273,18 +1430,24 @@ export default function OcrResultsModal({
       "",
       "",
       "",
+      "",
+      "",
       pricingTranslationSubtotal.toFixed(2),
+      "",
       "",
     ]);
     rows.push([
-      "Certification Estimate",
+      "Certification Total",
       "",
       "",
       "",
       "",
       "",
-      pricingCertificationEstimate.toFixed(2),
+      pricingCertificationTotal.toFixed(2),
+      "",
+      "",
       pricingTotalDocuments,
+      "",
     ]);
     rows.push([
       "Estimated Total",
@@ -1293,8 +1456,11 @@ export default function OcrResultsModal({
       "",
       "",
       "",
-      pricingEstimatedTotal.toFixed(2),
       "",
+      "",
+      "",
+      "",
+      pricingEstimatedTotal.toFixed(2),
     ]);
 
     const csv = [headers, ...rows]
@@ -1394,6 +1560,9 @@ export default function OcrResultsModal({
                   <th className="px-3 py-2.5 text-center font-medium text-gray-700">
                     Complexity
                   </th>
+                  <th className="px-3 py-2.5 text-left font-medium text-gray-700">
+                    Certification
+                  </th>
                   <th className="px-3 py-2.5 text-right font-medium text-gray-700">
                     Rate
                   </th>
@@ -1411,7 +1580,7 @@ export default function OcrResultsModal({
                       <tr className="hover:bg-gray-50">
                         <td className="px-3 py-2.5">
                           <div
-                            className="font-medium text-gray-900 truncate max-w-[180px]"
+                            className="font-medium text-gray-900 truncate max-w-[160px]"
                             title={row.originalFilename}
                           >
                             {row.originalFilename}
@@ -1465,6 +1634,104 @@ export default function OcrResultsModal({
                             <option value="hard">Hard</option>
                           </select>
                         </td>
+                        {/* Certification column */}
+                        <td className="px-3 py-2.5">
+                          <div className="flex flex-col gap-1">
+                            <select
+                              value={row.defaultCertTypeId}
+                              onChange={(e) =>
+                                handleRowCertChange(row.analysisId, e.target.value)
+                              }
+                              className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              {certificationTypes.map((ct) => (
+                                <option key={ct.id} value={ct.id}>
+                                  {ct.name} (${ct.price.toFixed(2)})
+                                </option>
+                              ))}
+                            </select>
+                            <span className="text-xs text-gray-500">
+                              ${row.certificationCost.toFixed(2)}
+                              {row.documentCount > 1 &&
+                                !row.hasPerDocCertOverrides && (
+                                  <span>
+                                    {" "}
+                                    ({row.documentCount} &times; $
+                                    {row.defaultCertUnitPrice.toFixed(2)})
+                                  </span>
+                                )}
+                            </span>
+                            {row.documentCount > 1 && (
+                              <div>
+                                <button
+                                  onClick={() => toggleCertExpand(row.analysisId)}
+                                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                >
+                                  {expandedCertRows.has(row.analysisId)
+                                    ? "\u25BE"
+                                    : "\u25B8"}{" "}
+                                  Edit per document
+                                  {row.hasPerDocCertOverrides && (
+                                    <span className="text-amber-500 text-xs">
+                                      (customized)
+                                    </span>
+                                  )}
+                                </button>
+                                {expandedCertRows.has(row.analysisId) && (
+                                  <div className="mt-2 ml-2 pl-2 border-l-2 border-blue-100 space-y-2">
+                                    {row.documentCertifications.map((dc) => {
+                                      const dcTypeLabel =
+                                        documentTypeLabels[dc.subDocumentType] ||
+                                        dc.subDocumentType;
+                                      const displayName = dc.subDocumentHolderName
+                                        ? `${dcTypeLabel} \u2014 ${dc.subDocumentHolderName}`
+                                        : dcTypeLabel;
+                                      return (
+                                        <div
+                                          key={dc.index}
+                                          className="flex items-center gap-2 text-xs"
+                                        >
+                                          <span className="text-gray-500 w-4">
+                                            {dc.index + 1}.
+                                          </span>
+                                          <span
+                                            className="text-gray-700 min-w-[120px] truncate"
+                                            title={displayName}
+                                          >
+                                            {displayName}
+                                          </span>
+                                          <select
+                                            value={dc.certificationTypeId}
+                                            onChange={(e) =>
+                                              handleDocCertChange(
+                                                row.analysisId,
+                                                dc.index,
+                                                e.target.value
+                                              )
+                                            }
+                                            className="text-xs border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                          >
+                                            {certificationTypes.map((ct) => (
+                                              <option key={ct.id} value={ct.id}>
+                                                {ct.name}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <span className="text-gray-500">
+                                            ${dc.certificationPrice.toFixed(2)}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                    <div className="text-xs font-medium text-gray-700 pt-1 border-t border-gray-100">
+                                      Cert Total: ${row.certificationCost.toFixed(2)}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-3 py-2.5 text-right">
                           <div className="inline-flex items-center gap-1">
                             <span className="text-gray-400 text-xs">$</span>
@@ -1492,13 +1759,13 @@ export default function OcrResultsModal({
                           </div>
                         </td>
                         <td className="px-3 py-2.5 text-right font-medium text-gray-900 tabular-nums whitespace-nowrap">
-                          ${row.translationCost.toFixed(2)}
+                          ${row.lineTotal.toFixed(2)}
                         </td>
                       </tr>
                       {/* Document count sub-row */}
                       <tr className="bg-gray-50/50">
                         <td
-                          colSpan={7}
+                          colSpan={8}
                           className={`px-3 py-1 pl-6 text-xs ${
                             row.documentCount > 1
                               ? "text-amber-600 font-medium"
@@ -1506,7 +1773,7 @@ export default function OcrResultsModal({
                           }`}
                         >
                           {row.documentCount > 1
-                            ? `\u2514 ${row.documentCount} docs \u26A0\uFE0F`
+                            ? `\u2514 ${row.documentCount} docs`
                             : `\u2514 1 doc`}
                         </td>
                       </tr>
@@ -1529,16 +1796,9 @@ export default function OcrResultsModal({
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">
-                Certification Estimate:
-              </span>
+              <span className="text-gray-600">Certification Total:</span>
               <span className="font-medium text-gray-900 tabular-nums">
-                ${pricingCertificationEstimate.toFixed(2)}
-                <span className="text-xs text-gray-500 ml-1">
-                  ({pricingTotalDocuments} doc
-                  {pricingTotalDocuments !== 1 ? "s" : ""} &times; $
-                  {pricingCertPrice.toFixed(2)})
-                </span>
+                ${pricingCertificationTotal.toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between pt-2 mt-2 border-t-2 border-gray-200">
@@ -1552,9 +1812,8 @@ export default function OcrResultsModal({
           </div>
           <p className="text-xs text-gray-400 mt-3 flex items-start gap-1">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-            Final total may vary based on language tier, certification type,
-            rush fees, delivery, and tax. These are applied when creating
-            quote.
+            Final total may vary based on language tier, rush fees, delivery,
+            and tax. These are applied when creating the quote.
           </p>
         </div>
       </div>
