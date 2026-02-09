@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   Award,
   Building,
@@ -31,6 +32,7 @@ import {
   Zap,
 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessageCustomerModal from "../../components/admin/MessageCustomerModal";
 
@@ -339,6 +341,15 @@ export default function AdminQuoteDetail() {
   const [updatingCertId, setUpdatingCertId] = useState<string | null>(null);
 
   const { session: currentStaff } = useAdminAuthContext();
+
+  // Receive Payment modal state
+  const [showReceivePaymentModal, setShowReceivePaymentModal] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState("");
+  const [selectedPaymentMethodCode, setSelectedPaymentMethodCode] = useState("");
+  const [rpAmountPaid, setRpAmountPaid] = useState("");
+  const [rpRemarks, setRpRemarks] = useState("");
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const fetchQuoteFiles = async (quoteId: string): Promise<NormalizedFile[]> => {
     // Try quote_files first (customer upload route)
@@ -1394,6 +1405,143 @@ export default function AdminQuoteDetail() {
     }
   };
 
+  // Fetch active payment methods that require staff confirmation
+  const fetchPaymentMethods = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("payment_methods")
+        .select("id, name, code")
+        .eq("is_active", true)
+        .eq("requires_staff_confirmation", true)
+        .order("display_order");
+
+      if (error) throw error;
+      setPaymentMethods(data || []);
+    } catch (err) {
+      console.error("Error loading payment methods:", err);
+    }
+  };
+
+  const openReceivePaymentModal = () => {
+    fetchPaymentMethods();
+    setSelectedPaymentMethodId("");
+    setSelectedPaymentMethodCode("");
+    setRpAmountPaid(quote?.total?.toFixed(2) || "0.00");
+    setRpRemarks("");
+    setShowReceivePaymentModal(true);
+  };
+
+  const handlePaymentMethodChange = (methodId: string) => {
+    setSelectedPaymentMethodId(methodId);
+    const method = paymentMethods.find((pm) => pm.id === methodId);
+    setSelectedPaymentMethodCode(method?.code || "");
+  };
+
+  const handleReceivePayment = async () => {
+    if (!selectedPaymentMethodId) {
+      toast.error("Please select a payment method");
+      return;
+    }
+
+    const parsedAmountPaid = parseFloat(rpAmountPaid) || 0;
+    const totalAmount = quote?.total || 0;
+
+    if (parsedAmountPaid < 0) {
+      toast.error("Amount paid cannot be negative");
+      return;
+    }
+
+    if (parsedAmountPaid > totalAmount) {
+      toast.error("Amount paid cannot exceed total amount");
+      return;
+    }
+
+    if (!currentStaff?.staffId || !id) {
+      toast.error("Missing required data. Please refresh the page.");
+      return;
+    }
+
+    const methodName = paymentMethods.find((pm) => pm.id === selectedPaymentMethodId)?.name || "Unknown";
+
+    const confirmMessage =
+      `Are you sure? Quote ${quote?.quote_number} will be marked as PAID for $${parsedAmountPaid.toFixed(2)} via ${methodName}. This cannot be undone.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setIsProcessingPayment(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("Not authenticated");
+      }
+
+      const payload = {
+        quote_id: id,
+        payment_method_id: selectedPaymentMethodId,
+        payment_method_code: selectedPaymentMethodCode,
+        amount_paid: parsedAmountPaid,
+        total_amount: totalAmount,
+        remarks: rpRemarks || undefined,
+        staff_id: currentStaff.staffId,
+        quote_data: {
+          customer_id: quote?.customer_id || "",
+          subtotal: quote?.subtotal || 0,
+          certification_total: quote?.certification_total || 0,
+          rush_fee: quote?.rush_fee || 0,
+          delivery_fee: quote?.delivery_fee || 0,
+          tax_rate: quote?.tax_rate || 0.05,
+          tax_amount: quote?.tax_amount || 0,
+          is_rush: quote?.is_rush || false,
+          service_province: (quote as any)?.service_province || "AB",
+        },
+      };
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-manual-payment`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to process payment");
+      }
+
+      if (result.balance_due > 0) {
+        toast.success(
+          `Payment confirmed! Order ${result.order_number} created with $${result.balance_due.toFixed(2)} balance due.`,
+        );
+      } else {
+        toast.success(
+          `Payment confirmed! Order ${result.order_number} created.`,
+        );
+      }
+
+      setShowReceivePaymentModal(false);
+      setSelectedPaymentMethodId("");
+      setSelectedPaymentMethodCode("");
+      setRpRemarks("");
+      setRpAmountPaid("");
+
+      await fetchQuoteDetails();
+    } catch (error: any) {
+      console.error("Receive payment error:", error);
+      toast.error(error.message || "Failed to process payment");
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
   // Check if quote has been converted to an order (hide send buttons)
   const isConvertedToOrder = quote && ['paid', 'converted'].includes(quote.status);
 
@@ -1491,6 +1639,17 @@ export default function AdminQuoteDetail() {
                   {isSendingLink ? "Sending..." : "Send Payment Link"}
                 </button>
               </>
+            )}
+
+            {/* Receive Payment Button - visible only for draft or quote_ready */}
+            {["draft", "quote_ready"].includes(quote.status) && (
+              <button
+                onClick={openReceivePaymentModal}
+                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
+              >
+                <CreditCard className="w-4 h-4" />
+                Receive Payment
+              </button>
             )}
 
             {/* Delete Quote Button */}
@@ -2879,6 +3038,175 @@ export default function AdminQuoteDetail() {
               >
                 <Send className="w-4 h-4" />
                 {isResending ? "Sending..." : "Send Quote"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receive Payment Modal */}
+      {showReceivePaymentModal && quote && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-violet-100 rounded-full flex items-center justify-center">
+                <CreditCard className="w-5 h-5 text-violet-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Receive Payment
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {quote.quote_number}
+                </p>
+              </div>
+            </div>
+
+            {/* Warning Banner */}
+            <div className="rounded-lg p-3 mb-4 flex items-start gap-2 bg-amber-50 border border-amber-200">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
+              <div className="text-sm text-amber-800">
+                <p className="font-medium mb-1">Important:</p>
+                <p>
+                  This will convert the quote to a paid order. Ensure payment has been received.
+                </p>
+              </div>
+            </div>
+
+            {/* Quote Summary */}
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs font-medium text-gray-500 mb-2">
+                Quote Summary
+              </p>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Customer:</span>
+                  <span className="font-medium">
+                    {quote.customer?.full_name || "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Email:</span>
+                  <span className="font-medium">
+                    {quote.customer?.email || "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t pt-1 mt-1">
+                  <span className="text-gray-600">Total Amount:</span>
+                  <span className="font-bold text-lg text-violet-600">
+                    ${quote.total?.toFixed(2) || "0.00"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Method Selection */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Payment Method <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={selectedPaymentMethodId}
+                onChange={(e) => handlePaymentMethodChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                disabled={isProcessingPayment}
+              >
+                <option value="">Select payment method...</option>
+                {paymentMethods.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Amount Paid */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Amount Paid <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                  $
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={rpAmountPaid}
+                  onChange={(e) => setRpAmountPaid(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                  disabled={isProcessingPayment}
+                />
+              </div>
+            </div>
+
+            {/* Balance Display */}
+            {(() => {
+              const totalAmount = quote.total || 0;
+              const paid = parseFloat(rpAmountPaid) || 0;
+              const balanceDue = Math.max(0, totalAmount - paid);
+              const isPaidInFull = paid >= totalAmount;
+
+              return (
+                <div className={`mb-4 p-3 rounded-lg ${isPaidInFull ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-sm font-medium ${isPaidInFull ? "text-green-700" : "text-amber-700"}`}>
+                      {isPaidInFull ? "Paid in Full" : "Balance Due:"}
+                    </span>
+                    <span className={`font-bold ${isPaidInFull ? "text-green-700" : "text-amber-700"}`}>
+                      ${isPaidInFull ? paid.toFixed(2) : balanceDue.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Remarks */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Remarks (Optional)
+              </label>
+              <textarea
+                value={rpRemarks}
+                onChange={(e) => setRpRemarks(e.target.value)}
+                placeholder="Payment reference, transaction ID, etc."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 resize-none"
+                disabled={isProcessingPayment}
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowReceivePaymentModal(false);
+                  setSelectedPaymentMethodId("");
+                  setSelectedPaymentMethodCode("");
+                  setRpRemarks("");
+                  setRpAmountPaid("");
+                }}
+                disabled={isProcessingPayment}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReceivePayment}
+                disabled={
+                  isProcessingPayment ||
+                  !selectedPaymentMethodId ||
+                  rpAmountPaid === "" ||
+                  isNaN(parseFloat(rpAmountPaid)) ||
+                  parseFloat(rpAmountPaid) < 0
+                }
+                className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <CreditCard className="w-4 h-4" />
+                {isProcessingPayment ? "Processing..." : "Confirm Payment"}
               </button>
             </div>
           </div>
