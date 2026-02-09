@@ -7,6 +7,7 @@ import {
   Brain,
   Building,
   CheckCircle,
+  ChevronDown,
   Clock,
   CreditCard,
   DollarSign,
@@ -202,6 +203,10 @@ export default function AdminOrderDetail() {
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string>("");
   const [savingDelivery, setSavingDelivery] = useState(false);
 
+  // Activity log
+  const [activityLog, setActivityLog] = useState<any[]>([]);
+  const [showActivityLog, setShowActivityLog] = useState(false);
+
   const fetchTurnaroundOptions = async () => {
     const { data } = await supabase
       .from("turnaround_options")
@@ -296,6 +301,17 @@ export default function AdminOrderDetail() {
     }
   };
 
+  const fetchActivityLog = async (orderId: string, quoteId: string) => {
+    const { data } = await supabase
+      .from("staff_activity_log")
+      .select("*, staff_users(full_name)")
+      .or(`entity_id.eq.${orderId},entity_id.eq.${quoteId}`)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (data) setActivityLog(data);
+  };
+
   const fetchOrderDetails = async () => {
     setLoading(true);
     setError("");
@@ -374,6 +390,9 @@ export default function AdminOrderDetail() {
       } else {
         setCancellation(null);
       }
+
+      // Fetch activity log
+      await fetchActivityLog(orderData.id, orderData.quote_id);
     } catch (err: any) {
       console.error("Error fetching order:", err);
       setError(err.message || "Failed to load order");
@@ -1485,6 +1504,57 @@ export default function AdminOrderDetail() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Activity Log */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-6">
+        <button
+          onClick={() => setShowActivityLog(!showActivityLog)}
+          className="w-full flex items-center justify-between"
+        >
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Clock className="w-5 h-5" />
+            Activity Log ({activityLog.length})
+          </h3>
+          <ChevronDown
+            className={`w-5 h-5 text-gray-400 transition-transform ${
+              showActivityLog ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+
+        {showActivityLog && (
+          <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
+            {activityLog.length === 0 ? (
+              <p className="text-sm text-gray-500">No activity recorded</p>
+            ) : (
+              activityLog.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg text-sm"
+                >
+                  <div className="w-2 h-2 bg-blue-400 rounded-full mt-1.5 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900">
+                      {entry.activity_type
+                        .replace(/_/g, " ")
+                        .replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                    </p>
+                    <p className="text-gray-500 text-xs">
+                      {entry.staff_users?.full_name || "System"} •{" "}
+                      {new Date(entry.created_at).toLocaleString()}
+                    </p>
+                    {entry.details && (
+                      <pre className="text-xs text-gray-400 mt-1 whitespace-pre-wrap">
+                        {JSON.stringify(entry.details, null, 2).substring(0, 200)}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       {/* Cancel Order Modal */}
