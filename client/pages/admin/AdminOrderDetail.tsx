@@ -15,13 +15,12 @@ import {
   ExternalLink,
   Eye,
   FileText,
-  Loader2,
   Mail,
   MapPin,
-  Pencil,
+  Minus,
   Phone,
+  Plus,
   RefreshCw,
-  Save,
   Trash2,
   Truck,
   User,
@@ -32,7 +31,6 @@ import { toast } from "sonner";
 import CancelOrderModal from "@/components/admin/CancelOrderModal";
 import EditOrderModal from "@/components/admin/EditOrderModal";
 import BalanceResolutionModal from "@/components/admin/BalanceResolutionModal";
-import RecordOrderPaymentModal from "@/components/admin/RecordOrderPaymentModal";
 import OcrResultsModal from "@/components/shared/analysis/OcrResultsModal";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { syncOrderFromQuote } from "../../utils/syncOrderFromQuote";
@@ -125,45 +123,24 @@ interface TurnaroundOption {
   sort_order: number;
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  paid: "bg-green-100 text-green-700",
-  balance_due: "bg-amber-100 text-amber-700",
-  in_production: "bg-blue-100 text-blue-700",
-  ready_for_delivery: "bg-purple-100 text-purple-700",
-  delivered: "bg-teal-100 text-teal-700",
-  completed: "bg-gray-100 text-gray-700",
-  refunded: "bg-red-100 text-red-700",
-  cancelled: "bg-gray-100 text-gray-700",
-};
+const ORDER_STATUSES = [
+  { value: "pending", label: "Pending", color: "gray" },
+  { value: "paid", label: "Paid", color: "green" },
+  { value: "balance_due", label: "Balance Due", color: "amber" },
+  { value: "in_production", label: "In Production", color: "blue" },
+  { value: "ready_for_delivery", label: "Ready for Delivery", color: "teal" },
+  { value: "delivered", label: "Delivered", color: "green" },
+  { value: "completed", label: "Completed", color: "green" },
+  { value: "cancelled", label: "Cancelled", color: "red" },
+  { value: "refunded", label: "Refunded", color: "red" },
+];
 
-const STATUS_LABELS: Record<string, string> = {
-  paid: "Paid",
-  balance_due: "Balance Due",
-  in_production: "In Production",
-  ready_for_delivery: "Ready for Delivery",
-  delivered: "Delivered",
-  completed: "Completed",
-  refunded: "Refunded",
-  cancelled: "Cancelled",
-};
-
-const WORK_STATUS_STYLES: Record<string, string> = {
-  pending: "bg-gray-100 text-gray-700",
-  active: "bg-blue-100 text-blue-700",
-  in_progress: "bg-blue-100 text-blue-700",
-  paused: "bg-amber-100 text-amber-700",
-  completed: "bg-green-100 text-green-700",
-  delivered: "bg-teal-100 text-teal-700",
-};
-
-const WORK_STATUS_LABELS: Record<string, string> = {
-  pending: "Pending",
-  active: "Active",
-  in_progress: "In Progress",
-  paused: "Paused",
-  completed: "Completed",
-  delivered: "Delivered",
-};
+const WORK_STATUSES = [
+  { value: "queued", label: "Queued", color: "gray" },
+  { value: "in_progress", label: "In Progress", color: "blue" },
+  { value: "review", label: "Review", color: "amber" },
+  { value: "completed", label: "Completed", color: "green" },
+];
 
 export default function AdminOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -188,13 +165,25 @@ export default function AdminOrderDetail() {
   const [selectedFileForOcr, setSelectedFileForOcr] = useState<any>(null);
 
   // Payment recording
-  const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [paymentForm, setPaymentForm] = useState({
+    method_id: "",
+    amount: "",
+    reference: "",
+    notes: "",
+  });
+  const [savingPayment, setSavingPayment] = useState(false);
 
-  // Status edit state
-  const [editingStatus, setEditingStatus] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('');
-  const [selectedWorkStatus, setSelectedWorkStatus] = useState('');
-  const [savingStatus, setSavingStatus] = useState(false);
+  // Adjustment modal
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [adjustmentType, setAdjustmentType] = useState<"surcharge" | "discount">("surcharge");
+  const [adjustmentForm, setAdjustmentForm] = useState({
+    value_type: "fixed",
+    value: "",
+    reason: "",
+  });
+  const [savingAdjustment, setSavingAdjustment] = useState(false);
 
   // Recalculate state
   const [recalculating, setRecalculating] = useState(false);
@@ -232,11 +221,21 @@ export default function AdminOrderDetail() {
     if (data) setDeliveryOptions(data);
   };
 
+  const fetchPaymentMethods = async () => {
+    const { data } = await supabase
+      .from("payment_methods")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order");
+    if (data) setPaymentMethods(data);
+  };
+
   useEffect(() => {
     if (id) {
       fetchOrderDetails();
       fetchTurnaroundOptions();
       fetchDeliveryOptions();
+      fetchPaymentMethods();
     }
   }, [id]);
 
@@ -418,64 +417,195 @@ export default function AdminOrderDetail() {
     }
   };
 
-  const handleStatusUpdate = async () => {
+  const handleStatusChange = async (field: "status" | "work_status", value: string) => {
     if (!order) return;
 
-    setSavingStatus(true);
+    const previousValue = field === "status" ? order.status : order.work_status;
+
+    if (!confirm(`Change ${field === "status" ? "order status" : "work status"} from "${previousValue}" to "${value}"?`)) {
+      return;
+    }
+
     try {
-      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
-      let hasChanges = false;
-
-      if (selectedStatus && selectedStatus !== order.status) {
-        updates.status = selectedStatus;
-        hasChanges = true;
-      }
-      if (selectedWorkStatus && selectedWorkStatus !== order.work_status) {
-        updates.work_status = selectedWorkStatus;
-        hasChanges = true;
-      }
-
-      if (!hasChanges) {
-        toast.info("No changes to save");
-        setEditingStatus(false);
-        setSavingStatus(false);
-        return;
-      }
-
-      // Update order
       const { error } = await supabase
         .from("orders")
-        .update(updates)
+        .update({
+          [field]: value,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", order.id);
 
       if (error) throw error;
 
-      // Log status change to history
-      const historyRecord: Record<string, any> = {
-        order_id: order.id,
-        previous_status: order.status,
-        new_status: selectedStatus || order.status,
-        previous_work_status: order.work_status,
-        new_work_status: selectedWorkStatus || order.work_status,
-        changed_by_staff_id: currentStaff?.staffId || null,
-        created_at: new Date().toISOString(),
-      };
-
-      await supabase
-        .from("order_status_history")
-        .insert(historyRecord)
-        .then(({ error }) => {
-          if (error) console.warn("Failed to log status history:", error);
+      // Log activity
+      const currentStaffId = currentStaff?.staffId;
+      if (currentStaffId) {
+        await supabase.from("staff_activity_log").insert({
+          staff_id: currentStaffId,
+          activity_type: field === "status" ? "order_status_changed" : "order_work_status_changed",
+          entity_type: "order",
+          entity_id: order.id,
+          details: {
+            order_id: order.id,
+            field,
+            previous_value: previousValue,
+            new_value: value,
+          },
         });
+      }
 
-      toast.success("Order status updated");
-      setEditingStatus(false);
-      fetchOrderDetails(); // Refresh order data
-    } catch (err: any) {
-      console.error("Error updating status:", err);
-      toast.error(err.message || "Failed to update status");
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Status change error:", err);
+      alert(`Failed to update ${field}`);
+    }
+  };
+
+  const handleRecordPayment = async () => {
+    if (!order) return;
+
+    const amount = parseFloat(paymentForm.amount);
+    if (!amount || amount <= 0) {
+      alert("Please enter a valid amount");
+      return;
+    }
+    if (!paymentForm.method_id) {
+      alert("Please select a payment method");
+      return;
+    }
+
+    setSavingPayment(true);
+    try {
+      const method = paymentMethods.find((m) => m.id === paymentForm.method_id);
+      const currentStaffId = currentStaff?.staffId;
+
+      // Insert payment record
+      const { error: payError } = await supabase.from("payments").insert({
+        order_id: order.id,
+        customer_id: order.customer_id,
+        amount,
+        payment_type: method?.code || "manual",
+        payment_method: method?.name || "Manual",
+        status: "succeeded",
+        reference_number: paymentForm.reference || null,
+        notes: paymentForm.notes || null,
+        recorded_by_staff_id: currentStaffId,
+      });
+
+      if (payError) throw payError;
+
+      // Update order
+      const newAmountPaid = (order.amount_paid || 0) + amount;
+      const newBalanceDue = (order.total_amount || 0) - newAmountPaid;
+
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          amount_paid: newAmountPaid,
+          balance_due: Math.max(0, newBalanceDue),
+          status: newBalanceDue <= 0 ? "paid" : "balance_due",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.id);
+
+      if (orderError) throw orderError;
+
+      // Log activity
+      if (currentStaffId) {
+        await supabase.from("staff_activity_log").insert({
+          staff_id: currentStaffId,
+          activity_type: "order_payment_recorded",
+          entity_type: "order",
+          entity_id: order.id,
+          details: {
+            order_id: order.id,
+            amount,
+            method: method?.name,
+            reference: paymentForm.reference,
+            new_amount_paid: newAmountPaid,
+            new_balance_due: Math.max(0, newBalanceDue),
+          },
+        });
+      }
+
+      setShowPaymentModal(false);
+      setPaymentForm({ method_id: "", amount: "", reference: "", notes: "" });
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Record payment error:", err);
+      alert("Failed to record payment");
     } finally {
-      setSavingStatus(false);
+      setSavingPayment(false);
+    }
+  };
+
+  const handleAddAdjustment = async () => {
+    if (!order) return;
+
+    const value = parseFloat(adjustmentForm.value);
+    if (!value || value <= 0) {
+      alert("Please enter a valid amount");
+      return;
+    }
+    if (!adjustmentForm.reason.trim()) {
+      alert("Please enter a reason");
+      return;
+    }
+
+    setSavingAdjustment(true);
+    try {
+      const currentStaffId = currentStaff?.staffId;
+      const amount =
+        adjustmentForm.value_type === "percentage"
+          ? (order.subtotal || 0) * (value / 100)
+          : value;
+
+      // Insert order adjustment (for order record-keeping)
+      const { error: adjError } = await supabase.from("order_adjustments").insert({
+        order_id: order.id,
+        type: adjustmentType,
+        value_type: adjustmentForm.value_type,
+        value,
+        amount: adjustmentType === "discount" ? -amount : amount,
+        reason: adjustmentForm.reason,
+        created_by_staff_id: currentStaffId,
+      });
+
+      if (adjError) throw adjError;
+
+      // Also add to quote_adjustments for recalculation consistency
+      const { error: quoteAdjError } = await supabase.from("quote_adjustments").insert({
+        quote_id: order.quote_id,
+        type: adjustmentType,
+        value_type: adjustmentForm.value_type,
+        value,
+        amount: adjustmentType === "discount" ? -amount : amount,
+        reason: adjustmentForm.reason + " (from order)",
+        created_by_staff_id: currentStaffId,
+      });
+
+      if (quoteAdjError) console.error("Quote adjustment sync error:", quoteAdjError);
+
+      // Recalculate and sync
+      await supabase.functions.invoke("recalculate-quote-pricing", {
+        body: { quoteId: order.quote_id },
+      });
+      const syncResult = await syncOrderFromQuote(order.id, order.quote_id, currentStaffId);
+
+      if (syncResult.delta !== 0) {
+        alert(
+          `Order total changed by $${syncResult.delta.toFixed(2)}. New balance due: $${syncResult.newBalanceDue.toFixed(2)}`
+        );
+      }
+
+      setShowAdjustmentModal(false);
+      setAdjustmentForm({ value_type: "fixed", value: "", reason: "" });
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Adjustment error:", err);
+      alert("Failed to add adjustment");
+    } finally {
+      setSavingAdjustment(false);
     }
   };
 
@@ -680,106 +810,45 @@ export default function AdminOrderDetail() {
             <h1 className="text-2xl font-bold text-gray-900">
               {order.order_number}
             </h1>
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
-              {editingStatus ? (
-                <>
-                  {/* Status Dropdown */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-gray-500">Status:</label>
-                    <select
-                      value={selectedStatus}
-                      onChange={(e) => setSelectedStatus(e.target.value)}
-                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                    >
-                      {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+            {/* Status Dropdowns */}
+            <div className="flex gap-4 mt-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Order Status</label>
+                <select
+                  value={order.status}
+                  onChange={(e) => handleStatusChange("status", e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-medium focus:ring-2 focus:ring-blue-500"
+                >
+                  {ORDER_STATUSES.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                  {/* Work Status Dropdown */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-gray-500">Work:</label>
-                    <select
-                      value={selectedWorkStatus}
-                      onChange={(e) => setSelectedWorkStatus(e.target.value)}
-                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                    >
-                      {Object.entries(WORK_STATUS_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Work Status</label>
+                <select
+                  value={order.work_status || "queued"}
+                  onChange={(e) => handleStatusChange("work_status", e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-medium focus:ring-2 focus:ring-blue-500"
+                >
+                  {WORK_STATUSES.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                  {/* Save Button */}
-                  <button
-                    onClick={handleStatusUpdate}
-                    disabled={savingStatus}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
-                  >
-                    {savingStatus ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Save className="w-4 h-4" />
-                    )}
-                    Save
-                  </button>
-
-                  {/* Cancel Button */}
-                  <button
-                    onClick={() => setEditingStatus(false)}
-                    disabled={savingStatus}
-                    className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  {/* Status Badge */}
-                  <span
-                    className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
-                      STATUS_STYLES[order.status] || "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    {STATUS_LABELS[order.status] || order.status}
+              {/* Delivery Hold Badge */}
+              {order.delivery_hold && (
+                <div className="flex items-end pb-1">
+                  <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
+                    Delivery Hold
                   </span>
-
-                  {/* Work Status Badge */}
-                  <span
-                    className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-                      WORK_STATUS_STYLES[order.work_status] || "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    Work: {WORK_STATUS_LABELS[order.work_status] || order.work_status}
-                  </span>
-
-                  {/* Delivery Hold Badge */}
-                  {order.delivery_hold && (
-                    <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
-                      Delivery Hold
-                    </span>
-                  )}
-
-                  {/* Edit Button */}
-                  {order.status !== 'cancelled' && (
-                    <button
-                      onClick={() => {
-                        setSelectedStatus(order.status);
-                        setSelectedWorkStatus(order.work_status);
-                        setEditingStatus(true);
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                      title="Edit Status"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                  )}
-                </>
+                </div>
               )}
             </div>
           </div>
@@ -1050,13 +1119,13 @@ export default function AdminOrderDetail() {
             )}
           </div>
 
-          {adjustments.length > 0 && (
-            <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-gray-400" />
-                Adjustments
-              </h2>
+          <div className="bg-white rounded-lg border p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-gray-400" />
+              Adjustments
+            </h2>
 
+            {adjustments.length > 0 ? (
               <div className="space-y-3">
                 {adjustments.map((adjustment) => (
                   <div
@@ -1090,8 +1159,33 @@ export default function AdminOrderDetail() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-gray-500 text-sm">No adjustments</p>
+            )}
+
+            {order.status !== "cancelled" && (
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => {
+                    setAdjustmentType("surcharge");
+                    setShowAdjustmentModal(true);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Surcharge
+                </button>
+                <button
+                  onClick={() => {
+                    setAdjustmentType("discount");
+                    setShowAdjustmentModal(true);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100"
+                >
+                  <Minus className="w-3.5 h-3.5" /> Add Discount
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -1212,11 +1306,17 @@ export default function AdminOrderDetail() {
                     <span>${(order.balance_due ?? 0).toFixed(2)}</span>
                   </div>
                   <button
-                    onClick={() => setShowRecordPaymentModal(true)}
-                    className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                    onClick={() => {
+                      setPaymentForm({
+                        ...paymentForm,
+                        amount: order.balance_due.toFixed(2),
+                      });
+                      setShowPaymentModal(true);
+                    }}
+                    className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
                   >
                     <DollarSign className="w-4 h-4" />
-                    Record Payment
+                    Record Payment (${order.balance_due.toFixed(2)} due)
                   </button>
                 </>
               )}
@@ -1490,25 +1590,160 @@ export default function AdminOrderDetail() {
         />
       )}
 
+      {/* Adjustment Modal */}
+      {showAdjustmentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Add {adjustmentType === "surcharge" ? "Surcharge" : "Discount"}
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      value="fixed"
+                      checked={adjustmentForm.value_type === "fixed"}
+                      onChange={(e) => setAdjustmentForm({ ...adjustmentForm, value_type: e.target.value })}
+                    />
+                    <span className="text-sm">Fixed ($)</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      value="percentage"
+                      checked={adjustmentForm.value_type === "percentage"}
+                      onChange={(e) => setAdjustmentForm({ ...adjustmentForm, value_type: e.target.value })}
+                    />
+                    <span className="text-sm">Percentage (%)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {adjustmentForm.value_type === "fixed" ? "Amount ($)" : "Percentage (%)"}
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={adjustmentForm.value}
+                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, value: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason *</label>
+                <textarea
+                  value={adjustmentForm.reason}
+                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })}
+                  rows={2}
+                  placeholder={adjustmentType === "surcharge" ? "e.g. Additional complexity, expedited handling" : "e.g. Returning customer discount, loyalty reward"}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowAdjustmentModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddAdjustment}
+                disabled={savingAdjustment}
+                className={`flex-1 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 ${
+                  adjustmentType === "surcharge"
+                    ? "bg-amber-600 hover:bg-amber-700"
+                    : "bg-green-600 hover:bg-green-700"
+                }`}
+              >
+                {savingAdjustment ? "Adding..." : `Add ${adjustmentType === "surcharge" ? "Surcharge" : "Discount"}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Record Payment Modal */}
-      {showRecordPaymentModal && order && (
-        <RecordOrderPaymentModal
-          isOpen={showRecordPaymentModal}
-          onClose={() => setShowRecordPaymentModal(false)}
-          order={{
-            id: order.id,
-            order_number: order.order_number,
-            total_amount: order.total_amount,
-            amount_paid: order.amount_paid || 0,
-            balance_due: order.balance_due || 0,
-            customer: order.customer,
-          }}
-          staffId={currentStaff?.staffId || ""}
-          onSuccess={() => {
-            fetchOrderDetails();
-            setShowRecordPaymentModal(false);
-          }}
-        />
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Record Payment</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method *</label>
+                <select
+                  value={paymentForm.method_id}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, method_id: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">— Select —</option>
+                  {paymentMethods.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={paymentForm.amount}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reference #</label>
+                <input
+                  type="text"
+                  value={paymentForm.reference}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
+                  placeholder="e.g. cheque number, e-transfer ref"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  value={paymentForm.notes}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRecordPayment}
+                disabled={savingPayment}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
+              >
+                {savingPayment ? "Recording..." : "Record Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
