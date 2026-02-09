@@ -17,7 +17,9 @@ import {
   FileText,
   Mail,
   MapPin,
+  Minus,
   Phone,
+  Plus,
   RefreshCw,
   Trash2,
   Truck,
@@ -172,6 +174,16 @@ export default function AdminOrderDetail() {
     notes: "",
   });
   const [savingPayment, setSavingPayment] = useState(false);
+
+  // Adjustment modal
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [adjustmentType, setAdjustmentType] = useState<"surcharge" | "discount">("surcharge");
+  const [adjustmentForm, setAdjustmentForm] = useState({
+    value_type: "fixed",
+    value: "",
+    reason: "",
+  });
+  const [savingAdjustment, setSavingAdjustment] = useState(false);
 
   // Recalculate state
   const [recalculating, setRecalculating] = useState(false);
@@ -524,6 +536,76 @@ export default function AdminOrderDetail() {
       alert("Failed to record payment");
     } finally {
       setSavingPayment(false);
+    }
+  };
+
+  const handleAddAdjustment = async () => {
+    if (!order) return;
+
+    const value = parseFloat(adjustmentForm.value);
+    if (!value || value <= 0) {
+      alert("Please enter a valid amount");
+      return;
+    }
+    if (!adjustmentForm.reason.trim()) {
+      alert("Please enter a reason");
+      return;
+    }
+
+    setSavingAdjustment(true);
+    try {
+      const currentStaffId = currentStaff?.staffId;
+      const amount =
+        adjustmentForm.value_type === "percentage"
+          ? (order.subtotal || 0) * (value / 100)
+          : value;
+
+      // Insert order adjustment (for order record-keeping)
+      const { error: adjError } = await supabase.from("order_adjustments").insert({
+        order_id: order.id,
+        type: adjustmentType,
+        value_type: adjustmentForm.value_type,
+        value,
+        amount: adjustmentType === "discount" ? -amount : amount,
+        reason: adjustmentForm.reason,
+        created_by_staff_id: currentStaffId,
+      });
+
+      if (adjError) throw adjError;
+
+      // Also add to quote_adjustments for recalculation consistency
+      const { error: quoteAdjError } = await supabase.from("quote_adjustments").insert({
+        quote_id: order.quote_id,
+        type: adjustmentType,
+        value_type: adjustmentForm.value_type,
+        value,
+        amount: adjustmentType === "discount" ? -amount : amount,
+        reason: adjustmentForm.reason + " (from order)",
+        created_by_staff_id: currentStaffId,
+      });
+
+      if (quoteAdjError) console.error("Quote adjustment sync error:", quoteAdjError);
+
+      // Recalculate and sync
+      await supabase.functions.invoke("recalculate-quote-pricing", {
+        body: { quoteId: order.quote_id },
+      });
+      const syncResult = await syncOrderFromQuote(order.id, order.quote_id, currentStaffId);
+
+      if (syncResult.delta !== 0) {
+        alert(
+          `Order total changed by $${syncResult.delta.toFixed(2)}. New balance due: $${syncResult.newBalanceDue.toFixed(2)}`
+        );
+      }
+
+      setShowAdjustmentModal(false);
+      setAdjustmentForm({ value_type: "fixed", value: "", reason: "" });
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Adjustment error:", err);
+      alert("Failed to add adjustment");
+    } finally {
+      setSavingAdjustment(false);
     }
   };
 
@@ -1037,13 +1119,13 @@ export default function AdminOrderDetail() {
             )}
           </div>
 
-          {adjustments.length > 0 && (
-            <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-gray-400" />
-                Adjustments
-              </h2>
+          <div className="bg-white rounded-lg border p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-gray-400" />
+              Adjustments
+            </h2>
 
+            {adjustments.length > 0 ? (
               <div className="space-y-3">
                 {adjustments.map((adjustment) => (
                   <div
@@ -1077,8 +1159,33 @@ export default function AdminOrderDetail() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-gray-500 text-sm">No adjustments</p>
+            )}
+
+            {order.status !== "cancelled" && (
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => {
+                    setAdjustmentType("surcharge");
+                    setShowAdjustmentModal(true);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Surcharge
+                </button>
+                <button
+                  onClick={() => {
+                    setAdjustmentType("discount");
+                    setShowAdjustmentModal(true);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100"
+                >
+                  <Minus className="w-3.5 h-3.5" /> Add Discount
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -1481,6 +1588,88 @@ export default function AdminOrderDetail() {
           fileName={selectedFileForOcr.original_filename}
           mode="view"
         />
+      )}
+
+      {/* Adjustment Modal */}
+      {showAdjustmentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Add {adjustmentType === "surcharge" ? "Surcharge" : "Discount"}
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      value="fixed"
+                      checked={adjustmentForm.value_type === "fixed"}
+                      onChange={(e) => setAdjustmentForm({ ...adjustmentForm, value_type: e.target.value })}
+                    />
+                    <span className="text-sm">Fixed ($)</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      value="percentage"
+                      checked={adjustmentForm.value_type === "percentage"}
+                      onChange={(e) => setAdjustmentForm({ ...adjustmentForm, value_type: e.target.value })}
+                    />
+                    <span className="text-sm">Percentage (%)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {adjustmentForm.value_type === "fixed" ? "Amount ($)" : "Percentage (%)"}
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={adjustmentForm.value}
+                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, value: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason *</label>
+                <textarea
+                  value={adjustmentForm.reason}
+                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })}
+                  rows={2}
+                  placeholder={adjustmentType === "surcharge" ? "e.g. Additional complexity, expedited handling" : "e.g. Returning customer discount, loyalty reward"}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowAdjustmentModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddAdjustment}
+                disabled={savingAdjustment}
+                className={`flex-1 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 ${
+                  adjustmentType === "surcharge"
+                    ? "bg-amber-600 hover:bg-amber-700"
+                    : "bg-green-600 hover:bg-green-700"
+                }`}
+              >
+                {savingAdjustment ? "Adding..." : `Add ${adjustmentType === "surcharge" ? "Surcharge" : "Discount"}`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Record Payment Modal */}
