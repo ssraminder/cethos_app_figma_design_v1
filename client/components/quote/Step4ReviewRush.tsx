@@ -564,7 +564,65 @@ export default function Step4ReviewRush() {
 
       // Check if no results yet
       if (!analysisResults || analysisResults.length === 0) {
-        // Check if still processing
+        // First check if the quote itself has pricing data (manual/staff-created quotes)
+        const { data: quoteWithPricing } = await supabase
+          .from("quotes")
+          .select(
+            `subtotal, certification_total, rush_fee, delivery_fee, tax_amount, tax_rate, total, calculated_totals,
+             intended_use:intended_uses(code),
+             target_language:languages!quotes_target_language_id_fkey(id, name, code),
+             source_language:languages!quotes_source_language_id_fkey(id, name, code, multiplier, tier)`,
+          )
+          .eq("id", quoteId)
+          .single();
+
+        const ct = quoteWithPricing?.calculated_totals as Record<string, number> | null;
+        const quoteTotal = ct?.total || quoteWithPricing?.total || 0;
+
+        if (quoteTotal > 0) {
+          // Use quote-level pricing for manual/staff-created quotes
+          const subtotalValue = ct?.subtotal || quoteWithPricing?.subtotal || 0;
+          const certificationTotalValue = ct?.certification_total || quoteWithPricing?.certification_total || 0;
+          const translationSubtotalValue = ct?.translation_total || (subtotalValue - certificationTotalValue);
+
+          setTotals({
+            translationSubtotal: translationSubtotalValue,
+            certificationTotal: certificationTotalValue,
+            subtotal: subtotalValue,
+          });
+
+          // Set language info from quote
+          if (quoteWithPricing?.source_language) {
+            const srcLang = quoteWithPricing.source_language as any;
+            setSourceLanguage(srcLang?.code || "");
+            setSourceLanguageName(srcLang?.name || "");
+            setLanguageMultiplier(parseFloat(srcLang?.multiplier || "1.0"));
+            setLanguageTier(srcLang?.tier || 1);
+          }
+          if (quoteWithPricing?.target_language) {
+            setTargetLanguage((quoteWithPricing.target_language as any)?.code || "");
+            setTargetLanguageName((quoteWithPricing.target_language as any)?.name || "");
+          }
+          if (quoteWithPricing?.intended_use) {
+            setIntendedUse((quoteWithPricing.intended_use as any)?.code || "");
+          }
+
+          setDocuments([]);
+          setProcessingState("complete");
+
+          // Calculate delivery dates with a default page estimate
+          const days = calculateStandardDays(1);
+          setStandardDays(days);
+          const standardDate = await getDeliveryDate(days);
+          const rushDate = await getDeliveryDate(Math.max(1, days - 1));
+          setStandardDeliveryDate(standardDate);
+          setRushDeliveryDate(rushDate);
+
+          setLoading(false);
+          return;
+        }
+
+        // No quote-level pricing either - check if still processing
         const { data: pendingFiles } = await supabase
           .from("quote_files")
           .select("processing_status, id")
@@ -580,17 +638,22 @@ export default function Step4ReviewRush() {
         return;
       }
 
-      // Query 2: Get file names separately
-      const fileIds = analysisResults.map((r) => r.quote_file_id);
-      const { data: files, error: filesError } = await supabase
-        .from("quote_files")
-        .select("id, original_filename")
-        .in("id", fileIds);
-
-      if (filesError) throw filesError;
+      // Query 2: Get file names separately (guard against null file IDs from manual entries)
+      const fileIds = analysisResults
+        .map((r) => r.quote_file_id)
+        .filter((id): id is string => !!id);
+      let files: { id: string; original_filename: string }[] = [];
+      if (fileIds.length > 0) {
+        const { data: filesData, error: filesError } = await supabase
+          .from("quote_files")
+          .select("id, original_filename")
+          .in("id", fileIds);
+        if (filesError) throw filesError;
+        files = filesData || [];
+      }
 
       // Merge the data
-      const filesMap = new Map(files?.map((f) => [f.id, f]) || []);
+      const filesMap = new Map(files.map((f) => [f.id, f]));
       const mergedData = analysisResults.map((analysis) => ({
         ...analysis,
         quote_files: filesMap.get(analysis.quote_file_id) || {
@@ -989,8 +1052,8 @@ export default function Step4ReviewRush() {
     );
   }
 
-  // No data / error state
-  if (processingState === "no_data" || documents.length === 0) {
+  // No data / error state (only show when there's genuinely no pricing)
+  if (processingState === "no_data" || (documents.length === 0 && totals.subtotal <= 0)) {
     return (
       <div className="max-w-2xl mx-auto px-4 pb-8">
         <div className="text-center py-12">
@@ -1107,51 +1170,66 @@ export default function Step4ReviewRush() {
       {/* Document Breakdown */}
       <div className="bg-white rounded-xl border border-cethos-border shadow-cethos-card overflow-hidden mb-6">
         <div className="px-4 sm:px-6 py-4 bg-cethos-bg-light border-b border-cethos-border">
-          <h2 className="font-semibold text-gray-900">Documents</h2>
+          <h2 className="font-semibold text-gray-900">
+            {documents.length > 0 ? "Documents" : "Quote Details"}
+          </h2>
         </div>
-        <div className="divide-y divide-gray-100">
-          {documents.map((doc) => (
-            <div key={doc.id} className="px-4 sm:px-6 py-4">
-              <div className="flex justify-between items-start gap-3">
-                <div className="flex-1 min-w-0 overflow-hidden">
-                  <p className="font-medium text-gray-900 truncate">
-                    {doc.quote_files?.original_filename || "Document"}
-                  </p>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    <span className="text-xs bg-cethos-teal-50 text-cethos-teal px-2 py-0.5 rounded">
-                      {sourceLanguageName || doc.language_name || doc.detected_language} → {targetLanguageName}
-                    </span>
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                      {doc.billable_pages.toFixed(1)} pages
-                    </span>
-                    <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
-                      AI Confidence:{" "}
-                      {Math.round(
-                        (((doc.ocr_confidence || 0) +
-                          (doc.language_confidence || 0) +
-                          (doc.document_type_confidence || 0) +
-                          (doc.complexity_confidence || 0)) /
-                          4) *
-                          100,
-                      )}
-                      %
-                    </span>
+        {documents.length > 0 ? (
+          <div className="divide-y divide-gray-100">
+            {documents.map((doc) => (
+              <div key={doc.id} className="px-4 sm:px-6 py-4">
+                <div className="flex justify-between items-start gap-3">
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <p className="font-medium text-gray-900 truncate">
+                      {doc.quote_files?.original_filename || "Document"}
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      <span className="text-xs bg-cethos-teal-50 text-cethos-teal px-2 py-0.5 rounded">
+                        {sourceLanguageName || doc.language_name || doc.detected_language} → {targetLanguageName}
+                      </span>
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                        {doc.billable_pages.toFixed(1)} pages
+                      </span>
+                      <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
+                        AI Confidence:{" "}
+                        {Math.round(
+                          (((doc.ocr_confidence || 0) +
+                            (doc.language_confidence || 0) +
+                            (doc.document_type_confidence || 0) +
+                            (doc.complexity_confidence || 0)) /
+                            4) *
+                            100,
+                        )}
+                        %
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right ml-4 flex-shrink-0">
+                    <p className="font-semibold text-gray-900 whitespace-nowrap">
+                      ${parseFloat(doc.line_total).toFixed(2)}
+                    </p>
+                    {parseFloat(doc.certification_price) > 0 && (
+                      <p className="text-xs text-gray-500 whitespace-nowrap">
+                        +${parseFloat(doc.certification_price).toFixed(2)} cert
+                      </p>
+                    )}
                   </div>
                 </div>
-                <div className="text-right ml-4 flex-shrink-0">
-                  <p className="font-semibold text-gray-900 whitespace-nowrap">
-                    ${parseFloat(doc.line_total).toFixed(2)}
-                  </p>
-                  {parseFloat(doc.certification_price) > 0 && (
-                    <p className="text-xs text-gray-500 whitespace-nowrap">
-                      +${parseFloat(doc.certification_price).toFixed(2)} cert
-                    </p>
-                  )}
-                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="px-4 sm:px-6 py-4">
+            <p className="text-sm text-gray-600">
+              This quote was prepared by our team.
+            </p>
+            {sourceLanguageName && targetLanguageName && (
+              <p className="text-xs text-gray-500 mt-1">
+                {sourceLanguageName} → {targetLanguageName}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Price Breakdown */}
@@ -1165,9 +1243,11 @@ export default function Step4ReviewRush() {
               <span>Certified Translation</span>
               <span>${totals.translationSubtotal.toFixed(2)}</span>
             </div>
-            <div className="text-xs text-gray-500 ml-4 mt-0.5">
-              {totalBillablePages.toFixed(1)} pages × ${effectiveRate.toFixed(2)} per page
-            </div>
+            {documents.length > 0 && (
+              <div className="text-xs text-gray-500 ml-4 mt-0.5">
+                {totalBillablePages.toFixed(1)} pages × ${effectiveRate.toFixed(2)} per page
+              </div>
+            )}
           </div>
           {totals.certificationTotal > 0 && (
             <div className="flex justify-between text-gray-700">
