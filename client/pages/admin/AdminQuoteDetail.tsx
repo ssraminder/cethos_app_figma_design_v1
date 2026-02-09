@@ -78,6 +78,11 @@ interface QuoteDetail {
   hitl_required: boolean;
   hitl_reason: string;
   turnaround_type: string | null;
+  turnaround_option_id: string | null;
+  promised_delivery_date: string | null;
+  physical_delivery_option_id: string | null;
+  shipping_address: any;
+  service_province: string;
   calculated_totals?: {
     translation_total?: number;
     doc_certification_total?: number;
@@ -85,7 +90,10 @@ interface QuoteDetail {
     certification_total?: number;
     subtotal?: number;
     adjustments_total?: number;
+    surcharge_total?: number;
+    discount_total?: number;
     rush_fee?: number;
+    delivery_fee?: number;
     tax_rate?: number;
     tax_amount?: number;
     total?: number;
@@ -215,7 +223,21 @@ interface TurnaroundOption {
   code: string;
   name: string;
   multiplier: number;
+  fee_type: string;
+  fee_value: number;
+  estimated_days: number;
+  is_default: boolean;
   sort_order: number;
+}
+
+interface DeliveryOptionItem {
+  id: string;
+  code: string;
+  name: string;
+  price: number;
+  delivery_group: string;
+  requires_address: boolean;
+  is_always_selected: boolean;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -323,6 +345,15 @@ export default function AdminQuoteDetail() {
   const [isSavingTax, setIsSavingTax] = useState(false);
   const [turnaroundOptions, setTurnaroundOptions] = useState<TurnaroundOption[]>([]);
   const [isSavingTurnaround, setIsSavingTurnaround] = useState(false);
+  const [promisedDeliveryDate, setPromisedDeliveryDate] = useState("");
+  const [isSavingPromisedDate, setIsSavingPromisedDate] = useState(false);
+  const [deliveryOptionsList, setDeliveryOptionsList] = useState<DeliveryOptionItem[]>([]);
+  const [selectedDeliveryOptionId, setSelectedDeliveryOptionId] = useState("");
+  const [isSavingDelivery, setIsSavingDelivery] = useState(false);
+  const [shippingAddress, setShippingAddress] = useState<{
+    line1: string; line2: string; city: string; province: string; postal_code: string; country: string;
+  }>({ line1: "", line2: "", city: "", province: "", postal_code: "", country: "Canada" });
+  const [isSavingShippingAddress, setIsSavingShippingAddress] = useState(false);
   const [adjustmentForm, setAdjustmentForm] = useState<{
     type: 'surcharge' | 'discount';
     valueType: 'percentage' | 'fixed';
@@ -607,14 +638,45 @@ export default function AdminQuoteDetail() {
         .order("region_name");
       setTaxRates(taxRatesData || []);
 
-      // Fetch turnaround options from delivery_options
+      // Fetch turnaround options from turnaround_options table
       const { data: turnaroundData } = await supabase
-        .from("delivery_options")
-        .select("id, code, name, multiplier, sort_order")
-        .eq("category", "turnaround")
+        .from("turnaround_options")
+        .select("id, code, name, multiplier, fee_type, fee_value, estimated_days, is_default, sort_order")
         .eq("is_active", true)
         .order("sort_order");
       setTurnaroundOptions(turnaroundData || []);
+
+      // Fetch delivery options for delivery method dropdown
+      const { data: deliveryData } = await supabase
+        .from("delivery_options")
+        .select("id, code, name, price, delivery_group, requires_address, is_always_selected")
+        .eq("category", "delivery")
+        .eq("is_active", true)
+        .order("sort_order");
+      setDeliveryOptionsList(deliveryData || []);
+
+      // Initialize promised delivery date
+      setPromisedDeliveryDate(quoteData?.promised_delivery_date || "");
+
+      // Initialize delivery option
+      if (quoteData?.physical_delivery_option_id) {
+        setSelectedDeliveryOptionId(quoteData.physical_delivery_option_id);
+      } else {
+        const defaultDelivery = (deliveryData || []).find((d: any) => d.is_always_selected);
+        setSelectedDeliveryOptionId(defaultDelivery?.id || "");
+      }
+
+      // Initialize shipping address
+      if (quoteData?.shipping_address) {
+        setShippingAddress({
+          line1: quoteData.shipping_address.line1 || "",
+          line2: quoteData.shipping_address.line2 || "",
+          city: quoteData.shipping_address.city || "",
+          province: quoteData.shipping_address.province || "",
+          postal_code: quoteData.shipping_address.postal_code || "",
+          country: quoteData.shipping_address.country || "Canada",
+        });
+      }
 
       if (quoteData?.status === "converted") {
         const { data: orderData } = await supabase
@@ -731,17 +793,21 @@ export default function AdminQuoteDetail() {
     }
   };
 
-  const handleTurnaroundChange = async (optionCode: string) => {
+  const handleTurnaroundChange = async (optionId: string) => {
     if (!quote || !id) return;
+
+    const selectedOption = turnaroundOptions.find(o => o.id === optionId);
+    if (!selectedOption) return;
 
     setIsSavingTurnaround(true);
 
     try {
-      // Update quote turnaround_type
+      // Update quote turnaround_option_id and turnaround_type
       const { error: updateError } = await supabase
         .from("quotes")
         .update({
-          turnaround_type: optionCode,
+          turnaround_option_id: selectedOption.id,
+          turnaround_type: selectedOption.code,
           updated_at: new Date().toISOString(),
         })
         .eq("id", id);
@@ -766,33 +832,124 @@ export default function AdminQuoteDetail() {
 
       if (response.ok) {
         const result = await response.json();
-        // Update local quote state from the recalculated response
         if (result) {
           setQuote((prev) =>
             prev
               ? {
                   ...prev,
-                  turnaround_type: optionCode,
+                  turnaround_type: selectedOption.code,
+                  turnaround_option_id: selectedOption.id,
                   subtotal: result.subtotal ?? prev.subtotal,
                   rush_fee: result.rush_fee ?? prev.rush_fee,
                   certification_total: result.certification_total ?? prev.certification_total,
                   delivery_fee: result.delivery_fee ?? prev.delivery_fee,
                   tax_amount: result.tax_amount ?? prev.tax_amount,
                   total: result.total ?? prev.total,
+                  is_rush: result.is_rush ?? prev.is_rush,
+                  calculated_totals: {
+                    ...prev.calculated_totals,
+                    ...result,
+                  },
                 }
               : null,
           );
         }
       } else {
-        // Edge function failed — re-fetch to stay in sync
         await fetchQuoteDetails();
       }
     } catch (err) {
       console.error("Failed to update turnaround:", err);
-      alert("Failed to update turnaround speed");
+      toast.error("Failed to update turnaround speed");
       await fetchQuoteDetails();
     } finally {
       setIsSavingTurnaround(false);
+    }
+  };
+
+  const handlePromisedDateChange = async (date: string) => {
+    if (!id) return;
+    setIsSavingPromisedDate(true);
+    try {
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          promised_delivery_date: date || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+      setPromisedDeliveryDate(date);
+      setQuote(prev => prev ? { ...prev, promised_delivery_date: date || null } : null);
+    } catch (err) {
+      console.error("Failed to update promised delivery date:", err);
+      toast.error("Failed to update delivery date");
+    } finally {
+      setIsSavingPromisedDate(false);
+    }
+  };
+
+  const handleDeliveryOptionChange = async (optionId: string) => {
+    if (!id || !quote) return;
+
+    const selectedOption = deliveryOptionsList.find(o => o.id === optionId);
+    if (!selectedOption) return;
+
+    setIsSavingDelivery(true);
+    setSelectedDeliveryOptionId(optionId);
+
+    try {
+      const updateData: any = {
+        physical_delivery_option_id: selectedOption.id,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Clear shipping address if option doesn't require it
+      if (!selectedOption.requires_address) {
+        updateData.shipping_address = null;
+      }
+
+      const { error: updateError } = await supabase
+        .from("quotes")
+        .update(updateData)
+        .eq("id", id);
+
+      if (updateError) throw updateError;
+
+      // Call recalculate-quote-pricing
+      await callRecalculatePricing();
+
+      if (!selectedOption.requires_address) {
+        setShippingAddress({ line1: "", line2: "", city: "", province: "", postal_code: "", country: "Canada" });
+      }
+    } catch (err) {
+      console.error("Failed to update delivery option:", err);
+      toast.error("Failed to update delivery method");
+      await fetchQuoteDetails();
+    } finally {
+      setIsSavingDelivery(false);
+    }
+  };
+
+  const handleSaveShippingAddress = async () => {
+    if (!id) return;
+    setIsSavingShippingAddress(true);
+    try {
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          shipping_address: shippingAddress,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+      toast.success("Shipping address saved");
+    } catch (err) {
+      console.error("Failed to save shipping address:", err);
+      toast.error("Failed to save shipping address");
+    } finally {
+      setIsSavingShippingAddress(false);
     }
   };
 
@@ -823,6 +980,11 @@ export default function AdminQuoteDetail() {
                 delivery_fee: result.delivery_fee ?? prev.delivery_fee,
                 tax_amount: result.tax_amount ?? prev.tax_amount,
                 total: result.total ?? prev.total,
+                is_rush: result.is_rush ?? prev.is_rush,
+                calculated_totals: {
+                  ...prev.calculated_totals,
+                  ...result,
+                },
               }
             : null,
         );
@@ -2342,22 +2504,23 @@ export default function AdminQuoteDetail() {
                   <span className="text-gray-500">Turnaround:</span>
                   <div className="flex items-center gap-1">
                     <select
-                      value={quote.turnaround_type || "standard"}
+                      value={quote.turnaround_option_id || turnaroundOptions.find(o => o.code === (quote.turnaround_type || "standard"))?.id || turnaroundOptions.find(o => o.is_default)?.id || ""}
                       onChange={(e) => handleTurnaroundChange(e.target.value)}
                       disabled={isSavingTurnaround}
                       className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50 max-w-[250px]"
                     >
                       {turnaroundOptions.map((opt) => {
-                        const pct = Math.round((opt.multiplier - 1) * 100);
-                        const extra = (quote.subtotal || 0) * (opt.multiplier - 1);
                         let label = opt.name;
-                        if (pct === 0) {
+                        if (opt.fee_value === 0) {
                           label += " \u2014 No extra charge";
+                        } else if (opt.fee_type === "percentage") {
+                          const extra = (quote.subtotal || 0) * (opt.fee_value / 100);
+                          label += ` (+${opt.fee_value}%) \u2014 +$${extra.toFixed(2)}`;
                         } else {
-                          label += ` (+${pct}%) \u2014 +$${extra.toFixed(2)}`;
+                          label += ` \u2014 +$${opt.fee_value.toFixed(2)}`;
                         }
                         return (
-                          <option key={opt.id} value={opt.code}>
+                          <option key={opt.id} value={opt.id}>
                             {label}
                           </option>
                         );
@@ -2367,6 +2530,152 @@ export default function AdminQuoteDetail() {
                       <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Estimated days hint */}
+              {(() => {
+                const currentOpt = turnaroundOptions.find(o =>
+                  o.id === quote.turnaround_option_id ||
+                  o.code === (quote.turnaround_type || "standard")
+                );
+                if (currentOpt?.estimated_days) {
+                  return (
+                    <p className="text-xs text-gray-400 -mt-2 text-right">
+                      Estimated: {currentOpt.estimated_days} business day{currentOpt.estimated_days !== 1 ? "s" : ""} from today
+                    </p>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Promised Delivery Date */}
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-500">Delivery Date:</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    value={promisedDeliveryDate}
+                    onChange={(e) => handlePromisedDateChange(e.target.value)}
+                    disabled={isSavingPromisedDate}
+                    className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50"
+                  />
+                  {isSavingPromisedDate && (
+                    <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                  )}
+                </div>
+              </div>
+
+              {/* Delivery Method */}
+              {deliveryOptionsList.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-500">Delivery:</span>
+                    <div className="flex items-center gap-1">
+                      <select
+                        value={selectedDeliveryOptionId}
+                        onChange={(e) => handleDeliveryOptionChange(e.target.value)}
+                        disabled={isSavingDelivery}
+                        className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50 max-w-[250px]"
+                      >
+                        <option value="">Select delivery...</option>
+                        {(() => {
+                          const digital = deliveryOptionsList.filter(o => o.delivery_group === "digital");
+                          const physical = deliveryOptionsList.filter(o => o.delivery_group === "physical");
+                          return (
+                            <>
+                              {digital.length > 0 && (
+                                <optgroup label="Digital">
+                                  {digital.map(opt => (
+                                    <option key={opt.id} value={opt.id}>
+                                      {opt.name} {opt.price > 0 ? `\u2014 $${opt.price.toFixed(2)}` : "\u2014 Free"}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {physical.length > 0 && (
+                                <optgroup label="Physical">
+                                  {physical.map(opt => (
+                                    <option key={opt.id} value={opt.id}>
+                                      {opt.name} {opt.price > 0 ? `\u2014 $${opt.price.toFixed(2)}` : "\u2014 Free"}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </select>
+                      {isSavingDelivery && (
+                        <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Shipping Address Form — shown when delivery requires address */}
+                  {(() => {
+                    const selected = deliveryOptionsList.find(o => o.id === selectedDeliveryOptionId);
+                    if (!selected?.requires_address) return null;
+                    return (
+                      <div className="bg-gray-50 rounded-lg p-3 space-y-2 border text-sm">
+                        <p className="text-xs font-medium text-gray-700">Shipping Address</p>
+                        <input
+                          type="text"
+                          placeholder="Address Line 1"
+                          value={shippingAddress.line1}
+                          onChange={(e) => setShippingAddress(prev => ({ ...prev, line1: e.target.value }))}
+                          className="w-full border rounded px-2 py-1 text-sm focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Address Line 2 (optional)"
+                          value={shippingAddress.line2}
+                          onChange={(e) => setShippingAddress(prev => ({ ...prev, line2: e.target.value }))}
+                          className="w-full border rounded px-2 py-1 text-sm focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            placeholder="City"
+                            value={shippingAddress.city}
+                            onChange={(e) => setShippingAddress(prev => ({ ...prev, city: e.target.value }))}
+                            className="border rounded px-2 py-1 text-sm focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Province"
+                            value={shippingAddress.province}
+                            onChange={(e) => setShippingAddress(prev => ({ ...prev, province: e.target.value }))}
+                            className="border rounded px-2 py-1 text-sm focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            placeholder="Postal Code"
+                            value={shippingAddress.postal_code}
+                            onChange={(e) => setShippingAddress(prev => ({ ...prev, postal_code: e.target.value }))}
+                            className="border rounded px-2 py-1 text-sm focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Country"
+                            value={shippingAddress.country}
+                            onChange={(e) => setShippingAddress(prev => ({ ...prev, country: e.target.value }))}
+                            className="border rounded px-2 py-1 text-sm focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                          />
+                        </div>
+                        <button
+                          onClick={handleSaveShippingAddress}
+                          disabled={isSavingShippingAddress || !shippingAddress.line1.trim()}
+                          className="bg-teal-600 text-white text-xs px-3 py-1 rounded hover:bg-teal-700 disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {isSavingShippingAddress && <RefreshCw className="w-3 h-3 animate-spin" />}
+                          Save Address
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
