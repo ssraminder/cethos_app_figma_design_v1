@@ -29,7 +29,6 @@ import { toast } from "sonner";
 import CancelOrderModal from "@/components/admin/CancelOrderModal";
 import EditOrderModal from "@/components/admin/EditOrderModal";
 import BalanceResolutionModal from "@/components/admin/BalanceResolutionModal";
-import RecordOrderPaymentModal from "@/components/admin/RecordOrderPaymentModal";
 import OcrResultsModal from "@/components/shared/analysis/OcrResultsModal";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { syncOrderFromQuote } from "../../utils/syncOrderFromQuote";
@@ -164,7 +163,15 @@ export default function AdminOrderDetail() {
   const [selectedFileForOcr, setSelectedFileForOcr] = useState<any>(null);
 
   // Payment recording
-  const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [paymentForm, setPaymentForm] = useState({
+    method_id: "",
+    amount: "",
+    reference: "",
+    notes: "",
+  });
+  const [savingPayment, setSavingPayment] = useState(false);
 
   // Recalculate state
   const [recalculating, setRecalculating] = useState(false);
@@ -202,11 +209,21 @@ export default function AdminOrderDetail() {
     if (data) setDeliveryOptions(data);
   };
 
+  const fetchPaymentMethods = async () => {
+    const { data } = await supabase
+      .from("payment_methods")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order");
+    if (data) setPaymentMethods(data);
+  };
+
   useEffect(() => {
     if (id) {
       fetchOrderDetails();
       fetchTurnaroundOptions();
       fetchDeliveryOptions();
+      fetchPaymentMethods();
     }
   }, [id]);
 
@@ -429,6 +446,84 @@ export default function AdminOrderDetail() {
     } catch (err) {
       console.error("Status change error:", err);
       alert(`Failed to update ${field}`);
+    }
+  };
+
+  const handleRecordPayment = async () => {
+    if (!order) return;
+
+    const amount = parseFloat(paymentForm.amount);
+    if (!amount || amount <= 0) {
+      alert("Please enter a valid amount");
+      return;
+    }
+    if (!paymentForm.method_id) {
+      alert("Please select a payment method");
+      return;
+    }
+
+    setSavingPayment(true);
+    try {
+      const method = paymentMethods.find((m) => m.id === paymentForm.method_id);
+      const currentStaffId = currentStaff?.staffId;
+
+      // Insert payment record
+      const { error: payError } = await supabase.from("payments").insert({
+        order_id: order.id,
+        customer_id: order.customer_id,
+        amount,
+        payment_type: method?.code || "manual",
+        payment_method: method?.name || "Manual",
+        status: "succeeded",
+        reference_number: paymentForm.reference || null,
+        notes: paymentForm.notes || null,
+        recorded_by_staff_id: currentStaffId,
+      });
+
+      if (payError) throw payError;
+
+      // Update order
+      const newAmountPaid = (order.amount_paid || 0) + amount;
+      const newBalanceDue = (order.total_amount || 0) - newAmountPaid;
+
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          amount_paid: newAmountPaid,
+          balance_due: Math.max(0, newBalanceDue),
+          status: newBalanceDue <= 0 ? "paid" : "balance_due",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.id);
+
+      if (orderError) throw orderError;
+
+      // Log activity
+      if (currentStaffId) {
+        await supabase.from("staff_activity_log").insert({
+          staff_id: currentStaffId,
+          activity_type: "order_payment_recorded",
+          entity_type: "order",
+          entity_id: order.id,
+          details: {
+            order_id: order.id,
+            amount,
+            method: method?.name,
+            reference: paymentForm.reference,
+            new_amount_paid: newAmountPaid,
+            new_balance_due: Math.max(0, newBalanceDue),
+          },
+        });
+      }
+
+      setShowPaymentModal(false);
+      setPaymentForm({ method_id: "", amount: "", reference: "", notes: "" });
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Record payment error:", err);
+      alert("Failed to record payment");
+    } finally {
+      setSavingPayment(false);
     }
   };
 
@@ -1104,11 +1199,17 @@ export default function AdminOrderDetail() {
                     <span>${(order.balance_due ?? 0).toFixed(2)}</span>
                   </div>
                   <button
-                    onClick={() => setShowRecordPaymentModal(true)}
-                    className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                    onClick={() => {
+                      setPaymentForm({
+                        ...paymentForm,
+                        amount: order.balance_due.toFixed(2),
+                      });
+                      setShowPaymentModal(true);
+                    }}
+                    className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
                   >
                     <DollarSign className="w-4 h-4" />
-                    Record Payment
+                    Record Payment (${order.balance_due.toFixed(2)} due)
                   </button>
                 </>
               )}
@@ -1383,24 +1484,77 @@ export default function AdminOrderDetail() {
       )}
 
       {/* Record Payment Modal */}
-      {showRecordPaymentModal && order && (
-        <RecordOrderPaymentModal
-          isOpen={showRecordPaymentModal}
-          onClose={() => setShowRecordPaymentModal(false)}
-          order={{
-            id: order.id,
-            order_number: order.order_number,
-            total_amount: order.total_amount,
-            amount_paid: order.amount_paid || 0,
-            balance_due: order.balance_due || 0,
-            customer: order.customer,
-          }}
-          staffId={currentStaff?.staffId || ""}
-          onSuccess={() => {
-            fetchOrderDetails();
-            setShowRecordPaymentModal(false);
-          }}
-        />
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Record Payment</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method *</label>
+                <select
+                  value={paymentForm.method_id}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, method_id: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">— Select —</option>
+                  {paymentMethods.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={paymentForm.amount}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reference #</label>
+                <input
+                  type="text"
+                  value={paymentForm.reference}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
+                  placeholder="e.g. cheque number, e-transfer ref"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  value={paymentForm.notes}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRecordPayment}
+                disabled={savingPayment}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
+              >
+                {savingPayment ? "Recording..." : "Record Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
