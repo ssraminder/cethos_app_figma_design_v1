@@ -21,9 +21,9 @@ import {
   Phone,
   Plus,
   RefreshCw,
-  Trash2,
   Truck,
   User,
+  XCircle,
   Zap,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -876,12 +876,12 @@ export default function AdminOrderDetail() {
             )}
 
             {/* Cancel Order Button */}
-            {order.status !== "cancelled" && (
+            {order.status !== "cancelled" && order.status !== "refunded" && (
               <button
                 onClick={() => setShowCancelModal(true)}
-                className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 text-sm font-medium"
               >
-                <Trash2 className="w-4 h-4" />
+                <XCircle className="w-4 h-4" />
                 Cancel Order
               </button>
             )}
