@@ -6,16 +6,16 @@ import { toast } from "sonner";
 interface OrderDocument {
   id: string;
   original_filename: string;
-  document_type: string;
-  source_language: string;
+  detected_document_type: string;
+  detected_language: string;
   target_language: string;
   word_count: number;
   page_count: number;
   billable_pages: number;
-  complexity: string;
+  assessed_complexity: string;
   complexity_multiplier: number;
   line_total: number;
-  certification_type: string;
+  certification_type_id: string;
   certification_price: number;
 }
 
@@ -53,11 +53,11 @@ export default function EditDocumentModal({
   onSave,
 }: EditDocumentModalProps) {
   // Form state
-  const [documentType, setDocumentType] = useState(document.document_type);
+  const [documentType, setDocumentType] = useState(document.detected_document_type);
   const [wordCount, setWordCount] = useState(document.word_count.toString());
   const [pageCount, setPageCount] = useState(document.page_count.toString());
-  const [complexity, setComplexity] = useState(document.complexity || "standard");
-  const [certificationCode, setCertificationCode] = useState(document.certification_type);
+  const [complexity, setComplexity] = useState(document.assessed_complexity || "easy");
+  const [certificationCode, setCertificationCode] = useState(document.certification_type_id);
 
   // Reference data
   const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
@@ -74,11 +74,11 @@ export default function EditDocumentModal({
     if (isOpen) {
       loadReferenceData();
       // Reset form state when document changes
-      setDocumentType(document.document_type);
+      setDocumentType(document.detected_document_type);
       setWordCount(document.word_count.toString());
       setPageCount(document.page_count.toString());
-      setComplexity(document.complexity || "standard");
-      setCertificationCode(document.certification_type);
+      setComplexity(document.assessed_complexity || "easy");
+      setCertificationCode(document.certification_type_id);
     }
   }, [isOpen, document]);
 
@@ -112,29 +112,29 @@ export default function EditDocumentModal({
   const parsedWordCount = parseInt(wordCount) || 0;
   const parsedPageCount = parseInt(pageCount) || 1;
   const complexityMultiplier = COMPLEXITY_OPTIONS.find(c => c.value === complexity)?.multiplier || 1.0;
-  const selectedCert = certificationTypes.find(c => c.code === certificationCode);
+  const selectedCert = certificationTypes.find(c => c.id === certificationCode);
   const certificationPrice = selectedCert?.price || 0;
 
   // Calculate billable pages: CEIL((words / 225) * complexity * 10) / 10
   const rawBillablePages = (parsedWordCount / wordsPerPage) * complexityMultiplier;
   const billablePages = Math.max(1, Math.ceil(rawBillablePages * 10) / 10);
 
-  // Calculate line total: billable_pages * base_rate + certification
+  // Calculate line total: billable_pages * base_rate (translation only, no certification)
   // Rounded up to nearest $2.50
   const rawTranslationCost = billablePages * baseRate;
   const translationCost = Math.ceil(rawTranslationCost / 2.5) * 2.5;
-  const lineTotal = translationCost + certificationPrice;
+  const lineTotal = translationCost;
 
   const handleSave = () => {
     const updatedDoc: OrderDocument = {
       ...document,
-      document_type: documentType,
+      detected_document_type: documentType,
       word_count: parsedWordCount,
       page_count: parsedPageCount,
       billable_pages: billablePages,
-      complexity: complexity,
+      assessed_complexity: complexity,
       complexity_multiplier: complexityMultiplier,
-      certification_type: certificationCode,
+      certification_type_id: certificationCode,
       certification_price: certificationPrice,
       line_total: lineTotal,
     };
@@ -250,7 +250,7 @@ export default function EditDocumentModal({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                 >
                   {certificationTypes.map((ct) => (
-                    <option key={ct.id} value={ct.code}>
+                    <option key={ct.id} value={ct.id}>
                       {ct.name} (${ct.price.toFixed(2)})
                     </option>
                   ))}
