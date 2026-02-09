@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Award,
   Building,
+  Calculator,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -354,6 +355,7 @@ export default function AdminQuoteDetail() {
     line1: string; line2: string; city: string; province: string; postal_code: string; country: string;
   }>({ line1: "", line2: "", city: "", province: "", postal_code: "", country: "Canada" });
   const [isSavingShippingAddress, setIsSavingShippingAddress] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const [adjustmentForm, setAdjustmentForm] = useState<{
     type: 'surcharge' | 'discount';
     valueType: 'percentage' | 'fixed';
@@ -434,6 +436,27 @@ export default function AdminQuoteDetail() {
     }
   }, [id]);
 
+  const QUOTE_SELECT = `
+    *,
+    customer:customers(id, full_name, email, phone, customer_type),
+    quote_source:quote_sources(id, code, name),
+    source_language:languages!source_language_id(id, name, code, price_multiplier),
+    target_language:languages!target_language_id(id, name, code),
+    delivery_option:delivery_options!delivery_option_id(id, name, price, description),
+    physical_delivery_option:delivery_options!physical_delivery_option_id(id, name, price)
+  `;
+
+  const refetchQuote = async () => {
+    const { data: refreshedQuote } = await supabase
+      .from("quotes")
+      .select(QUOTE_SELECT)
+      .eq("id", id)
+      .single();
+    if (refreshedQuote) {
+      setQuote(refreshedQuote as QuoteDetail);
+    }
+  };
+
   const fetchQuoteDetails = async () => {
     setLoading(true);
     setError("");
@@ -441,17 +464,7 @@ export default function AdminQuoteDetail() {
     try {
       const { data: quoteData, error: quoteError } = await supabase
         .from("quotes")
-        .select(
-          `
-          *,
-          customer:customers(id, full_name, email, phone, customer_type),
-          quote_source:quote_sources(id, code, name),
-          source_language:languages!source_language_id(id, name, code, price_multiplier),
-          target_language:languages!target_language_id(id, name, code),
-          delivery_option:delivery_options!delivery_option_id(id, name, price, description),
-          physical_delivery_option:delivery_options!physical_delivery_option_id(id, name, price)
-        `,
-        )
+        .select(QUOTE_SELECT)
         .eq("id", id)
         .single();
 
@@ -814,38 +827,8 @@ export default function AdminQuoteDetail() {
 
       if (updateError) throw updateError;
 
-      // Call recalculate-quote-pricing edge function
-      const { data, error: fnError } = await supabase.functions.invoke('recalculate-quote-pricing', {
-        body: { quoteId: id },
-      });
-      if (fnError) throw fnError;
-      const pricing = data;
-
-      if (pricing) {
-        setQuote((prev) =>
-          prev
-            ? {
-                ...prev,
-                turnaround_type: selectedOption.code,
-                turnaround_option_id: selectedOption.id,
-                subtotal: pricing.subtotal ?? prev.subtotal,
-                certification_total: pricing.certification_total ?? prev.certification_total,
-                rush_fee: pricing.rush_fee ?? prev.rush_fee,
-                delivery_fee: pricing.delivery_fee ?? prev.delivery_fee,
-                tax_rate: pricing.tax_rate ?? prev.tax_rate,
-                tax_amount: pricing.tax_amount ?? prev.tax_amount,
-                total: pricing.total ?? prev.total,
-                is_rush: pricing.is_rush ?? prev.is_rush,
-                calculated_totals: {
-                  ...prev.calculated_totals,
-                  ...pricing,
-                },
-              }
-            : null,
-        );
-      } else {
-        await fetchQuoteDetails();
-      }
+      // Call recalculate-quote-pricing edge function and re-fetch quote
+      await callRecalculatePricing();
     } catch (err) {
       console.error("Failed to update turnaround:", err);
       toast.error("Failed to update turnaround speed");
@@ -943,34 +926,24 @@ export default function AdminQuoteDetail() {
   };
 
   const callRecalculatePricing = async () => {
-    const { data, error } = await supabase.functions.invoke('recalculate-quote-pricing', {
+    const { error } = await supabase.functions.invoke('recalculate-quote-pricing', {
       body: { quoteId: id },
     });
     if (error) throw error;
-    const pricing = data;
+    await refetchQuote();
+  };
 
-    if (pricing) {
-      setQuote((prev) =>
-        prev
-          ? {
-              ...prev,
-              subtotal: pricing.subtotal ?? prev.subtotal,
-              certification_total: pricing.certification_total ?? prev.certification_total,
-              rush_fee: pricing.rush_fee ?? prev.rush_fee,
-              delivery_fee: pricing.delivery_fee ?? prev.delivery_fee,
-              tax_rate: pricing.tax_rate ?? prev.tax_rate,
-              tax_amount: pricing.tax_amount ?? prev.tax_amount,
-              total: pricing.total ?? prev.total,
-              is_rush: pricing.is_rush ?? prev.is_rush,
-              calculated_totals: {
-                ...prev.calculated_totals,
-                ...pricing,
-              },
-            }
-          : null,
-      );
-    } else {
-      await fetchQuoteDetails();
+  const handleRecalculateTotals = async () => {
+    if (!id) return;
+    setIsRecalculating(true);
+    try {
+      await callRecalculatePricing();
+      toast.success("Totals recalculated");
+    } catch (err) {
+      console.error("Failed to recalculate totals:", err);
+      toast.error("Failed to recalculate totals");
+    } finally {
+      setIsRecalculating(false);
     }
   };
 
@@ -2472,10 +2445,25 @@ export default function AdminQuoteDetail() {
 
         <div className="space-y-6">
           <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-gray-400" />
-              Pricing Summary
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-gray-400" />
+                Pricing Summary
+              </h2>
+              <button
+                onClick={handleRecalculateTotals}
+                disabled={isRecalculating}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 hover:text-gray-800 transition-colors disabled:opacity-50"
+                title="Recalculate totals"
+              >
+                {isRecalculating ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Calculator className="w-3.5 h-3.5" />
+                )}
+                Recalculate
+              </button>
+            </div>
 
             <div className="space-y-4">
               {/* Turnaround Speed */}
