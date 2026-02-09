@@ -28,6 +28,7 @@ import {
   Upload,
   User,
   Zap,
+  FileSearch,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -40,6 +41,7 @@ import RecordOrderPaymentModal from "@/components/admin/RecordOrderPaymentModal"
 import { AnalyzeDocumentModal, ManualEntryModal } from "@/components/admin/hitl";
 import { UnifiedDocumentEditor } from "@/components/shared/document-editor";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
+import OcrAnalysisModal from "@/components/admin/OcrAnalysisModal";
 
 interface OrderDetail {
   id: string;
@@ -227,6 +229,10 @@ export default function AdminOrderDetail() {
   // Unified document editor toggle
   const [useUnifiedEditor, setUseUnifiedEditor] = useState(false);
 
+  // OCR Analysis modal state
+  const [showOcrModal, setShowOcrModal] = useState(false);
+  const [hasBatch, setHasBatch] = useState(false);
+
   useEffect(() => {
     if (id) {
       fetchOrderDetails();
@@ -238,6 +244,21 @@ export default function AdminOrderDetail() {
     if (order?.quote_id) {
       fetchDocuments();
     }
+  }, [order?.quote_id]);
+
+  // Check if an OCR batch exists for the order's quote
+  useEffect(() => {
+    if (!order?.quote_id) return;
+    const checkBatch = async () => {
+      const { data } = await supabase
+        .from("ocr_batches")
+        .select("id")
+        .eq("quote_id", order.quote_id)
+        .limit(1)
+        .maybeSingle();
+      setHasBatch(!!data);
+    };
+    checkBatch();
   }, [order?.quote_id]);
 
   const fetchDocuments = async () => {
@@ -737,6 +758,15 @@ export default function AdminOrderDetail() {
                 Documents ({quoteFiles.length})
               </h2>
               <div className="flex items-center gap-3">
+                {hasBatch && order?.quote_id && (
+                  <button
+                    onClick={() => setShowOcrModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <FileSearch className="w-4 h-4" />
+                    OCR & Analysis
+                  </button>
+                )}
                 {/* Toggle for unified editor */}
                 <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                   <input
@@ -1446,6 +1476,16 @@ export default function AdminOrderDetail() {
             fetchOrderDetails();
             setShowRecordPaymentModal(false);
           }}
+        />
+      )}
+
+      {/* OCR & Analysis Modal */}
+      {order?.quote_id && (
+        <OcrAnalysisModal
+          isOpen={showOcrModal}
+          onClose={() => setShowOcrModal(false)}
+          quoteId={order.quote_id}
+          quoteNumber={order.quote?.quote_number}
         />
       )}
     </div>
