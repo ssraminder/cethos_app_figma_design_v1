@@ -20,28 +20,21 @@ import {
   MapPin,
   Pencil,
   Phone,
-  Plus,
   RefreshCw,
   Save,
   Trash2,
   Truck,
-  Upload,
   User,
   Zap,
-  FileSearch,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import CancelOrderModal from "@/components/admin/CancelOrderModal";
 import EditOrderModal from "@/components/admin/EditOrderModal";
 import BalanceResolutionModal from "@/components/admin/BalanceResolutionModal";
-import DocumentPreviewModal from "@/components/admin/DocumentPreviewModal";
-import OrderUploadModal from "@/components/admin/OrderUploadModal";
 import RecordOrderPaymentModal from "@/components/admin/RecordOrderPaymentModal";
-import { AnalyzeDocumentModal, ManualEntryModal } from "@/components/admin/hitl";
-import { UnifiedDocumentEditor } from "@/components/shared/document-editor";
+import OcrResultsModal from "@/components/shared/analysis/OcrResultsModal";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
-import OcrAnalysisModal from "@/components/admin/OcrAnalysisModal";
 
 interface OrderDetail {
   id: string;
@@ -82,6 +75,7 @@ interface OrderDetail {
   };
   quote?: {
     quote_number: string;
+    promised_delivery_date: string | null;
   };
   created_at: string;
   updated_at: string;
@@ -118,34 +112,6 @@ interface Cancellation {
   created_by: string;
 }
 
-interface QuoteFile {
-  id: string;
-  original_filename: string;
-  file_size: number;
-  storage_path: string;
-  mime_type: string;
-  ai_processing_status: string | null;
-  created_at: string;
-}
-
-interface AnalysisResult {
-  id: string;
-  quote_file_id: string | null;
-  manual_filename: string | null;
-  detected_language: string;
-  language_name?: string;
-  detected_document_type: string;
-  document_type_other: string | null;
-  word_count: number;
-  page_count: number;
-  billable_pages: number;
-  base_rate: number;
-  line_total: number;
-  certification_type_id: string | null;
-  certification_price: number;
-  assessed_complexity: string;
-  complexity_multiplier: number;
-}
 
 const STATUS_STYLES: Record<string, string> = {
   paid: "bg-green-100 text-green-700",
@@ -204,15 +170,10 @@ export default function AdminOrderDetail() {
   const [originalTotal, setOriginalTotal] = useState(0);
 
   // Document management state
-  const [quoteFiles, setQuoteFiles] = useState<QuoteFile[]>([]);
-  const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
-  const [loadingDocs, setLoadingDocs] = useState(false);
-
-  // Document modals
-  const [previewFile, setPreviewFile] = useState<QuoteFile | null>(null);
-  const [analyzeFile, setAnalyzeFile] = useState<QuoteFile | null>(null);
-  const [manualEntryFile, setManualEntryFile] = useState<QuoteFile | null>(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [showOcrModal, setShowOcrModal] = useState(false);
+  const [selectedFileForOcr, setSelectedFileForOcr] = useState<any>(null);
 
   // Payment recording
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
@@ -226,12 +187,9 @@ export default function AdminOrderDetail() {
   // Recalculate state
   const [recalculating, setRecalculating] = useState(false);
 
-  // Unified document editor toggle
-  const [useUnifiedEditor, setUseUnifiedEditor] = useState(false);
-
-  // OCR Analysis modal state
-  const [showOcrModal, setShowOcrModal] = useState(false);
-  const [hasBatch, setHasBatch] = useState(false);
+  // Promised delivery date
+  const [promisedDeliveryDate, setPromisedDeliveryDate] = useState<string>("");
+  const [savingDate, setSavingDate] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -242,62 +200,58 @@ export default function AdminOrderDetail() {
   // Fetch documents when order is loaded
   useEffect(() => {
     if (order?.quote_id) {
-      fetchDocuments();
+      fetchDocuments(order.quote_id);
     }
   }, [order?.quote_id]);
 
-  // Check if an OCR batch exists for the order's quote
-  useEffect(() => {
-    if (!order?.quote_id) return;
-    const checkBatch = async () => {
-      const { data } = await supabase
-        .from("ocr_batches")
-        .select("id")
-        .eq("quote_id", order.quote_id)
-        .limit(1)
-        .maybeSingle();
-      setHasBatch(!!data);
-    };
-    checkBatch();
-  }, [order?.quote_id]);
-
-  const fetchDocuments = async () => {
-    if (!order?.quote_id) return;
-
-    setLoadingDocs(true);
+  const fetchDocuments = async (quoteId: string) => {
+    setLoadingFiles(true);
     try {
-      // Fetch quote files
-      const { data: files, error: filesError } = await supabase
+      const { data, error } = await supabase
         .from("quote_files")
-        .select("*")
-        .eq("quote_id", order.quote_id)
+        .select("id, original_filename, file_size, mime_type, storage_path, created_at")
+        .eq("quote_id", quoteId)
         .order("created_at", { ascending: true });
 
-      if (filesError) throw filesError;
-      setQuoteFiles(files || []);
-
-      // Fetch analysis results
-      const { data: analysis, error: analysisError } = await supabase
-        .from("ai_analysis_results")
-        .select("*")
-        .eq("quote_id", order.quote_id)
-        .order("created_at", { ascending: true });
-
-      if (analysisError) throw analysisError;
-      setAnalysisResults(analysis || []);
+      if (!error && data) {
+        setQuoteFiles(data);
+      }
     } catch (err) {
       console.error("Error fetching documents:", err);
     } finally {
-      setLoadingDocs(false);
+      setLoadingFiles(false);
     }
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+  const handlePreviewFile = async (file: any) => {
+    try {
+      const { data } = await supabase.storage
+        .from("quote-files")
+        .createSignedUrl(file.storage_path, 3600);
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, "_blank");
+      }
+    } catch (err) {
+      console.error("Preview error:", err);
+    }
+  };
+
+  const handleDownloadFile = async (file: any) => {
+    try {
+      const { data } = await supabase.storage
+        .from("quote-files")
+        .download(file.storage_path);
+      if (data) {
+        const url = URL.createObjectURL(data);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = file.original_filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error("Download error:", err);
+    }
   };
 
   const fetchOrderDetails = async () => {
@@ -311,7 +265,7 @@ export default function AdminOrderDetail() {
           `
           *,
           customer:customers(*),
-          quote:quotes(quote_number)
+          quote:quotes(quote_number, promised_delivery_date)
         `,
         )
         .eq("id", id)
@@ -319,6 +273,11 @@ export default function AdminOrderDetail() {
 
       if (orderError) throw orderError;
       setOrder(orderData as OrderDetail);
+
+      // Set promised delivery date from quote, fallback to order's estimated date
+      setPromisedDeliveryDate(
+        orderData.quote?.promised_delivery_date || orderData.estimated_delivery_date || ""
+      );
 
       const { data: paymentsData } = await supabase
         .from("payments")
@@ -450,6 +409,56 @@ export default function AdminOrderDetail() {
       toast.error(err.message || "Failed to update status");
     } finally {
       setSavingStatus(false);
+    }
+  };
+
+  const handleDeliveryDateChange = async (date: string) => {
+    if (!order) return;
+
+    setSavingDate(true);
+    try {
+      // Update quote (source of truth)
+      const { error: quoteError } = await supabase
+        .from("quotes")
+        .update({ promised_delivery_date: date })
+        .eq("id", order.quote_id);
+
+      if (quoteError) throw quoteError;
+
+      // Also update order's estimated_delivery_date for consistency
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          estimated_delivery_date: date,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.id);
+
+      if (orderError) console.error("Order date update error:", orderError);
+
+      // Log activity
+      if (currentStaff?.staffId) {
+        await supabase.from("staff_activity_log").insert({
+          staff_id: currentStaff.staffId,
+          activity_type: "delivery_date_updated",
+          entity_type: "order",
+          entity_id: order.id,
+          details: {
+            order_id: order.id,
+            quote_id: order.quote_id,
+            new_date: date,
+            previous_date: promisedDeliveryDate,
+          },
+        });
+      }
+
+      setPromisedDeliveryDate(date);
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Date change error:", err);
+      toast.error("Failed to update delivery date");
+    } finally {
+      setSavingDate(false);
     }
   };
 
@@ -751,218 +760,70 @@ export default function AdminOrderDetail() {
           )}
 
           {/* Documents Section */}
-          <div className="bg-white rounded-lg border p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-gray-400" />
-                Documents ({quoteFiles.length})
-              </h2>
-              <div className="flex items-center gap-3">
-                {hasBatch && order?.quote_id && (
-                  <button
-                    onClick={() => setShowOcrModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <FileSearch className="w-4 h-4" />
-                    OCR & Analysis
-                  </button>
-                )}
-                {/* Toggle for unified editor */}
-                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={useUnifiedEditor}
-                    onChange={(e) => setUseUnifiedEditor(e.target.checked)}
-                    className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                  />
-                  Unified Editor
-                </label>
-                {!useUnifiedEditor && (
-                  <button
-                    onClick={() => setShowUploadModal(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Document
-                  </button>
-                )}
-              </div>
-            </div>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Documents ({quoteFiles.length})
+            </h3>
 
-            {/* Unified Document Editor */}
-            {useUnifiedEditor && order?.quote_id ? (
-              <UnifiedDocumentEditor
-                quoteId={order.quote_id}
-                mode="order-edit"
-                orderId={order.id}
-                readOnly={order.status === "cancelled"}
-                onPricingUpdate={(totals) => {
-                  // Refresh order details when pricing updates
-                  fetchOrderDetails?.();
-                }}
-              />
-            ) : loadingDocs ? (
+            {loadingFiles ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-teal-600" />
+                <RefreshCw className="w-5 h-5 animate-spin text-gray-400" />
               </div>
             ) : quoteFiles.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <FileText className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-                <p>No documents uploaded</p>
-                <button
-                  onClick={() => setShowUploadModal(true)}
-                  className="mt-2 text-teal-600 hover:text-teal-700 text-sm font-medium"
-                >
-                  Upload documents
-                </button>
-              </div>
+              <p className="text-gray-500 text-sm py-4">No documents uploaded</p>
             ) : (
               <div className="space-y-3">
-                {quoteFiles.map((file) => {
-                  // Find matching analysis result
-                  const analysis = analysisResults.find(
-                    (a) => a.quote_file_id === file.id || a.manual_filename === file.original_filename
-                  );
-
-                  return (
-                    <div
-                      key={file.id}
-                      className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        {/* File Info */}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate">
-                            {file.original_filename}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-gray-500">
-                            <span>{formatFileSize(file.file_size)}</span>
-                            <span>•</span>
-                            <span>{format(new Date(file.created_at), "MMM d, yyyy")}</span>
-                            {file.ai_processing_status && (
-                              <>
-                                <span>•</span>
-                                <span
-                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-                                    file.ai_processing_status === "completed"
-                                      ? "bg-green-100 text-green-700"
-                                      : file.ai_processing_status === "processing"
-                                      ? "bg-blue-100 text-blue-700"
-                                      : file.ai_processing_status === "failed"
-                                      ? "bg-red-100 text-red-700"
-                                      : "bg-gray-100 text-gray-600"
-                                  }`}
-                                >
-                                  {file.ai_processing_status === "processing" && (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  )}
-                                  {file.ai_processing_status === "completed"
-                                    ? "Analyzed"
-                                    : file.ai_processing_status === "processing"
-                                    ? "Processing..."
-                                    : file.ai_processing_status === "failed"
-                                    ? "Failed"
-                                    : "Pending"}
-                                </span>
-                              </>
-                            )}
-                          </div>
-
-                          {/* Analysis Summary */}
-                          {analysis && (
-                            <div className="mt-2 p-2 bg-gray-50 rounded text-sm">
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                <div>
-                                  <span className="text-gray-500">Type:</span>{" "}
-                                  <span className="font-medium">
-                                    {analysis.detected_document_type
-                                      ?.replace(/_/g, " ")
-                                      .replace(/\b\w/g, (c) => c.toUpperCase()) || "—"}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="text-gray-500">Language:</span>{" "}
-                                  <span className="font-medium">
-                                    {analysis.language_name || analysis.detected_language || "—"}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="text-gray-500">Words:</span>{" "}
-                                  <span className="font-medium">
-                                    {analysis.word_count?.toLocaleString() || "—"}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="text-gray-500">Total:</span>{" "}
-                                  <span className="font-medium text-teal-600">
-                                    ${(analysis.line_total || 0).toFixed(2)}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => setAnalyzeFile(file)}
-                            className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                            title="Analyze with AI"
-                          >
-                            <Brain className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setManualEntryFile(file)}
-                            className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                            title="Manual Entry"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setPreviewFile(file)}
-                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Preview"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${file.storage_path}`;
-                              window.open(url, "_blank");
-                            }}
-                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                            title="Download"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-                        </div>
+                {quoteFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <FileText className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {file.original_filename}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {file.file_size
+                            ? `${(file.file_size / 1024).toFixed(1)} KB`
+                            : "—"}{" "}
+                          • {file.mime_type || "Unknown type"}
+                        </p>
                       </div>
                     </div>
-                  );
-                })}
 
-                {/* Analysis Summary */}
-                {analysisResults.length > 0 && (
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Total Documents:</span>
-                      <span className="font-medium">{analysisResults.length}</span>
-                    </div>
-                    <div className="flex justify-between text-sm mt-1">
-                      <span className="text-gray-600">Total Words:</span>
-                      <span className="font-medium">
-                        {analysisResults.reduce((sum, a) => sum + (a.word_count || 0), 0).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm mt-1">
-                      <span className="text-gray-600">Documents Total:</span>
-                      <span className="font-semibold text-teal-600">
-                        ${analysisResults.reduce((sum, a) => sum + (a.line_total || 0), 0).toFixed(2)}
-                      </span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handlePreviewFile(file)}
+                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Preview"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDownloadFile(file)}
+                        className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                        title="Download"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedFileForOcr(file);
+                          setShowOcrModal(true);
+                        }}
+                        className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                        title="OCR & Pricing"
+                      >
+                        <Brain className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                )}
+                ))}
               </div>
             )}
           </div>
@@ -1255,15 +1116,20 @@ export default function AdminOrderDetail() {
               </div>
 
               <div>
-                <p className="text-sm text-gray-500">Estimated Delivery</p>
-                <p className="font-medium">
-                  {order.estimated_delivery_date
-                    ? format(
-                        new Date(order.estimated_delivery_date),
-                        "MMMM d, yyyy",
-                      )
-                    : "—"}
-                </p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Promised Delivery Date
+                </label>
+                <input
+                  type="date"
+                  value={promisedDeliveryDate}
+                  onChange={(e) => handleDeliveryDateChange(e.target.value)}
+                  disabled={savingDate}
+                  min={new Date().toISOString().split("T")[0]}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                {savingDate && (
+                  <p className="text-xs text-blue-600 mt-1">Updating...</p>
+                )}
               </div>
 
               {order.actual_delivery_date && (
@@ -1394,67 +1260,17 @@ export default function AdminOrderDetail() {
         />
       )}
 
-      {/* Document Upload Modal */}
-      {showUploadModal && order?.quote_id && (
-        <OrderUploadModal
-          isOpen={showUploadModal}
-          onClose={() => setShowUploadModal(false)}
-          quoteId={order.quote_id}
-          onUploadComplete={() => {
-            fetchDocuments();
-            setShowUploadModal(false);
+      {/* OCR Results Modal */}
+      {showOcrModal && selectedFileForOcr && (
+        <OcrResultsModal
+          isOpen={showOcrModal}
+          onClose={() => {
+            setShowOcrModal(false);
+            setSelectedFileForOcr(null);
           }}
-        />
-      )}
-
-      {/* Document Preview Modal */}
-      {previewFile && (
-        <DocumentPreviewModal
-          isOpen={true}
-          onClose={() => setPreviewFile(null)}
-          fileUrl={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/quote-files/${previewFile.storage_path}`}
-          fileName={previewFile.original_filename}
-          fileType={previewFile.mime_type?.includes("pdf") ? "pdf" : "image"}
-        />
-      )}
-
-      {/* Analyze Document Modal */}
-      {analyzeFile && order?.quote_id && (
-        <AnalyzeDocumentModal
-          isOpen={true}
-          onClose={() => setAnalyzeFile(null)}
-          file={analyzeFile}
-          quoteId={order.quote_id}
-          onAnalysisComplete={async () => {
-            await fetchDocuments();
-            // Auto-recalculate order totals
-            if (order) {
-              await supabase.rpc("recalculate_order_totals", { p_order_id: order.id });
-            }
-            await fetchOrderDetails();
-            setAnalyzeFile(null);
-            toast.success("Document analyzed and order recalculated");
-          }}
-        />
-      )}
-
-      {/* Manual Entry Modal */}
-      {manualEntryFile && order?.quote_id && (
-        <ManualEntryModal
-          isOpen={true}
-          onClose={() => setManualEntryFile(null)}
-          file={manualEntryFile}
-          quoteId={order.quote_id}
-          onSaveComplete={async () => {
-            await fetchDocuments();
-            // Auto-recalculate order totals
-            if (order) {
-              await supabase.rpc("recalculate_order_totals", { p_order_id: order.id });
-            }
-            await fetchOrderDetails();
-            setManualEntryFile(null);
-            toast.success("Document entry saved and order recalculated");
-          }}
+          fileId={selectedFileForOcr.id}
+          fileName={selectedFileForOcr.original_filename}
+          mode="view"
         />
       )}
 
@@ -1479,15 +1295,6 @@ export default function AdminOrderDetail() {
         />
       )}
 
-      {/* OCR & Analysis Modal */}
-      {order?.quote_id && (
-        <OcrAnalysisModal
-          isOpen={showOcrModal}
-          onClose={() => setShowOcrModal(false)}
-          quoteId={order.quote_id}
-          quoteNumber={order.quote?.quote_number}
-        />
-      )}
     </div>
   );
 }
