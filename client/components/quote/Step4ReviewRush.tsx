@@ -1176,12 +1176,14 @@ export default function Step4ReviewRush() {
         </div>
         {documents.length > 0 ? (
           <div className="divide-y divide-gray-100">
-            {documents.map((doc) => (
+            {documents.map((doc, index) => (
               <div key={doc.id} className="px-4 sm:px-6 py-4">
                 <div className="flex justify-between items-start gap-3">
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <p className="font-medium text-gray-900 truncate">
-                      {doc.quote_files?.original_filename || "Document"}
+                      {doc.quote_files?.original_filename && doc.quote_files.original_filename !== "Unknown"
+                        ? doc.quote_files.original_filename
+                        : `Document ${index + 1}`}
                     </p>
                     <div className="flex flex-wrap gap-2 mt-1">
                       <span className="text-xs bg-cethos-teal-50 text-cethos-teal px-2 py-0.5 rounded">
@@ -1189,18 +1191,6 @@ export default function Step4ReviewRush() {
                       </span>
                       <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
                         {doc.billable_pages.toFixed(1)} pages
-                      </span>
-                      <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
-                        AI Confidence:{" "}
-                        {Math.round(
-                          (((doc.ocr_confidence || 0) +
-                            (doc.language_confidence || 0) +
-                            (doc.document_type_confidence || 0) +
-                            (doc.complexity_confidence || 0)) /
-                            4) *
-                            100,
-                        )}
-                        %
                       </span>
                     </div>
                   </div>
