@@ -31,11 +31,13 @@ import {
   User,
   X,
   Zap,
+  FileSearch,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessageCustomerModal from "../../components/admin/MessageCustomerModal";
+import OcrAnalysisModal from "../../components/admin/OcrAnalysisModal";
 
 interface QuoteDetail {
   id: string;
@@ -375,6 +377,10 @@ export default function AdminQuoteDetail() {
 
   const { session: currentStaff } = useAdminAuthContext();
 
+  // OCR Analysis modal state
+  const [showOcrModal, setShowOcrModal] = useState(false);
+  const [hasBatch, setHasBatch] = useState(false);
+
   // Receive Payment modal state
   const [showReceivePaymentModal, setShowReceivePaymentModal] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{ id: string; name: string; code: string }[]>([]);
@@ -434,6 +440,21 @@ export default function AdminQuoteDetail() {
     if (id) {
       fetchQuoteDetails();
     }
+  }, [id]);
+
+  // Check if an OCR batch exists for this quote
+  useEffect(() => {
+    if (!id) return;
+    const checkBatch = async () => {
+      const { data } = await supabase
+        .from("ocr_batches")
+        .select("id")
+        .eq("quote_id", id)
+        .limit(1)
+        .maybeSingle();
+      setHasBatch(!!data);
+    };
+    checkBatch();
   }, [id]);
 
   const QUOTE_SELECT = `
@@ -1932,10 +1953,21 @@ export default function AdminQuoteDetail() {
           </div>
 
           <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <FileText className="w-5 h-5 text-gray-400" />
-              Uploaded Files ({normalizedFiles.length})
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-gray-400" />
+                Uploaded Files ({normalizedFiles.length})
+              </h2>
+              {hasBatch && (
+                <button
+                  onClick={() => setShowOcrModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <FileSearch className="w-4 h-4" />
+                  OCR & Analysis
+                </button>
+              )}
+            </div>
 
             {normalizedFiles.length > 0 ? (
               <div className="space-y-2">
@@ -3562,6 +3594,16 @@ export default function AdminQuoteDetail() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* OCR & Analysis Modal */}
+      {id && (
+        <OcrAnalysisModal
+          isOpen={showOcrModal}
+          onClose={() => setShowOcrModal(false)}
+          quoteId={id}
+          quoteNumber={quote?.quote_number}
+        />
       )}
     </div>
   );
