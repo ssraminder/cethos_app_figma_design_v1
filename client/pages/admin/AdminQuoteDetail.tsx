@@ -22,6 +22,7 @@ import {
   Trash2,
   Truck,
   User,
+  X,
   Zap,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -287,6 +288,14 @@ export default function AdminQuoteDetail() {
   const [isSavingTax, setIsSavingTax] = useState(false);
   const [turnaroundOptions, setTurnaroundOptions] = useState<TurnaroundOption[]>([]);
   const [isSavingTurnaround, setIsSavingTurnaround] = useState(false);
+  const [adjustmentForm, setAdjustmentForm] = useState<{
+    type: 'surcharge' | 'discount';
+    valueType: 'percentage' | 'fixed';
+    value: string;
+    reason: string;
+  } | null>(null);
+  const [isAddingAdjustment, setIsAddingAdjustment] = useState(false);
+  const [removingAdjustmentId, setRemovingAdjustmentId] = useState<string | null>(null);
 
   const { session: currentStaff } = useAdminAuthContext();
 
@@ -701,6 +710,114 @@ export default function AdminQuoteDetail() {
       await fetchQuoteDetails();
     } finally {
       setIsSavingTurnaround(false);
+    }
+  };
+
+  const callRecalculatePricing = async () => {
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/recalculate-quote-pricing`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ quoteId: id }),
+      },
+    );
+    if (response.ok) {
+      const result = await response.json();
+      if (result) {
+        setQuote((prev) =>
+          prev
+            ? {
+                ...prev,
+                subtotal: result.subtotal ?? prev.subtotal,
+                rush_fee: result.rush_fee ?? prev.rush_fee,
+                certification_total: result.certification_total ?? prev.certification_total,
+                delivery_fee: result.delivery_fee ?? prev.delivery_fee,
+                tax_amount: result.tax_amount ?? prev.tax_amount,
+                total: result.total ?? prev.total,
+              }
+            : null,
+        );
+      }
+    } else {
+      await fetchQuoteDetails();
+    }
+  };
+
+  const handleAddAdjustment = async () => {
+    if (!adjustmentForm || !id) return;
+    const numValue = parseFloat(adjustmentForm.value);
+    if (isNaN(numValue) || numValue <= 0 || !adjustmentForm.reason.trim()) return;
+
+    setIsAddingAdjustment(true);
+    try {
+      const baseSubtotal = (quote?.subtotal || 0) + (quote?.certification_total || 0);
+      const calculatedAmount =
+        adjustmentForm.valueType === "percentage"
+          ? parseFloat((baseSubtotal * (numValue / 100)).toFixed(2))
+          : numValue;
+
+      const { error: insertError } = await supabase
+        .from("quote_adjustments")
+        .insert({
+          quote_id: id,
+          adjustment_type: adjustmentForm.type,
+          value_type: adjustmentForm.valueType,
+          value: numValue,
+          calculated_amount: calculatedAmount,
+          reason: adjustmentForm.reason.trim(),
+          created_by_staff_id: currentStaff?.staffId || null,
+        });
+
+      if (insertError) throw insertError;
+
+      await callRecalculatePricing();
+
+      const { data: adjData } = await supabase
+        .from("quote_adjustments")
+        .select("*")
+        .eq("quote_id", id)
+        .order("created_at");
+      setAdjustments(adjData || []);
+      setAdjustmentForm(null);
+    } catch (err) {
+      console.error("Failed to add adjustment:", err);
+      alert("Failed to add adjustment");
+    } finally {
+      setIsAddingAdjustment(false);
+    }
+  };
+
+  const handleRemoveAdjustment = async (adjustmentId: string) => {
+    if (!id) return;
+    setRemovingAdjustmentId(adjustmentId);
+    try {
+      const { error: deleteError } = await supabase
+        .from("quote_adjustments")
+        .delete()
+        .eq("id", adjustmentId);
+
+      if (deleteError) throw deleteError;
+
+      await callRecalculatePricing();
+
+      const { data: adjData } = await supabase
+        .from("quote_adjustments")
+        .select("*")
+        .eq("quote_id", id)
+        .order("created_at");
+      setAdjustments(adjData || []);
+    } catch (err) {
+      console.error("Failed to remove adjustment:", err);
+      alert("Failed to remove adjustment");
+      await fetchQuoteDetails();
+    } finally {
+      setRemovingAdjustmentId(null);
     }
   };
 
@@ -1808,7 +1925,7 @@ export default function AdminQuoteDetail() {
                 </div>
               )}
 
-              {/* Per-Document Breakdown */}
+              {/* Per-Document Breakdown — Translation Total */}
               {analysis.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
@@ -1840,7 +1957,7 @@ export default function AdminQuoteDetail() {
                     );
                   })}
                   <div className="flex justify-between text-sm pt-1 border-t">
-                    <span className="text-gray-700 font-medium">Subtotal</span>
+                    <span className="text-gray-700 font-medium">Translation Total</span>
                     <span className="font-medium">
                       ${quote.subtotal?.toFixed(2) || "0.00"}
                     </span>
@@ -1848,7 +1965,7 @@ export default function AdminQuoteDetail() {
                 </div>
               )}
 
-              {/* Certifications Total */}
+              {/* Certification Total */}
               {quote.certification_total > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Certification Total</span>
@@ -1858,44 +1975,13 @@ export default function AdminQuoteDetail() {
                 </div>
               )}
 
-              {/* Adjustments */}
-              {adjustments.length > 0 && (
-                <div className="space-y-1 py-2 border-t border-b">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                    Adjustments
-                  </p>
-                  {adjustments.map((adj) => (
-                    <div key={adj.id} className="flex justify-between text-sm">
-                      <span
-                        className={
-                          adj.adjustment_type === "discount"
-                            ? "text-green-600"
-                            : "text-orange-600"
-                        }
-                      >
-                        {adj.adjustment_type === "discount"
-                          ? "Discount"
-                          : "Surcharge"}
-                        {adj.reason && (
-                          <span className="text-gray-400 text-xs ml-1">
-                            ({adj.reason})
-                          </span>
-                        )}
-                      </span>
-                      <span
-                        className={
-                          adj.adjustment_type === "discount"
-                            ? "text-green-600"
-                            : "text-orange-600"
-                        }
-                      >
-                        {adj.adjustment_type === "discount" ? "-" : "+"}$
-                        {Math.abs(adj.calculated_amount).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Subtotal (Translation + Certification) */}
+              <div className="flex justify-between text-sm pt-2 border-t">
+                <span className="text-gray-700 font-semibold">Subtotal</span>
+                <span className="font-semibold">
+                  ${((quote.subtotal || 0) + (quote.certification_total || 0)).toFixed(2)}
+                </span>
+              </div>
 
               {/* Rush Fee */}
               {quote.is_rush && quote.rush_fee > 0 && (
@@ -1917,6 +2003,206 @@ export default function AdminQuoteDetail() {
                   <span>${quote.delivery_fee?.toFixed(2) || "0.00"}</span>
                 </div>
               )}
+
+              {/* Surcharge lines */}
+              {adjustments
+                .filter((a) => a.adjustment_type === "surcharge")
+                .map((adj) => (
+                  <div
+                    key={adj.id}
+                    className="flex justify-between items-center text-sm"
+                  >
+                    <span className="text-orange-600">
+                      + Surcharge: ${Math.abs(adj.calculated_amount).toFixed(2)}
+                      {adj.reason && (
+                        <span className="text-orange-400 text-xs ml-1">
+                          ({adj.reason})
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      onClick={() => handleRemoveAdjustment(adj.id)}
+                      disabled={removingAdjustmentId === adj.id}
+                      className="text-gray-300 hover:text-red-500 p-0.5 disabled:opacity-50"
+                      title="Remove adjustment"
+                    >
+                      {removingAdjustmentId === adj.id ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <X className="w-3 h-3" />
+                      )}
+                    </button>
+                  </div>
+                ))}
+
+              {/* Discount lines */}
+              {adjustments
+                .filter((a) => a.adjustment_type === "discount")
+                .map((adj) => (
+                  <div
+                    key={adj.id}
+                    className="flex justify-between items-center text-sm"
+                  >
+                    <span className="text-green-600">
+                      - Discount: ${Math.abs(adj.calculated_amount).toFixed(2)}
+                      {adj.reason && (
+                        <span className="text-green-400 text-xs ml-1">
+                          ({adj.reason})
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      onClick={() => handleRemoveAdjustment(adj.id)}
+                      disabled={removingAdjustmentId === adj.id}
+                      className="text-gray-300 hover:text-red-500 p-0.5 disabled:opacity-50"
+                      title="Remove adjustment"
+                    >
+                      {removingAdjustmentId === adj.id ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <X className="w-3 h-3" />
+                      )}
+                    </button>
+                  </div>
+                ))}
+
+              {/* Add Surcharge / Add Discount buttons */}
+              <div className="flex gap-3 text-xs">
+                <button
+                  onClick={() =>
+                    setAdjustmentForm({
+                      type: "surcharge",
+                      valueType: "fixed",
+                      value: "",
+                      reason: "",
+                    })
+                  }
+                  className="text-orange-600 hover:text-orange-700 font-medium"
+                  disabled={adjustmentForm !== null}
+                >
+                  + Add Surcharge
+                </button>
+                <button
+                  onClick={() =>
+                    setAdjustmentForm({
+                      type: "discount",
+                      valueType: "fixed",
+                      value: "",
+                      reason: "",
+                    })
+                  }
+                  className="text-green-600 hover:text-green-700 font-medium"
+                  disabled={adjustmentForm !== null}
+                >
+                  + Add Discount
+                </button>
+              </div>
+
+              {/* Inline Add Adjustment Form */}
+              {adjustmentForm && (
+                <div className="bg-gray-50 rounded-lg p-3 space-y-2 border">
+                  <p className="text-xs font-medium text-gray-700">
+                    Add{" "}
+                    {adjustmentForm.type === "surcharge"
+                      ? "Surcharge"
+                      : "Discount"}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex border rounded overflow-hidden text-xs">
+                      <button
+                        className={`px-2 py-1 ${
+                          adjustmentForm.valueType === "fixed"
+                            ? "bg-teal-600 text-white"
+                            : "bg-white text-gray-600 hover:bg-gray-100"
+                        }`}
+                        onClick={() =>
+                          setAdjustmentForm({
+                            ...adjustmentForm,
+                            valueType: "fixed",
+                          })
+                        }
+                      >
+                        $
+                      </button>
+                      <button
+                        className={`px-2 py-1 ${
+                          adjustmentForm.valueType === "percentage"
+                            ? "bg-teal-600 text-white"
+                            : "bg-white text-gray-600 hover:bg-gray-100"
+                        }`}
+                        onClick={() =>
+                          setAdjustmentForm({
+                            ...adjustmentForm,
+                            valueType: "percentage",
+                          })
+                        }
+                      >
+                        %
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      placeholder={
+                        adjustmentForm.valueType === "percentage"
+                          ? "e.g. 10"
+                          : "e.g. 50.00"
+                      }
+                      value={adjustmentForm.value}
+                      onChange={(e) =>
+                        setAdjustmentForm({
+                          ...adjustmentForm,
+                          value: e.target.value,
+                        })
+                      }
+                      className="border rounded px-2 py-1 text-sm w-24 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Reason (required)"
+                    value={adjustmentForm.reason}
+                    onChange={(e) =>
+                      setAdjustmentForm({
+                        ...adjustmentForm,
+                        reason: e.target.value,
+                      })
+                    }
+                    className="border rounded px-2 py-1 text-sm w-full focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleAddAdjustment}
+                      disabled={
+                        isAddingAdjustment ||
+                        !adjustmentForm.value ||
+                        !adjustmentForm.reason.trim()
+                      }
+                      className="bg-teal-600 text-white text-xs px-3 py-1 rounded hover:bg-teal-700 disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {isAddingAdjustment && (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      )}
+                      Add
+                    </button>
+                    <button
+                      onClick={() => setAdjustmentForm(null)}
+                      className="text-gray-500 text-xs hover:text-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Pre-tax Total */}
+              <div className="flex justify-between text-sm pt-2 border-t">
+                <span className="text-gray-700 font-medium">Pre-tax Total</span>
+                <span className="font-medium">
+                  ${((quote.total || 0) - (quote.tax_amount || 0)).toFixed(2)}
+                </span>
+              </div>
 
               {/* Tax — editable dropdown */}
               <div className="flex justify-between items-center text-sm">
