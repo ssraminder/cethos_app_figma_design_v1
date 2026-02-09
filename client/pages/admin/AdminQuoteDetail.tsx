@@ -829,9 +829,10 @@ export default function AdminQuoteDetail() {
                 turnaround_type: selectedOption.code,
                 turnaround_option_id: selectedOption.id,
                 subtotal: pricing.subtotal ?? prev.subtotal,
-                rush_fee: pricing.rush_fee ?? prev.rush_fee,
                 certification_total: pricing.certification_total ?? prev.certification_total,
+                rush_fee: pricing.rush_fee ?? prev.rush_fee,
                 delivery_fee: pricing.delivery_fee ?? prev.delivery_fee,
+                tax_rate: pricing.tax_rate ?? prev.tax_rate,
                 tax_amount: pricing.tax_amount ?? prev.tax_amount,
                 total: pricing.total ?? prev.total,
                 is_rush: pricing.is_rush ?? prev.is_rush,
@@ -842,6 +843,8 @@ export default function AdminQuoteDetail() {
               }
             : null,
         );
+      } else {
+        await fetchQuoteDetails();
       }
     } catch (err) {
       console.error("Failed to update turnaround:", err);
@@ -952,9 +955,10 @@ export default function AdminQuoteDetail() {
           ? {
               ...prev,
               subtotal: pricing.subtotal ?? prev.subtotal,
-              rush_fee: pricing.rush_fee ?? prev.rush_fee,
               certification_total: pricing.certification_total ?? prev.certification_total,
+              rush_fee: pricing.rush_fee ?? prev.rush_fee,
               delivery_fee: pricing.delivery_fee ?? prev.delivery_fee,
+              tax_rate: pricing.tax_rate ?? prev.tax_rate,
               tax_amount: pricing.tax_amount ?? prev.tax_amount,
               total: pricing.total ?? prev.total,
               is_rush: pricing.is_rush ?? prev.is_rush,
