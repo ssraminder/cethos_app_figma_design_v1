@@ -208,6 +208,11 @@ export default function AdminOrderDetail() {
   const [selectedTurnaroundId, setSelectedTurnaroundId] = useState<string>("");
   const [savingTurnaround, setSavingTurnaround] = useState(false);
 
+  // Delivery method
+  const [deliveryOptions, setDeliveryOptions] = useState<any[]>([]);
+  const [selectedDeliveryId, setSelectedDeliveryId] = useState<string>("");
+  const [savingDelivery, setSavingDelivery] = useState(false);
+
   const fetchTurnaroundOptions = async () => {
     const { data } = await supabase
       .from("turnaround_options")
@@ -217,10 +222,21 @@ export default function AdminOrderDetail() {
     if (data) setTurnaroundOptions(data);
   };
 
+  const fetchDeliveryOptions = async () => {
+    const { data } = await supabase
+      .from("delivery_options")
+      .select("*")
+      .eq("category", "delivery")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+    if (data) setDeliveryOptions(data);
+  };
+
   useEffect(() => {
     if (id) {
       fetchOrderDetails();
       fetchTurnaroundOptions();
+      fetchDeliveryOptions();
     }
   }, [id]);
 
@@ -306,16 +322,17 @@ export default function AdminOrderDetail() {
         orderData.quote?.promised_delivery_date || orderData.estimated_delivery_date || ""
       );
 
-      // Fetch quote details for turnaround option
+      // Fetch quote details for turnaround and delivery options
       if (orderData.quote_id) {
         const { data: quoteData } = await supabase
           .from("quotes")
-          .select("turnaround_option_id")
+          .select("turnaround_option_id, physical_delivery_option_id")
           .eq("id", orderData.quote_id)
           .single();
 
         if (quoteData) {
           setSelectedTurnaroundId(quoteData.turnaround_option_id || "");
+          setSelectedDeliveryId(quoteData.physical_delivery_option_id || "");
         }
       }
 
@@ -552,6 +569,52 @@ export default function AdminOrderDetail() {
       toast.error("Failed to update turnaround speed");
     } finally {
       setSavingTurnaround(false);
+    }
+  };
+
+  const handleDeliveryChange = async (optionId: string) => {
+    if (!order) return;
+
+    setSavingDelivery(true);
+    try {
+      const option = deliveryOptions.find((o) => o.id === optionId);
+      if (!option) return;
+
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          physical_delivery_option_id: optionId,
+          delivery_fee: option.price || 0,
+        })
+        .eq("id", order.quote_id);
+
+      if (error) throw error;
+
+      const { error: recalcError } = await supabase.functions.invoke(
+        "recalculate-quote-pricing",
+        { body: { quoteId: order.quote_id } }
+      );
+      if (recalcError) console.error("Recalculate error:", recalcError);
+
+      const currentStaffId = currentStaff?.staffId || undefined;
+      const syncResult = await syncOrderFromQuote(order.id, order.quote_id, currentStaffId);
+      if (!syncResult.success) {
+        console.error("Order sync error:", syncResult.error);
+      }
+
+      if (syncResult.delta !== 0) {
+        toast.info(
+          `Order total changed by $${syncResult.delta.toFixed(2)}. New balance due: $${syncResult.newBalanceDue.toFixed(2)}`
+        );
+      }
+
+      setSelectedDeliveryId(optionId);
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Delivery change error:", err);
+      toast.error("Failed to update delivery method");
+    } finally {
+      setSavingDelivery(false);
     }
   };
 
@@ -1227,11 +1290,28 @@ export default function AdminOrderDetail() {
                 )}
               </div>
 
+              {/* Delivery Method Dropdown */}
               <div>
-                <p className="text-sm text-gray-500">Method</p>
-                <p className="font-medium capitalize">
-                  {order.delivery_option || "—"}
-                </p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Delivery Method
+                </label>
+                <select
+                  value={selectedDeliveryId}
+                  onChange={(e) => handleDeliveryChange(e.target.value)}
+                  disabled={savingDelivery}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">— Select —</option>
+                  {deliveryOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.name}
+                      {opt.price > 0 ? ` — $${Number(opt.price).toFixed(2)}` : " — Free"}
+                    </option>
+                  ))}
+                </select>
+                {savingDelivery && (
+                  <p className="text-xs text-blue-600 mt-1">Updating...</p>
+                )}
               </div>
 
               <div>
