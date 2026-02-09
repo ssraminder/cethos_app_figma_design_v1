@@ -75,6 +75,7 @@ interface OrderDetail {
   };
   quote?: {
     quote_number: string;
+    promised_delivery_date: string | null;
   };
   created_at: string;
   updated_at: string;
@@ -186,6 +187,10 @@ export default function AdminOrderDetail() {
   // Recalculate state
   const [recalculating, setRecalculating] = useState(false);
 
+  // Promised delivery date
+  const [promisedDeliveryDate, setPromisedDeliveryDate] = useState<string>("");
+  const [savingDate, setSavingDate] = useState(false);
+
   useEffect(() => {
     if (id) {
       fetchOrderDetails();
@@ -260,7 +265,7 @@ export default function AdminOrderDetail() {
           `
           *,
           customer:customers(*),
-          quote:quotes(quote_number)
+          quote:quotes(quote_number, promised_delivery_date)
         `,
         )
         .eq("id", id)
@@ -268,6 +273,11 @@ export default function AdminOrderDetail() {
 
       if (orderError) throw orderError;
       setOrder(orderData as OrderDetail);
+
+      // Set promised delivery date from quote, fallback to order's estimated date
+      setPromisedDeliveryDate(
+        orderData.quote?.promised_delivery_date || orderData.estimated_delivery_date || ""
+      );
 
       const { data: paymentsData } = await supabase
         .from("payments")
@@ -399,6 +409,56 @@ export default function AdminOrderDetail() {
       toast.error(err.message || "Failed to update status");
     } finally {
       setSavingStatus(false);
+    }
+  };
+
+  const handleDeliveryDateChange = async (date: string) => {
+    if (!order) return;
+
+    setSavingDate(true);
+    try {
+      // Update quote (source of truth)
+      const { error: quoteError } = await supabase
+        .from("quotes")
+        .update({ promised_delivery_date: date })
+        .eq("id", order.quote_id);
+
+      if (quoteError) throw quoteError;
+
+      // Also update order's estimated_delivery_date for consistency
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          estimated_delivery_date: date,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.id);
+
+      if (orderError) console.error("Order date update error:", orderError);
+
+      // Log activity
+      if (currentStaff?.staffId) {
+        await supabase.from("staff_activity_log").insert({
+          staff_id: currentStaff.staffId,
+          activity_type: "delivery_date_updated",
+          entity_type: "order",
+          entity_id: order.id,
+          details: {
+            order_id: order.id,
+            quote_id: order.quote_id,
+            new_date: date,
+            previous_date: promisedDeliveryDate,
+          },
+        });
+      }
+
+      setPromisedDeliveryDate(date);
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Date change error:", err);
+      toast.error("Failed to update delivery date");
+    } finally {
+      setSavingDate(false);
     }
   };
 
@@ -1056,15 +1116,20 @@ export default function AdminOrderDetail() {
               </div>
 
               <div>
-                <p className="text-sm text-gray-500">Estimated Delivery</p>
-                <p className="font-medium">
-                  {order.estimated_delivery_date
-                    ? format(
-                        new Date(order.estimated_delivery_date),
-                        "MMMM d, yyyy",
-                      )
-                    : "—"}
-                </p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Promised Delivery Date
+                </label>
+                <input
+                  type="date"
+                  value={promisedDeliveryDate}
+                  onChange={(e) => handleDeliveryDateChange(e.target.value)}
+                  disabled={savingDate}
+                  min={new Date().toISOString().split("T")[0]}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                {savingDate && (
+                  <p className="text-xs text-blue-600 mt-1">Updating...</p>
+                )}
               </div>
 
               {order.actual_delivery_date && (
