@@ -388,21 +388,31 @@ export default function AdminOrderDetail() {
 
     setRecalculating(true);
     try {
-      const { data, error } = await supabase.rpc("recalculate_order_totals", {
-        p_order_id: order.id,
-      });
+      const { error } = await supabase.functions.invoke(
+        "recalculate-quote-pricing",
+        { body: { quoteId: order.quote_id } }
+      );
 
       if (error) throw error;
 
-      if (data?.success) {
-        toast.success("Order totals recalculated");
-        fetchOrderDetails();
-      } else {
-        throw new Error(data?.error || "Recalculation failed");
+      const currentStaffId = currentStaff?.staffId || undefined;
+      const syncResult = await syncOrderFromQuote(order.id, order.quote_id, currentStaffId);
+      if (!syncResult.success) {
+        console.error("Order sync error:", syncResult.error);
       }
-    } catch (err: any) {
-      console.error("Error recalculating:", err);
-      toast.error(err.message || "Failed to recalculate order");
+
+      if (syncResult.delta !== 0) {
+        toast.info(
+          `Order total changed by $${syncResult.delta.toFixed(2)}. New balance due: $${syncResult.newBalanceDue.toFixed(2)}`
+        );
+      } else {
+        toast.success("Totals recalculated — no change");
+      }
+
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Recalculate error:", err);
+      toast.error("Failed to recalculate totals");
     } finally {
       setRecalculating(false);
     }
@@ -1086,27 +1096,10 @@ export default function AdminOrderDetail() {
 
         <div className="space-y-6">
           <div className="bg-white rounded-lg border p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-gray-400" />
-                Order Summary
-              </h2>
-              {order.status !== 'cancelled' && (
-                <button
-                  onClick={handleRecalculateOrder}
-                  disabled={recalculating}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                  title="Recalculate totals from documents"
-                >
-                  {recalculating ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4" />
-                  )}
-                  Recalculate
-                </button>
-              )}
-            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-gray-400" />
+              Order Summary
+            </h2>
 
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
@@ -1244,6 +1237,30 @@ export default function AdminOrderDetail() {
                         minute: '2-digit'
                       })}
                     </p>
+                  )}
+                </div>
+              )}
+
+              {/* Recalculate + Quote Link buttons */}
+              {order.status !== 'cancelled' && (
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={handleRecalculateOrder}
+                    disabled={recalculating}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${recalculating ? "animate-spin" : ""}`} />
+                    {recalculating ? "Recalculating..." : "Recalculate Totals"}
+                  </button>
+
+                  {order.quote_id && (
+                    <Link
+                      to={`/admin/quotes/${order.quote_id}`}
+                      className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      View Quote
+                    </Link>
                   )}
                 </div>
               )}
