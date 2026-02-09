@@ -69,6 +69,7 @@ interface QuoteDetail {
   turnaround_days: number;
   hitl_required: boolean;
   hitl_reason: string;
+  turnaround_type: string | null;
 }
 
 interface QuoteFile {
@@ -171,6 +172,14 @@ interface QuoteAdjustment {
   calculated_amount: number;
   reason?: string;
   created_at: string;
+}
+
+interface TurnaroundOption {
+  id: string;
+  code: string;
+  name: string;
+  multiplier: number;
+  sort_order: number;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -276,6 +285,8 @@ export default function AdminQuoteDetail() {
     rate: number;
   }>>([]);
   const [isSavingTax, setIsSavingTax] = useState(false);
+  const [turnaroundOptions, setTurnaroundOptions] = useState<TurnaroundOption[]>([]);
+  const [isSavingTurnaround, setIsSavingTurnaround] = useState(false);
 
   const { session: currentStaff } = useAdminAuthContext();
 
@@ -504,6 +515,15 @@ export default function AdminQuoteDetail() {
         .order("region_name");
       setTaxRates(taxRatesData || []);
 
+      // Fetch turnaround options from delivery_options
+      const { data: turnaroundData } = await supabase
+        .from("delivery_options")
+        .select("id, code, name, multiplier, sort_order")
+        .eq("category", "turnaround")
+        .eq("is_active", true)
+        .order("sort_order");
+      setTurnaroundOptions(turnaroundData || []);
+
       if (quoteData?.status === "converted") {
         const { data: orderData } = await supabase
           .from("orders")
@@ -616,6 +636,71 @@ export default function AdminQuoteDetail() {
       alert("Failed to update tax rate");
     } finally {
       setIsSavingTax(false);
+    }
+  };
+
+  const handleTurnaroundChange = async (optionCode: string) => {
+    if (!quote || !id) return;
+
+    setIsSavingTurnaround(true);
+
+    try {
+      // Update quote turnaround_type
+      const { error: updateError } = await supabase
+        .from("quotes")
+        .update({
+          turnaround_type: optionCode,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (updateError) throw updateError;
+
+      // Call recalculate-quote-pricing edge function
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/recalculate-quote-pricing`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ quoteId: id }),
+        },
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        // Update local quote state from the recalculated response
+        if (result) {
+          setQuote((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  turnaround_type: optionCode,
+                  subtotal: result.subtotal ?? prev.subtotal,
+                  rush_fee: result.rush_fee ?? prev.rush_fee,
+                  certification_total: result.certification_total ?? prev.certification_total,
+                  delivery_fee: result.delivery_fee ?? prev.delivery_fee,
+                  tax_amount: result.tax_amount ?? prev.tax_amount,
+                  total: result.total ?? prev.total,
+                }
+              : null,
+          );
+        }
+      } else {
+        // Edge function failed — re-fetch to stay in sync
+        await fetchQuoteDetails();
+      }
+    } catch (err) {
+      console.error("Failed to update turnaround:", err);
+      alert("Failed to update turnaround speed");
+      await fetchQuoteDetails();
+    } finally {
+      setIsSavingTurnaround(false);
     }
   };
 
@@ -1689,6 +1774,40 @@ export default function AdminQuoteDetail() {
             </h2>
 
             <div className="space-y-4">
+              {/* Turnaround Speed */}
+              {turnaroundOptions.length > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-500">Turnaround:</span>
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={quote.turnaround_type || "standard"}
+                      onChange={(e) => handleTurnaroundChange(e.target.value)}
+                      disabled={isSavingTurnaround}
+                      className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50 max-w-[250px]"
+                    >
+                      {turnaroundOptions.map((opt) => {
+                        const pct = Math.round((opt.multiplier - 1) * 100);
+                        const extra = (quote.subtotal || 0) * (opt.multiplier - 1);
+                        let label = opt.name;
+                        if (pct === 0) {
+                          label += " \u2014 No extra charge";
+                        } else {
+                          label += ` (+${pct}%) \u2014 +$${extra.toFixed(2)}`;
+                        }
+                        return (
+                          <option key={opt.id} value={opt.code}>
+                            {label}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    {isSavingTurnaround && (
+                      <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Per-Document Breakdown */}
               {analysis.length > 0 && (
                 <div className="space-y-2">
