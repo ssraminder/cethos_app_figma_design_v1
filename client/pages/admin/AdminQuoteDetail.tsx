@@ -815,47 +815,33 @@ export default function AdminQuoteDetail() {
       if (updateError) throw updateError;
 
       // Call recalculate-quote-pricing edge function
-      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const { data, error: fnError } = await supabase.functions.invoke('recalculate-quote-pricing', {
+        body: { quoteId: id },
+      });
+      if (fnError) throw fnError;
+      const pricing = data;
 
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/recalculate-quote-pricing`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ quoteId: id }),
-        },
-      );
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result) {
-          setQuote((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  turnaround_type: selectedOption.code,
-                  turnaround_option_id: selectedOption.id,
-                  subtotal: result.subtotal ?? prev.subtotal,
-                  rush_fee: result.rush_fee ?? prev.rush_fee,
-                  certification_total: result.certification_total ?? prev.certification_total,
-                  delivery_fee: result.delivery_fee ?? prev.delivery_fee,
-                  tax_amount: result.tax_amount ?? prev.tax_amount,
-                  total: result.total ?? prev.total,
-                  is_rush: result.is_rush ?? prev.is_rush,
-                  calculated_totals: {
-                    ...prev.calculated_totals,
-                    ...result,
-                  },
-                }
-              : null,
-          );
-        }
-      } else {
-        await fetchQuoteDetails();
+      if (pricing) {
+        setQuote((prev) =>
+          prev
+            ? {
+                ...prev,
+                turnaround_type: selectedOption.code,
+                turnaround_option_id: selectedOption.id,
+                subtotal: pricing.subtotal ?? prev.subtotal,
+                rush_fee: pricing.rush_fee ?? prev.rush_fee,
+                certification_total: pricing.certification_total ?? prev.certification_total,
+                delivery_fee: pricing.delivery_fee ?? prev.delivery_fee,
+                tax_amount: pricing.tax_amount ?? prev.tax_amount,
+                total: pricing.total ?? prev.total,
+                is_rush: pricing.is_rush ?? prev.is_rush,
+                calculated_totals: {
+                  ...prev.calculated_totals,
+                  ...pricing,
+                },
+              }
+            : null,
+        );
       }
     } catch (err) {
       console.error("Failed to update turnaround:", err);
@@ -954,41 +940,31 @@ export default function AdminQuoteDetail() {
   };
 
   const callRecalculatePricing = async () => {
-    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-    const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    const response = await fetch(
-      `${SUPABASE_URL}/functions/v1/recalculate-quote-pricing`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ quoteId: id }),
-      },
-    );
-    if (response.ok) {
-      const result = await response.json();
-      if (result) {
-        setQuote((prev) =>
-          prev
-            ? {
-                ...prev,
-                subtotal: result.subtotal ?? prev.subtotal,
-                rush_fee: result.rush_fee ?? prev.rush_fee,
-                certification_total: result.certification_total ?? prev.certification_total,
-                delivery_fee: result.delivery_fee ?? prev.delivery_fee,
-                tax_amount: result.tax_amount ?? prev.tax_amount,
-                total: result.total ?? prev.total,
-                is_rush: result.is_rush ?? prev.is_rush,
-                calculated_totals: {
-                  ...prev.calculated_totals,
-                  ...result,
-                },
-              }
-            : null,
-        );
-      }
+    const { data, error } = await supabase.functions.invoke('recalculate-quote-pricing', {
+      body: { quoteId: id },
+    });
+    if (error) throw error;
+    const pricing = data;
+
+    if (pricing) {
+      setQuote((prev) =>
+        prev
+          ? {
+              ...prev,
+              subtotal: pricing.subtotal ?? prev.subtotal,
+              rush_fee: pricing.rush_fee ?? prev.rush_fee,
+              certification_total: pricing.certification_total ?? prev.certification_total,
+              delivery_fee: pricing.delivery_fee ?? prev.delivery_fee,
+              tax_amount: pricing.tax_amount ?? prev.tax_amount,
+              total: pricing.total ?? prev.total,
+              is_rush: pricing.is_rush ?? prev.is_rush,
+              calculated_totals: {
+                ...prev.calculated_totals,
+                ...pricing,
+              },
+            }
+          : null,
+      );
     } else {
       await fetchQuoteDetails();
     }
@@ -1803,8 +1779,8 @@ export default function AdminQuoteDetail() {
               </>
             )}
 
-            {/* Receive Payment Button - visible only for draft or quote_ready */}
-            {["draft", "quote_ready"].includes(quote.status) && (
+            {/* Receive Payment Button - visible for draft, quote_ready, or awaiting_payment */}
+            {["draft", "quote_ready", "awaiting_payment"].includes(quote.status) && (
               <button
                 onClick={openReceivePaymentModal}
                 className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
