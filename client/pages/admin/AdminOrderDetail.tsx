@@ -35,6 +35,7 @@ import BalanceResolutionModal from "@/components/admin/BalanceResolutionModal";
 import RecordOrderPaymentModal from "@/components/admin/RecordOrderPaymentModal";
 import OcrResultsModal from "@/components/shared/analysis/OcrResultsModal";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
+import { syncOrderFromQuote } from "../../utils/syncOrderFromQuote";
 
 interface OrderDetail {
   id: string;
@@ -112,6 +113,17 @@ interface Cancellation {
   created_by: string;
 }
 
+interface TurnaroundOption {
+  id: string;
+  code: string;
+  name: string;
+  multiplier: number;
+  fee_type: string;
+  fee_value: number;
+  estimated_days: number;
+  is_default: boolean;
+  sort_order: number;
+}
 
 const STATUS_STYLES: Record<string, string> = {
   paid: "bg-green-100 text-green-700",
@@ -191,9 +203,40 @@ export default function AdminOrderDetail() {
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState<string>("");
   const [savingDate, setSavingDate] = useState(false);
 
+  // Turnaround speed
+  const [turnaroundOptions, setTurnaroundOptions] = useState<TurnaroundOption[]>([]);
+  const [selectedTurnaroundId, setSelectedTurnaroundId] = useState<string>("");
+  const [savingTurnaround, setSavingTurnaround] = useState(false);
+
+  // Delivery method
+  const [deliveryOptions, setDeliveryOptions] = useState<any[]>([]);
+  const [selectedDeliveryId, setSelectedDeliveryId] = useState<string>("");
+  const [savingDelivery, setSavingDelivery] = useState(false);
+
+  const fetchTurnaroundOptions = async () => {
+    const { data } = await supabase
+      .from("turnaround_options")
+      .select("id, code, name, multiplier, fee_type, fee_value, estimated_days, is_default, sort_order")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+    if (data) setTurnaroundOptions(data);
+  };
+
+  const fetchDeliveryOptions = async () => {
+    const { data } = await supabase
+      .from("delivery_options")
+      .select("*")
+      .eq("category", "delivery")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+    if (data) setDeliveryOptions(data);
+  };
+
   useEffect(() => {
     if (id) {
       fetchOrderDetails();
+      fetchTurnaroundOptions();
+      fetchDeliveryOptions();
     }
   }, [id]);
 
@@ -279,6 +322,20 @@ export default function AdminOrderDetail() {
         orderData.quote?.promised_delivery_date || orderData.estimated_delivery_date || ""
       );
 
+      // Fetch quote details for turnaround and delivery options
+      if (orderData.quote_id) {
+        const { data: quoteData } = await supabase
+          .from("quotes")
+          .select("turnaround_option_id, physical_delivery_option_id")
+          .eq("id", orderData.quote_id)
+          .single();
+
+        if (quoteData) {
+          setSelectedTurnaroundId(quoteData.turnaround_option_id || "");
+          setSelectedDeliveryId(quoteData.physical_delivery_option_id || "");
+        }
+      }
+
       const { data: paymentsData } = await supabase
         .from("payments")
         .select("*")
@@ -331,21 +388,31 @@ export default function AdminOrderDetail() {
 
     setRecalculating(true);
     try {
-      const { data, error } = await supabase.rpc("recalculate_order_totals", {
-        p_order_id: order.id,
-      });
+      const { error } = await supabase.functions.invoke(
+        "recalculate-quote-pricing",
+        { body: { quoteId: order.quote_id } }
+      );
 
       if (error) throw error;
 
-      if (data?.success) {
-        toast.success("Order totals recalculated");
-        fetchOrderDetails();
-      } else {
-        throw new Error(data?.error || "Recalculation failed");
+      const currentStaffId = currentStaff?.staffId || undefined;
+      const syncResult = await syncOrderFromQuote(order.id, order.quote_id, currentStaffId);
+      if (!syncResult.success) {
+        console.error("Order sync error:", syncResult.error);
       }
-    } catch (err: any) {
-      console.error("Error recalculating:", err);
-      toast.error(err.message || "Failed to recalculate order");
+
+      if (syncResult.delta !== 0) {
+        toast.info(
+          `Order total changed by $${syncResult.delta.toFixed(2)}. New balance due: $${syncResult.newBalanceDue.toFixed(2)}`
+        );
+      } else {
+        toast.success("Totals recalculated — no change");
+      }
+
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Recalculate error:", err);
+      toast.error("Failed to recalculate totals");
     } finally {
       setRecalculating(false);
     }
@@ -459,6 +526,105 @@ export default function AdminOrderDetail() {
       toast.error("Failed to update delivery date");
     } finally {
       setSavingDate(false);
+    }
+  };
+
+  const handleTurnaroundChange = async (optionId: string) => {
+    if (!order) return;
+
+    setSavingTurnaround(true);
+    try {
+      const option = turnaroundOptions.find((o) => o.id === optionId);
+      if (!option) return;
+
+      // Write to quotes table (source of truth for pricing inputs)
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          turnaround_option_id: optionId,
+          turnaround_type: option.code,
+          is_rush: option.code !== "standard",
+        })
+        .eq("id", order.quote_id);
+
+      if (error) throw error;
+
+      // Recalculate quote pricing
+      const { error: recalcError } = await supabase.functions.invoke(
+        "recalculate-quote-pricing",
+        { body: { quoteId: order.quote_id } }
+      );
+      if (recalcError) console.error("Recalculate error:", recalcError);
+
+      // Sync updated totals to order
+      const currentStaffId = currentStaff?.staffId || undefined;
+      const syncResult = await syncOrderFromQuote(order.id, order.quote_id, currentStaffId);
+      if (!syncResult.success) {
+        console.error("Order sync error:", syncResult.error);
+      }
+
+      // Show delta notification if total changed
+      if (syncResult.delta !== 0) {
+        toast.info(
+          `Order total changed by $${syncResult.delta.toFixed(2)}. New balance due: $${syncResult.newBalanceDue.toFixed(2)}`
+        );
+      }
+
+      setSelectedTurnaroundId(optionId);
+
+      // Re-fetch order to refresh all displayed data
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Turnaround change error:", err);
+      toast.error("Failed to update turnaround speed");
+    } finally {
+      setSavingTurnaround(false);
+    }
+  };
+
+  const handleDeliveryChange = async (optionId: string) => {
+    if (!order) return;
+
+    setSavingDelivery(true);
+    try {
+      const option = deliveryOptions.find((o) => o.id === optionId);
+      if (!option) return;
+
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          physical_delivery_option_id: optionId,
+          delivery_fee: option.price || 0,
+        })
+        .eq("id", order.quote_id);
+
+      if (error) throw error;
+
+      const { error: recalcError } = await supabase.functions.invoke(
+        "recalculate-quote-pricing",
+        { body: { quoteId: order.quote_id } }
+      );
+      if (recalcError) console.error("Recalculate error:", recalcError);
+
+      const currentStaffId = currentStaff?.staffId || undefined;
+      const syncResult = await syncOrderFromQuote(order.id, order.quote_id, currentStaffId);
+      if (!syncResult.success) {
+        console.error("Order sync error:", syncResult.error);
+      }
+
+      if (syncResult.delta !== 0) {
+        toast.info(
+          `Order total changed by $${syncResult.delta.toFixed(2)}. New balance due: $${syncResult.newBalanceDue.toFixed(2)}`
+        );
+      }
+
+      setSelectedDeliveryId(optionId);
+      await fetchOrderDetails();
+    } catch (err) {
+      console.error("Delivery change error:", err);
+      toast.error("Failed to update delivery method");
+    } finally {
+      setSavingDelivery(false);
     }
   };
 
@@ -930,27 +1096,10 @@ export default function AdminOrderDetail() {
 
         <div className="space-y-6">
           <div className="bg-white rounded-lg border p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-gray-400" />
-                Order Summary
-              </h2>
-              {order.status !== 'cancelled' && (
-                <button
-                  onClick={handleRecalculateOrder}
-                  disabled={recalculating}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                  title="Recalculate totals from documents"
-                >
-                  {recalculating ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4" />
-                  )}
-                  Recalculate
-                </button>
-              )}
-            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-gray-400" />
+              Order Summary
+            </h2>
 
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
@@ -1091,6 +1240,30 @@ export default function AdminOrderDetail() {
                   )}
                 </div>
               )}
+
+              {/* Recalculate + Quote Link buttons */}
+              {order.status !== 'cancelled' && (
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={handleRecalculateOrder}
+                    disabled={recalculating}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${recalculating ? "animate-spin" : ""}`} />
+                    {recalculating ? "Recalculating..." : "Recalculate Totals"}
+                  </button>
+
+                  {order.quote_id && (
+                    <Link
+                      to={`/admin/quotes/${order.quote_id}`}
+                      className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      View Quote
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1108,11 +1281,54 @@ export default function AdminOrderDetail() {
                 </div>
               )}
 
+              {/* Turnaround Speed Dropdown */}
               <div>
-                <p className="text-sm text-gray-500">Method</p>
-                <p className="font-medium capitalize">
-                  {order.delivery_option || "—"}
-                </p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Turnaround Speed
+                </label>
+                <select
+                  value={selectedTurnaroundId}
+                  onChange={(e) => handleTurnaroundChange(e.target.value)}
+                  disabled={savingTurnaround}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">— Select —</option>
+                  {turnaroundOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.name} ({opt.multiplier}×)
+                      {opt.fee_value > 0
+                        ? ` — +${opt.fee_value}${opt.fee_type === "percentage" ? "%" : "$"}`
+                        : " — No fee"}
+                    </option>
+                  ))}
+                </select>
+                {savingTurnaround && (
+                  <p className="text-xs text-blue-600 mt-1">Updating...</p>
+                )}
+              </div>
+
+              {/* Delivery Method Dropdown */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Delivery Method
+                </label>
+                <select
+                  value={selectedDeliveryId}
+                  onChange={(e) => handleDeliveryChange(e.target.value)}
+                  disabled={savingDelivery}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">— Select —</option>
+                  {deliveryOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.name}
+                      {opt.price > 0 ? ` — $${Number(opt.price).toFixed(2)}` : " — Free"}
+                    </option>
+                  ))}
+                </select>
+                {savingDelivery && (
+                  <p className="text-xs text-blue-600 mt-1">Updating...</p>
+                )}
               </div>
 
               <div>
