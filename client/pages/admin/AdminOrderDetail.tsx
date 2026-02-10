@@ -1583,6 +1583,7 @@ export default function AdminOrderDetail() {
             id: order.id,
             order_number: order.order_number,
             customer_id: order.customer_id,
+            quote_id: order.quote_id,
             subtotal: order.subtotal,
             certification_total: order.certification_total,
             rush_fee: order.rush_fee,

@@ -11,14 +11,14 @@ const corsHeaders = {
 
 interface OrderDocument {
   id: string;
-  document_type: string;
+  detected_document_type: string;
   word_count: number;
   page_count: number;
   billable_pages: number;
-  complexity: string;
+  assessed_complexity: string;
   complexity_multiplier: number;
   line_total: number;
-  certification_type: string;
+  certification_type_id: string;
   certification_price: number;
 }
 
@@ -104,19 +104,19 @@ serve(async (req) => {
 
     const now = new Date().toISOString();
 
-    // 2. Update each document
+    // 2. Update each document in ai_analysis_results
     for (const doc of documents) {
       const { error: docError } = await supabase
-        .from("order_documents")
+        .from("ai_analysis_results")
         .update({
-          document_type: doc.document_type,
+          detected_document_type: doc.detected_document_type,
           word_count: doc.word_count,
           page_count: doc.page_count,
           billable_pages: doc.billable_pages,
-          complexity: doc.complexity,
+          assessed_complexity: doc.assessed_complexity,
           complexity_multiplier: doc.complexity_multiplier,
           line_total: doc.line_total,
-          certification_type: doc.certification_type,
+          certification_type_id: doc.certification_type_id,
           certification_price: doc.certification_price,
           updated_at: now,
         })

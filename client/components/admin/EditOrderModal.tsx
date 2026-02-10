@@ -19,16 +19,16 @@ import EditDocumentModal from "./EditDocumentModal";
 interface OrderDocument {
   id: string;
   original_filename: string;
-  document_type: string;
-  source_language: string;
+  detected_document_type: string;
+  detected_language: string;
   target_language: string;
   word_count: number;
   page_count: number;
   billable_pages: number;
-  complexity: string;
+  assessed_complexity: string;
   complexity_multiplier: number;
   line_total: number;
-  certification_type: string;
+  certification_type_id: string;
   certification_price: number;
 }
 
@@ -36,6 +36,7 @@ interface Order {
   id: string;
   order_number: string;
   customer_id: string;
+  quote_id: string;
   subtotal: number;
   certification_total: number;
   rush_fee: number;
@@ -121,14 +122,51 @@ export default function EditOrderModal({
   const loadDocuments = async () => {
     setLoading(true);
     try {
+      // ai_analysis_results is the source of truth for document-level pricing
       const { data, error } = await supabase
-        .from("order_documents")
-        .select("*")
-        .eq("order_id", order.id)
+        .from("ai_analysis_results")
+        .select(`
+          id,
+          detected_language,
+          detected_document_type,
+          word_count,
+          page_count,
+          billable_pages,
+          assessed_complexity,
+          complexity_multiplier,
+          line_total,
+          certification_type_id,
+          certification_price,
+          manual_filename,
+          is_staff_created,
+          quote_file:quote_files!ai_analysis_results_quote_file_id_fkey(
+            original_filename
+          )
+        `)
+        .eq("quote_id", order.quote_id)
+        .is("deleted_at", null)
         .order("created_at");
 
       if (error) throw error;
-      setDocuments(data || []);
+
+      // Map to the OrderDocument interface
+      const mapped = (data || []).map((row: any) => ({
+        id: row.id,
+        original_filename: row.quote_file?.original_filename || row.manual_filename || "Manual Entry",
+        detected_document_type: row.detected_document_type || "Unknown",
+        detected_language: row.detected_language || "—",
+        target_language: "EN",
+        word_count: row.word_count || 0,
+        page_count: row.page_count || 1,
+        billable_pages: row.billable_pages || 0,
+        assessed_complexity: row.assessed_complexity || "easy",
+        complexity_multiplier: row.complexity_multiplier || 1.0,
+        line_total: row.line_total || 0,
+        certification_type_id: row.certification_type_id || null,
+        certification_price: row.certification_price || 0,
+      }));
+
+      setDocuments(mapped);
     } catch (err: unknown) {
       console.error("Error loading documents:", err);
       toast.error("Failed to load order documents");
@@ -153,10 +191,9 @@ export default function EditOrderModal({
   };
 
   const recalculateTotals = () => {
-    // Sum document line totals (translation cost only)
+    // line_total in ai_analysis_results = billable_pages × base_rate (translation only)
     const translationSubtotal = documents.reduce((sum, doc) => {
-      const translationPart = (doc.line_total || 0) - (doc.certification_price || 0);
-      return sum + translationPart;
+      return sum + (doc.line_total || 0);
     }, 0);
 
     // Sum certification costs
@@ -320,21 +357,21 @@ export default function EditOrderModal({
                               {doc.original_filename}
                             </p>
                             <p className="text-sm text-gray-500 mt-1">
-                              {doc.document_type} • {doc.source_language} → {doc.target_language || "EN"}
+                              {doc.detected_document_type} • {doc.detected_language} → {doc.target_language || "EN"}
                             </p>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 mt-2">
                               <span>Words: {doc.word_count}</span>
                               <span>Pages: {doc.page_count}</span>
                               <span>Billable: {doc.billable_pages?.toFixed(1) || "—"}</span>
                               <span>
-                                Complexity: {doc.complexity || "Standard"} ({doc.complexity_multiplier || 1.0}x)
+                                Complexity: {doc.assessed_complexity || "easy"} ({doc.complexity_multiplier || 1.0}x)
                               </span>
                             </div>
                             <div className="flex gap-4 text-sm mt-2">
                               <span>
                                 Translation:{" "}
                                 <span className="font-medium">
-                                  ${((doc.line_total || 0) - (doc.certification_price || 0)).toFixed(2)}
+                                  ${(doc.line_total || 0).toFixed(2)}
                                 </span>
                               </span>
                               <span>
