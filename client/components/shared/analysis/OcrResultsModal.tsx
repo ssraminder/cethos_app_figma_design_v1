@@ -199,6 +199,34 @@ interface PricingRow {
   isExcluded: boolean;
 }
 
+interface AiAnalysis {
+  id: string;
+  original_filename: string;
+  detected_language: string;
+  language_name: string;
+  detected_document_type: string;
+  document_type_confidence: number;
+  assessed_complexity: string;
+  complexity_confidence: number;
+  billable_pages: number;
+  ocr_word_count: number;
+  ocr_page_count: number;
+  holder_name: string | null;
+  holder_name_normalized: string | null;
+  issuing_country: string | null;
+  issuing_authority: string | null;
+  document_date: string | null;
+  document_number: string | null;
+  complexity_factors: unknown;
+  complexity_reasoning: string | null;
+  pricing_base_rate: number | null;
+  pricing_billable_pages: number | null;
+  pricing_complexity: string | null;
+  pricing_complexity_multiplier: number | null;
+  pricing_is_excluded: boolean | null;
+  pricing_saved_at: string | null;
+}
+
 interface OcrResultsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -718,6 +746,9 @@ export default function OcrResultsModal({
   const [linkedQuoteNumber, setLinkedQuoteNumber] = useState<string | null>(null);
   const [isUpdatingQuote, setIsUpdatingQuote] = useState(false);
 
+  // Single-file AI analysis state
+  const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis[]>([]);
+
   // Grouped display rows
   const displayRows = useMemo(() => groupFiles(files), [files]);
 
@@ -975,11 +1006,71 @@ export default function OcrResultsModal({
     }
   }, [fileId]);
 
+  // Fetch AI analysis for single-file mode
+  const fetchAiAnalysis = useCallback(async (fId: string) => {
+    try {
+      // Path 1: fileId is an ocr_batch_files.id -> get batch_id -> get analysis
+      const { data: batchFile } = await supabase
+        .from("ocr_batch_files")
+        .select("batch_id")
+        .eq("id", fId)
+        .single();
+
+      if (batchFile) {
+        const { data } = await supabase
+          .from("ocr_ai_analysis")
+          .select("*")
+          .eq("batch_id", batchFile.batch_id)
+          .order("document_index");
+
+        if (data && data.length > 0) {
+          setAiAnalysis(data as AiAnalysis[]);
+          return;
+        }
+      }
+
+      // Path 2: fileId is a quote_files.id -> get quote_id -> get batches -> get analysis
+      const { data: quoteFile } = await supabase
+        .from("quote_files")
+        .select("quote_id")
+        .eq("id", fId)
+        .single();
+
+      if (quoteFile) {
+        const { data: batches } = await supabase
+          .from("ocr_batches")
+          .select("id")
+          .eq("quote_id", quoteFile.quote_id)
+          .order("created_at", { ascending: false });
+
+        if (batches && batches.length > 0) {
+          const batchIds = batches.map((b: { id: string }) => b.id);
+          const { data } = await supabase
+            .from("ocr_ai_analysis")
+            .select("*")
+            .in("batch_id", batchIds)
+            .order("document_index");
+
+          if (data && data.length > 0) {
+            setAiAnalysis(data as AiAnalysis[]);
+            return;
+          }
+        }
+      }
+
+      setAiAnalysis([]);
+    } catch (err) {
+      console.error("Error fetching AI analysis:", err);
+      setAiAnalysis([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (isOpen && batchId) {
       fetchBatchData();
     } else if (isOpen && fileId) {
       fetchSingleFileData();
+      fetchAiAnalysis(fileId);
     }
     if (!isOpen) {
       setFiles([]);
@@ -993,6 +1084,7 @@ export default function OcrResultsModal({
       setActiveTab("ocr");
       setAnalyseError(null);
       setSingleFilePages([]);
+      setAiAnalysis([]);
       setPricingRows([]);
       setPricingRatesLoaded(false);
       setShowUseInQuoteModal(false);
@@ -1001,7 +1093,7 @@ export default function OcrResultsModal({
       setLastSavedAt(null);
       setHasUnsavedChanges(false);
     }
-  }, [isOpen, batchId, fileId, fetchBatchData, fetchSingleFileData]);
+  }, [isOpen, batchId, fileId, fetchBatchData, fetchSingleFileData, fetchAiAnalysis]);
 
   // -------------------------------------------------------------------------
   // Polling for background jobs
@@ -2837,6 +2929,259 @@ export default function OcrResultsModal({
   };
 
   // -------------------------------------------------------------------------
+  // Render: Single-file AI Analysis tab
+  // -------------------------------------------------------------------------
+
+  const renderSingleFileAnalysisTab = () => {
+    if (aiAnalysis.length === 0) {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          <p>No AI analysis available for this file</p>
+          <p className="text-sm mt-1">Run analysis from the Preprocess &amp; OCR page</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {aiAnalysis.map((analysis, idx) => (
+          <div key={analysis.id} className="border rounded-lg overflow-hidden">
+            {aiAnalysis.length > 1 && (
+              <div className="bg-gray-50 px-4 py-2 border-b">
+                <span className="text-sm font-medium text-gray-700">
+                  Document {idx + 1}: {analysis.detected_document_type?.replace(/_/g, " ") || "Unknown"}
+                </span>
+              </div>
+            )}
+
+            <div className="p-4 space-y-4">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <p className="text-xs text-blue-600 font-medium">Document Type</p>
+                  <p className="text-sm font-semibold text-blue-900 capitalize mt-0.5">
+                    {analysis.detected_document_type?.replace(/_/g, " ") || "Unknown"}
+                  </p>
+                  {analysis.document_type_confidence > 0 && (
+                    <p className="text-xs text-blue-500 mt-0.5">
+                      {(analysis.document_type_confidence * 100).toFixed(1)}% confidence
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-green-50 rounded-lg p-3">
+                  <p className="text-xs text-green-600 font-medium">Language</p>
+                  <p className="text-sm font-semibold text-green-900 mt-0.5">
+                    {analysis.language_name || analysis.detected_language || "Unknown"}
+                  </p>
+                </div>
+
+                <div className={`rounded-lg p-3 ${
+                  analysis.assessed_complexity === "hard" ? "bg-red-50" :
+                  analysis.assessed_complexity === "medium" ? "bg-amber-50" : "bg-green-50"
+                }`}>
+                  <p className={`text-xs font-medium ${
+                    analysis.assessed_complexity === "hard" ? "text-red-600" :
+                    analysis.assessed_complexity === "medium" ? "text-amber-600" : "text-green-600"
+                  }`}>Complexity</p>
+                  <p className={`text-sm font-semibold capitalize mt-0.5 ${
+                    analysis.assessed_complexity === "hard" ? "text-red-900" :
+                    analysis.assessed_complexity === "medium" ? "text-amber-900" : "text-green-900"
+                  }`}>
+                    {analysis.assessed_complexity || "Unknown"}
+                  </p>
+                  {analysis.complexity_confidence > 0 && (
+                    <p className={`text-xs mt-0.5 ${
+                      analysis.assessed_complexity === "hard" ? "text-red-500" :
+                      analysis.assessed_complexity === "medium" ? "text-amber-500" : "text-green-500"
+                    }`}>
+                      {(analysis.complexity_confidence * 100).toFixed(1)}% confidence
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-purple-50 rounded-lg p-3">
+                  <p className="text-xs text-purple-600 font-medium">Billable Pages</p>
+                  <p className="text-sm font-semibold text-purple-900 mt-0.5">
+                    {analysis.billable_pages || "-"}
+                  </p>
+                  <p className="text-xs text-purple-500 mt-0.5">
+                    {analysis.ocr_word_count} words &divide; 225
+                  </p>
+                </div>
+              </div>
+
+              {/* Document Details */}
+              {(analysis.holder_name || analysis.issuing_country || analysis.document_date || analysis.document_number) && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Extracted Details</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    {analysis.holder_name && (
+                      <div>
+                        <p className="text-xs text-gray-500">Holder Name</p>
+                        <p className="text-sm font-medium text-gray-900">{analysis.holder_name}</p>
+                      </div>
+                    )}
+                    {analysis.issuing_country && (
+                      <div>
+                        <p className="text-xs text-gray-500">Issuing Country</p>
+                        <p className="text-sm font-medium text-gray-900">{analysis.issuing_country}</p>
+                      </div>
+                    )}
+                    {analysis.document_date && (
+                      <div>
+                        <p className="text-xs text-gray-500">Document Date</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {new Date(analysis.document_date).toLocaleDateString()}
+                        </p>
+                      </div>
+                    )}
+                    {analysis.document_number && (
+                      <div>
+                        <p className="text-xs text-gray-500">Document Number</p>
+                        <p className="text-sm font-medium text-gray-900">{analysis.document_number}</p>
+                      </div>
+                    )}
+                    {analysis.issuing_authority && (
+                      <div>
+                        <p className="text-xs text-gray-500">Issuing Authority</p>
+                        <p className="text-sm font-medium text-gray-900">{analysis.issuing_authority}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Complexity Reasoning */}
+              {analysis.complexity_reasoning && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Complexity Reasoning</h4>
+                  <p className="text-sm text-gray-600">{analysis.complexity_reasoning}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // -------------------------------------------------------------------------
+  // Render: Single-file Pricing tab
+  // -------------------------------------------------------------------------
+
+  const renderSingleFilePricingTab = () => {
+    if (aiAnalysis.length === 0) {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          <p>No pricing data available</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="text-left px-4 py-2.5 font-medium text-gray-700">Document</th>
+                <th className="text-center px-4 py-2.5 font-medium text-gray-700">Words</th>
+                <th className="text-center px-4 py-2.5 font-medium text-gray-700">Pages</th>
+                <th className="text-center px-4 py-2.5 font-medium text-gray-700">Complexity</th>
+                <th className="text-center px-4 py-2.5 font-medium text-gray-700">Billable</th>
+                <th className="text-right px-4 py-2.5 font-medium text-gray-700">Rate</th>
+                <th className="text-right px-4 py-2.5 font-medium text-gray-700">Line Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aiAnalysis.map((analysis) => {
+                const complexity = analysis.pricing_complexity || analysis.assessed_complexity || "easy";
+                const multiplier = analysis.pricing_complexity_multiplier ||
+                  (complexity === "hard" ? 1.25 : complexity === "medium" ? 1.15 : 1.00);
+                const baseRate = analysis.pricing_base_rate || 65.00;
+                const billablePages = analysis.pricing_billable_pages || analysis.billable_pages || 0;
+                const lineTotal = billablePages * baseRate * multiplier;
+                const isExcluded = analysis.pricing_is_excluded === true;
+
+                return (
+                  <tr
+                    key={analysis.id}
+                    className={`border-b border-gray-200 ${isExcluded ? "opacity-40 line-through" : ""}`}
+                  >
+                    <td className="px-4 py-3">
+                      <span className="capitalize">
+                        {analysis.detected_document_type?.replace(/_/g, " ") || "Document"}
+                      </span>
+                      {isExcluded && (
+                        <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                          Excluded
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-center px-4 py-3">{analysis.ocr_word_count}</td>
+                    <td className="text-center px-4 py-3">{analysis.ocr_page_count}</td>
+                    <td className="text-center px-4 py-3">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium capitalize ${
+                        complexity === "hard" ? "bg-red-100 text-red-700" :
+                        complexity === "medium" ? "bg-amber-100 text-amber-700" :
+                        "bg-green-100 text-green-700"
+                      }`}>
+                        {complexity} ({multiplier}&times;)
+                      </span>
+                    </td>
+                    <td className="text-center px-4 py-3 font-medium">{billablePages}</td>
+                    <td className="text-right px-4 py-3">${baseRate.toFixed(2)}</td>
+                    <td className="text-right px-4 py-3 font-semibold">
+                      {isExcluded ? "$0.00" : `$${lineTotal.toFixed(2)}`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-50 font-semibold">
+                <td colSpan={4} className="px-4 py-3 text-right">Totals:</td>
+                <td className="text-center px-4 py-3">
+                  {aiAnalysis
+                    .filter(a => !a.pricing_is_excluded)
+                    .reduce((sum, a) => sum + (a.pricing_billable_pages || a.billable_pages || 0), 0)
+                    .toFixed(2)}
+                </td>
+                <td className="px-4 py-3"></td>
+                <td className="text-right px-4 py-3">
+                  ${aiAnalysis
+                    .filter(a => !a.pricing_is_excluded)
+                    .reduce((sum, a) => {
+                      const c = a.pricing_complexity || a.assessed_complexity || "easy";
+                      const m = a.pricing_complexity_multiplier ||
+                        (c === "hard" ? 1.25 : c === "medium" ? 1.15 : 1.00);
+                      const br = a.pricing_base_rate || 65.00;
+                      const bp = a.pricing_billable_pages || a.billable_pages || 0;
+                      return sum + (bp * br * m);
+                    }, 0)
+                    .toFixed(2)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600 space-y-1">
+          <p><strong>Rate:</strong> $65.00/page base rate</p>
+          <p><strong>Words/Page:</strong> 225 words = 1 billable page</p>
+          <p><strong>Complexity Multipliers:</strong> Easy (1.0&times;), Medium (1.15&times;), Hard (1.25&times;)</p>
+          {aiAnalysis.some(a => a.pricing_saved_at) && (
+            <p className="text-teal-600">
+              <strong>Note:</strong> Staff pricing overrides applied
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // -------------------------------------------------------------------------
   // Render: OCR Results tab content
   // -------------------------------------------------------------------------
 
@@ -3280,6 +3625,12 @@ export default function OcrResultsModal({
   // Single-file mode render
   // ---------------------------------------------------------------------------
   if (!isBatchMode) {
+    const handleSingleFileClose = () => {
+      setActiveTab("ocr");
+      setAiAnalysis([]);
+      onClose();
+    };
+
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -3299,7 +3650,7 @@ export default function OcrResultsModal({
               </div>
             </div>
             <button
-              onClick={onClose}
+              onClick={handleSingleFileClose}
               className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               aria-label="Close modal"
             >
@@ -3307,15 +3658,59 @@ export default function OcrResultsModal({
             </button>
           </div>
 
-          {/* Content */}
+          {/* Tab Navigation */}
+          <div className="flex border-b border-gray-200 px-6">
+            <button
+              onClick={() => setActiveTab("ocr")}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "ocr"
+                  ? "border-teal-600 text-teal-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              OCR Results
+            </button>
+            <button
+              onClick={() => setActiveTab("analysis")}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                activeTab === "analysis"
+                  ? "border-teal-600 text-teal-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              AI Analysis
+              {aiAnalysis.length > 0 && (
+                <span className="bg-teal-100 text-teal-700 text-xs px-1.5 py-0.5 rounded-full">
+                  {aiAnalysis.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("pricing")}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "pricing"
+                  ? "border-teal-600 text-teal-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Pricing
+              {aiAnalysis.length > 0 && (
+                <span className="text-xs text-gray-400 ml-1">({aiAnalysis.length} docs)</span>
+              )}
+            </button>
+          </div>
+
+          {/* Tab Content */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
-            {renderSingleFileView()}
+            {activeTab === "ocr" && renderSingleFileView()}
+            {activeTab === "analysis" && renderSingleFileAnalysisTab()}
+            {activeTab === "pricing" && renderSingleFilePricingTab()}
           </div>
 
           {/* Footer */}
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
             <div className="flex items-center gap-2">
-              {showActions && !isLoading && !error && singleFilePages.length > 0 && (
+              {activeTab === "ocr" && showActions && !isLoading && !error && singleFilePages.length > 0 && (
                 <button
                   onClick={handleCopyAllText}
                   className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
@@ -3333,7 +3728,7 @@ export default function OcrResultsModal({
                   )}
                 </button>
               )}
-              {showActions && onApplyToQuote && !isLoading && !error && singleFilePages.length > 0 && (
+              {activeTab === "ocr" && showActions && onApplyToQuote && !isLoading && !error && singleFilePages.length > 0 && (
                 <button
                   onClick={handleApplyToQuote}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors"
@@ -3344,7 +3739,7 @@ export default function OcrResultsModal({
               )}
             </div>
             <button
-              onClick={onClose}
+              onClick={handleSingleFileClose}
               className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium text-gray-700 transition-colors"
             >
               Close
