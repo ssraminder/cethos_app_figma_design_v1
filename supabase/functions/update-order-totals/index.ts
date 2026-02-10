@@ -38,6 +38,13 @@ interface UpdateOrderRequest {
   is_rush: boolean;
   delivery_option: string;
   delivery_fee: number;
+  certification_total?: number;
+  surcharge_type?: string;
+  surcharge_value?: number;
+  surcharge_total?: number;
+  discount_type?: string;
+  discount_value?: number;
+  discount_total?: number;
   edit_reason: string;
   staff_id: string;
   calculated_totals: CalculatedTotals;
@@ -61,6 +68,12 @@ serve(async (req) => {
       is_rush,
       delivery_option,
       delivery_fee,
+      surcharge_type,
+      surcharge_value,
+      surcharge_total,
+      discount_type,
+      discount_value,
+      discount_total,
       edit_reason,
       staff_id,
       calculated_totals,
@@ -139,21 +152,31 @@ serve(async (req) => {
     }
 
     // 4. Update order totals
+    const updatePayload: Record<string, any> = {
+      subtotal: calculated_totals.subtotal,
+      certification_total: calculated_totals.certificationTotal,
+      rush_fee: calculated_totals.rushFee,
+      delivery_fee: calculated_totals.deliveryFee,
+      tax_amount: calculated_totals.taxAmount,
+      total_amount: newTotal,
+      balance_due: newBalanceDue,
+      is_rush: is_rush,
+      delivery_option: delivery_option,
+      status: newStatus,
+      updated_at: now,
+    };
+
+    // Include surcharge/discount fields if provided
+    if (surcharge_type !== undefined) updatePayload.surcharge_type = surcharge_type;
+    if (surcharge_value !== undefined) updatePayload.surcharge_value = surcharge_value;
+    if (surcharge_total !== undefined) updatePayload.surcharge_total = surcharge_total;
+    if (discount_type !== undefined) updatePayload.discount_type = discount_type;
+    if (discount_value !== undefined) updatePayload.discount_value = discount_value;
+    if (discount_total !== undefined) updatePayload.discount_total = discount_total;
+
     const { error: updateError } = await supabase
       .from("orders")
-      .update({
-        subtotal: calculated_totals.subtotal,
-        certification_total: calculated_totals.certificationTotal,
-        rush_fee: calculated_totals.rushFee,
-        delivery_fee: calculated_totals.deliveryFee,
-        tax_amount: calculated_totals.taxAmount,
-        total_amount: newTotal,
-        balance_due: newBalanceDue,
-        is_rush: is_rush,
-        delivery_option: delivery_option,
-        status: newStatus,
-        updated_at: now,
-      })
+      .update(updatePayload)
       .eq("id", order_id);
 
     if (updateError) {

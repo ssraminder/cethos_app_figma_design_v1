@@ -43,6 +43,12 @@ interface Order {
   is_rush: boolean;
   delivery_option: string;
   estimated_delivery_date: string;
+  surcharge_type: string;
+  surcharge_value: number;
+  surcharge_total: number;
+  discount_type: string;
+  discount_value: number;
+  discount_total: number;
 }
 
 interface DeliveryOption {
@@ -98,6 +104,18 @@ export default function EditOrderModal({
   const [certificationTypes, setCertificationTypes] = useState<CertificationType[]>([]);
   const [certifications, setCertifications] = useState<OrderCertification[]>([]);
 
+  // Surcharge state
+  const [surchargeType, setSurchargeType] = useState<'flat' | 'percent'>(
+    (order.surcharge_type as 'flat' | 'percent') || 'flat'
+  );
+  const [surchargeValue, setSurchargeValue] = useState<number>(order.surcharge_value || 0);
+
+  // Discount state
+  const [discountType, setDiscountType] = useState<'flat' | 'percent'>(
+    (order.discount_type as 'flat' | 'percent') || 'flat'
+  );
+  const [discountValue, setDiscountValue] = useState<number>(order.discount_value || 0);
+
   // Edit reason (required)
   const [editReason, setEditReason] = useState("");
 
@@ -105,6 +123,8 @@ export default function EditOrderModal({
   const [calculatedTotals, setCalculatedTotals] = useState({
     subtotal: order.subtotal || 0,
     certificationTotal: order.certification_total || 0,
+    surchargeTotal: order.surcharge_total || 0,
+    discountTotal: order.discount_total || 0,
     rushFee: order.rush_fee || 0,
     deliveryFee: order.delivery_fee || 0,
     taxAmount: order.tax_amount || 0,
@@ -126,6 +146,10 @@ export default function EditOrderModal({
       // Reset form state
       setIsRush(order.is_rush);
       setDeliveryOptionCode(order.delivery_option);
+      setSurchargeType((order.surcharge_type as 'flat' | 'percent') || 'flat');
+      setSurchargeValue(order.surcharge_value || 0);
+      setDiscountType((order.discount_type as 'flat' | 'percent') || 'flat');
+      setDiscountValue(order.discount_value || 0);
       setEditReason("");
     }
   }, [isOpen, order.id]);
@@ -133,7 +157,7 @@ export default function EditOrderModal({
   // Recalculate totals when order options change
   useEffect(() => {
     recalculateTotals();
-  }, [isRush, deliveryOptionCode, deliveryOptions, certifications]);
+  }, [isRush, deliveryOptionCode, deliveryOptions, certifications, surchargeType, surchargeValue, discountType, discountValue]);
 
   const loadDocuments = async () => {
     setLoading(true);
@@ -312,32 +336,45 @@ export default function EditOrderModal({
   };
 
   const recalculateTotals = () => {
-    // Subtotal comes from the order (quote pricing) — not recalculated from docs
     const subtotal = order.subtotal || 0;
 
-    // Sum active (non-deleted) certifications
+    // Certifications
     const certTotal = certifications
       .filter(c => !c.isDeleted)
       .reduce((sum, c) => sum + c.line_total, 0);
 
+    // Surcharge — percent is based on subtotal
+    const surchargeAmount = surchargeType === 'percent'
+      ? subtotal * (surchargeValue / 100)
+      : surchargeValue;
+
+    // Discount — percent is based on subtotal
+    const discountAmount = discountType === 'percent'
+      ? subtotal * (discountValue / 100)
+      : discountValue;
+
     // Rush fee: 30% of subtotal
     const rushFee = isRush ? subtotal * 0.30 : 0;
 
-    // Delivery fee from selected option
+    // Delivery fee
     const selectedDelivery = deliveryOptions.find(d => d.code === deliveryOptionCode);
     const deliveryFee = selectedDelivery?.price ?? order.delivery_fee ?? 0;
 
+    // Pre-tax total
+    const preTax = subtotal + certTotal + surchargeAmount - discountAmount + rushFee + deliveryFee;
+
     // Tax
-    const taxableAmount = subtotal + certTotal + rushFee + deliveryFee;
     const taxRate = order.tax_rate || 0;
-    const taxAmount = taxableAmount * taxRate;
+    const taxAmount = preTax * taxRate;
 
     // Total
-    const total = taxableAmount + taxAmount;
+    const total = preTax + taxAmount;
 
     setCalculatedTotals({
       subtotal: Math.round(subtotal * 100) / 100,
       certificationTotal: Math.round(certTotal * 100) / 100,
+      surchargeTotal: Math.round(surchargeAmount * 100) / 100,
+      discountTotal: Math.round(discountAmount * 100) / 100,
       rushFee: Math.round(rushFee * 100) / 100,
       deliveryFee: Math.round(deliveryFee * 100) / 100,
       taxAmount: Math.round(taxAmount * 100) / 100,
@@ -348,7 +385,22 @@ export default function EditOrderModal({
   const balanceChange = calculatedTotals.total - order.total_amount;
   const certsChanged = certifications.some(c => c.isNew || c.isDeleted) ||
     Math.abs(calculatedTotals.certificationTotal - (order.certification_total || 0)) > 0.01;
-  const hasChanges = Math.abs(balanceChange) > 0.01 || isRush !== order.is_rush || deliveryOptionCode !== order.delivery_option || certsChanged;
+
+  const surchargeChanged =
+    surchargeType !== ((order.surcharge_type as string) || 'flat') ||
+    surchargeValue !== (order.surcharge_value || 0);
+
+  const discountChanged =
+    discountType !== ((order.discount_type as string) || 'flat') ||
+    discountValue !== (order.discount_value || 0);
+
+  const hasChanges =
+    Math.abs(balanceChange) > 0.01 ||
+    isRush !== order.is_rush ||
+    deliveryOptionCode !== order.delivery_option ||
+    certsChanged ||
+    surchargeChanged ||
+    discountChanged;
 
   const isValid = () => {
     if (!editReason.trim()) return false;
@@ -401,7 +453,34 @@ export default function EditOrderModal({
           .eq("id", cert.id);
       }
 
-      // 4. Update the order totals
+      // 4. Log adjustments for audit
+      if (surchargeChanged && surchargeValue > 0) {
+        await supabase.from("order_adjustments").insert({
+          order_id: order.id,
+          adjustment_type: "surcharge",
+          amount: calculatedTotals.surchargeTotal,
+          original_total: order.total_amount,
+          new_total: calculatedTotals.total,
+          reason: editReason.trim(),
+          handling_method: surchargeType,
+          created_by_staff_id: staffId,
+        });
+      }
+
+      if (discountChanged && discountValue > 0) {
+        await supabase.from("order_adjustments").insert({
+          order_id: order.id,
+          adjustment_type: "discount",
+          amount: -calculatedTotals.discountTotal,
+          original_total: order.total_amount,
+          new_total: calculatedTotals.total,
+          reason: editReason.trim(),
+          handling_method: discountType,
+          created_by_staff_id: staffId,
+        });
+      }
+
+      // 5. Update the order totals
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-order-totals`,
         {
@@ -416,6 +495,12 @@ export default function EditOrderModal({
             delivery_option: deliveryOptionCode,
             delivery_fee: calculatedTotals.deliveryFee,
             certification_total: calculatedTotals.certificationTotal,
+            surcharge_type: surchargeType,
+            surcharge_value: surchargeValue,
+            surcharge_total: calculatedTotals.surchargeTotal,
+            discount_type: discountType,
+            discount_value: discountValue,
+            discount_total: calculatedTotals.discountTotal,
             edit_reason: editReason.trim(),
             staff_id: staffId,
             calculated_totals: calculatedTotals,
@@ -682,6 +767,134 @@ export default function EditOrderModal({
                 )}
               </div>
 
+              {/* Price Adjustments */}
+              <div className="border rounded-lg p-4 space-y-4">
+                <h3 className="font-medium text-gray-900 flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-gray-500" />
+                  Price Adjustments
+                </h3>
+
+                {/* Surcharge */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Surcharge</label>
+                  <div className="flex items-center gap-3">
+                    {/* Type Toggle */}
+                    <div className="flex rounded-md border border-gray-300 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setSurchargeType('flat')}
+                        className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                          surchargeType === 'flat'
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        $
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSurchargeType('percent')}
+                        className={`px-3 py-1.5 text-sm font-medium border-l transition-colors ${
+                          surchargeType === 'percent'
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        %
+                      </button>
+                    </div>
+
+                    {/* Value Input */}
+                    <div className="relative flex-1">
+                      {surchargeType === 'flat' && (
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                      )}
+                      <input
+                        type="number"
+                        min={0}
+                        step={surchargeType === 'percent' ? '1' : '0.01'}
+                        value={surchargeValue || ''}
+                        onChange={(e) => setSurchargeValue(parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        className={`w-full py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 ${
+                          surchargeType === 'flat' ? 'pl-7 pr-3' : 'pl-3 pr-7'
+                        }`}
+                      />
+                      {surchargeType === 'percent' && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                      )}
+                    </div>
+
+                    {/* Calculated Amount */}
+                    {surchargeValue > 0 && (
+                      <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                        = +${calculatedTotals.surchargeTotal.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Discount */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Discount</label>
+                  <div className="flex items-center gap-3">
+                    {/* Type Toggle */}
+                    <div className="flex rounded-md border border-gray-300 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setDiscountType('flat')}
+                        className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                          discountType === 'flat'
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        $
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDiscountType('percent')}
+                        className={`px-3 py-1.5 text-sm font-medium border-l transition-colors ${
+                          discountType === 'percent'
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        %
+                      </button>
+                    </div>
+
+                    {/* Value Input */}
+                    <div className="relative flex-1">
+                      {discountType === 'flat' && (
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                      )}
+                      <input
+                        type="number"
+                        min={0}
+                        step={discountType === 'percent' ? '1' : '0.01'}
+                        value={discountValue || ''}
+                        onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        className={`w-full py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 ${
+                          discountType === 'flat' ? 'pl-7 pr-3' : 'pl-3 pr-7'
+                        }`}
+                      />
+                      {discountType === 'percent' && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                      )}
+                    </div>
+
+                    {/* Calculated Amount */}
+                    {discountValue > 0 && (
+                      <span className="text-sm font-medium text-green-700 whitespace-nowrap">
+                        = -${calculatedTotals.discountTotal.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Price Summary */}
               <div className="border rounded-lg p-4">
                 <h3 className="font-medium text-gray-900 flex items-center gap-2 mb-4">
@@ -698,6 +911,22 @@ export default function EditOrderModal({
                     <div className="flex justify-between">
                       <span className="text-gray-600">Certifications:</span>
                       <span>${calculatedTotals.certificationTotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {calculatedTotals.surchargeTotal > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>
+                        Surcharge ({surchargeType === 'percent' ? `${surchargeValue}%` : 'flat'}):
+                      </span>
+                      <span>+${calculatedTotals.surchargeTotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {calculatedTotals.discountTotal > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>
+                        Discount ({discountType === 'percent' ? `${discountValue}%` : 'flat'}):
+                      </span>
+                      <span>-${calculatedTotals.discountTotal.toFixed(2)}</span>
                     </div>
                   )}
                   {isRush && (
