@@ -14,22 +14,16 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import EditDocumentModal from "./EditDocumentModal";
 
 interface OrderDocument {
   id: string;
   original_filename: string;
-  detected_document_type: string;
   detected_language: string;
-  target_language: string;
-  word_count: number;
-  page_count: number;
-  billable_pages: number;
+  detected_document_type: string;
+  ocr_word_count: number;
+  ocr_page_count: number;
   assessed_complexity: string;
-  complexity_multiplier: number;
-  line_total: number;
-  certification_type_id: string;
-  certification_price: number;
+  billable_pages: number;
 }
 
 interface Order {
@@ -74,9 +68,8 @@ export default function EditOrderModal({
   staffId,
   onSuccess,
 }: EditOrderModalProps) {
-  // Documents state
+  // Documents state (read-only context from OCR pipeline)
   const [documents, setDocuments] = useState<OrderDocument[]>([]);
-  const [editingDocument, setEditingDocument] = useState<OrderDocument | null>(null);
 
   // Order options state
   const [isRush, setIsRush] = useState(order.is_rush);
@@ -86,15 +79,14 @@ export default function EditOrderModal({
   // Edit reason (required)
   const [editReason, setEditReason] = useState("");
 
-  // Calculated totals
+  // Calculated totals — start from current order values
   const [calculatedTotals, setCalculatedTotals] = useState({
-    translationSubtotal: 0,
-    certificationTotal: 0,
-    subtotal: 0,
-    rushFee: 0,
-    deliveryFee: order.delivery_fee,
-    taxAmount: 0,
-    total: 0,
+    subtotal: order.subtotal || 0,
+    certificationTotal: order.certification_total || 0,
+    rushFee: order.rush_fee || 0,
+    deliveryFee: order.delivery_fee || 0,
+    taxAmount: order.tax_amount || 0,
+    total: order.total_amount || 0,
   });
 
   // UI state
@@ -114,62 +106,46 @@ export default function EditOrderModal({
     }
   }, [isOpen, order.id]);
 
-  // Recalculate totals when documents or options change
+  // Recalculate totals when order options change
   useEffect(() => {
     recalculateTotals();
-  }, [documents, isRush, deliveryOptionCode, deliveryOptions]);
+  }, [isRush, deliveryOptionCode, deliveryOptions]);
 
   const loadDocuments = async () => {
     setLoading(true);
     try {
-      // ai_analysis_results is the source of truth for document-level pricing
-      const { data, error } = await supabase
-        .from("ai_analysis_results")
-        .select(`
-          id,
-          detected_language,
-          detected_document_type,
-          word_count,
-          page_count,
-          billable_pages,
-          assessed_complexity,
-          complexity_multiplier,
-          line_total,
-          certification_type_id,
-          certification_price,
-          manual_filename,
-          is_staff_created,
-          quote_file:quote_files!ai_analysis_results_quote_file_id_fkey(
-            original_filename
-          )
-        `)
-        .eq("quote_id", order.quote_id)
-        .is("deleted_at", null)
-        .order("created_at");
+      // Step 1: Get batch IDs for this quote
+      const { data: batches } = await supabase
+        .from("ocr_batches")
+        .select("id")
+        .eq("quote_id", order.quote_id);
 
-      if (error) throw error;
+      if (batches && batches.length > 0) {
+        const batchIds = batches.map((b: any) => b.id);
 
-      // Map to the OrderDocument interface
-      const mapped = (data || []).map((row: any) => ({
-        id: row.id,
-        original_filename: row.quote_file?.original_filename || row.manual_filename || "Manual Entry",
-        detected_document_type: row.detected_document_type || "Unknown",
-        detected_language: row.detected_language || "—",
-        target_language: "EN",
-        word_count: row.word_count || 0,
-        page_count: row.page_count || 1,
-        billable_pages: row.billable_pages || 0,
-        assessed_complexity: row.assessed_complexity || "easy",
-        complexity_multiplier: row.complexity_multiplier || 1.0,
-        line_total: row.line_total || 0,
-        certification_type_id: row.certification_type_id || null,
-        certification_price: row.certification_price || 0,
-      }));
+        // Step 2: Get analysis results for those batches (read-only context)
+        const { data, error } = await supabase
+          .from("ocr_ai_analysis")
+          .select(`
+            id,
+            original_filename,
+            detected_language,
+            detected_document_type,
+            ocr_word_count,
+            ocr_page_count,
+            assessed_complexity,
+            billable_pages
+          `)
+          .in("batch_id", batchIds)
+          .order("created_at");
 
-      setDocuments(mapped);
+        if (!error) {
+          setDocuments(data || []);
+        }
+      }
     } catch (err: unknown) {
       console.error("Error loading documents:", err);
-      toast.error("Failed to load order documents");
+      // Non-fatal — documents are display-only
     } finally {
       setLoading(false);
     }
@@ -191,27 +167,17 @@ export default function EditOrderModal({
   };
 
   const recalculateTotals = () => {
-    // line_total in ai_analysis_results = billable_pages × base_rate (translation only)
-    const translationSubtotal = documents.reduce((sum, doc) => {
-      return sum + (doc.line_total || 0);
-    }, 0);
+    // Subtotal comes from the order (quote pricing) — not recalculated from docs
+    const subtotal = order.subtotal || 0;
 
-    // Sum certification costs
-    const certificationTotal = documents.reduce(
-      (sum, doc) => sum + (doc.certification_price || 0),
-      0
-    );
-
-    const subtotal = translationSubtotal + certificationTotal;
-
-    // Calculate rush fee (30% of subtotal)
+    // Rush fee: 30% of subtotal
     const rushFee = isRush ? subtotal * 0.30 : 0;
 
-    // Get delivery fee
+    // Delivery fee from selected option
     const selectedDelivery = deliveryOptions.find(d => d.code === deliveryOptionCode);
-    const deliveryFee = selectedDelivery?.price ?? order.delivery_fee;
+    const deliveryFee = selectedDelivery?.price ?? order.delivery_fee ?? 0;
 
-    // Calculate tax
+    // Tax
     const taxableAmount = subtotal + rushFee + deliveryFee;
     const taxRate = order.tax_rate || 0;
     const taxAmount = taxableAmount * taxRate;
@@ -220,21 +186,13 @@ export default function EditOrderModal({
     const total = taxableAmount + taxAmount;
 
     setCalculatedTotals({
-      translationSubtotal: Math.round(translationSubtotal * 100) / 100,
-      certificationTotal: Math.round(certificationTotal * 100) / 100,
       subtotal: Math.round(subtotal * 100) / 100,
+      certificationTotal: Math.round((order.certification_total || 0) * 100) / 100,
       rushFee: Math.round(rushFee * 100) / 100,
       deliveryFee: Math.round(deliveryFee * 100) / 100,
       taxAmount: Math.round(taxAmount * 100) / 100,
       total: Math.round(total * 100) / 100,
     });
-  };
-
-  const handleDocumentUpdate = (updatedDoc: OrderDocument) => {
-    setDocuments(docs =>
-      docs.map(d => (d.id === updatedDoc.id ? updatedDoc : d))
-    );
-    setEditingDocument(null);
   };
 
   const balanceChange = calculatedTotals.total - order.total_amount;
@@ -301,7 +259,7 @@ export default function EditOrderModal({
               Edit Order {order.order_number}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              Modify documents, pricing, and delivery options
+              Modify rush, delivery, and pricing options
             </p>
           </div>
           <button
@@ -350,44 +308,23 @@ export default function EditOrderModal({
                       documents.map((doc) => (
                         <div
                           key={doc.id}
-                          className="p-4 hover:bg-gray-50 flex justify-between items-start"
+                          className="p-4 hover:bg-gray-50"
                         >
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-gray-900 truncate">
-                              {doc.original_filename}
+                              {doc.original_filename || "Untitled Document"}
                             </p>
-                            <p className="text-sm text-gray-500 mt-1">
-                              {doc.detected_document_type} • {doc.detected_language} → {doc.target_language || "EN"}
-                            </p>
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 mt-2">
-                              <span>Words: {doc.word_count}</span>
-                              <span>Pages: {doc.page_count}</span>
-                              <span>Billable: {doc.billable_pages?.toFixed(1) || "—"}</span>
-                              <span>
-                                Complexity: {doc.assessed_complexity || "easy"} ({doc.complexity_multiplier || 1.0}x)
-                              </span>
-                            </div>
-                            <div className="flex gap-4 text-sm mt-2">
-                              <span>
-                                Translation:{" "}
-                                <span className="font-medium">
-                                  ${(doc.line_total || 0).toFixed(2)}
-                                </span>
-                              </span>
-                              <span>
-                                Certification:{" "}
-                                <span className="font-medium">
-                                  ${(doc.certification_price || 0).toFixed(2)}
-                                </span>
-                              </span>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 mt-1">
+                              <span>{doc.detected_document_type || "Unknown"}</span>
+                              <span>Language: {doc.detected_language || "—"}</span>
+                              <span>Words: {doc.ocr_word_count || 0}</span>
+                              <span>Pages: {doc.ocr_page_count || 1}</span>
+                              <span>Complexity: {doc.assessed_complexity || "easy"}</span>
+                              {doc.billable_pages && (
+                                <span>Billable: {Number(doc.billable_pages).toFixed(1)}</span>
+                              )}
                             </div>
                           </div>
-                          <button
-                            onClick={() => setEditingDocument(doc)}
-                            className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg flex-shrink-0 ml-2"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
                         </div>
                       ))
                     )}
@@ -455,17 +392,15 @@ export default function EditOrderModal({
 
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Translation Subtotal:</span>
-                    <span>${calculatedTotals.translationSubtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Certification Total:</span>
-                    <span>${calculatedTotals.certificationTotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between border-t pt-2">
-                    <span className="text-gray-600">Subtotal:</span>
+                    <span className="text-gray-600">Subtotal (from quote):</span>
                     <span>${calculatedTotals.subtotal.toFixed(2)}</span>
                   </div>
+                  {calculatedTotals.certificationTotal > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Certification:</span>
+                      <span>Included in subtotal</span>
+                    </div>
+                  )}
                   {isRush && (
                     <div className="flex justify-between text-amber-600">
                       <span>Rush Fee (30%):</span>
@@ -476,10 +411,14 @@ export default function EditOrderModal({
                     <span className="text-gray-600">Delivery:</span>
                     <span>${calculatedTotals.deliveryFee.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Tax ({((order.tax_rate || 0) * 100).toFixed(0)}%):</span>
-                    <span>+${calculatedTotals.taxAmount.toFixed(2)}</span>
-                  </div>
+                  {calculatedTotals.taxAmount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">
+                        Tax ({((order.tax_rate || 0) * 100).toFixed(0)}%):
+                      </span>
+                      <span>+${calculatedTotals.taxAmount.toFixed(2)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between border-t pt-2 font-semibold text-base">
                     <span>NEW TOTAL:</span>
                     <span>${calculatedTotals.total.toFixed(2)}</span>
@@ -583,15 +522,6 @@ export default function EditOrderModal({
           </div>
         </div>
 
-        {/* Edit Document Modal */}
-        {editingDocument && (
-          <EditDocumentModal
-            isOpen={!!editingDocument}
-            onClose={() => setEditingDocument(null)}
-            document={editingDocument}
-            onSave={handleDocumentUpdate}
-          />
-        )}
       </div>
     </div>
   );
