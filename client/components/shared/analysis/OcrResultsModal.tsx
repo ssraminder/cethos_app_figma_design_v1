@@ -22,6 +22,7 @@ import {
   Save,
   Plus,
   Trash2,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -225,6 +226,7 @@ interface AiAnalysis {
   pricing_complexity_multiplier: number | null;
   pricing_is_excluded: boolean | null;
   pricing_saved_at: string | null;
+  batch_id?: string;
 }
 
 interface OcrResultsModalProps {
@@ -748,6 +750,9 @@ export default function OcrResultsModal({
 
   // Single-file AI analysis state
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis[]>([]);
+
+  // Derive effective batchId — use prop first, fall back to aiAnalysis data
+  const effectiveBatchId = batchId || (aiAnalysis.length > 0 ? aiAnalysis[0].batch_id : undefined) || null;
 
   // Grouped display rows
   const displayRows = useMemo(() => groupFiles(files), [files]);
@@ -3647,6 +3652,17 @@ export default function OcrResultsModal({
                 {fileName && (
                   <p className="text-sm text-gray-500 mt-0.5">{fileName}</p>
                 )}
+                {effectiveBatchId && (
+                  <a
+                    href={`/admin/ocr-word-count/${effectiveBatchId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-teal-600 hover:text-teal-800 hover:underline transition-colors mt-1"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    View Full OCR Batch
+                  </a>
+                )}
               </div>
             </div>
             <button
@@ -3787,6 +3803,17 @@ export default function OcrResultsModal({
                   </>
                 )}
               </p>
+              {effectiveBatchId && (
+                <a
+                  href={`/admin/ocr-word-count/${effectiveBatchId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-teal-600 hover:text-teal-800 hover:underline transition-colors mt-1"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  View Full OCR Batch
+                </a>
+              )}
             </div>
           </div>
           <button
