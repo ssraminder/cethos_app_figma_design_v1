@@ -76,6 +76,9 @@ interface OrderDetail {
   quote?: {
     quote_number: string;
     promised_delivery_date: string | null;
+    country_of_issue: string | null;
+    source_language: { id: string; code: string; name: string } | null;
+    target_language: { id: string; code: string; name: string } | null;
   };
   created_at: string;
   updated_at: string;
@@ -203,6 +206,9 @@ export default function AdminOrderDetail() {
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string>("");
   const [savingDelivery, setSavingDelivery] = useState(false);
 
+  // Translation details
+  const [documentAnalysis, setDocumentAnalysis] = useState<any[]>([]);
+
   // Activity log
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [showActivityLog, setShowActivityLog] = useState(false);
@@ -323,7 +329,13 @@ export default function AdminOrderDetail() {
           `
           *,
           customer:customers(*),
-          quote:quotes(quote_number, promised_delivery_date)
+          quote:quotes(
+            quote_number,
+            promised_delivery_date,
+            country_of_issue,
+            source_language:languages!source_language_id(id, code, name),
+            target_language:languages!target_language_id(id, code, name)
+          )
         `,
         )
         .eq("id", id)
@@ -331,6 +343,30 @@ export default function AdminOrderDetail() {
 
       if (orderError) throw orderError;
       setOrder(orderData as OrderDetail);
+
+      // Fetch document analysis for translation details
+      if (orderData.quote_id) {
+        const { data: analysisData } = await supabase
+          .from("ai_analysis_results")
+          .select(`
+            id,
+            detected_language,
+            detected_document_type,
+            word_count,
+            page_count,
+            country_of_issue,
+            quote_file:quote_files!ai_analysis_results_quote_file_id_fkey(
+              original_filename
+            )
+          `)
+          .eq("quote_id", orderData.quote_id)
+          .is("deleted_at", null)
+          .order("created_at");
+
+        if (analysisData) {
+          setDocumentAnalysis(analysisData);
+        }
+      }
 
       // Set promised delivery date from quote, fallback to order's estimated date
       setPromisedDeliveryDate(
@@ -979,6 +1015,75 @@ export default function AdminOrderDetail() {
               </div>
             ) : (
               <p className="text-gray-500">No customer information</p>
+            )}
+          </div>
+
+          {/* Translation Details */}
+          <div className="bg-white rounded-lg border p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-gray-400" />
+              Translation Details
+            </h2>
+
+            <div className="grid grid-cols-2 gap-4">
+              {order.quote?.source_language && (
+                <div>
+                  <p className="text-sm text-gray-500">Source Language</p>
+                  <p className="font-medium">
+                    {order.quote.source_language.name}
+                    <span className="text-gray-400 text-xs ml-1">
+                      ({order.quote.source_language.code})
+                    </span>
+                  </p>
+                </div>
+              )}
+              {order.quote?.target_language && (
+                <div>
+                  <p className="text-sm text-gray-500">Target Language</p>
+                  <p className="font-medium">
+                    {order.quote.target_language.name}
+                    <span className="text-gray-400 text-xs ml-1">
+                      ({order.quote.target_language.code})
+                    </span>
+                  </p>
+                </div>
+              )}
+              {order.quote?.country_of_issue && (
+                <div>
+                  <p className="text-sm text-gray-500">Country of Issue</p>
+                  <p className="font-medium">{order.quote.country_of_issue}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Per-Document Analysis Summary */}
+            {documentAnalysis.length > 0 && (
+              <div className="mt-4 pt-4 border-t">
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  Documents ({documentAnalysis.length})
+                </p>
+                <div className="space-y-2">
+                  {documentAnalysis.map((doc: any) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center justify-between text-sm bg-gray-50 px-3 py-2 rounded-lg"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 truncate">
+                          {doc.quote_file?.original_filename || "Manual Entry"}
+                        </p>
+                        <p className="text-gray-500 text-xs">
+                          {doc.detected_document_type || "Unknown"} •{" "}
+                          {doc.detected_language || "—"} •{" "}
+                          {doc.word_count || 0} words •{" "}
+                          {doc.page_count || 1} page{(doc.page_count || 1) !== 1 ? "s" : ""}
+                          {doc.country_of_issue ? ` • Issued: ${doc.country_of_issue}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
