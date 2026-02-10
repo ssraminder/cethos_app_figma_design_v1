@@ -481,37 +481,28 @@ export default function EditOrderModal({
       }
 
       // 5. Update the order totals
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-order-totals`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            order_id: order.id,
-            is_rush: isRush,
-            delivery_option: deliveryOptionCode,
-            delivery_fee: calculatedTotals.deliveryFee,
-            certification_total: calculatedTotals.certificationTotal,
-            surcharge_type: surchargeType,
-            surcharge_value: surchargeValue,
-            surcharge_total: calculatedTotals.surchargeTotal,
-            discount_type: discountType,
-            discount_value: discountValue,
-            discount_total: calculatedTotals.discountTotal,
-            edit_reason: editReason.trim(),
-            staff_id: staffId,
-            calculated_totals: calculatedTotals,
-          }),
-        }
-      );
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update({
+          is_rush: isRush,
+          rush_fee: calculatedTotals.rushFee,
+          delivery_option: deliveryOptionCode,
+          delivery_fee: calculatedTotals.deliveryFee,
+          certification_total: calculatedTotals.certificationTotal,
+          surcharge_type: surchargeType,
+          surcharge_value: surchargeValue,
+          surcharge_total: calculatedTotals.surchargeTotal,
+          discount_type: discountType,
+          discount_value: discountValue,
+          discount_total: calculatedTotals.discountTotal,
+          tax_amount: calculatedTotals.taxAmount,
+          total_amount: calculatedTotals.total,
+          balance_due: calculatedTotals.total - (order.amount_paid || 0),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.id);
 
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to update order");
-      }
+      if (updateError) throw updateError;
 
       toast.success("Order updated successfully");
       onSuccess(calculatedTotals.total, balanceChange);
