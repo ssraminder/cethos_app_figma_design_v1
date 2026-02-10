@@ -52,6 +52,24 @@ interface DeliveryOption {
   price: number;
 }
 
+interface CertificationType {
+  id: string;
+  code: string;
+  name: string;
+  price: number;
+}
+
+interface OrderCertification {
+  id: string;           // UUID (existing) or temp ID (new)
+  certification_type_id: string;
+  type_name: string;    // display name
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  isNew?: boolean;      // true if added in this session
+  isDeleted?: boolean;  // true if marked for removal
+}
+
 interface EditOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -76,6 +94,10 @@ export default function EditOrderModal({
   const [deliveryOptionCode, setDeliveryOptionCode] = useState(order.delivery_option);
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
 
+  // Certification state
+  const [certificationTypes, setCertificationTypes] = useState<CertificationType[]>([]);
+  const [certifications, setCertifications] = useState<OrderCertification[]>([]);
+
   // Edit reason (required)
   const [editReason, setEditReason] = useState("");
 
@@ -99,6 +121,8 @@ export default function EditOrderModal({
     if (isOpen) {
       loadDocuments();
       loadDeliveryOptions();
+      loadCertificationTypes();
+      loadOrderCertifications();
       // Reset form state
       setIsRush(order.is_rush);
       setDeliveryOptionCode(order.delivery_option);
@@ -109,7 +133,7 @@ export default function EditOrderModal({
   // Recalculate totals when order options change
   useEffect(() => {
     recalculateTotals();
-  }, [isRush, deliveryOptionCode, deliveryOptions]);
+  }, [isRush, deliveryOptionCode, deliveryOptions, certifications]);
 
   const loadDocuments = async () => {
     setLoading(true);
@@ -166,9 +190,135 @@ export default function EditOrderModal({
     }
   };
 
+  const loadCertificationTypes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("certification_types")
+        .select("id, code, name, price")
+        .eq("is_active", true)
+        .order("sort_order");
+
+      if (error) throw error;
+      setCertificationTypes(data || []);
+    } catch (err) {
+      console.error("Error loading certification types:", err);
+    }
+  };
+
+  const loadOrderCertifications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("order_certifications")
+        .select(`
+          id,
+          certification_type_id,
+          quantity,
+          unit_price,
+          line_total,
+          cert_type:certification_types(name)
+        `)
+        .eq("order_id", order.id)
+        .order("created_at");
+
+      if (error) throw error;
+
+      const mapped = (data || []).map((row: any) => ({
+        id: row.id,
+        certification_type_id: row.certification_type_id,
+        type_name: row.cert_type?.name || "Unknown",
+        quantity: row.quantity,
+        unit_price: Number(row.unit_price),
+        line_total: Number(row.line_total),
+        isNew: false,
+        isDeleted: false,
+      }));
+
+      setCertifications(mapped);
+    } catch (err) {
+      console.error("Error loading order certifications:", err);
+    }
+  };
+
+  const handleAddCertification = () => {
+    if (certificationTypes.length === 0) return;
+    const defaultType = certificationTypes[0];
+    const newCert: OrderCertification = {
+      id: crypto.randomUUID(),
+      certification_type_id: defaultType.id,
+      type_name: defaultType.name,
+      quantity: 1,
+      unit_price: defaultType.price,
+      line_total: defaultType.price,
+      isNew: true,
+      isDeleted: false,
+    };
+    setCertifications(prev => [...prev, newCert]);
+  };
+
+  const handleCertTypeChange = (certId: string, typeId: string) => {
+    const selectedType = certificationTypes.find(t => t.id === typeId);
+    if (!selectedType) return;
+    setCertifications(prev =>
+      prev.map(c => {
+        if (c.id !== certId) return c;
+        const newLineTotal = c.quantity * selectedType.price;
+        return {
+          ...c,
+          certification_type_id: typeId,
+          type_name: selectedType.name,
+          unit_price: selectedType.price,
+          line_total: Math.round(newLineTotal * 100) / 100,
+        };
+      })
+    );
+  };
+
+  const handleCertQtyChange = (certId: string, qty: number) => {
+    const safeQty = Math.max(1, Math.floor(qty));
+    setCertifications(prev =>
+      prev.map(c => {
+        if (c.id !== certId) return c;
+        return {
+          ...c,
+          quantity: safeQty,
+          line_total: Math.round(safeQty * c.unit_price * 100) / 100,
+        };
+      })
+    );
+  };
+
+  const handleCertPriceOverride = (certId: string, price: number) => {
+    const safePrice = Math.max(0, price);
+    setCertifications(prev =>
+      prev.map(c => {
+        if (c.id !== certId) return c;
+        return {
+          ...c,
+          unit_price: safePrice,
+          line_total: Math.round(c.quantity * safePrice * 100) / 100,
+        };
+      })
+    );
+  };
+
+  const handleRemoveCertification = (certId: string) => {
+    setCertifications(prev =>
+      prev.map(c => {
+        if (c.id !== certId) return c;
+        if (c.isNew) return null; // Remove entirely if never saved
+        return { ...c, isDeleted: true }; // Mark for deletion if exists in DB
+      }).filter(Boolean) as OrderCertification[]
+    );
+  };
+
   const recalculateTotals = () => {
     // Subtotal comes from the order (quote pricing) — not recalculated from docs
     const subtotal = order.subtotal || 0;
+
+    // Sum active (non-deleted) certifications
+    const certTotal = certifications
+      .filter(c => !c.isDeleted)
+      .reduce((sum, c) => sum + c.line_total, 0);
 
     // Rush fee: 30% of subtotal
     const rushFee = isRush ? subtotal * 0.30 : 0;
@@ -178,7 +328,7 @@ export default function EditOrderModal({
     const deliveryFee = selectedDelivery?.price ?? order.delivery_fee ?? 0;
 
     // Tax
-    const taxableAmount = subtotal + rushFee + deliveryFee;
+    const taxableAmount = subtotal + certTotal + rushFee + deliveryFee;
     const taxRate = order.tax_rate || 0;
     const taxAmount = taxableAmount * taxRate;
 
@@ -187,7 +337,7 @@ export default function EditOrderModal({
 
     setCalculatedTotals({
       subtotal: Math.round(subtotal * 100) / 100,
-      certificationTotal: Math.round((order.certification_total || 0) * 100) / 100,
+      certificationTotal: Math.round(certTotal * 100) / 100,
       rushFee: Math.round(rushFee * 100) / 100,
       deliveryFee: Math.round(deliveryFee * 100) / 100,
       taxAmount: Math.round(taxAmount * 100) / 100,
@@ -196,7 +346,9 @@ export default function EditOrderModal({
   };
 
   const balanceChange = calculatedTotals.total - order.total_amount;
-  const hasChanges = Math.abs(balanceChange) > 0.01 || isRush !== order.is_rush || deliveryOptionCode !== order.delivery_option;
+  const certsChanged = certifications.some(c => c.isNew || c.isDeleted) ||
+    Math.abs(calculatedTotals.certificationTotal - (order.certification_total || 0)) > 0.01;
+  const hasChanges = Math.abs(balanceChange) > 0.01 || isRush !== order.is_rush || deliveryOptionCode !== order.delivery_option || certsChanged;
 
   const isValid = () => {
     if (!editReason.trim()) return false;
@@ -208,6 +360,48 @@ export default function EditOrderModal({
 
     setSaving(true);
     try {
+      // 1. Delete removed certifications
+      const toDelete = certifications.filter(c => c.isDeleted && !c.isNew);
+      for (const cert of toDelete) {
+        await supabase
+          .from("order_certifications")
+          .delete()
+          .eq("id", cert.id);
+      }
+
+      // 2. Insert new certifications
+      const toInsert = certifications.filter(c => c.isNew && !c.isDeleted);
+      if (toInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from("order_certifications")
+          .insert(
+            toInsert.map(c => ({
+              order_id: order.id,
+              certification_type_id: c.certification_type_id,
+              quantity: c.quantity,
+              unit_price: c.unit_price,
+              line_total: c.line_total,
+            }))
+          );
+        if (insertError) throw insertError;
+      }
+
+      // 3. Update existing certifications that changed
+      const toUpdate = certifications.filter(c => !c.isNew && !c.isDeleted);
+      for (const cert of toUpdate) {
+        await supabase
+          .from("order_certifications")
+          .update({
+            certification_type_id: cert.certification_type_id,
+            quantity: cert.quantity,
+            unit_price: cert.unit_price,
+            line_total: cert.line_total,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", cert.id);
+      }
+
+      // 4. Update the order totals
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-order-totals`,
         {
@@ -218,10 +412,10 @@ export default function EditOrderModal({
           },
           body: JSON.stringify({
             order_id: order.id,
-            documents: documents,
             is_rush: isRush,
             delivery_option: deliveryOptionCode,
             delivery_fee: calculatedTotals.deliveryFee,
+            certification_total: calculatedTotals.certificationTotal,
             edit_reason: editReason.trim(),
             staff_id: staffId,
             calculated_totals: calculatedTotals,
@@ -383,6 +577,111 @@ export default function EditOrderModal({
                 </div>
               </div>
 
+              {/* Certifications Section */}
+              <div className="border rounded-lg p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium text-gray-900 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-gray-500" />
+                    Certifications
+                  </h3>
+                  <button
+                    onClick={handleAddCertification}
+                    className="text-sm px-3 py-1 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 transition-colors"
+                  >
+                    + Add Certification
+                  </button>
+                </div>
+
+                {certifications.filter(c => !c.isDeleted).length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-2">
+                    No certifications added
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {certifications
+                      .filter(c => !c.isDeleted)
+                      .map((cert) => (
+                        <div
+                          key={cert.id}
+                          className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg"
+                        >
+                          {/* Type Dropdown */}
+                          <div className="flex-1 min-w-0">
+                            <select
+                              value={cert.certification_type_id}
+                              onChange={(e) => handleCertTypeChange(cert.id, e.target.value)}
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                            >
+                              {certificationTypes.map((type) => (
+                                <option key={type.id} value={type.id}>
+                                  {type.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Quantity */}
+                          <div className="w-20">
+                            <label className="text-xs text-gray-500 block mb-0.5">Qty</label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={cert.quantity}
+                              onChange={(e) =>
+                                handleCertQtyChange(cert.id, parseInt(e.target.value) || 1)
+                              }
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm text-center focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                            />
+                          </div>
+
+                          {/* Unit Price (overridable) */}
+                          <div className="w-24">
+                            <label className="text-xs text-gray-500 block mb-0.5">Price</label>
+                            <div className="relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={cert.unit_price}
+                                onChange={(e) =>
+                                  handleCertPriceOverride(cert.id, parseFloat(e.target.value) || 0)
+                                }
+                                className="w-full pl-6 pr-2 py-1.5 border border-gray-300 rounded-md text-sm text-right focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Line Total (read-only) */}
+                          <div className="w-24 text-right">
+                            <label className="text-xs text-gray-500 block mb-0.5">Total</label>
+                            <p className="text-sm font-medium py-1.5">
+                              ${cert.line_total.toFixed(2)}
+                            </p>
+                          </div>
+
+                          {/* Remove Button */}
+                          <button
+                            onClick={() => handleRemoveCertification(cert.id)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg mt-4"
+                            title="Remove"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+
+                    {/* Certification Subtotal */}
+                    <div className="flex justify-end pt-2 border-t">
+                      <span className="text-sm text-gray-600 mr-4">Certification Total:</span>
+                      <span className="text-sm font-semibold">
+                        ${calculatedTotals.certificationTotal.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Price Summary */}
               <div className="border rounded-lg p-4">
                 <h3 className="font-medium text-gray-900 flex items-center gap-2 mb-4">
@@ -397,8 +696,8 @@ export default function EditOrderModal({
                   </div>
                   {calculatedTotals.certificationTotal > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Certification:</span>
-                      <span>Included in subtotal</span>
+                      <span className="text-gray-600">Certifications:</span>
+                      <span>${calculatedTotals.certificationTotal.toFixed(2)}</span>
                     </div>
                   )}
                   {isRush && (
