@@ -89,6 +89,8 @@ interface OrderDetail {
   created_at: string;
   updated_at: string;
   cancelled_at?: string;
+  balance_payment_link?: string;
+  balance_payment_requested_at?: string;
 }
 
 interface Payment {
@@ -167,6 +169,10 @@ export default function AdminOrderDetail() {
   const [showBalanceResolutionModal, setShowBalanceResolutionModal] = useState(false);
   const [balanceChange, setBalanceChange] = useState(0);
   const [originalTotal, setOriginalTotal] = useState(0);
+
+  // Balance payment request state
+  const [requestingPayment, setRequestingPayment] = useState(false);
+  const [paymentLinkUrl, setPaymentLinkUrl] = useState<string | null>(null);
 
   // Document management state
   const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
@@ -262,6 +268,13 @@ export default function AdminOrderDetail() {
       fetchDocuments(order.quote_id);
     }
   }, [order?.quote_id]);
+
+  // Sync payment link URL when order loads
+  useEffect(() => {
+    if (order) {
+      setPaymentLinkUrl(order.balance_payment_link || null);
+    }
+  }, [order?.balance_payment_link]);
 
   const fetchDocuments = async (quoteId: string) => {
     setLoadingFiles(true);
@@ -816,6 +829,54 @@ export default function AdminOrderDetail() {
       toast.error("Failed to update delivery method");
     } finally {
       setSavingDelivery(false);
+    }
+  };
+
+  const handleRequestBalancePayment = async () => {
+    if (!order || !order.balance_due || order.balance_due <= 0) {
+      toast.error("No balance due on this order");
+      return;
+    }
+
+    setRequestingPayment(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/request-balance-payment`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            order_id: order.id,
+            staff_id: currentStaff?.staffId || null,
+            reason: "balance_due",
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to create payment link");
+      }
+
+      setPaymentLinkUrl(result.payment_url);
+
+      if (result.reused) {
+        toast.success("Existing payment link found — email previously sent");
+      } else {
+        toast.success(`Payment link created and emailed to customer ($${result.amount.toFixed(2)})`);
+      }
+
+      // Refresh order data
+      fetchOrderDetails();
+    } catch (err: any) {
+      console.error("Balance payment error:", err);
+      toast.error(err.message || "Failed to request payment");
+    } finally {
+      setRequestingPayment(false);
     }
   };
 
@@ -1413,11 +1474,66 @@ export default function AdminOrderDetail() {
 
               {/* Balance Due - Only show for non-cancelled orders */}
               {order.status !== 'cancelled' && (order.balance_due ?? 0) > 0 && (
-                <>
+                <div className="space-y-3">
                   <div className="flex justify-between font-semibold text-amber-600 bg-amber-50 -mx-2 px-2 py-2 rounded">
                     <span>Balance Due</span>
                     <span>${(order.balance_due ?? 0).toFixed(2)}</span>
                   </div>
+
+                  {/* Send Payment Link Button */}
+                  <button
+                    onClick={handleRequestBalancePayment}
+                    disabled={requestingPayment}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                  >
+                    {requestingPayment ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Creating Link...
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-4 h-4" />
+                        Send Payment Link (${(order.balance_due ?? 0).toFixed(2)})
+                      </>
+                    )}
+                  </button>
+
+                  {/* Show existing payment link if available */}
+                  {(paymentLinkUrl || order.balance_payment_link) && (
+                    <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 space-y-2">
+                      <p className="text-xs text-teal-700 font-medium">Payment link sent to customer</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(paymentLinkUrl || order.balance_payment_link || "");
+                            toast.success("Payment link copied!");
+                          }}
+                          className="flex-1 text-xs px-3 py-1.5 bg-white border border-teal-300 text-teal-700 rounded-md hover:bg-teal-50 transition-colors"
+                        >
+                          Copy Link
+                        </button>
+                        <a
+                          href={paymentLinkUrl || order.balance_payment_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 text-xs px-3 py-1.5 bg-white border border-teal-300 text-teal-700 rounded-md hover:bg-teal-50 transition-colors text-center"
+                        >
+                          Open Link
+                        </a>
+                      </div>
+                      {order.balance_payment_requested_at && (
+                        <p className="text-xs text-teal-600">
+                          Sent: {new Date(order.balance_payment_requested_at).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Record Manual Payment Button */}
                   <button
                     onClick={() => {
                       setPaymentForm({
@@ -1426,12 +1542,12 @@ export default function AdminOrderDetail() {
                       });
                       setShowPaymentModal(true);
                     }}
-                    className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium"
                   >
                     <DollarSign className="w-4 h-4" />
-                    Record Payment (${order.balance_due.toFixed(2)} due)
+                    Record Manual Payment (${(order.balance_due ?? 0).toFixed(2)})
                   </button>
-                </>
+                </div>
               )}
 
               {/* Cancelled Notice */}
