@@ -437,7 +437,7 @@ export default function Step1Upload() {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      fetch(`${supabaseUrl}/functions/v1/process-document`, {
+      fetch(`${supabaseUrl}/functions/v1/process-quote-documents`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
