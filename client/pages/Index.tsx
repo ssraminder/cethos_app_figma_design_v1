@@ -3,7 +3,7 @@ import ProgressStepper from "@/components/quote/ProgressStepper";
 import ProcessingStatus from "@/components/ProcessingStatus";
 import Step1Upload from "@/components/quote/Step1Upload";
 import Step2Details from "@/components/quote/Step2Details";
-import Step3Contact from "@/components/steps/Step3Contact";
+import Step3Contact from "@/components/quote/Step3Contact";
 import Step4ReviewRush from "@/components/quote/Step4ReviewRush";
 import Step5BillingDelivery from "@/components/quote/Step5BillingDelivery";
 import Step6Payment from "@/components/quote/Step6Payment";
