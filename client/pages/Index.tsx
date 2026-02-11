@@ -4,7 +4,7 @@ import ProcessingStatus from "@/components/ProcessingStatus";
 import Step1Upload from "@/components/quote/Step1Upload";
 import Step2Details from "@/components/quote/Step2Details";
 import Step3Contact from "@/components/quote/Step3Contact";
-import Step4ReviewRush from "@/components/quote/Step4ReviewRush";
+import Step4Review from "@/components/quote/Step4Review";
 import Step5BillingDelivery from "@/components/quote/Step5BillingDelivery";
 import Step6Payment from "@/components/quote/Step6Payment";
 
@@ -49,7 +49,7 @@ export default function QuoteFlow() {
         {state.currentStep === 2 && <Step2Details />}
         {state.currentStep === 3 && <Step3Contact />}
         {!state.showProcessingModal && state.currentStep === 4 && (
-          <Step4ReviewRush />
+          <Step4Review />
         )}
         {!state.showProcessingModal && state.currentStep === 5 && (
           <Step5BillingDelivery />
