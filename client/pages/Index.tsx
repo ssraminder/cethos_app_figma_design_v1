@@ -6,7 +6,7 @@ import Step2Details from "@/components/quote/Step2Details";
 import Step3Contact from "@/components/quote/Step3Contact";
 import Step4Review from "@/components/quote/Step4Review";
 import Step5Delivery from "@/components/quote/Step5Delivery";
-import Step6Payment from "@/components/quote/Step6Payment";
+import Step6Pay from "@/components/quote/Step6Pay";
 
 export default function QuoteFlow() {
   const { state, updateState } = useQuote();
@@ -55,7 +55,7 @@ export default function QuoteFlow() {
           <Step5Delivery />
         )}
         {!state.showProcessingModal && state.currentStep === 6 && (
-          <Step6Payment />
+          <Step6Pay />
         )}
       </div>
     </div>
