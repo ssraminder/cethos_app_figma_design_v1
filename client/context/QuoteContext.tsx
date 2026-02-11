@@ -9,13 +9,21 @@ import React, {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+export interface UploadedFile {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  file: File;
+}
+
 export interface QuoteState {
   // Identity
   quoteId: string | null;
   quoteNumber: string | null;
 
   // Step 1 — Upload
-  files: File[];
+  files: UploadedFile[];
   sourceLanguageId: string;
   targetLanguageId: string;
 

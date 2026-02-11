@@ -1,7 +1,7 @@
 import { useQuote } from "@/context/QuoteContext";
 import ProgressStepper from "@/components/quote/ProgressStepper";
 import ProcessingStatus from "@/components/ProcessingStatus";
-import Step1Upload from "@/components/steps/Step1Upload";
+import Step1Upload from "@/components/quote/Step1Upload";
 import Step2Details from "@/components/steps/Step2Details";
 import Step3Contact from "@/components/steps/Step3Contact";
 import Step4ReviewRush from "@/components/quote/Step4ReviewRush";
