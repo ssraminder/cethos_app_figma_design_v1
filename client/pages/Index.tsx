@@ -5,7 +5,7 @@ import Step1Upload from "@/components/quote/Step1Upload";
 import Step2Details from "@/components/quote/Step2Details";
 import Step3Contact from "@/components/quote/Step3Contact";
 import Step4Review from "@/components/quote/Step4Review";
-import Step5BillingDelivery from "@/components/quote/Step5BillingDelivery";
+import Step5Delivery from "@/components/quote/Step5Delivery";
 import Step6Payment from "@/components/quote/Step6Payment";
 
 export default function QuoteFlow() {
@@ -52,7 +52,7 @@ export default function QuoteFlow() {
           <Step4Review />
         )}
         {!state.showProcessingModal && state.currentStep === 5 && (
-          <Step5BillingDelivery />
+          <Step5Delivery />
         )}
         {!state.showProcessingModal && state.currentStep === 6 && (
           <Step6Payment />
