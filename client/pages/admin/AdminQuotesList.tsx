@@ -16,6 +16,9 @@ import {
   Clock,
   MoreVertical,
   Eye,
+  AlertTriangle,
+  Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -23,6 +26,8 @@ interface Quote {
   id: string;
   quote_number: string;
   status: string;
+  processing_status: string;
+  review_required_reasons: string[] | null;
   total: number;
   is_rush: boolean;
   created_at: string;
@@ -36,17 +41,23 @@ interface Quote {
   quote_source_name?: string;
 }
 
-const STATUS_OPTIONS = [
+const BUSINESS_STATUS_OPTIONS = [
   { value: "", label: "All Statuses" },
-  { value: "details_pending", label: "Incomplete (No Customer Info)" },
   { value: "draft", label: "Draft" },
-  { value: "processing", label: "Processing" },
-  { value: "quote_ready", label: "Quote Ready" },
-  { value: "hitl_pending", label: "HITL Pending" },
-  { value: "approved", label: "Approved" },
+  { value: "details_pending", label: "Incomplete" },
+  { value: "lead", label: "New Lead" },
+  { value: "pending_payment", label: "Pending Payment" },
   { value: "paid", label: "Paid" },
   { value: "expired", label: "Expired" },
   { value: "cancelled", label: "Cancelled" },
+];
+
+const PROCESSING_STATUS_OPTIONS = [
+  { value: "", label: "All Processing" },
+  { value: "pending", label: "Pending" },
+  { value: "processing", label: "Processing" },
+  { value: "quote_ready", label: "Quote Ready" },
+  { value: "review_required", label: "Review Required" },
 ];
 
 const PAGE_SIZE = 25;
@@ -63,6 +74,10 @@ export default function AdminQuotesList() {
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
+  // Attention count state
+  const [reviewRequiredCount, setReviewRequiredCount] = useState(0);
+  const [newLeadCount, setNewLeadCount] = useState(0);
+
   // Actions menu state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
@@ -71,6 +86,7 @@ export default function AdminQuotesList() {
   // Filters from URL
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
+  const processingStatus = searchParams.get("processing") || "";
   const dateFrom = searchParams.get("from") || "";
   const dateTo = searchParams.get("to") || "";
   const rushOnly = searchParams.get("rush") === "true";
@@ -126,6 +142,8 @@ export default function AdminQuotesList() {
           id,
           quote_number,
           status,
+          processing_status,
+          review_required_reasons,
           total,
           is_rush,
           created_at,
@@ -149,6 +167,9 @@ export default function AdminQuotesList() {
       }
       if (status) {
         query = query.eq("status", status);
+      }
+      if (processingStatus) {
+        query = query.eq("processing_status", processingStatus);
       }
       if (dateFrom) {
         query = query.gte("created_at", dateFrom);
@@ -187,6 +208,8 @@ export default function AdminQuotesList() {
           id: quote.id,
           quote_number: quote.quote_number,
           status: quote.status,
+          processing_status: quote.processing_status || "pending",
+          review_required_reasons: quote.review_required_reasons,
           total: quote.total,
           is_rush: quote.is_rush,
           created_at: quote.created_at,
@@ -209,9 +232,31 @@ export default function AdminQuotesList() {
     }
   };
 
+  const fetchAttentionCounts = async () => {
+    try {
+      const [reviewRes, leadRes] = await Promise.all([
+        supabase
+          .from("quotes")
+          .select("id", { count: "exact", head: true })
+          .eq("processing_status", "review_required")
+          .is("deleted_at", null),
+        supabase
+          .from("quotes")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "lead")
+          .is("deleted_at", null),
+      ]);
+      setReviewRequiredCount(reviewRes.count || 0);
+      setNewLeadCount(leadRes.count || 0);
+    } catch {
+      // Non-critical
+    }
+  };
+
   useEffect(() => {
     fetchQuotes();
-  }, [search, status, dateFrom, dateTo, rushOnly, showExpired, page]);
+    fetchAttentionCounts();
+  }, [search, status, processingStatus, dateFrom, dateTo, rushOnly, showExpired, page]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -324,7 +369,7 @@ export default function AdminQuotesList() {
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const hasActiveFilters = search || status || dateFrom || dateTo || rushOnly;
+  const hasActiveFilters = search || status || processingStatus || dateFrom || dateTo || rushOnly;
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
@@ -337,7 +382,7 @@ export default function AdminQuotesList() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => fetchQuotes()}
+            onClick={() => { fetchQuotes(); fetchAttentionCounts(); }}
             className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
@@ -356,6 +401,53 @@ export default function AdminQuotesList() {
           </Link>
         </div>
       </div>
+
+      {(reviewRequiredCount > 0 || newLeadCount > 0) && (
+        <div className="flex items-center gap-3 mb-4">
+          {reviewRequiredCount > 0 && (
+            <button
+              onClick={() => {
+                const params = new URLSearchParams();
+                params.set("processing", "review_required");
+                setSearchParams(params);
+              }}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                processingStatus === "review_required"
+                  ? "bg-red-100 text-red-800 ring-2 ring-red-300"
+                  : "bg-red-50 text-red-700 hover:bg-red-100"
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4" />
+              {reviewRequiredCount} Needs Review
+            </button>
+          )}
+          {newLeadCount > 0 && (
+            <button
+              onClick={() => {
+                const params = new URLSearchParams();
+                params.set("status", "lead");
+                setSearchParams(params);
+              }}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                status === "lead"
+                  ? "bg-blue-100 text-blue-800 ring-2 ring-blue-300"
+                  : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              {newLeadCount} New Lead{newLeadCount !== 1 ? "s" : ""}
+            </button>
+          )}
+          {(processingStatus || status) && (
+            <button
+              onClick={clearFilters}
+              className="text-sm text-gray-500 hover:text-gray-700 underline"
+            >
+              Show all
+            </button>
+          )}
+        </div>
+      )}
 
       <div>
         {/* Search & Filters Bar */}
@@ -389,7 +481,7 @@ export default function AdminQuotesList() {
               {hasActiveFilters && (
                 <span className="w-5 h-5 bg-blue-600 text-white text-xs rounded-full flex items-center justify-center">
                   {
-                    [search, status, dateFrom, dateTo, rushOnly].filter(Boolean)
+                    [search, status, processingStatus, dateFrom, dateTo, rushOnly].filter(Boolean)
                       .length
                   }
                 </span>
@@ -413,7 +505,7 @@ export default function AdminQuotesList() {
 
           {/* Expanded Filters */}
           {showFilters && (
-            <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-5 gap-4">
               {/* Status Filter */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -422,9 +514,27 @@ export default function AdminQuotesList() {
                 <select
                   value={status}
                   onChange={(e) => updateFilter("status", e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                 >
-                  {STATUS_OPTIONS.map((opt) => (
+                  {BUSINESS_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Processing Status Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Processing
+                </label>
+                <select
+                  value={processingStatus}
+                  onChange={(e) => updateFilter("processing", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  {PROCESSING_STATUS_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
@@ -586,7 +696,9 @@ export default function AdminQuotesList() {
                   quotes.map((quote) => (
                     <tr
                       key={quote.id}
-                      className="hover:bg-gray-50 transition-colors"
+                      className={`hover:bg-gray-50 transition-colors ${
+                        quote.processing_status === "review_required" ? "bg-red-50/40" : ""
+                      }`}
                     >
                       <td className="px-3 py-3">
                         {canDeleteQuote(quote) ? (
@@ -643,7 +755,13 @@ export default function AdminQuotesList() {
                         </p>
                       </td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={quote.status} />
+                        <div className="flex flex-col gap-1">
+                          <BusinessStatusBadge status={quote.status} />
+                          <ProcessingStatusBadge
+                            status={quote.processing_status}
+                            reasons={quote.review_required_reasons}
+                          />
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <p className="text-sm font-semibold text-gray-900 tabular-nums">
@@ -795,47 +913,97 @@ export default function AdminQuotesList() {
   );
 }
 
-// Status Badge - Normalized to Title Case
-function StatusBadge({ status }: { status?: string }) {
-  const styles: Record<string, string> = {
-    details_pending: "bg-amber-100 text-amber-700",
-    draft: "bg-gray-100 text-gray-700",
-    processing: "bg-blue-100 text-blue-700",
-    quote_ready: "bg-green-100 text-green-700",
-    hitl_pending: "bg-amber-100 text-amber-700",
-    approved: "bg-green-100 text-green-700",
-    paid: "bg-green-100 text-green-700",
-    pending_payment: "bg-amber-100 text-amber-700",
-    expired: "bg-red-100 text-red-700",
-    cancelled: "bg-gray-100 text-gray-700",
+// ════════════════════════════════════════════════════════════════
+// Business Status Badge (quotes.status)
+// ════════════════════════════════════════════════════════════════
+
+function BusinessStatusBadge({ status }: { status?: string }) {
+  const config: Record<string, { bg: string; text: string; label: string }> = {
+    draft:           { bg: "bg-gray-100",   text: "text-gray-700",  label: "Draft" },
+    details_pending: { bg: "bg-amber-100",  text: "text-amber-700", label: "Incomplete" },
+    lead:            { bg: "bg-blue-100",   text: "text-blue-700",  label: "New Lead" },
+    pending_payment: { bg: "bg-amber-100",  text: "text-amber-700", label: "Pending Payment" },
+    paid:            { bg: "bg-green-100",  text: "text-green-700", label: "Paid" },
+    expired:         { bg: "bg-red-100",    text: "text-red-700",   label: "Expired" },
+    cancelled:       { bg: "bg-gray-100",   text: "text-gray-500",  label: "Cancelled" },
   };
 
-  const labels: Record<string, string> = {
-    details_pending: "Incomplete",
-    draft: "Draft",
-    processing: "Processing",
-    quote_ready: "Quote Ready",
-    hitl_pending: "HITL Pending",
-    approved: "Approved",
-    paid: "Paid",
-    pending_payment: "Pending Payment",
-    expired: "Expired",
-    cancelled: "Cancelled",
-  };
-
-  // Fallback: convert snake_case to Title Case
-  const formatStatus = (s: string) => {
-    return s
-      .split("_")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(" ");
+  const c = config[status || ""] || {
+    bg: "bg-gray-100",
+    text: "text-gray-700",
+    label: status
+      ? status.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+      : "Unknown",
   };
 
   return (
-    <span
-      className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${styles[status || ""] || "bg-gray-100 text-gray-700"}`}
-    >
-      {labels[status || ""] || (status ? formatStatus(status) : "Unknown")}
+    <span className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${c.bg} ${c.text}`}>
+      {c.label}
     </span>
   );
+}
+
+// ════════════════════════════════════════════════════════════════
+// Processing Status Badge (quotes.processing_status)
+// ════════════════════════════════════════════════════════════════
+
+function ProcessingStatusBadge({
+  status,
+  reasons,
+}: {
+  status?: string;
+  reasons?: string[] | null;
+}) {
+  if (!status || status === "pending") return null;
+
+  const reasonMap: Record<string, string> = {
+    low_ocr_confidence: "Low OCR quality",
+    low_ai_confidence: "Low AI confidence",
+    multi_language_document: "Multi-language",
+    ai_analysis_failed: "AI analysis failed",
+    ocr_failed: "OCR failed",
+    file_too_large: "File too large",
+    file_unreadable: "File unreadable",
+    unsupported_format: "Unsupported format",
+    processing_error: "Processing error",
+    processing_timeout: "Timed out",
+    high_page_count: "High page count",
+  };
+
+  if (status === "processing") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        Processing
+      </span>
+    );
+  }
+
+  if (status === "quote_ready") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-green-600">
+        <CheckCircle2 className="w-3 h-3" />
+        Quote Ready
+      </span>
+    );
+  }
+
+  if (status === "review_required") {
+    const reasonText =
+      reasons && reasons.length > 0
+        ? reasons.map((r) => reasonMap[r] || r.replace(/_/g, " ")).join(", ")
+        : "";
+
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-xs font-medium text-red-600"
+        title={reasonText || "Manual review required"}
+      >
+        <AlertTriangle className="w-3 h-3" />
+        Review Required
+      </span>
+    );
+  }
+
+  return null;
 }
