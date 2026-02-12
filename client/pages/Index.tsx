@@ -156,15 +156,6 @@ export default function QuoteFlow() {
   if (isHydrating) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3">
-          <span className="text-xl font-extrabold text-teal-600 tracking-tight">
-            CETHOS
-          </span>
-          <div className="w-px h-5 bg-gray-200" />
-          <span className="text-sm text-gray-500 font-medium">
-            Get a Quote
-          </span>
-        </div>
         <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
           <p className="text-gray-600 text-sm">Loading your quote...</p>
@@ -178,15 +169,6 @@ export default function QuoteFlow() {
   if (hydrationError) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3">
-          <span className="text-xl font-extrabold text-teal-600 tracking-tight">
-            CETHOS
-          </span>
-          <div className="w-px h-5 bg-gray-200" />
-          <span className="text-sm text-gray-500 font-medium">
-            Get a Quote
-          </span>
-        </div>
         <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 text-center px-4">
           {hydrationError === "quote_not_found" && (
             <>
@@ -262,15 +244,6 @@ export default function QuoteFlow() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3">
-        <span className="text-xl font-extrabold text-teal-600 tracking-tight">
-          CETHOS
-        </span>
-        <div className="w-px h-5 bg-gray-200" />
-        <span className="text-sm text-gray-500 font-medium">Get a Quote</span>
-      </div>
-
       <div className="max-w-2xl mx-auto px-5 py-7 pb-24">
         <ProgressStepper currentStep={state.currentStep} className="mb-7" />
 
