@@ -425,7 +425,7 @@ export default function Step5Delivery() {
         state.quoteId
           ? supabase
               .from("quotes")
-              .select("calculated_totals, turnaround_option_id, turnaround_type, billing_address, shipping_address, physical_delivery_option_id, digital_delivery_options, selected_pickup_location_id")
+              .select("subtotal, calculated_totals, turnaround_option_id, turnaround_type, billing_address, shipping_address, physical_delivery_option_id, digital_delivery_options, selected_pickup_location_id")
               .eq("id", state.quoteId)
               .single()
           : Promise.resolve({ data: null, error: null }),
@@ -497,9 +497,11 @@ export default function Step5Delivery() {
       if (holidaysRes.error) throw holidaysRes.error;
       setHolidays((holidaysRes.data || []).map((h: any) => h.holiday_date));
 
-      // Process document analyses and notarization detection
+      // Process document analyses and notarization detection — do this BEFORE pricing
+      // so we can use analyses as a fallback for basePricing
+      let analyses: DocAnalysis[] = [];
       if (docsRes.data) {
-        const analyses: DocAnalysis[] = (docsRes.data as any[]).map((d: any) => ({
+        analyses = (docsRes.data as any[]).map((d: any) => ({
           id: d.id,
           file_name: (d.quote_files as any)?.original_filename || "Document",
           detected_document_type: d.detected_document_type || "",
@@ -531,6 +533,24 @@ export default function Step5Delivery() {
             translation_total: Number(quote.calculated_totals.translation_total) || 0,
             certification_total: Number(quote.calculated_totals.certification_total) || 0,
           });
+        } else if (quote.subtotal != null && Number(quote.subtotal) > 0) {
+          // Fallback: use quote.subtotal and split into components from analyses
+          const translationTotal = analyses.reduce((sum, d) => sum + d.line_total, 0);
+          const certificationTotal = analyses.reduce((sum, d) => sum + d.certification_price, 0);
+          const analysisSum = translationTotal + certificationTotal;
+          if (analysisSum > 0) {
+            setBasePricing({ translation_total: translationTotal, certification_total: certificationTotal });
+          } else {
+            // Can't split — treat entire subtotal as translation
+            setBasePricing({ translation_total: Number(quote.subtotal), certification_total: 0 });
+          }
+        } else if (analyses.length > 0) {
+          // Fallback: compute from document analyses
+          const translationTotal = analyses.reduce((sum, d) => sum + d.line_total, 0);
+          const certificationTotal = analyses.reduce((sum, d) => sum + d.certification_price, 0);
+          if (translationTotal + certificationTotal > 0) {
+            setBasePricing({ translation_total: translationTotal, certification_total: certificationTotal });
+          }
         }
 
         // Restore previous selections if user navigated back
@@ -1033,7 +1053,7 @@ export default function Step5Delivery() {
             let feeDisplay = "";
             let feeAmount = 0;
             if (option.code === "standard") {
-              feeDisplay = "$0.00 included";
+              feeDisplay = "Included";
             } else if (option.code === "rush") {
               feeAmount = option.fee_type === "percentage"
                 ? rushEligibleSubtotal * (option.fee_value / 100)
@@ -1155,7 +1175,9 @@ export default function Step5Delivery() {
 
                 {/* Price */}
                 <div className="text-right flex-shrink-0">
-                  <span className="text-sm font-mono font-medium text-gray-700">
+                  <span className={`text-sm font-medium ${
+                    feeAmount === 0 ? "text-green-600" : "font-mono text-gray-700"
+                  }`}>
                     {feeDisplay}
                   </span>
                 </div>
