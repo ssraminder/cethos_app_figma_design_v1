@@ -132,7 +132,7 @@ const EMPTY_ADDRESS: AddressFields = {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function Step5Delivery() {
-  const { state, goToNextStep, goToPreviousStep } = useQuote();
+  const { state, goToNextStep, goToPreviousStep, resetQuote } = useQuote();
 
   // ── Loading / UI state ──────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
@@ -1703,13 +1703,31 @@ export default function Step5Delivery() {
       <div className="flex items-center justify-between pt-2">
         <StartOverLink />
         <div className="flex items-center gap-3">
-          <button
-            onClick={goToPreviousStep}
-            disabled={saving}
-            className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            ← Back
-          </button>
+          {state.resumeSource === "email_link" ? (
+            <button
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "This will start a completely new quote. Continue?",
+                  )
+                ) {
+                  resetQuote();
+                }
+              }}
+              disabled={saving}
+              className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Start Over
+            </button>
+          ) : (
+            <button
+              onClick={goToPreviousStep}
+              disabled={saving}
+              className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ← Back
+            </button>
+          )}
           <button
             onClick={handleContinue}
             disabled={saving}

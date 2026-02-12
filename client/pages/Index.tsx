@@ -14,29 +14,53 @@ import { Loader2, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 export default function QuoteFlow() {
   const { state, updateState, resetQuote } = useQuote();
 
-  const [isHydrating, setIsHydrating] = useState(false);
+  // Determine if URL params are present to show loading immediately (prevent flash)
+  const [isHydrating, setIsHydrating] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return !!(params.get("id") || params.get("quote_id"));
+  });
   const [hydrationError, setHydrationError] = useState<string | null>(null);
 
   // ── URL param detection on mount ────────────────────────────────────────
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
-    const incomingQuoteId = searchParams.get("id");
-    const incomingStep = searchParams.get("step");
+
+    // Source 1: Website embed — ?id={quoteId}&step=2
+    const embedQuoteId = searchParams.get("id");
+    const embedStep = searchParams.get("step");
+
+    // Source 2: Email link — ?quote_id={quoteId}&token={token}
+    const emailQuoteId = searchParams.get("quote_id");
+    const emailToken = searchParams.get("token");
+
+    const incomingQuoteId = embedQuoteId || emailQuoteId;
 
     if (incomingQuoteId) {
-      hydrateFromUrl(incomingQuoteId, incomingStep);
+      const source: "website_embed" | "email_link" = embedQuoteId
+        ? "website_embed"
+        : "email_link";
+      const defaultStep = embedQuoteId ? 2 : 5;
+      const stepOverride = embedStep ? parseInt(embedStep, 10) : defaultStep;
+      hydrateFromUrl(incomingQuoteId, stepOverride, source, emailToken || null);
+    } else {
+      // Normal flow — QuoteContext already loaded from localStorage
+      setIsHydrating(false);
     }
-    // If no id param, QuoteContext already loaded from localStorage
   }, []);
 
-  async function hydrateFromUrl(quoteId: string, stepParam: string | null) {
+  async function hydrateFromUrl(
+    quoteId: string,
+    targetStep: number,
+    source: "website_embed" | "email_link",
+    token: string | null,
+  ) {
     setIsHydrating(true);
     setHydrationError(null);
 
     try {
       if (!supabase) throw new Error("Supabase not configured");
 
-      // 1. Fetch the quote
+      // 1. Fetch the quote with all fields needed across steps
       const { data: quote, error: quoteError } = await supabase
         .from("quotes")
         .select(
@@ -51,9 +75,16 @@ export default function QuoteFlow() {
           intended_use_id,
           country_of_issue,
           special_instructions,
+          customer_id,
           is_rush,
-          total,
+          rush_fee,
           subtotal,
+          tax,
+          total,
+          translation_cost,
+          certification_cost,
+          delivery_fee,
+          discount_amount,
           expires_at
         `,
         )
@@ -98,12 +129,27 @@ export default function QuoteFlow() {
         return;
       }
 
-      // 6. Determine target step
-      const targetStep = stepParam ? parseInt(stepParam, 10) : 2;
-      const validStep = targetStep >= 2 && targetStep <= 6 ? targetStep : 2;
+      // 6. For email links, also fetch customer data if customer_id exists
+      let customerData: any = null;
+      if (source === "email_link" && quote.customer_id) {
+        const { data: customer } = await supabase
+          .from("customers")
+          .select("id, full_name, email, phone, company_name, customer_type")
+          .eq("id", quote.customer_id)
+          .single();
+        customerData = customer;
+      }
 
-      // 7. Hydrate context state — overrides localStorage
-      updateState({
+      // 7. Determine valid step
+      const validStep =
+        targetStep >= 2 && targetStep <= 6
+          ? targetStep
+          : source === "email_link"
+            ? 5
+            : 2;
+
+      // 8. Hydrate context state — overrides localStorage
+      const hydratedData: Partial<typeof state> = {
         quoteId: quote.id,
         quoteNumber: quote.quote_number,
         sourceLanguageId: quote.source_language_id || "",
@@ -111,23 +157,35 @@ export default function QuoteFlow() {
         intendedUseId: quote.intended_use_id || "",
         countryOfIssue: quote.country_of_issue || "",
         specialInstructions: quote.special_instructions || "",
-        entryPoint: quote.entry_point || "website_embed",
+        entryPoint: quote.entry_point || (source === "website_embed" ? "website_embed" : null),
+        resumeSource: source,
         processingStatus: quote.processing_status || null,
         currentStep: validStep,
         // Map quote_files to the context's UploadedFile shape.
-        // Since these were uploaded on the website (not in portal), the actual
+        // Since these were uploaded externally (not in portal), the actual
         // File object is unavailable. We create stub entries so the UI can
         // display file info where needed.
-        files: quoteFiles.map((f) => ({
+        files: quoteFiles.map((f: any) => ({
           id: f.id,
           name: f.original_filename,
           size: f.file_size,
           type: f.mime_type,
           file: new File([], f.original_filename, { type: f.mime_type }),
         })),
-      });
+      };
 
-      // 8. Clean URL params so page refresh loads from localStorage
+      // Add customer data if we fetched it (email link flow)
+      if (customerData) {
+        hydratedData.fullName = customerData.full_name || "";
+        hydratedData.email = customerData.email || "";
+        hydratedData.phone = customerData.phone || "";
+        hydratedData.companyName = customerData.company_name || "";
+        hydratedData.customerType = customerData.customer_type || "individual";
+      }
+
+      updateState(hydratedData);
+
+      // 9. Clean URL params so page refresh loads from localStorage
       window.history.replaceState({}, "", "/quote");
     } catch (err) {
       console.error("Failed to hydrate from URL:", err);
