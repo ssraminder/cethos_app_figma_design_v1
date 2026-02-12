@@ -48,7 +48,10 @@ export interface QuoteState {
   processingStatus: string | null; // 'pending' | 'processing' | 'quote_ready' | 'review_required'
 
   // Entry point — tracks where the quote originated
-  entryPoint: string | null; // 'customer_web' | 'website_embed' | null
+  entryPoint: string | null; // 'customer_web' | 'website_embed' | 'staff_manual' | null
+
+  // Resume source — tracks HOW the user arrived at the portal
+  resumeSource: string | null; // 'website_embed' | 'email_link' | null
 
   // UI State
   isSubmitting: boolean;
@@ -93,6 +96,7 @@ const initialState: QuoteState = {
   isProcessing: false,
   processingStatus: null,
   entryPoint: null,
+  resumeSource: null,
   isSubmitting: false,
   submissionType: null,
   error: null,
@@ -116,20 +120,24 @@ const QuoteContext = createContext<QuoteContextType>(defaultContext);
 
 export function QuoteProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<QuoteState>(() => {
-    // Check for quote_id in URL FIRST — takes priority over localStorage
+    // Check for URL params FIRST — takes priority over localStorage
+    // Source 1: Website embed — ?id={quoteId}&step=2
+    // Source 2: Email link — ?quote_id={quoteId}&token={token}
     const urlParams = new URLSearchParams(window.location.search);
-    const urlQuoteId = urlParams.get("quote_id");
+    const embedQuoteId = urlParams.get("id");
+    const emailQuoteId = urlParams.get("quote_id");
+    const incomingQuoteId = embedQuoteId || emailQuoteId;
 
-    if (urlQuoteId) {
+    if (incomingQuoteId) {
       // Clear old quote data from localStorage BEFORE loading
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(UPLOAD_STORAGE_KEY);
       // Return initial state with the URL quote ID
-      // The step component will fetch full quote data from DB
-      return { ...initialState, quoteId: urlQuoteId };
+      // The QuoteFlow component will fetch full quote data from DB
+      return { ...initialState, quoteId: incomingQuoteId };
     }
 
-    // No URL quote_id — load from localStorage as usual
+    // No URL params — load from localStorage as usual
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
