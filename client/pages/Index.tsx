@@ -79,7 +79,6 @@ export default function QuoteFlow() {
           is_rush,
           rush_fee,
           subtotal,
-          tax,
           total,
           calculated_totals,
           expires_at
