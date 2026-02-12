@@ -190,6 +190,11 @@ export default function Step5BillingDelivery() {
   const [taxRate, setTaxRate] = useState(0.05);
   const [taxName, setTaxName] = useState("GST");
 
+  // Document summary state
+  const [sourceLanguageName, setSourceLanguageName] = useState("");
+  const [targetLanguageName, setTargetLanguageName] = useState("");
+  const [documentGroups, setDocumentGroups] = useState<any[]>([]);
+
   // Separate common and other countries
   const commonCountries = useMemo(
     () => countries.filter((c) => c.is_common),
@@ -464,6 +469,42 @@ export default function Step5BillingDelivery() {
 
         if (state.pickupLocationId) {
           setSelectedPickupLocation(state.pickupLocationId);
+        }
+
+        // Fetch source and target language names
+        const { data: langData } = await supabase
+          .from("quotes")
+          .select(`
+            source_language:languages!quotes_source_language_id_fkey(name),
+            target_language:languages!quotes_target_language_id_fkey(name)
+          `)
+          .eq("id", state.quoteId)
+          .single();
+
+        if (langData) {
+          setSourceLanguageName((langData.source_language as any)?.name || "");
+          setTargetLanguageName((langData.target_language as any)?.name || "");
+        }
+
+        // Fetch document groups with file info
+        const { data: docGroups } = await supabase
+          .from("quote_document_groups")
+          .select(`
+            id,
+            group_label,
+            document_type,
+            billable_pages,
+            total_word_count,
+            line_total,
+            quote_page_group_assignments(
+              quote_files(original_filename)
+            )
+          `)
+          .eq("quote_id", state.quoteId)
+          .order("group_number");
+
+        if (docGroups) {
+          setDocumentGroups(docGroups);
         }
       }
     } catch (err) {
@@ -1614,6 +1655,94 @@ export default function Step5BillingDelivery() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Document Summary */}
+      {documentGroups.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm mb-6">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">
+            Your Documents
+          </h3>
+
+          {/* Language pair */}
+          {sourceLanguageName && targetLanguageName && (
+            <div className="flex items-center gap-2 text-sm text-gray-700 mb-4">
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+              <span className="font-medium">{sourceLanguageName}</span>
+              <span className="text-gray-400">&rarr;</span>
+              <span className="font-medium">{targetLanguageName}</span>
+            </div>
+          )}
+
+          {/* Document table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 pr-4 text-gray-500 font-medium">Document</th>
+                  <th className="text-left py-2 pr-4 text-gray-500 font-medium">Type</th>
+                  <th className="text-right py-2 pr-4 text-gray-500 font-medium">Words</th>
+                  <th className="text-right py-2 text-gray-500 font-medium">Pages</th>
+                </tr>
+              </thead>
+              <tbody>
+                {documentGroups.map((group: any) => {
+                  const filenames = (group.quote_page_group_assignments || [])
+                    .map((a: any) => a.quote_files?.original_filename)
+                    .filter(Boolean);
+                  const uniqueFilenames = [...new Set(filenames)] as string[];
+                  const displayName = uniqueFilenames.length > 0
+                    ? uniqueFilenames.join(", ")
+                    : group.group_label || "Document";
+
+                  const formatType = (type: string) =>
+                    type
+                      ? type.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+                      : "\u2014";
+
+                  return (
+                    <tr key={group.id} className="border-b border-gray-100">
+                      <td className="py-2.5 pr-4 text-gray-900">
+                        <div className="font-medium truncate max-w-[200px]" title={displayName}>
+                          {displayName}
+                        </div>
+                      </td>
+                      <td className="py-2.5 pr-4 text-gray-600">
+                        {formatType(group.document_type)}
+                      </td>
+                      <td className="py-2.5 pr-4 text-right font-mono text-gray-600">
+                        {(group.total_word_count || 0).toLocaleString()}
+                      </td>
+                      <td className="py-2.5 text-right font-mono text-gray-600">
+                        {Number(group.billable_pages || 0).toFixed(1)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-gray-200">
+                  <td colSpan={2} className="py-2.5 font-medium text-gray-700">
+                    Total ({documentGroups.length} doc{documentGroups.length !== 1 ? "s" : ""})
+                  </td>
+                  <td className="py-2.5 text-right font-mono font-medium text-gray-700">
+                    {documentGroups
+                      .reduce((sum: number, g: any) => sum + (g.total_word_count || 0), 0)
+                      .toLocaleString()}
+                  </td>
+                  <td className="py-2.5 text-right font-mono font-medium text-gray-700">
+                    {documentGroups
+                      .reduce((sum: number, g: any) => sum + Number(g.billable_pages || 0), 0)
+                      .toFixed(1)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
 
