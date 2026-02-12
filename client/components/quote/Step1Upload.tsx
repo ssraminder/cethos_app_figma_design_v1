@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { supabase } from "@/lib/supabase";
 import StartOverLink from "@/components/quote/StartOverLink";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import { ChevronRight, X, Loader2, CheckCircle, XCircle } from "lucide-react";
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -15,6 +16,7 @@ const ACCEPTED_MIME_TYPES = [
 
 const ACCEPTED_EXTENSIONS = ".pdf,.jpg,.jpeg,.png,.docx";
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
+const POPULAR_LANGUAGE_CODES = ['en', 'fr', 'es', 'de', 'it', 'pt', 'zh', 'ja', 'ko', 'ar', 'ru', 'hi', 'nl', 'pl', 'uk'];
 
 // ── Local types ─────────────────────────────────────────────────────────────
 
@@ -627,54 +629,40 @@ export default function Step1Upload() {
       <div className="flex gap-3.5 mt-6">
         {/* Source Language */}
         <div className="flex-1">
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
-            Source Language <span className="text-red-500">*</span>
-          </label>
-          <select
+          <SearchableSelect
+            options={sourceLanguages.map((lang) => ({
+              value: lang.id,
+              label: lang.name,
+              group: POPULAR_LANGUAGE_CODES.includes(lang.code?.split('-')[0]) ? "Common" : "Other",
+            }))}
             value={sourceLanguageId}
-            onChange={(e) => handleSourceChange(e.target.value)}
-            className={`w-full px-3 py-2 border-[1.5px] rounded-lg text-sm bg-white transition ${
-              errors.sourceLanguage || errors.sameLang
-                ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/10"
-                : "border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10"
-            }`}
-          >
-            <option value="">Select&hellip;</option>
-            {sourceLanguages.map((lang) => (
-              <option key={lang.id} value={lang.id}>
-                {lang.name}
-              </option>
-            ))}
-          </select>
-          {errors.sourceLanguage && (
-            <p className="text-xs text-red-600 mt-1">{errors.sourceLanguage}</p>
-          )}
+            onChange={handleSourceChange}
+            placeholder="Select source language"
+            label="Source Language"
+            required={true}
+            error={errors.sourceLanguage || errors.sameLang}
+            groupOrder={["Common", "Other"]}
+          />
         </div>
 
         {/* Target Language */}
         <div className="flex-1">
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
-            Target Language <span className="text-red-500">*</span>
-          </label>
-          <select
+          <SearchableSelect
+            options={targetLanguages
+              .filter((lang) => lang.id !== sourceLanguageId)
+              .map((lang) => ({
+                value: lang.id,
+                label: lang.name,
+                group: POPULAR_LANGUAGE_CODES.includes(lang.code?.split('-')[0]) ? "Common" : "Other",
+              }))}
             value={targetLanguageId}
-            onChange={(e) => handleTargetChange(e.target.value)}
-            className={`w-full px-3 py-2 border-[1.5px] rounded-lg text-sm bg-white transition ${
-              errors.targetLanguage || errors.sameLang
-                ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/10"
-                : "border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10"
-            }`}
-          >
-            <option value="">Select&hellip;</option>
-            {targetLanguages.map((lang) => (
-              <option key={lang.id} value={lang.id}>
-                {lang.name}
-              </option>
-            ))}
-          </select>
-          {errors.targetLanguage && (
-            <p className="text-xs text-red-600 mt-1">{errors.targetLanguage}</p>
-          )}
+            onChange={handleTargetChange}
+            placeholder="Select target language"
+            label="Target Language"
+            required={true}
+            error={errors.targetLanguage || errors.sameLang}
+            groupOrder={["Common", "Other"]}
+          />
         </div>
       </div>
 
