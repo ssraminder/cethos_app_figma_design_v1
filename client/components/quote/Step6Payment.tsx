@@ -229,27 +229,9 @@ export default function Step6Payment() {
         })
         .eq("id", quoteId);
 
-      // 2. Send email with quote summary and payment link
-      const validUntilDate = new Date();
-      validUntilDate.setDate(validUntilDate.getDate() + 30); // 30 days from now
-
-      await supabase.functions.invoke("send-email", {
-        body: {
-          templateId: 17, // New template for saved quote
-          to: customerEmail,
-          subject: `Your Quote is Ready - ${quoteNumber}`,
-          params: {
-            QUOTE_NUMBER: quoteNumber,
-            CUSTOMER_NAME: customerName,
-            TOTAL: pricing.total.toFixed(2),
-            PAYMENT_LINK: `${window.location.origin}/quote?step=6&quote_id=${quoteId}`,
-            VALID_UNTIL: validUntilDate.toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            }),
-          },
-        },
+      // 2. Send email with payment link
+      await supabase.functions.invoke("send-quote-link-email", {
+        body: { quoteId },
       });
 
       // 3. Show confirmation
