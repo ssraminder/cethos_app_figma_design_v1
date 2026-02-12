@@ -23,6 +23,8 @@ export default function QuoteFlow() {
 
   // ── URL param detection on mount ────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false;
+
     const searchParams = new URLSearchParams(window.location.search);
 
     // Source 1: Website embed — ?id={quoteId}&step=2
@@ -41,11 +43,14 @@ export default function QuoteFlow() {
         : "email_link";
       const defaultStep = embedQuoteId ? 2 : 5;
       const stepOverride = embedStep ? parseInt(embedStep, 10) : defaultStep;
-      hydrateFromUrl(incomingQuoteId, stepOverride, source, emailToken || null);
+      hydrateFromUrl(incomingQuoteId, stepOverride, source, emailToken || null, () => cancelled);
     } else {
       // Normal flow — QuoteContext already loaded from localStorage
       setIsHydrating(false);
     }
+
+    // Don't abort the fetch — just skip state updates if unmounted
+    return () => { cancelled = true; };
   }, []);
 
   async function hydrateFromUrl(
@@ -53,7 +58,9 @@ export default function QuoteFlow() {
     targetStep: number,
     source: "website_embed" | "email_link",
     token: string | null,
-  ) {
+    isCancelled: () => boolean = () => false,
+    _retryCount: number = 0,
+  ): Promise<void> {
     setIsHydrating(true);
     setHydrationError(null);
 
@@ -87,6 +94,8 @@ export default function QuoteFlow() {
         .eq("id", quoteId)
         .single();
 
+      if (isCancelled()) return;
+
       if (quoteError || !quote) {
         console.error("Quote not found:", quoteError);
         setHydrationError("quote_not_found");
@@ -118,6 +127,8 @@ export default function QuoteFlow() {
         .is("deleted_at", null)
         .order("created_at");
 
+      if (isCancelled()) return;
+
       // 5. Check there are files
       if (!quoteFiles || quoteFiles.length === 0) {
         // No files — something went wrong, let user start fresh at step 1
@@ -135,6 +146,8 @@ export default function QuoteFlow() {
           .single();
         customerData = customer;
       }
+
+      if (isCancelled()) return;
 
       // 7. Determine valid step
       const validStep =
@@ -183,11 +196,30 @@ export default function QuoteFlow() {
 
       // 9. Clean URL params so page refresh loads from localStorage
       window.history.replaceState({}, "", "/quote");
-    } catch (err) {
-      console.error("Failed to hydrate from URL:", err);
-      setHydrationError("unknown_error");
+    } catch (err: any) {
+      if (isCancelled()) return;
+
+      // AbortError: fetch was cancelled by auth state change or Supabase
+      // Web Locks contention during initialization. Retry up to 2 times.
+      if (err?.name === "AbortError" && _retryCount < 2) {
+        console.warn(
+          `Hydration fetch aborted (attempt ${_retryCount + 1}/3), retrying...`,
+        );
+        await new Promise((r) => setTimeout(r, 300 * (_retryCount + 1)));
+        return hydrateFromUrl(quoteId, targetStep, source, token, isCancelled, _retryCount + 1);
+      }
+
+      if (err?.name === "AbortError") {
+        // Exhausted retries — don't show error UI for transient abort issues
+        console.warn("Hydration fetch aborted after retries, using default state");
+      } else {
+        console.error("Failed to hydrate from URL:", err);
+        setHydrationError("unknown_error");
+      }
     } finally {
-      setIsHydrating(false);
+      if (!isCancelled()) {
+        setIsHydrating(false);
+      }
     }
   }
 
