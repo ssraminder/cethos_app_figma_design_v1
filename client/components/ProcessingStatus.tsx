@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Check, Mail, Loader2, Clock, CheckCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useQuote } from "@/context/QuoteContext";
 
 interface ProcessingStatusProps {
   quoteId: string;
@@ -29,6 +30,7 @@ export default function ProcessingStatus({
   onComplete,
   onEmailInstead,
 }: ProcessingStatusProps) {
+  const { resetQuote } = useQuote();
   const [progress, setProgress] = useState(0);
   const [quoteStatus, setQuoteStatus] = useState<QuoteStatus>("pending");
   const [steps, setSteps] = useState<ProcessingStep[]>([
@@ -504,6 +506,17 @@ export default function ProcessingStatus({
           >
             <Mail className="w-4 h-4" />
             Email me when my quote is ready
+          </button>
+
+          <button
+            onClick={() => {
+              if (window.confirm('Are you sure? This will discard your current quote and start fresh.')) {
+                resetQuote();
+              }
+            }}
+            className="text-sm text-gray-400 hover:text-gray-600 underline mt-3"
+          >
+            Start over with a new quote
           </button>
         </div>
       </div>

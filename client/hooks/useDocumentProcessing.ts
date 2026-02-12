@@ -36,9 +36,9 @@ export function useDocumentProcessing() {
       setProcessingError(null);
 
       try {
-        console.log("🔌 Calling supabase.functions.invoke('process-document')");
+        console.log("🔌 Calling supabase.functions.invoke('process-quote-documents')");
         const { data, error } = await supabase.functions.invoke(
-          "process-document",
+          "process-quote-documents",
           {
             body: { quoteId },
           },
