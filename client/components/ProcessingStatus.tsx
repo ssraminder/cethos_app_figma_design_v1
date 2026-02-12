@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { Check, Mail, Loader2, Clock, CheckCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Mail, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useQuote } from "@/context/QuoteContext";
 
@@ -14,13 +14,12 @@ interface ProcessingStep {
   status: "completed" | "processing" | "pending";
 }
 
-// FIX 1: Added "completed" to QuoteStatus type
 type QuoteStatus =
   | "pending"
   | "processing"
   | "quote_ready"
   | "completed"
-  | "hitl_pending"
+  | "review_required"
   | "error";
 
 const TIMEOUT_SECONDS = 45;
@@ -42,120 +41,17 @@ export default function ProcessingStatus({
 
   // Timeout states
   const [hasTimedOut, setHasTimedOut] = useState(false);
-  const [isCreatingHitl, setIsCreatingHitl] = useState(false);
-  const [hitlCreated, setHitlCreated] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(TIMEOUT_SECONDS);
 
-  // Threshold checking states
-  const [isCheckingThresholds, setIsCheckingThresholds] = useState(false);
-  const [thresholdsChecked, setThresholdsChecked] = useState(false);
-
-  // Create HITL review with specified reason
-  const createHitlReview = useCallback(async (triggerReason: string = "processing_timeout") => {
-    if (isCreatingHitl || hitlCreated) return;
-
-    setIsCreatingHitl(true);
-    console.log(`⏱️ Creating HITL review (reason: ${triggerReason})...`);
-
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-hitl-review`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            quoteId: quoteId,
-            triggerReasons: [triggerReason],
-            priority: triggerReason === "processing_timeout" ? 4 : 3, // Higher priority for timeout cases
-          }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (response.ok && result.success) {
-        console.log("✅ HITL review created:", result.reviewId);
-        setHitlCreated(true);
-      } else {
-        console.error("❌ Failed to create HITL review:", result.error);
-        // Still show the HITL UI even if creation failed
-        setHitlCreated(true);
-      }
-    } catch (error) {
-      console.error("❌ Error creating HITL review:", error);
-      // Still show the HITL UI even if creation failed
-      setHitlCreated(true);
-    } finally {
-      setIsCreatingHitl(false);
-    }
-  }, [quoteId, isCreatingHitl, hitlCreated]);
-
-  // Check HITL thresholds after processing completes
-  const checkHitlThresholds = useCallback(async (): Promise<boolean> => {
-    if (isCheckingThresholds || thresholdsChecked || hitlCreated) {
-      return !hitlCreated;
-    }
-
-    setIsCheckingThresholds(true);
-    console.log("🔍 Checking HITL thresholds...");
-
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-hitl-thresholds`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ quoteId: quoteId }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (response.ok && result.success) {
-        setThresholdsChecked(true);
-
-        if (result.passed) {
-          console.log("✅ All thresholds passed");
-          return true;
-        } else {
-          console.log("⚠️ Thresholds failed, HITL created:", result.triggerReasons);
-          setHitlCreated(true);
-          return false;
-        }
-      }
-
-      // Default to passing if error (don't block customer)
-      console.warn("⚠️ Threshold check returned error, defaulting to pass");
-      setThresholdsChecked(true);
-      return true;
-    } catch (error) {
-      console.error("❌ Error checking thresholds:", error);
-      // Default to passing if error (don't block customer)
-      setThresholdsChecked(true);
-      return true;
-    } finally {
-      setIsCheckingThresholds(false);
-    }
-  }, [quoteId, isCheckingThresholds, thresholdsChecked, hitlCreated]);
-
-  // Handle "Email me instead" button click
-  const handleEmailInstead = useCallback(async () => {
-    // Create HITL review with customer requested reason
-    await createHitlReview("customer_requested_email");
-    // Then trigger the email confirmation flow
-    onEmailInstead();
-  }, [createHitlReview, onEmailInstead]);
-
   // Countdown timer effect
-  // FIX: Timer stops on "completed" OR "quote_ready"
   useEffect(() => {
-    if (!quoteId || hitlCreated || quoteStatus === "quote_ready" || quoteStatus === "completed") return;
+    if (
+      !quoteId ||
+      quoteStatus === "quote_ready" ||
+      quoteStatus === "completed" ||
+      quoteStatus === "review_required"
+    )
+      return;
 
     const countdownInterval = setInterval(() => {
       setTimeRemaining((prev) => {
@@ -169,14 +65,14 @@ export default function ProcessingStatus({
     }, 1000);
 
     return () => clearInterval(countdownInterval);
-  }, [quoteId, hitlCreated, quoteStatus]);
+  }, [quoteId, quoteStatus]);
 
-  // Trigger HITL when timeout occurs
+  // Trigger email fallback when timeout occurs
   useEffect(() => {
-    if (hasTimedOut && !hitlCreated && !isCreatingHitl) {
-      createHitlReview("processing_timeout");
+    if (hasTimedOut) {
+      onEmailInstead();
     }
-  }, [hasTimedOut, hitlCreated, isCreatingHitl, createHitlReview]);
+  }, [hasTimedOut, onEmailInstead]);
 
   // Fetch current status and subscribe to realtime updates
   useEffect(() => {
@@ -194,12 +90,6 @@ export default function ProcessingStatus({
 
       if (quote) {
         setQuoteStatus(quote.processing_status);
-        
-        // If already in HITL, show that state
-        if (quote.status === "hitl_pending") {
-          setHitlCreated(true);
-          setHasTimedOut(true);
-        }
       }
 
       // Fetch file progress
@@ -255,7 +145,6 @@ export default function ProcessingStatus({
           const newStatus = payload.new.processing_status as QuoteStatus;
           setQuoteStatus(newStatus);
 
-          // FIX 3: Handle both "quote_ready" AND "completed"
           if (newStatus === "quote_ready" || newStatus === "completed") {
             setProgress(100);
             setSteps([
@@ -264,12 +153,6 @@ export default function ProcessingStatus({
               { label: "Analyzing documents...", status: "completed" },
               { label: "Calculating pricing", status: "completed" },
             ]);
-          }
-          
-          // Check if HITL was triggered externally
-          if (payload.new.status === "hitl_pending") {
-            setHitlCreated(true);
-            setHasTimedOut(true);
           }
         }
       )
@@ -295,131 +178,18 @@ export default function ProcessingStatus({
     };
   }, [quoteId]);
 
-  // Check if processing is complete - then check thresholds
-  // FIX 2: Added "completed" to the completion check
+  // Handle processing completion
   useEffect(() => {
-    if ((quoteStatus === "quote_ready" || quoteStatus === "completed" || progress >= 100) && !hitlCreated && !isCheckingThresholds && !thresholdsChecked) {
-      // Processing complete - check thresholds before proceeding
-      const checkAndProceed = async () => {
-        const passed = await checkHitlThresholds();
-        if (passed) {
-          // Small delay before navigating for smooth transition
-          setTimeout(() => {
-            onComplete();
-          }, 300);
-        }
-        // If not passed, hitlCreated state will be set by checkHitlThresholds
-      };
-      checkAndProceed();
+    if (quoteStatus === "quote_ready" || quoteStatus === "completed") {
+      // Pipeline completed — proceed to Step 4 Review
+      setTimeout(() => {
+        onComplete();
+      }, 300);
+    } else if (quoteStatus === "review_required") {
+      // AI flagged issues — offer email notification instead
+      onEmailInstead();
     }
-  }, [quoteStatus, progress, hitlCreated, isCheckingThresholds, thresholdsChecked, checkHitlThresholds, onComplete]);
-
-  // HITL Created - Show confirmation
-  if (hitlCreated) {
-    return (
-      <div className="max-w-[600px] mx-auto">
-        <div className="bg-white border-2 border-cethos-border rounded-xl p-8 sm:p-10">
-          {/* Success Icon */}
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Clock className="w-8 h-8 text-amber-600" />
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-cethos-navy mb-2">
-              Additional Review Required
-            </h2>
-            <p className="text-cethos-slate">
-              Your documents need a bit more attention from our team
-            </p>
-          </div>
-
-          {/* Info Box */}
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm text-amber-800 font-medium mb-1">
-                  Your quote request has been received
-                </p>
-                <p className="text-sm text-amber-700">
-                  Our team will review your documents and email you a confirmed quote within <strong>4 working hours</strong>.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* What Happens Next */}
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <h3 className="font-semibold text-cethos-navy mb-3">What happens next?</h3>
-            <ol className="space-y-2 text-sm text-cethos-slate">
-              <li className="flex gap-2">
-                <span className="font-semibold text-cethos-navy">1.</span>
-                Our team reviews your documents for accuracy
-              </li>
-              <li className="flex gap-2">
-                <span className="font-semibold text-cethos-navy">2.</span>
-                We'll email you a confirmed quote
-              </li>
-              <li className="flex gap-2">
-                <span className="font-semibold text-cethos-navy">3.</span>
-                You can then proceed to payment online
-              </li>
-            </ol>
-          </div>
-
-          {/* Action Button */}
-          <div className="text-center">
-            <button
-              onClick={() => (window.location.href = "/")}
-              className="px-8 py-3 bg-cethos-teal text-white rounded-lg hover:bg-cethos-teal-light font-semibold transition-colors"
-            >
-              Return to Home
-            </button>
-            <p className="text-xs text-cethos-slate mt-3">
-              We'll email you when your quote is ready
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Creating HITL - Show loading
-  if (isCreatingHitl) {
-    return (
-      <div className="max-w-[600px] mx-auto">
-        <div className="bg-white border-2 border-cethos-border rounded-xl p-8 sm:p-10">
-          <div className="text-center">
-            <Loader2 className="w-12 h-12 animate-spin text-amber-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-cethos-navy mb-2">
-              Processing taking longer than expected...
-            </h2>
-            <p className="text-cethos-slate">
-              Transferring to our review team
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Checking thresholds - Show loading
-  if (isCheckingThresholds) {
-    return (
-      <div className="max-w-[600px] mx-auto">
-        <div className="bg-white border-2 border-cethos-border rounded-xl p-8 sm:p-10">
-          <div className="text-center">
-            <Loader2 className="w-12 h-12 animate-spin text-cethos-teal mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-cethos-navy mb-2">
-              Finalizing your quote...
-            </h2>
-            <p className="text-cethos-slate">
-              Just a moment while we verify everything
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  }, [quoteStatus, onComplete, onEmailInstead]);
 
   // Normal processing state
   return (
@@ -501,7 +271,7 @@ export default function ProcessingStatus({
         <div className="text-center">
           <p className="text-sm text-cethos-slate mb-3">Don't want to wait?</p>
           <button
-            onClick={handleEmailInstead}
+            onClick={onEmailInstead}
             className="inline-flex items-center gap-2 px-6 py-3 bg-white border-2 border-cethos-blue text-cethos-blue rounded-lg hover:bg-blue-50 transition-colors font-semibold text-sm"
           >
             <Mail className="w-4 h-4" />
