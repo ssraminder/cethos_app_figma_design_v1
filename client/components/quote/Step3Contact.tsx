@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { supabase } from "@/lib/supabase";
 import StartOverLink from "@/components/quote/StartOverLink";
@@ -6,6 +6,22 @@ import { ChevronRight, ChevronLeft, Loader2, Lock } from "lucide-react";
 
 export default function Step3Contact() {
   const { state, updateState, goToPreviousStep } = useQuote();
+
+  // Fetch quote_number into context if not already available
+  useEffect(() => {
+    const fetchQuoteNumber = async () => {
+      if (state.quoteNumber || !state.quoteId || !supabase) return;
+      const { data } = await supabase
+        .from("quotes")
+        .select("quote_number")
+        .eq("id", state.quoteId)
+        .single();
+      if (data?.quote_number) {
+        updateState({ quoteNumber: data.quote_number });
+      }
+    };
+    fetchQuoteNumber();
+  }, [state.quoteId, state.quoteNumber]);
 
   // Local state for first/last name — combined into fullName for QuoteContext
   const [firstName, setFirstName] = useState(() => {
@@ -121,6 +137,11 @@ export default function Step3Contact() {
         <p className="text-base text-cethos-gray">
           We&rsquo;ll use this to contact you about your translation.
         </p>
+        {state.quoteNumber && (
+          <p className="text-sm text-gray-400 mt-1">
+            Quote ref: <span className="font-medium text-gray-500">{state.quoteNumber}</span>
+          </p>
+        )}
       </div>
 
       {/* Form Fields */}

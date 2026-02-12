@@ -29,7 +29,7 @@ export default function ProcessingStatus({
   onComplete,
   onEmailInstead,
 }: ProcessingStatusProps) {
-  const { resetQuote } = useQuote();
+  const { resetQuote, state: quoteState } = useQuote();
   const [progress, setProgress] = useState(0);
   const [quoteStatus, setQuoteStatus] = useState<QuoteStatus>("pending");
   const [steps, setSteps] = useState<ProcessingStep[]>([
@@ -262,6 +262,11 @@ export default function ProcessingStatus({
           <h2 className="text-2xl sm:text-3xl font-bold text-cethos-navy mb-2">
             Almost there! We're finalizing your quote...
           </h2>
+          {quoteState.quoteNumber && (
+            <p className="text-sm text-gray-400 mt-1">
+              Quote ref: <span className="font-medium text-gray-500">{quoteState.quoteNumber}</span>
+            </p>
+          )}
         </div>
 
         {/* Processing Steps */}

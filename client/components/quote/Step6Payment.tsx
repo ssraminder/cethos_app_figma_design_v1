@@ -264,6 +264,11 @@ export default function Step6Payment() {
         <p className="text-cethos-gray">
           Review your order and proceed to secure payment
         </p>
+        {quoteNumber && (
+          <p className="text-sm text-gray-400 mt-1">
+            Quote ref: <span className="font-medium text-gray-500">{quoteNumber}</span>
+          </p>
+        )}
       </div>
 
       {/* Expiry Warning Banner */}

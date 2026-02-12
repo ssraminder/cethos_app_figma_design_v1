@@ -1165,6 +1165,11 @@ export default function Step4ReviewRush() {
         <p className="text-cethos-gray">
           Confirm your details and choose turnaround time
         </p>
+        {state.quoteNumber && (
+          <p className="text-sm text-gray-400 mt-1">
+            Quote ref: <span className="font-medium text-gray-500">{state.quoteNumber}</span>
+          </p>
+        )}
       </div>
 
       {/* Document Breakdown */}
