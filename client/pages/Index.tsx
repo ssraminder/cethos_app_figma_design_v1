@@ -81,10 +81,7 @@ export default function QuoteFlow() {
           subtotal,
           tax,
           total,
-          translation_cost,
-          certification_cost,
-          delivery_fee,
-          discount_amount,
+          calculated_totals,
           expires_at
         `,
         )
