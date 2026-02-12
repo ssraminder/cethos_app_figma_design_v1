@@ -43,6 +43,27 @@ export default function ProcessingStatus({
   const [hasTimedOut, setHasTimedOut] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(TIMEOUT_SECONDS);
 
+  // Review required states
+  const [reviewRequired, setReviewRequired] = useState(false);
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [quoteNumber, setQuoteNumber] = useState("");
+
+  // Helper: fetch quote details and show the review-required confirmation screen
+  const showReviewConfirmation = async () => {
+    if (!supabase) return;
+    const { data: quoteDetails } = await supabase
+      .from("quotes")
+      .select("quote_number, customers(email)")
+      .eq("id", quoteId)
+      .single();
+
+    setCustomerEmail(
+      (quoteDetails?.customers as any)?.email || ""
+    );
+    setQuoteNumber(quoteDetails?.quote_number || "");
+    setReviewRequired(true);
+  };
+
   // Countdown timer effect
   useEffect(() => {
     if (
@@ -67,12 +88,12 @@ export default function ProcessingStatus({
     return () => clearInterval(countdownInterval);
   }, [quoteId, quoteStatus]);
 
-  // Trigger email fallback when timeout occurs
+  // Show review confirmation when timeout occurs
   useEffect(() => {
     if (hasTimedOut) {
-      onEmailInstead();
+      showReviewConfirmation();
     }
-  }, [hasTimedOut, onEmailInstead]);
+  }, [hasTimedOut]);
 
   // Fetch current status and subscribe to realtime updates
   useEffect(() => {
@@ -153,6 +174,8 @@ export default function ProcessingStatus({
               { label: "Analyzing documents...", status: "completed" },
               { label: "Calculating pricing", status: "completed" },
             ]);
+          } else if (newStatus === "review_required") {
+            showReviewConfirmation();
           }
         }
       )
@@ -186,10 +209,48 @@ export default function ProcessingStatus({
         onComplete();
       }, 300);
     } else if (quoteStatus === "review_required") {
-      // AI flagged issues — offer email notification instead
-      onEmailInstead();
+      // AI flagged issues — show confirmation screen
+      showReviewConfirmation();
     }
-  }, [quoteStatus, onComplete, onEmailInstead]);
+  }, [quoteStatus, onComplete]);
+
+  // Review required — confirmation screen
+  if (reviewRequired) {
+    return (
+      <div className="bg-white rounded-xl p-8 max-w-lg mx-auto text-center">
+        {/* Green checkmark */}
+        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Check className="w-8 h-8 text-green-600" />
+        </div>
+
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          Your Request Has Been Submitted
+        </h2>
+
+        <p className="text-gray-600 mb-4">
+          Our team has received your documents and will review them manually.
+          {customerEmail && (
+            <>
+              {" "}We'll contact you shortly at <strong>{customerEmail}</strong>.
+            </>
+          )}
+        </p>
+
+        {quoteNumber && (
+          <p className="text-sm text-gray-500 mb-6">
+            Your quote reference: <strong>{quoteNumber}</strong>
+          </p>
+        )}
+
+        <a
+          href="https://cethos.com"
+          className="inline-flex items-center justify-center px-6 py-3 bg-cethos-blue text-white rounded-lg hover:bg-opacity-90 transition-colors font-semibold"
+        >
+          Return to Home
+        </a>
+      </div>
+    );
+  }
 
   // Normal processing state
   return (
