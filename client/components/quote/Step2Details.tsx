@@ -4,6 +4,7 @@ import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 import { supabase } from "@/lib/supabase";
 import StartOverLink from "@/components/quote/StartOverLink";
 import { ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 export default function Step2Details() {
   const { state, updateState, goToNextStep, goToPreviousStep } = useQuote();
@@ -17,26 +18,22 @@ export default function Step2Details() {
   const intendedUseOptions = useMemo(
     () =>
       intendedUses.map((u) => ({
-        id: u.id,
-        name: u.name,
+        value: u.id,
+        label: u.name,
       })),
     [intendedUses],
   );
 
-  const countryGroups = useMemo(() => {
+  const countryOptions = useMemo(() => {
     const common = countries
       .filter((c) => c.is_common)
-      .map((c) => ({ id: c.id, name: c.name }));
+      .map((c) => ({ value: c.id, label: c.name, group: "Common Countries" }));
     const rest = countries
       .filter((c) => !c.is_common)
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((c) => ({ id: c.id, name: c.name }));
+      .map((c) => ({ value: c.id, label: c.name, group: "All Countries" }));
 
-    const groups: { label: string; options: { id: string; name: string }[] }[] =
-      [];
-    if (common.length > 0) groups.push({ label: "Common Countries", options: common });
-    if (rest.length > 0) groups.push({ label: "All Countries", options: rest });
-    return groups;
+    return [...common, ...rest];
   }, [countries]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -60,8 +57,8 @@ export default function Step2Details() {
   // ── Validation ────────────────────────────────────────────────────────────
 
   const isFormValid = useMemo(
-    () => Boolean(state.intendedUseId && state.countryId),
-    [state.intendedUseId, state.countryId],
+    () => Boolean(state.intendedUseId),
+    [state.intendedUseId],
   );
 
   // ── Continue ──────────────────────────────────────────────────────────────
@@ -80,7 +77,7 @@ export default function Step2Details() {
           .from("quotes")
           .update({
             intended_use_id: state.intendedUseId,
-            country_of_issue: state.countryOfIssue,
+            country_of_issue: state.countryOfIssue || null,
             special_instructions: state.specialInstructions || null,
             status: "details_pending",
           })
@@ -140,46 +137,25 @@ export default function Step2Details() {
       {/* Form Fields */}
       <div className="space-y-[18px]">
         {/* Intended Use */}
-        <div>
-          <label className="text-xs font-semibold text-gray-700 mb-1 block">
-            Intended Use <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={state.intendedUseId}
-            onChange={(e) => handleIntendedUseChange(e.target.value)}
-            className="w-full px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition"
-          >
-            <option value="">Select...</option>
-            {intendedUseOptions.map((opt) => (
-              <option key={opt.id} value={opt.id}>
-                {opt.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SearchableSelect
+          options={intendedUseOptions}
+          value={state.intendedUseId}
+          onChange={(val) => handleIntendedUseChange(val)}
+          placeholder="Select intended use"
+          label="Intended Use"
+          required={true}
+        />
 
         {/* Country of Issue */}
-        <div>
-          <label className="text-xs font-semibold text-gray-700 mb-1 block">
-            Country of Issue <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={state.countryId}
-            onChange={(e) => handleCountryChange(e.target.value)}
-            className="w-full px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition"
-          >
-            <option value="">Select...</option>
-            {countryGroups.map((group) => (
-              <optgroup key={group.label} label={group.label}>
-                {group.options.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
+        <SearchableSelect
+          options={countryOptions}
+          value={state.countryId}
+          onChange={(val) => handleCountryChange(val)}
+          placeholder="Select country (optional)"
+          label="Country of Issue"
+          required={false}
+          groupOrder={["Common Countries", "All Countries"]}
+        />
 
         {/* Additional Information */}
         <div>
