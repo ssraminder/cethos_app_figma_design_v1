@@ -18,8 +18,8 @@ import { toast } from "sonner";
 
 interface DocumentRow {
   id: string;
-  detected_document_type: string;
-  extracted_holder_name: string | null;
+  document_type: string;
+  holder_name: string | null;
   billable_pages: number;
   base_rate: number;
   line_total: number;
@@ -111,39 +111,59 @@ export default function Step4Review() {
     if (!state.quoteId) return;
 
     try {
-      // Query 1: AI analysis results with certification info
-      const { data: analysisData, error: analysisError } = await supabase
-        .from("ai_analysis_results")
+      // Safety net: if subtotal is 0 but groups exist, recalculate
+      const { data: quoteCheck } = await supabase
+        .from("quotes")
+        .select("subtotal")
+        .eq("id", state.quoteId)
+        .single();
+
+      if (quoteCheck && (parseFloat(quoteCheck.subtotal) === 0 || !quoteCheck.subtotal)) {
+        console.log("Step 4: subtotal is $0, triggering recalculation...");
+        const { error: rpcError } = await supabase.rpc("recalculate_quote_from_groups", {
+          p_quote_id: state.quoteId,
+        });
+        if (rpcError) {
+          console.error("Failed to recalculate quote totals:", rpcError);
+        } else {
+          console.log("Step 4: Recalculation triggered successfully");
+          // Small delay then re-fetch the quote data
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+
+      // Query 1: Fetch from quote_document_groups — the authoritative pricing source
+      const { data: groupsData, error: groupsError } = await supabase
+        .from("quote_document_groups")
         .select(
           `id,
-          detected_document_type,
-          extracted_holder_name,
+          group_label,
+          document_type,
           billable_pages,
           base_rate,
           line_total,
           certification_type_id,
-          certification_price,
-          certification_types (
-            name,
-            code
-          )`,
+          holder_name,
+          total_pages,
+          total_word_count,
+          complexity`,
         )
         .eq("quote_id", state.quoteId)
-        .order("created_at");
+        .order("group_number", { ascending: true });
 
-      if (analysisError) throw analysisError;
+      if (groupsError) throw groupsError;
 
-      const docs: DocumentRow[] = (analysisData || []).map((r: any) => ({
+      const docs: DocumentRow[] = (groupsData || []).map((r: any) => ({
         id: r.id,
-        detected_document_type: r.detected_document_type || "Document",
-        extracted_holder_name: r.extracted_holder_name || null,
-        billable_pages: r.billable_pages || 0,
-        base_rate: r.base_rate || 0,
+        document_type: r.document_type || "Document",
+        holder_name: r.holder_name || null,
+        billable_pages: parseFloat(r.billable_pages) || 0,
+        base_rate: parseFloat(r.base_rate) || 0,
         line_total: parseFloat(r.line_total) || 0,
         certification_type_id: r.certification_type_id || null,
-        certification_price: parseFloat(r.certification_price) || 0,
-        certification_name: r.certification_types?.name || null,
-        certification_code: r.certification_types?.code || null,
+        certification_price: 0,
+        certification_name: null,
+        certification_code: null,
       }));
 
       setDocuments(docs);
@@ -289,10 +309,12 @@ export default function Step4Review() {
     }
   };
 
-  const formatDocType = (type: string): string => {
+  const formatDocumentType = (type: string): string => {
+    if (!type) return "Document";
     return type
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   };
 
   // Derived totals
@@ -546,11 +568,11 @@ export default function Step4Review() {
                   <tr className="border-b border-gray-100">
                     <td className="px-2.5 py-[9px]">
                       <div className="font-semibold text-gray-800 text-[13px]">
-                        {formatDocType(doc.detected_document_type)}
+                        {formatDocumentType(doc.document_type)}
                       </div>
-                      {doc.extracted_holder_name && (
+                      {doc.holder_name && (
                         <div className="text-[11px] text-gray-400">
-                          {doc.extracted_holder_name}
+                          {doc.holder_name}
                         </div>
                       )}
                     </td>
@@ -561,7 +583,7 @@ export default function Step4Review() {
                       ${doc.base_rate.toFixed(2)}
                     </td>
                     <td className="px-2.5 py-[9px] text-[13px] text-gray-700 text-right">
-                      ${(doc.billable_pages * doc.base_rate).toFixed(2)}
+                      ${doc.line_total.toFixed(2)}
                     </td>
                   </tr>
 
