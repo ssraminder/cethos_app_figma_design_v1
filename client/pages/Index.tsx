@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
-import { supabase } from "@/lib/supabase";
 import ProgressStepper from "@/components/quote/ProgressStepper";
 import ProcessingStatus from "@/components/ProcessingStatus";
 import Step1Upload from "@/components/quote/Step1Upload";
@@ -65,43 +64,40 @@ export default function QuoteFlow() {
     setHydrationError(null);
 
     try {
-      if (!supabase) throw new Error("Supabase not configured");
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!supabaseUrl || !supabaseKey) throw new Error("Supabase not configured");
 
-      // 1. Fetch the quote with all fields needed across steps
-      const { data: quote, error: quoteError } = await supabase
-        .from("quotes")
-        .select(
-          `
-          id,
-          quote_number,
-          status,
-          processing_status,
-          entry_point,
-          source_language_id,
-          target_language_id,
-          intended_use_id,
-          country_of_issue,
-          special_instructions,
-          customer_id,
-          is_rush,
-          rush_fee,
-          subtotal,
-          total,
-          calculated_totals,
-          expires_at
-        `,
-        )
-        .eq("id", quoteId)
-        .single();
+      const headers = {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+
+      // 1. Fetch the quote — use select=* to avoid column mismatch errors
+      const quoteResponse = await fetch(
+        `${supabaseUrl}/rest/v1/quotes?select=*&id=eq.${quoteId}`,
+        { headers },
+      );
 
       if (isCancelled()) return;
 
-      if (quoteError || !quote) {
-        console.error("Quote not found:", quoteError);
+      if (!quoteResponse.ok) {
+        console.error("Quote fetch failed:", quoteResponse.status);
         setHydrationError("quote_not_found");
         setIsHydrating(false);
         return;
       }
+
+      const quotes = await quoteResponse.json();
+      if (!quotes || quotes.length === 0) {
+        console.error("Quote not found");
+        setHydrationError("quote_not_found");
+        setIsHydrating(false);
+        return;
+      }
+      const quote = quotes[0];
 
       // 2. Check quote is still actionable
       if (["paid", "cancelled"].includes(quote.status)) {
@@ -118,14 +114,11 @@ export default function QuoteFlow() {
       }
 
       // 4. Fetch quote_files for this quote
-      const { data: quoteFiles } = await supabase
-        .from("quote_files")
-        .select(
-          "id, original_filename, file_size, mime_type, upload_status, ai_processing_status",
-        )
-        .eq("quote_id", quoteId)
-        .is("deleted_at", null)
-        .order("created_at");
+      const filesResponse = await fetch(
+        `${supabaseUrl}/rest/v1/quote_files?select=id,original_filename,file_size,mime_type,upload_status,ai_processing_status&quote_id=eq.${quoteId}&deleted_at=is.null&order=created_at`,
+        { headers },
+      );
+      const quoteFiles = filesResponse.ok ? await filesResponse.json() : [];
 
       if (isCancelled()) return;
 
@@ -139,12 +132,12 @@ export default function QuoteFlow() {
       // 6. For email links, also fetch customer data if customer_id exists
       let customerData: any = null;
       if (source === "email_link" && quote.customer_id) {
-        const { data: customer } = await supabase
-          .from("customers")
-          .select("id, full_name, email, phone, company_name, customer_type")
-          .eq("id", quote.customer_id)
-          .single();
-        customerData = customer;
+        const custResponse = await fetch(
+          `${supabaseUrl}/rest/v1/customers?select=id,full_name,email,phone,company_name,customer_type&id=eq.${quote.customer_id}`,
+          { headers },
+        );
+        const customers = custResponse.ok ? await custResponse.json() : [];
+        customerData = customers.length > 0 ? customers[0] : null;
       }
 
       if (isCancelled()) return;
