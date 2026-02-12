@@ -98,7 +98,7 @@ interface NotarizedDocInfo {
 interface DocAnalysis {
   id: string;
   file_name: string;
-  assessed_document_type: string;
+  detected_document_type: string;
   line_total: number;
   certification_type_id: string | null;
   certification_code: string | null;
@@ -143,6 +143,7 @@ export default function Step5Delivery() {
   const [turnaroundOptions, setTurnaroundOptions] = useState<TurnaroundOption[]>([]);
   const [selectedTurnaround, setSelectedTurnaround] = useState<string>("standard");
   const [sameDayEligible, setSameDayEligible] = useState(false);
+  const [sameDayAdditionalFee, setSameDayAdditionalFee] = useState(0);
   const [notarizedDocs, setNotarizedDocs] = useState<NotarizedDocInfo[]>([]);
   const [docAnalyses, setDocAnalyses] = useState<DocAnalysis[]>([]);
   const [holidays, setHolidays] = useState<string[]>([]);
@@ -211,11 +212,18 @@ export default function Step5Delivery() {
     return basePricing.translation_total + basePricing.certification_total - notarizedTotal;
   }, [basePricing, notarizedDocs, hasNotarization]);
 
-  // Calculate rush fee based on selection
+  // Calculate rush fee based on selection and fee_type
   const rushFee = useMemo(() => {
     if (!selectedTurnaroundOption || selectedTurnaround === "standard") return 0;
-    return rushEligibleSubtotal * (selectedTurnaroundOption.fee_value / 100);
-  }, [selectedTurnaround, selectedTurnaroundOption, rushEligibleSubtotal]);
+    const baseFee = selectedTurnaroundOption.fee_type === "percentage"
+      ? rushEligibleSubtotal * (selectedTurnaroundOption.fee_value / 100)
+      : selectedTurnaroundOption.fee_value;
+    // Same-day includes additional_fee from eligibility record
+    if (selectedTurnaround === "same_day") {
+      return baseFee + sameDayAdditionalFee;
+    }
+    return baseFee;
+  }, [selectedTurnaround, selectedTurnaroundOption, rushEligibleSubtotal, sameDayAdditionalFee]);
 
   // Calculate delivery fee
   const deliveryFee = useMemo(() => {
@@ -244,18 +252,23 @@ export default function Step5Delivery() {
     };
   }, [basePricing, rushFee, deliveryFee, selectedTaxRate, selectedTaxName]);
 
-  // Delivery date calculations
+  // ── Delivery date calculations ──────────────────────────────────────────
+
+  /**
+   * Add N business days to a start date, skipping weekends and holidays.
+   */
   const addBusinessDays = useCallback(
-    (startDate: Date, days: number): Date => {
+    (startDate: Date, businessDays: number): Date => {
+      const holidaySet = new Set(holidays);
       const current = new Date(startDate);
       let added = 0;
-      while (added < days) {
+
+      while (added < businessDays) {
         current.setDate(current.getDate() + 1);
-        if (current.getDay() !== 0 && current.getDay() !== 6) {
-          const dateStr = current.toISOString().split("T")[0];
-          if (!holidays.includes(dateStr)) {
-            added++;
-          }
+        const day = current.getDay();
+        const dateStr = current.toISOString().split("T")[0];
+        if (day !== 0 && day !== 6 && !holidaySet.has(dateStr)) {
+          added++;
         }
       }
       return current;
@@ -263,21 +276,79 @@ export default function Step5Delivery() {
     [holidays],
   );
 
-  const standardDeliveryDate = useMemo(() => {
-    const stdOption = turnaroundOptions.find((t) => t.code === "standard");
-    if (!stdOption) return null;
-    const baseDays = stdOption.estimated_days + (hasNotarization ? 1 : 0);
-    return addBusinessDays(new Date(), baseDays);
-  }, [turnaroundOptions, hasNotarization, addBusinessDays]);
+  /**
+   * Determine the effective start date based on 4:30 PM America/Toronto cutoff.
+   * If current time is after 4:30 PM → day 1 starts next business day.
+   */
+  const getEffectiveStartDate = useCallback((): Date => {
+    const now = new Date();
+    const torontoTime = new Date(
+      now.toLocaleString("en-US", { timeZone: "America/Toronto" }),
+    );
+    const hours = torontoTime.getHours();
+    const minutes = torontoTime.getMinutes();
 
-  const rushDeliveryDate = useMemo(() => {
-    const totalBillablePages = docAnalyses
-      .filter((d) => !notarizedDocs.some((n) => n.result_id === d.id))
-      .reduce((sum, d) => sum + (d.billable_pages || 1), 0);
-    // next business day for ≤2 pages, +1 day per additional 3 pages
-    const rushDays = totalBillablePages <= 2 ? 1 : 1 + Math.ceil((totalBillablePages - 2) / 3);
-    return addBusinessDays(new Date(), rushDays);
-  }, [docAnalyses, notarizedDocs, addBusinessDays]);
+    // After 4:30 PM → start counting from tomorrow
+    if (hours > 16 || (hours === 16 && minutes >= 30)) {
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return tomorrow;
+    }
+    return now;
+  }, []);
+
+  /**
+   * Calculate standard turnaround days based on billable pages.
+   * Base: 2 business days for up to 2 pages
+   * +1 business day for every additional 2 pages
+   */
+  const getStandardDays = useCallback((billablePages: number): number => {
+    const pages = Math.ceil(billablePages);
+    if (pages <= 2) return 2;
+    return 2 + Math.ceil((pages - 2) / 2);
+  }, []);
+
+  /**
+   * Calculate rush turnaround days based on billable pages.
+   * Base: 1 business day for up to 2 pages
+   * +1 business day for every additional 3 pages
+   */
+  const getRushDays = useCallback((billablePages: number): number => {
+    const pages = Math.ceil(billablePages);
+    if (pages <= 2) return 1;
+    return 1 + Math.ceil((pages - 2) / 3);
+  }, []);
+
+  // Total billable pages across all documents
+  const totalBillablePages = useMemo(
+    () => docAnalyses.reduce((sum, d) => sum + (d.billable_pages || 1), 0),
+    [docAnalyses],
+  );
+
+  const standardDays = useMemo(
+    () => getStandardDays(totalBillablePages),
+    [getStandardDays, totalBillablePages],
+  );
+
+  const rushDays = useMemo(
+    () => getRushDays(totalBillablePages),
+    [getRushDays, totalBillablePages],
+  );
+
+  const effectiveStartDate = useMemo(
+    () => getEffectiveStartDate(),
+    [getEffectiveStartDate],
+  );
+
+  const standardDeliveryDate = useMemo(
+    () => addBusinessDays(effectiveStartDate, standardDays),
+    [addBusinessDays, effectiveStartDate, standardDays],
+  );
+
+  const rushDeliveryDate = useMemo(
+    () => addBusinessDays(effectiveStartDate, rushDays),
+    [addBusinessDays, effectiveStartDate, rushDays],
+  );
 
   const formatDate = (date: Date | null): string => {
     if (!date) return "—";
@@ -349,7 +420,6 @@ export default function Step5Delivery() {
         supabase
           .from("holidays")
           .select("holiday_date")
-          .eq("is_active", true)
           .gte("holiday_date", new Date().toISOString().split("T")[0]),
         // 6. Current pricing from quote
         state.quoteId
@@ -365,12 +435,12 @@ export default function Step5Delivery() {
               .from("ai_analysis_results")
               .select(`
                 id,
-                file_name,
-                assessed_document_type,
+                detected_document_type,
                 line_total,
                 certification_type_id,
                 billable_pages,
-                certification_types(code, price)
+                certification_types(code, price),
+                quote_files!inner(original_filename)
               `)
               .eq("quote_id", state.quoteId)
           : Promise.resolve({ data: null, error: null }),
@@ -431,8 +501,8 @@ export default function Step5Delivery() {
       if (docsRes.data) {
         const analyses: DocAnalysis[] = (docsRes.data as any[]).map((d: any) => ({
           id: d.id,
-          file_name: d.file_name || "Document",
-          assessed_document_type: d.assessed_document_type || "",
+          file_name: (d.quote_files as any)?.original_filename || "Document",
+          detected_document_type: d.detected_document_type || "",
           line_total: Number(d.line_total) || 0,
           certification_type_id: d.certification_type_id,
           certification_code: (d.certification_types as any)?.code || null,
@@ -528,33 +598,35 @@ export default function Step5Delivery() {
 
   const checkSameDayEligibility = async () => {
     try {
-      // Check current time vs 2PM MST cutoff
+      // Check current time vs 4:30 PM America/Toronto cutoff
       const now = new Date();
-      const mstTime = new Date(
-        now.toLocaleString("en-US", { timeZone: "America/Edmonton" }),
+      const torontoTime = new Date(
+        now.toLocaleString("en-US", { timeZone: "America/Toronto" }),
       );
-      if (mstTime.getHours() >= 14) {
+      const hours = torontoTime.getHours();
+      const minutes = torontoTime.getMinutes();
+
+      if (hours > 16 || (hours === 16 && minutes >= 30)) {
         setSameDayEligible(false);
         return;
       }
       // Check if weekday
-      if (mstTime.getDay() === 0 || mstTime.getDay() === 6) {
+      if (torontoTime.getDay() === 0 || torontoTime.getDay() === 6) {
         setSameDayEligible(false);
         return;
       }
-      // Check if today is a holiday
-      const todayStr = mstTime.toISOString().split("T")[0];
+      // Check if today is a holiday (no is_active filter)
+      const todayStr = torontoTime.toISOString().split("T")[0];
       const { data: holiday } = await supabase
         .from("holidays")
         .select("id")
         .eq("holiday_date", todayStr)
-        .eq("is_active", true)
         .maybeSingle();
       if (holiday) {
         setSameDayEligible(false);
         return;
       }
-      // Check language + document type eligibility
+      // Check language + document type + intended_use eligibility
       if (!state.quoteId) {
         setSameDayEligible(false);
         return;
@@ -564,7 +636,7 @@ export default function Step5Delivery() {
         .select(`
           source_language:languages!quotes_source_language_id_fkey(code),
           target_language:languages!quotes_target_language_id_fkey(code),
-          ai_analysis_results(assessed_document_type),
+          ai_analysis_results(detected_document_type),
           intended_use:intended_uses!quotes_intended_use_id_fkey(code)
         `)
         .eq("id", state.quoteId)
@@ -578,7 +650,7 @@ export default function Step5Delivery() {
       const sourceCode = (quote.source_language as any)?.code;
       const targetCode = (quote.target_language as any)?.code;
       const docTypes = (quote.ai_analysis_results as any[])?.map(
-        (r) => r.assessed_document_type,
+        (r) => r.detected_document_type,
       ) || [];
       const intendedUseCode = (quote.intended_use as any)?.code;
 
@@ -587,19 +659,32 @@ export default function Step5Delivery() {
         return;
       }
 
-      // Check eligibility for all document types
+      // Check eligibility for each document type with intended_use
       const { data: eligible } = await supabase
         .from("same_day_eligibility")
-        .select("id")
+        .select("id, additional_fee")
         .eq("source_language", sourceCode)
         .eq("target_language", targetCode)
         .in("document_type", docTypes)
+        .eq("intended_use", intendedUseCode)
         .eq("is_active", true);
 
-      setSameDayEligible((eligible?.length ?? 0) > 0);
+      if (eligible && eligible.length > 0) {
+        setSameDayEligible(true);
+        // Sum additional fees from all matching eligibility records
+        const totalAdditionalFee = eligible.reduce(
+          (sum, e) => sum + (Number(e.additional_fee) || 0),
+          0,
+        );
+        setSameDayAdditionalFee(totalAdditionalFee);
+      } else {
+        setSameDayEligible(false);
+        setSameDayAdditionalFee(0);
+      }
     } catch (err) {
       console.error("Error checking same-day eligibility:", err);
       setSameDayEligible(false);
+      setSameDayAdditionalFee(0);
     }
   };
 
@@ -754,15 +839,29 @@ export default function Step5Delivery() {
           }
         : null;
 
-      // Calculate promised delivery date
-      let promisedDate: string | null = null;
-      if (selectedTurnaround === "standard" && standardDeliveryDate) {
-        promisedDate = standardDeliveryDate.toISOString().split("T")[0];
-      } else if (selectedTurnaround === "rush" && rushDeliveryDate) {
-        promisedDate = rushDeliveryDate.toISOString().split("T")[0];
+      // Calculate translation completion date
+      let translationReadyDate: Date | null = null;
+      if (selectedTurnaround === "standard") {
+        translationReadyDate = standardDeliveryDate;
+      } else if (selectedTurnaround === "rush") {
+        translationReadyDate = rushDeliveryDate;
       } else if (selectedTurnaround === "same_day") {
-        promisedDate = new Date().toISOString().split("T")[0];
+        translationReadyDate = new Date();
       }
+
+      // Calculate estimated delivery date (includes physical transit days)
+      let estimatedDeliveryDate: Date | null = translationReadyDate;
+      if (translationReadyDate && physicalOpt && physicalOpt.estimated_days && physicalOpt.estimated_days > 0) {
+        // Add transit days for physical shipping
+        estimatedDeliveryDate = addBusinessDays(translationReadyDate, physicalOpt.estimated_days);
+      }
+
+      const promisedDate = translationReadyDate
+        ? translationReadyDate.toISOString().split("T")[0]
+        : null;
+      const estimatedDeliveryDateStr = estimatedDeliveryDate
+        ? estimatedDeliveryDate.toISOString()
+        : null;
 
       // Digital delivery option IDs
       const digitalOptIds = deliveryOptions
@@ -804,6 +903,7 @@ export default function Step5Delivery() {
           calculated_totals: pricing,
           // Delivery date
           promised_delivery_date: promisedDate,
+          estimated_delivery_date: estimatedDeliveryDateStr,
           // Status
           status: "pending_payment",
           updated_at: new Date().toISOString(),
@@ -902,7 +1002,15 @@ export default function Step5Delivery() {
                 {hasNotarization
                   ? "Rush available for non-notarized documents only"
                   : "Rush available for all documents"}
-                {" · "}+{formatCurrency(rushEligibleSubtotal * ((turnaroundOptions.find((t) => t.code === "rush")?.fee_value ?? 30) / 100))}
+                {" · "}+{formatCurrency(
+                  (() => {
+                    const rushOpt = turnaroundOptions.find((t) => t.code === "rush");
+                    if (!rushOpt) return 0;
+                    return rushOpt.fee_type === "percentage"
+                      ? rushEligibleSubtotal * (rushOpt.fee_value / 100)
+                      : rushOpt.fee_value;
+                  })()
+                )}
               </p>
             </div>
           )}
@@ -921,16 +1029,20 @@ export default function Step5Delivery() {
             const isDisabledByNotarization =
               (option.code === "rush" || option.code === "same_day") && allNotarized;
 
-            // Calculate fee for this option
+            // Calculate fee for this option based on fee_type
             let feeDisplay = "";
             let feeAmount = 0;
             if (option.code === "standard") {
               feeDisplay = "$0.00 included";
             } else if (option.code === "rush") {
-              feeAmount = rushEligibleSubtotal * (option.fee_value / 100);
+              feeAmount = option.fee_type === "percentage"
+                ? rushEligibleSubtotal * (option.fee_value / 100)
+                : option.fee_value;
               feeDisplay = `+${formatCurrency(feeAmount)} rush fee`;
             } else if (option.code === "same_day") {
-              feeAmount = rushEligibleSubtotal * (option.fee_value / 100);
+              feeAmount = (option.fee_type === "percentage"
+                ? rushEligibleSubtotal * (option.fee_value / 100)
+                : option.fee_value) + sameDayAdditionalFee;
               feeDisplay = isLocked ? "—" : `+${formatCurrency(feeAmount)}`;
             }
 
@@ -1010,14 +1122,12 @@ export default function Step5Delivery() {
                   <p className="text-sm text-gray-600 mt-1">
                     {option.code === "standard" && (
                       <>
-                        {option.estimated_days} business days
-                        {hasNotarization && " — includes +1 day for notarization"}
+                        {standardDays} business day{standardDays !== 1 ? "s" : ""}
                       </>
                     )}
                     {option.code === "rush" && (
                       <>
-                        +{option.fee_value}% on eligible documents · next business day
-                        for 2 pages or fewer
+                        {rushDays} business day{rushDays !== 1 ? "s" : ""} · +{option.fee_value}%{option.fee_type !== "percentage" ? ` (+${formatCurrency(option.fee_value)})` : ""} on eligible documents
                       </>
                     )}
                     {option.code === "same_day" && (
@@ -1129,7 +1239,7 @@ export default function Step5Delivery() {
         {/* Physical Delivery */}
         <div>
           <p className="text-sm font-medium text-gray-700 mb-3">
-            Physical Delivery (optional)
+            Physical Delivery <span className="text-red-500">(required)</span>
           </p>
           <div className="space-y-2">
             {/* No physical copy option */}
@@ -1154,9 +1264,9 @@ export default function Step5Delivery() {
                 )}
               </div>
               <span className="flex-1 font-medium text-gray-900 text-sm">
-                No physical copy needed
+                No physical delivery needed
               </span>
-              <span className="text-sm font-mono text-gray-400 flex-shrink-0">—</span>
+              <span className="text-sm font-mono font-medium text-green-600 flex-shrink-0">FREE</span>
             </label>
 
             {physicalOptions.map((option) => {
@@ -1188,9 +1298,9 @@ export default function Step5Delivery() {
                       <span className="font-medium text-gray-900 text-sm">
                         {option.name}
                       </span>
-                      {option.estimated_days && (
+                      {option.estimated_days != null && option.estimated_days > 0 && (
                         <span className="text-xs text-gray-500 ml-1">
-                          ({option.estimated_days} days)
+                          (+{option.estimated_days} day{option.estimated_days !== 1 ? "s" : ""})
                         </span>
                       )}
                     </div>
