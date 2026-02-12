@@ -111,6 +111,23 @@ export default function Step3Contact() {
           .eq("id", state.quoteId);
 
         if (linkError) throw linkError;
+
+        // Notify staff of new lead — fire and forget, do NOT await
+        fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-staff-notification`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              quote_id: state.quoteId,
+              trigger_type: 'new_lead',
+              quote_number: state.quoteNumber,
+            }),
+          }
+        ).catch((err) => console.warn('Staff notification failed (non-blocking):', err));
       }
 
       // 3. Show processing modal (Index.tsx renders ProcessingStatus overlay)
