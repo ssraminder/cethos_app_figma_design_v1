@@ -7,7 +7,8 @@ import { ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 
 export default function Step2Details() {
-  const { state, updateState, goToNextStep, goToPreviousStep } = useQuote();
+  const { state, updateState, goToNextStep, goToPreviousStep, resetQuote } =
+    useQuote();
   const { intendedUses, countries, loading, error } = useDropdownOptions();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -188,14 +189,32 @@ export default function Step2Details() {
         <StartOverLink />
 
         <div className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={goToPreviousStep}
-            className="flex items-center gap-2 px-6 py-3 border-2 border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 font-medium transition-colors"
-          >
-            <ChevronLeft className="w-5 h-5" />
-            <span>Back</span>
-          </button>
+          {state.entryPoint === "website_embed" ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "This will discard your uploaded documents and start a new quote. Continue?",
+                  )
+                ) {
+                  resetQuote();
+                }
+              }}
+              className="flex items-center gap-2 px-6 py-3 border-2 border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+            >
+              <span>Start Over</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={goToPreviousStep}
+              className="flex items-center gap-2 px-6 py-3 border-2 border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
+          )}
 
           <button
             type="button"
