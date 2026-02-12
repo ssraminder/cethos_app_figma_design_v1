@@ -47,6 +47,9 @@ export interface QuoteState {
   isProcessing: boolean;
   processingStatus: string | null; // 'pending' | 'processing' | 'quote_ready' | 'review_required'
 
+  // Entry point — tracks where the quote originated
+  entryPoint: string | null; // 'customer_web' | 'website_embed' | null
+
   // UI State
   isSubmitting: boolean;
   submissionType: string | null;
@@ -89,6 +92,7 @@ const initialState: QuoteState = {
   currentStep: 1,
   isProcessing: false,
   processingStatus: null,
+  entryPoint: null,
   isSubmitting: false,
   submissionType: null,
   error: null,
