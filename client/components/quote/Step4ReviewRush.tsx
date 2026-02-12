@@ -1094,6 +1094,27 @@ export default function Step4ReviewRush() {
     (opt) => opt.code === "same_day",
   );
 
+  // Friendly date label helper — display-only, does not affect date calculations
+  const getFriendlyDateLabel = (date: Date): string => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(date);
+    target.setHours(0, 0, 0, 0);
+    const diffDays = Math.round(
+      (target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Tomorrow";
+    if (diffDays === 2) return "Day after tomorrow";
+
+    const dayName = target.toLocaleDateString("en-US", { weekday: "long" });
+    if (diffDays <= 6) return `This ${dayName}`;
+    if (diffDays <= 13) return `Next ${dayName}`;
+
+    return `${diffDays} days`;
+  };
+
   const totalBillablePages = documents.reduce(
     (sum, doc) => sum + (doc.billable_pages || 0),
     0,
@@ -1307,8 +1328,15 @@ export default function Step4ReviewRush() {
                   </div>
                   <span className="text-gray-600 whitespace-nowrap">Included</span>
                 </div>
-                <p className="text-sm text-gray-500 mt-1">
-                  Ready by {format(standardDeliveryDate, "EEEE, MMMM d, yyyy")}
+                <p className="text-sm mt-1">
+                  Ready by{" "}
+                  <span className="font-semibold text-gray-900 text-base">
+                    {format(standardDeliveryDate, "MMM d")}
+                  </span>
+                  <span className="mx-1.5 text-gray-300">·</span>
+                  <span className="font-medium text-cethos-teal">
+                    {getFriendlyDateLabel(standardDeliveryDate)}
+                  </span>
                 </p>
                 <p className="text-xs text-gray-400">
                   {standardDays} business {standardDays === 1 ? "day" : "days"}{" "}
@@ -1355,8 +1383,15 @@ export default function Step4ReviewRush() {
                     +${(totals.subtotal * (rushMultiplier - 1)).toFixed(2)}
                   </span>
                 </div>
-                <p className="text-sm text-gray-500 mt-1">
-                  Ready by {format(rushDeliveryDate, "EEEE, MMMM d, yyyy")}
+                <p className="text-sm mt-1">
+                  Ready by{" "}
+                  <span className="font-semibold text-gray-900 text-base">
+                    {format(rushDeliveryDate, "MMM d")}
+                  </span>
+                  <span className="mx-1.5 text-gray-300">·</span>
+                  <span className="font-medium text-amber-600">
+                    {getFriendlyDateLabel(rushDeliveryDate)}
+                  </span>
                 </p>
                 <p className="text-xs text-gray-400">
                   {rushTurnaroundDays} day{rushTurnaroundDays !== 1 ? "s" : ""}{" "}
@@ -1408,8 +1443,14 @@ export default function Step4ReviewRush() {
                     +${(totals.subtotal * (sameDayMultiplier - 1)).toFixed(2)}
                   </span>
                 </div>
-                <p className="text-sm text-gray-500 mt-1">
-                  Ready TODAY by 6:00 PM MST
+                <p className="text-sm mt-1">
+                  Ready{" "}
+                  <span className="font-semibold text-gray-900 text-base">
+                    {format(new Date(), "MMM d")}
+                  </span>
+                  <span className="mx-1.5 text-gray-300">·</span>
+                  <span className="font-medium text-green-600">Today</span>
+                  <span className="text-gray-400 text-xs ml-1">by 6:00 PM MST</span>
                 </p>
                 <p className="text-xs text-gray-400">
                   Order by 2:00 PM MST • Limited availability
