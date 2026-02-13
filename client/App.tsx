@@ -90,6 +90,8 @@ import SameDaySettings from "./pages/admin/settings/SameDaySettings";
 import LanguageTiersSettings from "./pages/admin/settings/LanguageTiersSettings";
 import LanguagesSettings from "./pages/admin/settings/LanguagesSettings";
 import FileCategoriesSettings from "./pages/admin/settings/FileCategoriesSettings";
+import TrackingSettings from "./pages/admin/settings/TrackingSettings";
+import GoogleTagManager from "./components/shared/GoogleTagManager";
 
 const queryClient = new QueryClient();
 
@@ -110,6 +112,7 @@ const App = () => (
           <UploadProvider>
             <StaffAuthProvider>
               <BrowserRouter>
+                <GoogleTagManager />
                 <Routes>
                   <Route element={<AppLayout />}>
                     <Route path="/" element={<Login />} />
@@ -350,6 +353,10 @@ const App = () => (
                     <Route
                       path="settings/file-categories"
                       element={<FileCategoriesSettings />}
+                    />
+                    <Route
+                      path="settings/tracking"
+                      element={<TrackingSettings />}
                     />
                   </Route>
 

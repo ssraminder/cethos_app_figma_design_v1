@@ -402,6 +402,18 @@ export default function AdminSettings() {
                 Categorize uploaded files in quotes
               </p>
             </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/tracking")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Tracking & Analytics
+              </h3>
+              <p className="text-sm text-gray-600">
+                Google Analytics, Tag Manager, custom scripts
+              </p>
+            </button>
           </div>
         </div>
 
