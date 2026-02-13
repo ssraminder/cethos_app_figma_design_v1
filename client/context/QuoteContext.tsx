@@ -71,7 +71,7 @@ interface QuoteContextType {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 4;
 const STORAGE_KEY = "cethos_quote_draft";
 const UPLOAD_STORAGE_KEY = "cethos_upload_draft";
 
