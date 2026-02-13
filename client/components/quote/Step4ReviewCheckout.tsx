@@ -20,6 +20,7 @@ import {
   CreditCard,
   Lock,
   AlertCircle,
+  X,
 } from "lucide-react";
 import StartOverLink from "@/components/StartOverLink";
 import { toast } from "sonner";
@@ -3300,7 +3301,16 @@ export default function Step4ReviewCheckout() {
       {/* HITL Success Modal */}
       {showHitlSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center shadow-xl">
+          <div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center shadow-xl relative">
+            {/* Close (X) button — lets customer dismiss and still pay */}
+            <button
+              onClick={() => setShowHitlSuccessModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
             {/* Success icon */}
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-8 h-8 text-green-600" />
@@ -3321,15 +3331,13 @@ export default function Step4ReviewCheckout() {
             {/* Primary action — Start a new quote */}
             <button
               onClick={() => {
-                // Clear draft data and navigate to start
+                // Clear all draft data
                 localStorage.removeItem("cethos_quote_draft");
                 localStorage.removeItem("cethos_upload_draft");
-                const entry = localStorage.getItem("cethos_entry_point");
-                if (entry === "upload_form") {
-                  navigate("/upload?step=1", { replace: true });
-                } else {
-                  navigate("/quote?step=1", { replace: true });
-                }
+                localStorage.removeItem("cethos_quote_id");
+                localStorage.removeItem("cethos_quote_state");
+                // Full page reload to cleanly reset all state
+                window.location.href = "/quote";
               }}
               className="w-full py-3 px-4 bg-cethos-teal text-white rounded-xl font-semibold hover:bg-cethos-teal/90 transition-colors flex items-center justify-center gap-2 mb-3"
             >
