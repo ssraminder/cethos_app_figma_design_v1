@@ -1962,7 +1962,7 @@ export default function Step4ReviewCheckout() {
   // ── Render: Main content ───────────────────────────────────────────────
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+    <div className="pb-8">
 
       {/* Top navigation — subtle, doesn't compete with Pay */}
       <div className="flex items-center justify-between py-3 mb-2">
