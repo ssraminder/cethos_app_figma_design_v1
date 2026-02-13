@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { OcrResultsModal } from '../../components/shared/analysis';
 import {
@@ -12,7 +13,8 @@ import {
   ChevronRight,
   Loader2,
   AlertTriangle,
-  Eye
+  Eye,
+  RefreshCw
 } from 'lucide-react';
 
 interface PageResult {
@@ -66,15 +68,20 @@ export default function OCRBatchResultsPage() {
   const [batch, setBatch] = useState<BatchResult | null>(null);
   const [files, setFiles] = useState<FileResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
+  const isInitialLoad = useRef(true);
 
-  useEffect(() => {
-    if (batchId) fetchResults();
-  }, [batchId]);
+  const fetchResults = useCallback(async () => {
+    // Only show full loading spinner on initial load
+    if (isInitialLoad.current) {
+      setLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
 
-  const fetchResults = async () => {
-    setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
@@ -93,27 +100,47 @@ export default function OCRBatchResultsPage() {
       const data = await response.json();
       setBatch(data.batch);
       setFiles(data.files);
+      setLastRefreshedAt(new Date());
 
-      // Auto-expand: use first file ID per group as the key
-      const expandKeys = new Set<string>();
-      const groupSeen = new Set<string>();
-      data.files.forEach((f: FileResult) => {
-        if (f.file_group_id) {
-          if (!groupSeen.has(f.file_group_id)) {
-            groupSeen.add(f.file_group_id);
+      // Auto-expand only on initial load
+      if (isInitialLoad.current) {
+        const expandKeys = new Set<string>();
+        const groupSeen = new Set<string>();
+        data.files.forEach((f: FileResult) => {
+          if (f.file_group_id) {
+            if (!groupSeen.has(f.file_group_id)) {
+              groupSeen.add(f.file_group_id);
+              expandKeys.add(f.id);
+            }
+          } else {
             expandKeys.add(f.id);
           }
-        } else {
-          expandKeys.add(f.id);
-        }
-      });
-      setExpandedFiles(expandKeys);
+        });
+        setExpandedFiles(expandKeys);
+      }
     } catch (err) {
       console.error('Failed to fetch results:', err);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
+      isInitialLoad.current = false;
     }
-  };
+  }, [batchId]);
+
+  useEffect(() => {
+    if (batchId) fetchResults();
+  }, [batchId, fetchResults]);
+
+  // Auto-poll every 10 seconds while batch is processing/pending
+  useEffect(() => {
+    if (!batch || ['completed', 'failed'].includes(batch.status)) return;
+
+    const interval = setInterval(() => {
+      fetchResults();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [batch?.status, fetchResults]);
 
   const toggleFile = (fileId: string) => {
     setExpandedFiles(prev => {
@@ -265,13 +292,28 @@ export default function OCRBatchResultsPage() {
             Back to OCR Tool
           </button>
 
-          <button
-            onClick={exportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-          >
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
+          <div className="flex items-center gap-3">
+            {lastRefreshedAt && (
+              <span className="text-xs text-gray-400">
+                Updated {formatDistanceToNow(lastRefreshedAt)} ago
+              </span>
+            )}
+            <button
+              onClick={() => fetchResults()}
+              disabled={isRefreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <button
+              onClick={exportCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </button>
+          </div>
         </div>
 
         {/* Summary Card */}
