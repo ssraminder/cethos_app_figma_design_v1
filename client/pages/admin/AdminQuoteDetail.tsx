@@ -103,6 +103,9 @@ interface QuoteDetail {
   payment_method?: { id: string; name: string; code: string } | null;
   payment_confirmed_by?: { id: string; full_name: string } | null;
   payment_confirmed_at?: string | null;
+  processing_status?: string;
+  review_required_reasons?: string[];
+  customer_note?: string;
   calculated_totals?: {
     translation_total?: number;
     doc_certification_total?: number;
@@ -362,6 +365,56 @@ const normalizeAddress = (raw: any): NormalizedAddress | null => {
   };
 };
 
+const REFERENCE_CATEGORY_ID = "f1aed462-a25f-4dd0-96c0-f952c3a72950";
+
+const REVIEW_REASON_LABELS: Record<string, { label: string; description: string; severity: 'error' | 'warning' }> = {
+  ocr_failed: {
+    label: "OCR Failed",
+    description: "Document text extraction failed. The document may be corrupted, password-protected, or contain only images that couldn't be processed.",
+    severity: "error",
+  },
+  ai_analysis_failed: {
+    label: "AI Analysis Failed",
+    description: "The AI could not classify this document. Manual review of document type, language, and complexity is required.",
+    severity: "error",
+  },
+  low_ocr_confidence: {
+    label: "Low OCR Confidence",
+    description: "Text was extracted but with low confidence. The document may have poor image quality, handwriting, or unusual formatting. Word counts may be inaccurate.",
+    severity: "warning",
+  },
+  low_ai_confidence: {
+    label: "Low AI Confidence",
+    description: "The AI classified this document but with low confidence. Please verify the document type, language, and complexity are correct.",
+    severity: "warning",
+  },
+  multi_language_document: {
+    label: "Multi-Language Document",
+    description: "This document contains significant text in multiple languages. Verify which language content needs translation and check that word counts are correct.",
+    severity: "warning",
+  },
+  file_too_large: {
+    label: "File Too Large",
+    description: "One or more pages were too large to process. The document may need to be split or rescanned at lower resolution.",
+    severity: "error",
+  },
+  file_unreadable: {
+    label: "File Unreadable",
+    description: "The document could not be opened. It may be encrypted, password-protected, or corrupted.",
+    severity: "error",
+  },
+  unsupported_format: {
+    label: "Unsupported Format",
+    description: "One or more files are in an unsupported format and could not be processed.",
+    severity: "error",
+  },
+  processing_error: {
+    label: "Processing Error",
+    description: "An unexpected error occurred during processing. The document may need to be reprocessed or manually reviewed.",
+    severity: "error",
+  },
+};
+
 export default function AdminQuoteDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -454,7 +507,7 @@ export default function AdminQuoteDetail() {
         id: f.id,
         displayName: f.original_filename || f.storage_path,
         storagePath: f.storage_path,
-        bucket: f.category_id === 'f1aed462-a25f-4dd0-96c0-f952c3a72950' ? 'quote-reference-files' : 'quote-files',
+        bucket: f.category_id === REFERENCE_CATEGORY_ID ? 'quote-reference-files' : 'quote-files',
         bucketPath: f.storage_path,
         fileSize: f.file_size || 0,
         mimeType: f.mime_type || 'application/pdf',
@@ -825,6 +878,18 @@ export default function AdminQuoteDetail() {
       document.body.removeChild(link);
     } else {
       alert('Failed to generate download URL');
+    }
+  };
+
+  const handleRefFileDownload = async (storagePath: string) => {
+    if (!supabase || !storagePath) return;
+    const { data, error } = await supabase.storage
+      .from("quote-reference-files")
+      .createSignedUrl(storagePath, 3600);
+    if (data?.signedUrl) {
+      window.open(data.signedUrl, "_blank");
+    } else {
+      console.error("Failed to generate signed URL for reference file:", error);
     }
   };
 
@@ -1935,6 +2000,59 @@ export default function AdminQuoteDetail() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+          {quote.processing_status === "review_required" && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-5 mb-6">
+              <h3 className="text-base font-semibold text-red-800 flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-5 h-5" />
+                Review Required
+              </h3>
+
+              {quote.review_required_reasons && Array.isArray(quote.review_required_reasons) && quote.review_required_reasons.length > 0 && (
+                <div className="space-y-2.5 mb-4">
+                  {quote.review_required_reasons.map((reason: string, idx: number) => {
+                    const info = REVIEW_REASON_LABELS[reason] || {
+                      label: reason.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                      description: "This item requires manual review.",
+                      severity: "warning" as const,
+                    };
+                    return (
+                      <div
+                        key={idx}
+                        className={`rounded-md p-3 ${
+                          info.severity === "error"
+                            ? "bg-red-100 border border-red-200"
+                            : "bg-amber-50 border border-amber-200"
+                        }`}
+                      >
+                        <p className={`text-sm font-medium ${
+                          info.severity === "error" ? "text-red-800" : "text-amber-800"
+                        }`}>
+                          {info.severity === "error" ? "❌" : "⚠️"} {info.label}
+                        </p>
+                        <p className={`text-xs mt-0.5 ${
+                          info.severity === "error" ? "text-red-700" : "text-amber-700"
+                        }`}>
+                          {info.description}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {quote.customer_note && (
+                <div className="bg-white border border-red-100 rounded-md p-3 mt-3">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                    Customer Note
+                  </p>
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                    {quote.customer_note}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="bg-white rounded-lg border p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <User className="w-5 h-5 text-gray-400" />
@@ -2035,26 +2153,28 @@ export default function AdminQuoteDetail() {
                   })()}
                 </p>
               </div>
-              {quote.special_instructions && (
-                <div className="col-span-2">
-                  <p className="text-sm text-gray-500 flex items-center gap-1.5">
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    Customer Instructions
-                  </p>
-                  <p className="font-medium whitespace-pre-wrap">{quote.special_instructions}</p>
-                </div>
-              )}
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border p-6">
-            {(() => {
-              const REFERENCE_CATEGORY_ID = "f1aed462-a25f-4dd0-96c0-f952c3a72950";
-              const translateFiles = normalizedFiles.filter(f => f.categoryId !== REFERENCE_CATEGORY_ID);
-              const referenceFiles = normalizedFiles.filter(f => f.categoryId === REFERENCE_CATEGORY_ID);
+          {quote.special_instructions && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2 mb-2">
+                <MessageSquare className="w-4 h-4" />
+                Customer Instructions
+              </h4>
+              <p className="text-sm text-amber-900 whitespace-pre-wrap">
+                {quote.special_instructions}
+              </p>
+            </div>
+          )}
 
-              return (
-                <>
+          {(() => {
+            const translateFiles = normalizedFiles.filter(f => f.categoryId !== REFERENCE_CATEGORY_ID);
+            const referenceFiles = normalizedFiles.filter(f => f.categoryId === REFERENCE_CATEGORY_ID);
+
+            return (
+              <>
+                <div className="bg-white rounded-lg border p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                       <FileText className="w-5 h-5 text-gray-400" />
@@ -2124,35 +2244,39 @@ export default function AdminQuoteDetail() {
                   ) : (
                     <p className="text-gray-500 italic">No files uploaded</p>
                   )}
+                </div>
 
-                  {referenceFiles.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                      <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
-                        Reference Files
-                      </h4>
-                      <div className="space-y-1.5">
-                        {referenceFiles.map((rf) => (
-                          <div key={rf.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
-                            <Paperclip className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                            <span className="truncate text-gray-600">{rf.displayName}</span>
-                            <span className="text-xs text-gray-400 flex-shrink-0">
-                              {formatFileSize(rf.fileSize)}
-                            </span>
-                            <button
-                              onClick={() => handleDownload(rf)}
-                              className="text-xs text-teal-600 hover:underline flex-shrink-0 ml-auto"
-                            >
-                              Download
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                {referenceFiles.length > 0 && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-3">
+                      <Paperclip className="w-4 h-4 text-gray-400" />
+                      Reference Files ({referenceFiles.length})
+                    </h4>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Supporting materials provided by the customer. Not counted toward pricing.
+                    </p>
+                    <div className="space-y-2">
+                      {referenceFiles.map((rf) => (
+                        <div key={rf.id} className="flex items-center gap-2.5 p-2.5 bg-white border border-gray-200 rounded-lg">
+                          <Paperclip className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <span className="text-sm text-gray-700 truncate flex-1">{rf.displayName}</span>
+                          <span className="text-xs text-gray-400 flex-shrink-0">
+                            {rf.fileSize ? formatFileSize(rf.fileSize) : ''}
+                          </span>
+                          <button
+                            onClick={() => handleRefFileDownload(rf.storagePath)}
+                            className="text-xs text-teal-600 hover:underline flex-shrink-0"
+                          >
+                            Download
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </>
-              );
-            })()}
-          </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {analysis.length > 0 && (
             <div className="bg-white rounded-lg border p-6">
