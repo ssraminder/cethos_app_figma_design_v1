@@ -87,7 +87,7 @@ export function useDropdownOptions() {
               "id, code, name, description, subcategory, default_certification_type_id",
             )
             .eq("is_active", true)
-            .order("sort_order"),
+            .order("name", { ascending: true }),
 
           // Fetch countries
           supabase
