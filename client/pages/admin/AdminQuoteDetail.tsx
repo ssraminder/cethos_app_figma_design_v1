@@ -32,6 +32,7 @@ import {
   X,
   Zap,
   FileSearch,
+  Paperclip,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -138,6 +139,7 @@ interface NormalizedFile {
   fileSize: number;
   mimeType: string;
   source: 'quote' | 'ocr';
+  categoryId?: string | null;
 }
 
 interface AIAnalysis {
@@ -444,7 +446,7 @@ export default function AdminQuoteDetail() {
     // Try quote_files first (customer upload route)
     const { data: quoteFiles, error: qfError } = await supabase
       .from('quote_files')
-      .select('id, original_filename, storage_path, file_size, mime_type')
+      .select('id, original_filename, storage_path, file_size, mime_type, category_id')
       .eq('quote_id', quoteId);
 
     if (!qfError && quoteFiles && quoteFiles.length > 0) {
@@ -452,11 +454,12 @@ export default function AdminQuoteDetail() {
         id: f.id,
         displayName: f.original_filename || f.storage_path,
         storagePath: f.storage_path,
-        bucket: 'quote-files',
+        bucket: f.category_id === 'f1aed462-a25f-4dd0-96c0-f952c3a72950' ? 'quote-reference-files' : 'quote-files',
         bucketPath: f.storage_path,
         fileSize: f.file_size || 0,
         mimeType: f.mime_type || 'application/pdf',
         source: 'quote' as const,
+        categoryId: f.category_id,
       }));
     }
 
@@ -2034,83 +2037,121 @@ export default function AdminQuoteDetail() {
               </div>
               {quote.special_instructions && (
                 <div className="col-span-2">
-                  <p className="text-sm text-gray-500">Special Instructions</p>
-                  <p className="font-medium">{quote.special_instructions}</p>
+                  <p className="text-sm text-gray-500 flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Customer Instructions
+                  </p>
+                  <p className="font-medium whitespace-pre-wrap">{quote.special_instructions}</p>
                 </div>
               )}
             </div>
           </div>
 
           <div className="bg-white rounded-lg border p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-gray-400" />
-                Uploaded Files ({normalizedFiles.length})
-              </h2>
-              {hasBatch && (
-                <button
-                  onClick={() => setShowOcrModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <FileSearch className="w-4 h-4" />
-                  OCR & Analysis
-                </button>
-              )}
-            </div>
+            {(() => {
+              const REFERENCE_CATEGORY_ID = "f1aed462-a25f-4dd0-96c0-f952c3a72950";
+              const translateFiles = normalizedFiles.filter(f => f.categoryId !== REFERENCE_CATEGORY_ID);
+              const referenceFiles = normalizedFiles.filter(f => f.categoryId === REFERENCE_CATEGORY_ID);
 
-            {normalizedFiles.length > 0 ? (
-              <div className="space-y-2">
-                {normalizedFiles.map((file) => (
-                  <div
-                    key={file.id}
-                    className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg ${
-                      file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')
-                        ? 'cursor-pointer hover:bg-gray-100 transition-colors'
-                        : ''
-                    }`}
-                    onClick={() => {
-                      if (file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) {
-                        handlePreview(file);
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-3">
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                       <FileText className="w-5 h-5 text-gray-400" />
-                      <div>
-                        <p className="font-medium text-sm">{file.displayName}</p>
-                        <p className="text-xs text-gray-500">
-                          {file.fileSize > 0 ? formatFileSize(file.fileSize) : ''}
-                          {file.fileSize > 0 && ' • '}{file.mimeType}
-                          {file.source === 'ocr' && (
-                            <span className="ml-2 text-purple-600">via OCR</span>
-                          )}
-                        </p>
+                      Uploaded Files ({translateFiles.length})
+                    </h2>
+                    {hasBatch && (
+                      <button
+                        onClick={() => setShowOcrModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        <FileSearch className="w-4 h-4" />
+                        OCR & Analysis
+                      </button>
+                    )}
+                  </div>
+
+                  {translateFiles.length > 0 ? (
+                    <div className="space-y-2">
+                      {translateFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg ${
+                            file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')
+                              ? 'cursor-pointer hover:bg-gray-100 transition-colors'
+                              : ''
+                          }`}
+                          onClick={() => {
+                            if (file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) {
+                              handlePreview(file);
+                            }
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <FileText className="w-5 h-5 text-gray-400" />
+                            <div>
+                              <p className="font-medium text-sm">{file.displayName}</p>
+                              <p className="text-xs text-gray-500">
+                                {file.fileSize > 0 ? formatFileSize(file.fileSize) : ''}
+                                {file.fileSize > 0 && ' • '}{file.mimeType}
+                                {file.source === 'ocr' && (
+                                  <span className="ml-2 text-purple-600">via OCR</span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                            {(file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) && (
+                              <button
+                                onClick={() => handlePreview(file)}
+                                className="text-blue-600 hover:text-blue-700"
+                                title="Preview"
+                              >
+                                <Eye className="w-5 h-5" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDownload(file)}
+                              className="text-teal-600 hover:text-teal-700"
+                              title="Download"
+                            >
+                              <Download className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 italic">No files uploaded</p>
+                  )}
+
+                  {referenceFiles.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
+                        Reference Files
+                      </h4>
+                      <div className="space-y-1.5">
+                        {referenceFiles.map((rf) => (
+                          <div key={rf.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                            <Paperclip className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                            <span className="truncate text-gray-600">{rf.displayName}</span>
+                            <span className="text-xs text-gray-400 flex-shrink-0">
+                              {formatFileSize(rf.fileSize)}
+                            </span>
+                            <button
+                              onClick={() => handleDownload(rf)}
+                              className="text-xs text-teal-600 hover:underline flex-shrink-0 ml-auto"
+                            >
+                              Download
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      {(file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) && (
-                        <button
-                          onClick={() => handlePreview(file)}
-                          className="text-blue-600 hover:text-blue-700"
-                          title="Preview"
-                        >
-                          <Eye className="w-5 h-5" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleDownload(file)}
-                        className="text-teal-600 hover:text-teal-700"
-                        title="Download"
-                      >
-                        <Download className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 italic">No files uploaded</p>
-            )}
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {analysis.length > 0 && (
