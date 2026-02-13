@@ -565,7 +565,7 @@ export default function PreprocessOCRPage() {
         displayName: f.original_filename || f.storage_path || 'Unknown file',
         storagePath: f.storage_path,
         bucket: 'quote-files' as const,
-        bucketPath: `uploads/${f.original_filename}`,
+        bucketPath: f.storage_path,
         fileSize: f.file_size || 0,
         mimeType: f.mime_type || 'application/pdf',
         source: 'quote' as const,
@@ -645,6 +645,12 @@ export default function PreprocessOCRPage() {
         const record = pdfRecords[i];
 
         try {
+          if (!record.bucketPath) {
+            console.warn(`No storage_path for file: ${record.displayName}`);
+            toast.error(`No storage path for ${record.displayName}`);
+            continue;
+          }
+
           // Get signed URL
           const { data: signedData, error: signError } = await supabase.storage
             .from(record.bucket)
