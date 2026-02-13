@@ -4,7 +4,8 @@ import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 import { supabase } from "@/lib/supabase";
 import StartOverLink from "@/components/quote/StartOverLink";
 import { ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
-import SearchableSelect from "@/components/ui/SearchableSelect";
+import SearchableSelectUI from "@/components/ui/SearchableSelect";
+import SearchableSelect from "@/components/shared/SearchableSelect";
 
 export default function Step2Details() {
   const { state, updateState, goToNextStep, goToPreviousStep, resetQuote } =
@@ -19,8 +20,8 @@ export default function Step2Details() {
   const intendedUseOptions = useMemo(
     () =>
       intendedUses.map((u) => ({
-        value: u.id,
-        label: u.name,
+        id: u.id,
+        name: u.name,
       })),
     [intendedUses],
   );
@@ -142,13 +143,15 @@ export default function Step2Details() {
           options={intendedUseOptions}
           value={state.intendedUseId}
           onChange={(val) => handleIntendedUseChange(val)}
-          placeholder="Select intended use"
+          placeholder="Search intended use..."
           label="Intended Use"
           required={true}
+          grouped={true}
+          synonyms={true}
         />
 
         {/* Country of Issue */}
-        <SearchableSelect
+        <SearchableSelectUI
           options={countryOptions}
           value={state.countryId}
           onChange={(val) => handleCountryChange(val)}

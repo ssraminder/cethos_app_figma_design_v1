@@ -3,6 +3,7 @@ import { useQuote } from "@/context/QuoteContext";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 import StartOverLink from "@/components/StartOverLink";
 import SearchableDropdown, { DropdownOption } from "@/components/SearchableDropdown";
+import SearchableSelect from "@/components/shared/SearchableSelect";
 import { Loader2, ChevronRight, ChevronLeft } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -79,7 +80,7 @@ export default function Step2Details() {
       }));
   }, [targetLanguages, state.sourceLanguageId]);
 
-  // Convert intended uses to grouped dropdown options WITH "Other" option
+  // Convert intended uses to grouped dropdown options WITH "Other" option (legacy SearchableDropdown)
   const intendedUseOptions: DropdownOption[] = useMemo(() => {
     const options = intendedUses.map((use) => ({
       id: use.id,
@@ -95,6 +96,16 @@ export default function Step2Details() {
     });
 
     return options;
+  }, [intendedUses]);
+
+  // Intended use options for SearchableSelect (id/name format) with "Other" option
+  const intendedUseSearchableOptions = useMemo(() => {
+    const opts = intendedUses.map((use) => ({
+      id: use.id,
+      name: use.name,
+    }));
+    opts.push({ id: "other", name: "Other (please specify)" });
+    return opts;
   }, [intendedUses]);
 
   // Convert provinces to dropdown options
@@ -506,14 +517,15 @@ export default function Step2Details() {
 
         {/* Purpose of Translation */}
         <div>
-          <SearchableDropdown
-            options={intendedUseOptions}
+          <SearchableSelect
+            options={intendedUseSearchableOptions}
             value={showOtherInput ? "other" : (state.intendedUseId || "")}
             onChange={handleIntendedUseChange}
             label="Purpose of Translation"
             placeholder="Search or select intended use..."
-            required
-            groupOrder={subcategoryOrder}
+            required={true}
+            grouped={true}
+            synonyms={true}
           />
 
           {/* "Other" text input */}
