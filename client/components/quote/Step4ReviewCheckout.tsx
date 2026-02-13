@@ -618,25 +618,6 @@ export default function Step4ReviewCheckout() {
     ]);
   };
 
-  // Helper: Get customer-friendly reason messages
-  const getCustomerFriendlyReason = (reason: string): string => {
-    const messages: Record<string, string> = {
-      timeout:
-        "Our system took longer than expected to analyze your documents.",
-      processing_error: "We encountered a technical issue while processing.",
-      low_ocr_confidence: "Some text was difficult to read clearly.",
-      low_language_confidence:
-        "We need to verify the language in your documents.",
-      low_classification_confidence: "We need to confirm the document type.",
-      high_value_order:
-        "Due to the size of your order, we provide personalized review.",
-      high_page_count:
-        "Due to the number of pages, we provide personalized review.",
-      quality_check: "We want to ensure the most accurate quote possible.",
-    };
-    return messages[reason] || messages["quality_check"];
-  };
-
   // Handler: Return to Quote Form (clears storage, navigates to clean URL)
   const handleReturnToQuoteForm = () => {
     // Get entry point BEFORE clearing storage
@@ -670,99 +651,26 @@ export default function Step4ReviewCheckout() {
 
   // Handler: Auto-HITL fallback (timeout, error, low confidence, etc.)
   const handleAutoHITLFallback = async (reason: string) => {
-    console.log("🚨 Auto-HITL fallback triggered. Reason:", reason);
+    if (!state.quoteId) return;
 
     try {
-      const quoteId = state.quoteId;
-      if (!quoteId) {
-        console.error("No quote ID for HITL fallback");
-        return;
-      }
-
-      // Fetch quote with customer info FIRST
-      const { data: quote } = await supabase
-        .from("quotes")
-        .select(
-          `
-          quote_number,
-          customers (
-            email,
-            full_name
-          )
-        `,
-        )
-        .eq("id", quoteId)
-        .single();
-
-      const customerEmail = quote?.customers?.email;
-      const customerName = quote?.customers?.full_name || "Customer";
-      const quoteNumber = quote?.quote_number;
-
-      // 1. Check if HITL review already exists
-      const { data: existing } = await supabase
-        .from("hitl_reviews")
-        .select("id")
-        .eq("quote_id", quoteId)
-        .maybeSingle();
-
-      if (!existing) {
-        console.log("1️⃣ Creating HITL review record");
-        await supabase.from("hitl_reviews").insert({
-          quote_id: quoteId,
-          status: "pending",
-          is_customer_requested: false,
-          trigger_reasons: [reason],
-          priority:
-            reason === "timeout" || reason === "processing_error" ? 1 : 2,
-        });
-      } else {
-        console.log("✅ HITL review already exists");
-      }
-
-      // 2. Update quote status
-      console.log("2️⃣ Updating quote to HITL pending");
-      await supabase
+      const { error } = await supabase
         .from("quotes")
         .update({
-          status: "hitl_pending",
+          status: "review_required",
           hitl_required: true,
-          hitl_reasons: [reason],
+          customer_note: `Auto-flagged: ${reason}`,
+          updated_at: new Date().toISOString(),
         })
-        .eq("id", quoteId);
+        .eq("id", state.quoteId);
 
-      // 3. Send Brevo Template #16 to customer (AI fallback)
-      console.log("3️⃣ Sending Brevo template #16 to customer");
+      if (error) throw error;
 
-      // Validate before sending
-      if (!customerEmail) {
-        console.error("No customer email found for quote");
-        // Still navigate to confirmation, just skip email
-      } else {
-        await supabase.functions.invoke("send-email", {
-          body: {
-            templateId: 16,
-            to: customerEmail,
-            subject: `Your Quote is Being Reviewed - ${quoteNumber}`,
-            params: {
-              QUOTE_NUMBER: quoteNumber,
-              CUSTOMER_NAME: customerName,
-              FAILURE_REASON: getCustomerFriendlyReason(reason),
-            },
-          },
-        });
-      }
-
-      // 4. Navigate to confirmation page with reason
-      console.log("4️⃣ Navigating to confirmation page with reason:", reason);
-      navigate(`/quote/confirmation?quote_id=${quoteId}&reason=${reason}`, {
-        replace: true,
-      });
-    } catch (error) {
-      console.error("❌ Error in auto-HITL fallback:", error);
-      setError(
-        "Failed to process your request. Please contact support with your quote number: " +
-          state.quoteNumber,
-      );
+      setHitlRequired(true);
+      setHitlReason(reason);
+    } catch (err) {
+      console.error("Auto HITL fallback failed:", err);
+      // Don't block the user — just log the error
     }
   };
 
@@ -1856,37 +1764,30 @@ export default function Step4ReviewCheckout() {
 
   // Handle HITL Review Request
   const handleRequestReview = async () => {
+    if (!state.quoteId) return;
     setHitlSubmitting(true);
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-hitl-review`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            quoteId: state.quoteId,
-            triggerReasons: ["customer_requested"],
-            isCustomerRequested: true,
-            customerNote: hitlNote || null,
-          }),
-        },
-      );
 
-      if (response.ok) {
-        setShowHitlModal(false);
-        setShowHitlSuccessModal(true);
-        setHitlRequested(true);
-      } else {
-        const error = await response.json();
-        console.error("HITL request failed:", error);
-        alert("Failed to submit review request. Please try again.");
-      }
-    } catch (error) {
-      console.error("Failed to request review:", error);
-      alert("Failed to submit review request. Please try again.");
+    try {
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          status: "review_required",
+          hitl_required: true,
+          customer_note: hitlNote || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", state.quoteId);
+
+      if (error) throw error;
+
+      // Close request modal, show success modal
+      setShowHitlModal(false);
+      setHitlRequested(true);
+      setShowHitlSuccessModal(true);
+      setHitlNote("");
+    } catch (err: any) {
+      console.error("Review request failed:", err);
+      toast.error("Failed to submit review request. Please try again.");
     } finally {
       setHitlSubmitting(false);
     }
@@ -3342,31 +3243,48 @@ export default function Step4ReviewCheckout() {
 
       {/* HITL Success Modal */}
       {showHitlSuccessModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6 text-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center shadow-xl">
+            {/* Success icon */}
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-8 h-8 text-green-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
               Review Requested
             </h3>
-            <p className="text-sm text-gray-600 mb-2">
-              Your quote is being reviewed by our team.
+
+            <p className="text-gray-600 mb-2">
+              Your quote <span className="font-semibold">{state.quoteNumber}</span> has been flagged for human review.
             </p>
-            <p className="text-sm text-gray-600 mb-1">
-              <span className="font-medium">Quote:</span> {state.quoteNumber}
+
+            <p className="text-gray-500 text-sm mb-6">
+              Our team will review your documents and send you an updated quote by email within 4 business hours.
             </p>
-            <p className="text-sm text-gray-600 mb-4">
-              We'll email you at{" "}
-              <span className="font-medium">{state.email}</span> within 4
-              working hours.
-            </p>
+
+            {/* Primary action — Start a new quote */}
             <button
               onClick={() => {
-                setShowHitlSuccessModal(false);
-                handleReturnToQuoteForm();
+                // Clear draft data and navigate to start
+                localStorage.removeItem("cethos_quote_draft");
+                localStorage.removeItem("cethos_upload_draft");
+                const entry = localStorage.getItem("cethos_entry_point");
+                if (entry === "upload_form") {
+                  navigate("/upload?step=1", { replace: true });
+                } else {
+                  navigate("/quote?step=1", { replace: true });
+                }
               }}
-              className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+              className="w-full py-3 px-4 bg-cethos-teal text-white rounded-xl font-semibold hover:bg-cethos-teal/90 transition-colors flex items-center justify-center gap-2 mb-3"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Start a New Quote
+            </button>
+
+            {/* Secondary action — Go home */}
+            <button
+              onClick={() => navigate("/")}
+              className="w-full py-2.5 px-4 text-gray-500 hover:text-gray-700 text-sm transition-colors"
             >
               Return to Home
             </button>
