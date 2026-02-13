@@ -82,7 +82,6 @@ import BusinessHoursSettings from "./pages/admin/settings/BusinessHoursSettings"
 import HolidaysSettings from "./pages/admin/settings/HolidaysSettings";
 import AIPromptsSettings from "./pages/admin/settings/AIPromptsSettings";
 import OCRSettings from "./pages/admin/settings/OCRSettings";
-import HITLThresholdsSettings from "./pages/admin/settings/HITLThresholdsSettings"; // DEPRECATED: HITL removed — shows deprecation notice
 import IntendedUsesSettings from "./pages/admin/settings/IntendedUsesSettings";
 import PickupLocationsSettings from "./pages/admin/settings/PickupLocationsSettings";
 import PaymentMethodsSettings from "./pages/admin/settings/PaymentMethodsSettings";
@@ -322,11 +321,6 @@ const App = () => (
                       element={<AIPromptsSettings />}
                     />
                     <Route path="settings/ocr" element={<OCRSettings />} />
-                    {/* DEPRECATED: HITL removed — shows deprecation notice */}
-                    <Route
-                      path="settings/hitl"
-                      element={<HITLThresholdsSettings />}
-                    />
                     <Route
                       path="settings/intended-uses"
                       element={<IntendedUsesSettings />}

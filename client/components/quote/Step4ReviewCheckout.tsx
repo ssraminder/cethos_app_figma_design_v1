@@ -657,7 +657,7 @@ export default function Step4ReviewCheckout() {
       const { error } = await supabase
         .from("quotes")
         .update({
-          status: "review_required",
+          status: "in_review",
           hitl_required: true,
           customer_note: `Auto-flagged: ${reason}`,
           updated_at: new Date().toISOString(),
@@ -701,7 +701,7 @@ export default function Step4ReviewCheckout() {
       }
 
       // If HITL triggered by AI (low confidence, high value, etc.)
-      if (quote?.hitl_required && quote?.status === "hitl_pending") {
+      if (quote?.hitl_required && quote?.status === "in_review") {
         console.log("🚨 HITL required by AI. Reasons:", quote.hitl_reasons);
         const reason = quote.hitl_reasons?.[0] || "quality_check";
         handleAutoHITLFallback(reason);
@@ -1782,7 +1782,7 @@ export default function Step4ReviewCheckout() {
       const { error } = await supabase
         .from("quotes")
         .update({
-          status: "review_required",
+          status: "in_review",
           hitl_required: true,
           customer_note: hitlNote || null,
           updated_at: new Date().toISOString(),
