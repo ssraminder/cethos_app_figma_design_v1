@@ -21,7 +21,9 @@ const STATUS_COLORS: Record<string, string> = {
   pending_payment: "bg-yellow-100 text-yellow-800",
   awaiting_payment: "bg-yellow-100 text-yellow-800",
   quote_ready: "bg-green-100 text-green-800",
-  hitl_pending: "bg-blue-100 text-blue-800",
+  // DEPRECATED: HITL removed — replaced by review_required tag
+  // hitl_pending: "bg-blue-100 text-blue-800",
+  review_required: "bg-blue-100 text-blue-800",
   ai_processing: "bg-purple-100 text-purple-800",
   quote_expired: "bg-gray-100 text-gray-800",
   quote_cancelled: "bg-red-100 text-red-800",
@@ -33,7 +35,9 @@ const STATUS_LABELS: Record<string, string> = {
   pending_payment: "Pending Payment",
   awaiting_payment: "Awaiting Payment",
   quote_ready: "Ready",
-  hitl_pending: "Under Review",
+  // DEPRECATED: HITL removed — replaced by review_required tag
+  // hitl_pending: "Under Review",
+  review_required: "Under Review",
   ai_processing: "Processing",
   quote_expired: "Expired",
   quote_cancelled: "Cancelled",
@@ -131,7 +135,8 @@ export default function CustomerQuotes() {
               <option value="quote_ready">Ready</option>
               <option value="awaiting_payment">Awaiting Payment</option>
               <option value="pending_payment">Pending Payment</option>
-              <option value="hitl_pending">Under Review</option>
+              {/* DEPRECATED: HITL removed — replaced by review_required tag */}
+              <option value="review_required">Under Review</option>
               <option value="ai_processing">Processing</option>
               <option value="paid">Paid</option>
               <option value="cancelled">Cancelled</option>

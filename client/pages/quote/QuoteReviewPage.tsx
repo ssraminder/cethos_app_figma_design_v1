@@ -384,12 +384,10 @@ export default function QuoteReviewPage() {
         color: "yellow",
         description: "Quote is being reviewed by our team",
       },
-      hitl_pending: {
-        label: "Under Review",
-        color: "yellow",
-        description: "Quote is being reviewed by our team",
-      },
-      hitl_in_progress: {
+      // DEPRECATED: HITL removed — replaced by review_required tag
+      // hitl_pending: { label: "Under Review", color: "yellow", description: "Quote is being reviewed by our team" },
+      // hitl_in_progress: { label: "Under Review", color: "yellow", description: "Quote is being reviewed by our team" },
+      review_required: {
         label: "Under Review",
         color: "yellow",
         description: "Quote is being reviewed by our team",

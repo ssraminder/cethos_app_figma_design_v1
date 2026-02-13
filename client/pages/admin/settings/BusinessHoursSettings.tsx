@@ -264,7 +264,7 @@ export default function BusinessHoursSettings() {
       title="Business Hours"
       description="Configure business hours and timezone for SLA calculations"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "Business Hours" },
       ]}

@@ -173,7 +173,7 @@ export default function PricingSettings() {
       title="Pricing Settings"
       description="Configure base pricing parameters for quote calculations"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings" },
         { label: "Pricing" },
       ]}

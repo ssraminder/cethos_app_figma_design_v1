@@ -298,7 +298,7 @@ export default function OCRSettings() {
       title="OCR Settings"
       description="Configure the OCR provider used for document text extraction"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "OCR Settings" },
       ]}

@@ -1,4 +1,4 @@
-// Document Group Editor - Shared components for HITL, Manual Quote, and Order Edit
+// Document Group Editor - Shared components for Manual Quote and Order Edit (HITL deprecated — replaced by review_required tag)
 
 export { default as DocumentGroupEditor } from "./DocumentGroupEditor";
 export { default as DocumentGroupCard } from "./DocumentGroupCard";

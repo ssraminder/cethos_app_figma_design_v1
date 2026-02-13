@@ -202,7 +202,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/admin/hitl`,
+          emailRedirectTo: `${window.location.origin}/admin/dashboard`, // DEPRECATED: was /admin/hitl
         },
       });
 

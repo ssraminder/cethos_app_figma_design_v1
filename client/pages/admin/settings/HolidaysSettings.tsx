@@ -222,7 +222,7 @@ export default function HolidaysSettings() {
       title="Holidays"
       description="Manage holiday dates that are excluded from business days"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "Holidays" },
       ]}

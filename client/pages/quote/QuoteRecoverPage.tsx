@@ -202,8 +202,10 @@ export default function QuoteRecoverPage() {
         return `/quote/new?quoteId=${quote.id}&step=2`;
       case "processing":
       case "quote_ready":
-      case "hitl_pending":
-      case "hitl_in_review":
+      // DEPRECATED: HITL removed — replaced by review_required tag
+      // case "hitl_pending":
+      // case "hitl_in_review":
+      case "review_required":
         return `/quote/${quote.id}/review`;
       case "awaiting_payment":
         return `/quote/new?quoteId=${quote.id}&step=5`;

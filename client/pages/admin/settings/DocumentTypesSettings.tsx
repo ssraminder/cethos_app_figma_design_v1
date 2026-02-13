@@ -244,7 +244,7 @@ export default function DocumentTypesSettings() {
       title="Document Types"
       description="Manage document categories with typical complexity assignments"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings" },
         { label: "Document Types" },
       ]}

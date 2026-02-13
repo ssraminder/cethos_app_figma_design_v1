@@ -146,7 +146,7 @@ export default function ComplexitySettings() {
       title="Complexity Multipliers"
       description="Configure complexity level multipliers that affect pricing"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings" },
         { label: "Complexity" },
       ]}

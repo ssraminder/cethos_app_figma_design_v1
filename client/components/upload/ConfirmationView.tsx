@@ -21,20 +21,19 @@ export default function ConfirmationView() {
     }
   };
 
-  // Format HITL reasons for customer display
-  const formatHITLReason = (reason: string): string => {
-    const reasonMap: Record<string, string> = {
-      high_value_order: "Your quote exceeds our automatic processing threshold",
-      complex_document: "Your document requires expert verification",
-      low_confidence: "Additional verification needed for accuracy",
-      unusual_language_pair:
-        "This language combination requires specialist attention",
-      special_certification: "Special certification requirements detected",
-    };
-    return reasonMap[reason] || reason.replace(/_/g, " ");
-  };
+  // DEPRECATED: HITL removed — replaced by review_required tag
+  // const formatHITLReason = (reason: string): string => {
+  //   const reasonMap: Record<string, string> = {
+  //     high_value_order: "Your quote exceeds our automatic processing threshold",
+  //     complex_document: "Your document requires expert verification",
+  //     low_confidence: "Additional verification needed for accuracy",
+  //     unusual_language_pair: "This language combination requires specialist attention",
+  //     special_certification: "Special certification requirements detected",
+  //   };
+  //   return reasonMap[reason] || reason.replace(/_/g, " ");
+  // };
 
-  const isHITL = state.hitlTriggered || state.submissionType === "manual";
+  const isHITL = state.submissionType === "manual"; // DEPRECATED: removed state.hitlTriggered
 
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -64,8 +63,8 @@ export default function ConfirmationView() {
         </div>
       </div>
 
-      {/* HITL-specific explanation */}
-      {isHITL && state.hitlReasons && state.hitlReasons.length > 0 && (
+      {/* DEPRECATED: HITL reasons display removed — replaced by review_required tag */}
+      {/* {isHITL && state.hitlReasons && state.hitlReasons.length > 0 && (
         <div className="mb-6 max-w-lg bg-amber-50 border-2 border-amber-200 rounded-lg p-6">
           <h3 className="text-sm font-semibold text-amber-900 mb-3">
             Why manual review is needed:
@@ -79,7 +78,7 @@ export default function ConfirmationView() {
             ))}
           </ul>
         </div>
-      )}
+      )} */}
 
       {/* Description */}
       <p className="text-base text-cethos-slate max-w-md mb-8">

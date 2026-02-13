@@ -410,7 +410,7 @@ export default function SameDaySettings() {
       title="Same-Day Delivery Settings"
       description="Configure same-day delivery pricing and eligibility rules"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "Same-Day Settings" },
       ]}

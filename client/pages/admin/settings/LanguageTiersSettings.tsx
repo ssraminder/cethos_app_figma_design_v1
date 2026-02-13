@@ -230,7 +230,7 @@ export default function LanguageTiersSettings() {
       title="Language Tiers"
       description="Manage language pricing tiers with configurable multipliers"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "Language Tiers" },
       ]}
