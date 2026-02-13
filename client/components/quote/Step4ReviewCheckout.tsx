@@ -1780,6 +1780,25 @@ export default function Step4ReviewCheckout() {
 
       if (error) throw error;
 
+      // Notify staff of review request — fire and forget
+      fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-staff-notification`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quote_id: state.quoteId,
+            trigger_type: "review_required",
+            quote_number: state.quoteNumber,
+          }),
+        },
+      ).catch((err) =>
+        console.warn("Staff notification failed (non-blocking):", err),
+      );
+
       // Close request modal, show success modal
       setShowHitlModal(false);
       setHitlRequested(true);
