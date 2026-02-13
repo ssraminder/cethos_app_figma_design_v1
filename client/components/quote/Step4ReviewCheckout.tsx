@@ -2061,7 +2061,7 @@ export default function Step4ReviewCheckout() {
   // ── Render: Main content ───────────────────────────────────────────────
 
   return (
-    <div className="max-w-5xl mx-auto px-4 pb-8">
+    <div className="max-w-6xl mx-auto px-4 pb-8">
       {/* Header */}
       <div className="text-center mb-8">
         <h2 className="text-3xl font-bold text-cethos-navy mb-2">
@@ -2113,7 +2113,7 @@ export default function Step4ReviewCheckout() {
       )}
 
       {/* Two-column layout */}
-      <div className="flex flex-col lg:flex-row gap-8">
+      <div className="flex flex-col xl:flex-row gap-8">
 
       {/* LEFT COLUMN */}
       <div className="flex-1 min-w-0">
@@ -2137,10 +2137,10 @@ export default function Step4ReviewCheckout() {
                         : `Document ${index + 1}`}
                     </p>
                     <div className="flex flex-wrap gap-2 mt-1">
-                      <span className="text-xs bg-cethos-teal-50 text-cethos-teal px-2 py-0.5 rounded">
+                      <span className="text-xs bg-cethos-teal-50 text-cethos-teal px-2 py-0.5 rounded whitespace-nowrap">
                         {sourceLanguageName || doc.language_name || doc.detected_language} → {targetLanguageName}
                       </span>
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded whitespace-nowrap">
                         {doc.billable_pages.toFixed(1)} pages
                       </span>
                     </div>
@@ -2182,10 +2182,10 @@ export default function Step4ReviewCheckout() {
           <div>
             <div className="flex justify-between text-gray-700">
               <span>Certified Translation</span>
-              <span>${totals.translationSubtotal.toFixed(2)}</span>
+              <span className="whitespace-nowrap">${totals.translationSubtotal.toFixed(2)}</span>
             </div>
             {documents.length > 0 && (
-              <div className="text-xs text-gray-500 ml-4 mt-0.5">
+              <div className="text-xs text-gray-500 ml-4 mt-0.5 whitespace-nowrap">
                 {totalBillablePages.toFixed(1)} pages × ${effectiveRate.toFixed(2)} per page
               </div>
             )}
@@ -2196,12 +2196,12 @@ export default function Step4ReviewCheckout() {
                 Certification ({documents.length} document
                 {documents.length !== 1 ? "s" : ""})
               </span>
-              <span>${totals.certificationTotal.toFixed(2)}</span>
+              <span className="whitespace-nowrap">${totals.certificationTotal.toFixed(2)}</span>
             </div>
           )}
           <div className="border-t border-gray-200 pt-3 flex justify-between font-medium text-gray-900">
             <span>Subtotal</span>
-            <span>${totals.subtotal.toFixed(2)}</span>
+            <span className="whitespace-nowrap">${totals.subtotal.toFixed(2)}</span>
           </div>
         </div>
       </div>
@@ -3165,8 +3165,8 @@ export default function Step4ReviewCheckout() {
       </div>{/* END LEFT COLUMN */}
 
       {/* RIGHT COLUMN — Sticky Order Summary */}
-      <div className="w-full lg:w-[380px] flex-shrink-0">
-        <div className="lg:sticky lg:top-6">
+      <div className="w-full xl:w-[340px] flex-shrink-0">
+        <div className="xl:sticky xl:top-6">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
               <h3 className="font-semibold text-gray-900">Order Summary</h3>
@@ -3176,13 +3176,13 @@ export default function Step4ReviewCheckout() {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Translation</span>
-                  <span className="text-gray-900 font-medium">${pricing.translationTotal.toFixed(2)}</span>
+                  <span className="text-gray-900 font-medium whitespace-nowrap">${pricing.translationTotal.toFixed(2)}</span>
                 </div>
 
                 {pricing.certificationTotal > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Certification</span>
-                    <span className="text-gray-900 font-medium">${pricing.certificationTotal.toFixed(2)}</span>
+                    <span className="text-gray-900 font-medium whitespace-nowrap">${pricing.certificationTotal.toFixed(2)}</span>
                   </div>
                 )}
 
@@ -3191,21 +3191,21 @@ export default function Step4ReviewCheckout() {
                     <span className="text-gray-600">
                       {turnaroundType === "rush" ? "Rush Fee" : "Same-Day Fee"}
                     </span>
-                    <span className="text-gray-900 font-medium">${pricing.turnaroundFee.toFixed(2)}</span>
+                    <span className="text-gray-900 font-medium whitespace-nowrap">${pricing.turnaroundFee.toFixed(2)}</span>
                   </div>
                 )}
 
                 {pricing.deliveryFee > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Delivery</span>
-                    <span className="text-gray-900 font-medium">${pricing.deliveryFee.toFixed(2)}</span>
+                    <span className="text-gray-900 font-medium whitespace-nowrap">${pricing.deliveryFee.toFixed(2)}</span>
                   </div>
                 )}
 
                 {pricing.taxRate > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">{pricing.taxName} ({(pricing.taxRate * 100).toFixed(0)}%)</span>
-                    <span className="text-gray-900 font-medium">${pricing.taxAmount.toFixed(2)}</span>
+                    <span className="text-gray-900 font-medium whitespace-nowrap">${pricing.taxAmount.toFixed(2)}</span>
                   </div>
                 )}
 
@@ -3218,7 +3218,7 @@ export default function Step4ReviewCheckout() {
 
                 <div className="pt-3 border-t-2 border-gray-300 flex justify-between items-center">
                   <span className="text-xl font-bold text-gray-900">TOTAL CAD</span>
-                  <span className="text-2xl font-bold text-gray-900">${pricing.finalTotal.toFixed(2)}</span>
+                  <span className="text-2xl font-bold text-gray-900 whitespace-nowrap">${pricing.finalTotal.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -3226,7 +3226,7 @@ export default function Step4ReviewCheckout() {
               <button
                 onClick={handlePay}
                 disabled={payLoading || pricing.finalTotal <= 0 || hitlRequested || hitlRequired}
-                className="hidden sm:flex w-full mt-6 py-3 px-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed items-center justify-center gap-2"
+                className="hidden xl:flex w-full mt-6 py-3 px-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed items-center justify-center gap-2"
               >
                 {payLoading ? (
                   <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
@@ -3289,7 +3289,7 @@ export default function Step4ReviewCheckout() {
       </div>{/* END Two-column layout */}
 
       {/* Mobile sticky footer */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 sm:hidden z-40 shadow-lg">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 xl:hidden z-40 shadow-lg">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-600">Total</span>
           <span className="text-lg font-bold text-gray-900">${pricing.finalTotal.toFixed(2)} CAD</span>
@@ -3303,7 +3303,7 @@ export default function Step4ReviewCheckout() {
         </button>
       </div>
       {/* Spacer for mobile sticky footer */}
-      <div className="h-28 sm:hidden" />
+      <div className="h-28 xl:hidden" />
 
       {/* HITL Request Modal */}
       {showHitlModal && (
