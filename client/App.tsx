@@ -52,15 +52,12 @@ import AdminLayout from "./components/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminQuotesList from "./pages/admin/AdminQuotesList";
 import AdminQuoteDetail from "./pages/admin/AdminQuoteDetail";
-import ManualQuoteCreate from "./pages/admin/ManualQuoteCreate";
 import PurgeDraftQuotes from "./pages/admin/PurgeDraftQuotes";
 import AdminOrderDetail from "./pages/admin/AdminOrderDetail";
 import AdminOrdersList from "./pages/admin/AdminOrdersList";
 import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
 import AdminAIAnalytics from "./pages/admin/AdminAIAnalytics";
 import AdminReports from "./pages/admin/AdminReports";
-import HITLQueue from "./pages/admin/HITLQueue";
-import HITLReviewDetail from "./pages/admin/HITLReviewDetail";
 import AdminSettings from "./pages/admin/AdminSettings";
 import Patterns from "./pages/admin/Patterns";
 import Learning from "./pages/admin/Learning";
@@ -258,16 +255,7 @@ const App = () => (
                   >
                     <Route index element={<AdminDashboard />} />
                     <Route path="dashboard" element={<AdminDashboard />} />
-                    <Route path="hitl" element={<HITLQueue />} />
-                    <Route
-                      path="hitl/:reviewId"
-                      element={<HITLReviewDetail />}
-                    />
                     <Route path="quotes" element={<AdminQuotesList />} />
-                    <Route
-                      path="quotes/create"
-                      element={<ManualQuoteCreate />}
-                    />
                     <Route path="quotes/:id" element={<AdminQuoteDetail />} />
                     <Route path="orders" element={<AdminOrdersList />} />
                     <Route path="orders/:id" element={<AdminOrderDetail />} />

@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   FileText,
   ShoppingCart,
-  ClipboardCheck,
   Brain,
   BookOpen,
   Users,
@@ -14,7 +13,6 @@ import {
   X,
   ChevronLeft,
   LogOut,
-  Plus,
   DollarSign,
   UserCircle,
   FileSearch,
@@ -40,21 +38,9 @@ const NAV_ITEMS: NavItem[] = [
   },
   { label: "Quotes", path: "/admin/quotes", icon: FileText, section: "Main" },
   {
-    label: "Create Manual Quote",
-    path: "/admin/quotes/create",
-    icon: Plus,
-    section: "Main",
-  },
-  {
     label: "Orders",
     path: "/admin/orders",
     icon: ShoppingCart,
-    section: "Main",
-  },
-  {
-    label: "HITL Queue",
-    path: "/admin/hitl",
-    icon: ClipboardCheck,
     section: "Main",
   },
   {
