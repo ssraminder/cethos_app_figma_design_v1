@@ -1,4 +1,5 @@
 // Types for the Document Group Editor component
+// DEPRECATED: "hitl" mode removed — kept in union for backward compat until Category 2 cleanup
 
 export type EditorMode = "hitl" | "manual_quote" | "order_edit";
 

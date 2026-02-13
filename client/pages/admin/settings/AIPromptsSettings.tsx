@@ -96,7 +96,7 @@ export default function AIPromptsSettings() {
       title="AI Prompts Configuration"
       description="Configure the prompts used for document analysis"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "AI Prompts" },
       ]}

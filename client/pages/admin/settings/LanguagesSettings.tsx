@@ -302,7 +302,7 @@ export default function LanguagesSettings() {
       title="Languages"
       description="Manage languages and assign them to pricing tiers"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "Languages" },
       ]}

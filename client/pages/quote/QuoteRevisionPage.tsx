@@ -79,19 +79,20 @@ export default function QuoteRevisionPage() {
         if (filesError) throw filesError;
         setFiles(filesData || []);
 
+        // DEPRECATED: HITL removed — replaced by review_required tag
         // Fetch rejection reason from HITL review
-        const { data: reviewData } = await supabase
-          .from("hitl_reviews")
-          .select("resolution_notes, completed_at")
-          .eq("quote_id", quoteId)
-          .eq("status", "rejected")
-          .order("completed_at", { ascending: false })
-          .limit(1)
-          .single();
-
-        if (reviewData) {
-          setReview(reviewData);
-        }
+        // const { data: reviewData } = await supabase
+        //   .from("hitl_reviews")
+        //   .select("resolution_notes, completed_at")
+        //   .eq("quote_id", quoteId)
+        //   .eq("status", "rejected")
+        //   .order("completed_at", { ascending: false })
+        //   .limit(1)
+        //   .single();
+        //
+        // if (reviewData) {
+        //   setReview(reviewData);
+        // }
       } catch (err) {
         console.error("Error fetching data:", err);
         setError("Failed to load quote details. Please try again.");

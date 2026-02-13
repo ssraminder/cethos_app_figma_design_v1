@@ -158,7 +158,7 @@ export default function TurnaroundSettings() {
       title="Turnaround & Rush Settings"
       description="Configure turnaround time calculation and rush delivery options"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings" },
         { label: "Turnaround" },
       ]}

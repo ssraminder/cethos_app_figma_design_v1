@@ -235,7 +235,7 @@ export default function CertificationTypesSettings() {
       title="Certification Types"
       description="Manage certification types with pricing"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings" },
         { label: "Certifications" },
       ]}

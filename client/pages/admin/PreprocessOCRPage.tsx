@@ -105,8 +105,10 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
   draft: { label: "Draft", color: "bg-gray-100 text-gray-700", dot: "bg-gray-400" },
   details_pending: { label: "Lead", color: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-400" },
   processing: { label: "Processing", color: "bg-blue-100 text-blue-700", dot: "bg-blue-400" },
-  hitl_pending: { label: "HITL Pending", color: "bg-amber-100 text-amber-700", dot: "bg-amber-400" },
-  hitl_in_review: { label: "In Review", color: "bg-amber-100 text-amber-700", dot: "bg-amber-400" },
+  // DEPRECATED: HITL removed — replaced by review_required tag
+  // hitl_pending: { label: "HITL Pending", color: "bg-amber-100 text-amber-700", dot: "bg-amber-400" },
+  // hitl_in_review: { label: "In Review", color: "bg-amber-100 text-amber-700", dot: "bg-amber-400" },
+  review_required: { label: "Review Required", color: "bg-amber-100 text-amber-700", dot: "bg-amber-400" },
   quote_ready: { label: "Quote Ready", color: "bg-green-100 text-green-700", dot: "bg-green-400" },
   awaiting_payment: { label: "Awaiting Payment", color: "bg-teal-100 text-teal-700", dot: "bg-teal-400" },
   converted: { label: "Converted", color: "bg-purple-100 text-purple-700", dot: "bg-purple-400" },
@@ -115,7 +117,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
 
 const FILTER_GROUPS = [
   { key: "all", label: "All Quotes", statuses: null },
-  { key: "needs_review", label: "Needs Review", statuses: ["hitl_pending", "hitl_in_review", "processing"] },
+  // DEPRECATED: HITL removed — replaced by review_required tag
+  { key: "needs_review", label: "Needs Review", statuses: ["review_required", "processing"] },
   { key: "leads", label: "Leads", statuses: ["draft", "details_pending"] },
   { key: "ready", label: "Ready / Awaiting", statuses: ["quote_ready", "awaiting_payment"] },
   { key: "closed", label: "Closed", statuses: ["converted", "expired"] },

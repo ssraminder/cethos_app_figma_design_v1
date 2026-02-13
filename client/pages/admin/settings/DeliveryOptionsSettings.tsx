@@ -268,7 +268,7 @@ export default function DeliveryOptionsSettings() {
       title="Delivery Options"
       description="Manage digital and physical delivery methods"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings" },
         { label: "Delivery" },
       ]}

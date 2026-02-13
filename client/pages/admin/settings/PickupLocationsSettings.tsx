@@ -246,7 +246,7 @@ export default function PickupLocationsSettings() {
       title="Pickup Locations"
       description="Manage pickup addresses for in-person document collection"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "Pickup Locations" },
       ]}

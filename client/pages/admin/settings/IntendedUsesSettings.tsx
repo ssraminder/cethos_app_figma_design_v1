@@ -236,7 +236,7 @@ export default function IntendedUsesSettings() {
       title="Intended Uses"
       description="Manage intended use categories with default certification mappings"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "Intended Uses" },
       ]}

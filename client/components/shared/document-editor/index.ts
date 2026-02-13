@@ -1,5 +1,5 @@
 // Unified Document Editor Components
-// Used across HITL Review, Manual Quote, and Order Editing
+// Used across Manual Quote and Order Editing (HITL deprecated — replaced by review_required tag)
 
 export { default as UnifiedDocumentEditor } from "./UnifiedDocumentEditor";
 export { default as FileListWithGroups } from "./FileListWithGroups";

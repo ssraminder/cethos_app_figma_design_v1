@@ -29,7 +29,7 @@ interface QuotePricing {
   documents: DocumentAnalysis[];
   totals: QuoteTotals;
   isRush: boolean;
-  hitlRequired: boolean;
+  hitlRequired: boolean; // DEPRECATED: HITL removed — kept for interface compat
   customerEmail: string | null;
   quoteNumber: string | null;
   isLoading: boolean;
@@ -49,7 +49,7 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
     total: 0,
   });
   const [isRush, setIsRush] = useState(false);
-  const [hitlRequired, setHitlRequired] = useState(false);
+  const [hitlRequired, setHitlRequired] = useState(false); // DEPRECATED: HITL removed
   const [customerEmail, setCustomerEmail] = useState<string | null>(null);
   const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,7 +77,7 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
             quote_number,
             calculated_totals,
             is_rush,
-            hitl_required,
+            hitl_required, // DEPRECATED: HITL removed — kept for backward compat
             processing_status,
             customers(email)
           `,

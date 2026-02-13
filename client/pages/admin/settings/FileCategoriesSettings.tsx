@@ -291,7 +291,7 @@ export default function FileCategoriesSettings() {
       title="File Categories"
       description="Categorize uploaded files in manual quotes"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "File Categories" },
       ]}

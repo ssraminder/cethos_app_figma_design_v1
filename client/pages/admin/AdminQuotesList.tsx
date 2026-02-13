@@ -337,10 +337,11 @@ export default function AdminQuotesList() {
             .from("ai_analysis_results")
             .update({ deleted_at: deletedAt })
             .eq("quote_id", quoteId),
-          supabase
-            .from("hitl_reviews")
-            .update({ deleted_at: deletedAt })
-            .eq("quote_id", quoteId),
+          // DEPRECATED: HITL removed — replaced by review_required tag
+          // supabase
+          //   .from("hitl_reviews")
+          //   .update({ deleted_at: deletedAt })
+          //   .eq("quote_id", quoteId),
         ]);
       }
 

@@ -1,6 +1,7 @@
 // Types for the Unified Document Editor components
-// Used across HITL Review, Manual Quote, and Order Editing
+// Used across Manual Quote and Order Editing (HITL deprecated — replaced by review_required tag)
 
+// DEPRECATED: "hitl" mode removed — kept in union for backward compat until Category 2 cleanup
 export type EditorMode = "hitl" | "manual-quote" | "order-edit";
 
 export type FileProcessingStatus =
@@ -84,7 +85,7 @@ export interface AIAnalysisResult {
   extracted_document_number: string | null;
   extracted_issuing_country: string | null;
   holder_extraction_confidence: number | null;
-  // HITL document flow fields
+  // DEPRECATED: HITL document flow fields (kept for DB compat)
   country_of_issue: string | null;
   is_multi_document: boolean;
   // Processing metadata

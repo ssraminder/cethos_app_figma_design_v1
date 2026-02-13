@@ -36,7 +36,7 @@ export default function AdminLogin() {
         console.log(
           "AdminLogin: Already authenticated as staff, redirecting...",
         );
-        navigate("/admin/hitl", { replace: true });
+        navigate("/admin/dashboard", { replace: true }); // DEPRECATED: was /admin/hitl
         return;
       }
 
@@ -143,8 +143,8 @@ export default function AdminLogin() {
       localStorage.setItem("staffSession", JSON.stringify(staffSession));
 
       // Step 4: Redirect to admin dashboard
-      console.log("Navigating to /admin/hitl");
-      navigate("/admin/hitl");
+      console.log("Navigating to /admin/dashboard"); // DEPRECATED: was /admin/hitl
+      navigate("/admin/dashboard");
     } catch (err: any) {
       if (err?.name === "AbortError") {
         console.warn("Login aborted due to unmount.");

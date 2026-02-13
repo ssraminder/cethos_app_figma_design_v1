@@ -4,6 +4,7 @@
 
 // ---------- ENUMS ----------
 
+// DEPRECATED: "hitl" mode removed — kept in union for backward compat until Category 2 cleanup
 export type EditorMode = 'hitl' | 'order-edit' | 'manual-quote';
 
 export type FileStatus = 'pending' | 'uploading' | 'uploaded' | 'analyzing' | 'analyzed' | 'error';

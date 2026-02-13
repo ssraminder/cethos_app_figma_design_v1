@@ -10,6 +10,7 @@ interface ProcessingResult {
     totalPages: number;
     totalWords: number;
   };
+  // DEPRECATED: HITL removed — replaced by review_required tag
   hitl: {
     required: boolean;
     reasons: string[];

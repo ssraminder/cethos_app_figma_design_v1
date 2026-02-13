@@ -236,7 +236,7 @@ export default function TaxRatesSettings() {
       title="Tax Rates"
       description="Manage regional tax rates for different provinces/states/countries"
       breadcrumbs={[
-        { label: "Admin", href: "/admin/hitl" },
+        { label: "Admin", href: "/admin/dashboard" },
         { label: "Settings", href: "/admin/settings" },
         { label: "Tax Rates" },
       ]}
