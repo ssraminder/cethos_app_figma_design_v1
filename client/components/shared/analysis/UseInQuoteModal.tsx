@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   X,
   Search,
@@ -10,6 +10,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import SearchableSelect, {
+  groupIntendedUses,
+} from "@/components/shared/SearchableSelect";
 
 // ---------------------------------------------------------------------------
 // Types (local to this component)
@@ -220,6 +223,13 @@ export default function UseInQuoteModal({
   // Submit state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [quoteSourceError, setQuoteSourceError] = useState<string | null>(null);
+
+  // Grouped intended uses for searchable dropdown
+  const intendedUseGroups = useMemo(
+    () => groupIntendedUses(intendedUses),
+    [intendedUses]
+  );
 
   // AI-detected hints
   const [aiDetectedSourceLang, setAiDetectedSourceLang] = useState(false);
@@ -253,6 +263,7 @@ export default function UseInQuoteModal({
       });
       setNewCustomerError(null);
       setError(null);
+      setQuoteSourceError(null);
       setAiDetectedSourceLang(false);
       setAiDetectedCountry(false);
       setRefDataLoaded(false);
@@ -425,6 +436,7 @@ export default function UseInQuoteModal({
 
   const handleCreateQuote = async () => {
     setError(null);
+    setQuoteSourceError(null);
 
     if (!selectedSourceLanguageId) {
       setError("Source language is required");
@@ -436,6 +448,11 @@ export default function UseInQuoteModal({
     }
     if (selectedSourceLanguageId === selectedTargetLanguageId) {
       setError("Source and target languages must be different");
+      return;
+    }
+    if (!quoteSourceId) {
+      setQuoteSourceError("Quote source is required");
+      setError("Quote source is required");
       return;
     }
     if (!selectedCustomer) {
@@ -610,23 +627,14 @@ export default function UseInQuoteModal({
 
               {/* Intended Use */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Intended Use
-                </label>
-                <select
+                <SearchableSelect
+                  label="Intended Use"
+                  placeholder="Select intended use..."
+                  options={intendedUses}
                   value={selectedIntendedUseId}
-                  onChange={(e) =>
-                    setSelectedIntendedUseId(e.target.value)
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select intended use...</option>
-                  {intendedUses.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedIntendedUseId}
+                  groups={intendedUseGroups}
+                />
               </div>
             </div>
 
@@ -653,21 +661,18 @@ export default function UseInQuoteModal({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quote Source
-                </label>
-                <select
+                <SearchableSelect
+                  label="Quote Source"
+                  placeholder="Select source..."
+                  options={quoteSources}
                   value={quoteSourceId}
-                  onChange={(e) => setQuoteSourceId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select source...</option>
-                  {quoteSources.map((src) => (
-                    <option key={src.id} value={src.id}>
-                      {src.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => {
+                    setQuoteSourceId(val);
+                    if (val) setQuoteSourceError(null);
+                  }}
+                  required
+                  error={quoteSourceError || undefined}
+                />
               </div>
             </div>
           </div>
