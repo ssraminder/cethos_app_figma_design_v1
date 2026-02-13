@@ -403,7 +403,7 @@ export default function AdminQuoteDetail() {
         displayName: f.original_filename || f.storage_path,
         storagePath: f.storage_path,
         bucket: 'quote-files',
-        bucketPath: f.storage_path.includes('/') ? f.storage_path : `${quoteId}/${f.storage_path}`,
+        bucketPath: f.storage_path,
         fileSize: f.file_size || 0,
         mimeType: f.mime_type || 'application/pdf',
         source: 'quote' as const,
@@ -735,6 +735,10 @@ export default function AdminQuoteDetail() {
   };
 
   const getSignedUrl = async (file: NormalizedFile): Promise<string | null> => {
+    if (!file.bucketPath) {
+      console.warn(`No storage_path for file: ${file.displayName}`);
+      return null;
+    }
     const { data, error } = await supabase.storage
       .from(file.bucket)
       .createSignedUrl(file.bucketPath, 3600);
