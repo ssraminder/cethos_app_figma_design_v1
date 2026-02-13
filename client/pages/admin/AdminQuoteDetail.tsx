@@ -85,7 +85,23 @@ interface QuoteDetail {
   promised_delivery_date: string | null;
   physical_delivery_option_id: string | null;
   shipping_address: any;
+  billing_address: any;
   service_province: string;
+  digital_delivery_options?: string[] | null;
+  intended_use?: { id: string; name: string } | null;
+  pickup_location?: {
+    id: string;
+    name: string;
+    address_line1?: string;
+    city?: string;
+    state?: string;
+    postal_code?: string;
+    phone?: string;
+    hours?: string;
+  } | null;
+  payment_method?: { id: string; name: string; code: string } | null;
+  payment_confirmed_by?: { id: string; full_name: string } | null;
+  payment_confirmed_at?: string | null;
   calculated_totals?: {
     translation_total?: number;
     doc_certification_total?: number;
@@ -308,6 +324,42 @@ const extractFilename = (storagePath: string): string => {
   return match ? match[1].replace(/_/g, ' ') : storagePath;
 };
 
+interface NormalizedAddress {
+  fullName: string;
+  company: string;
+  line1: string;
+  line2: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  country: string;
+  phone: string;
+}
+
+const normalizeAddress = (raw: any): NormalizedAddress | null => {
+  if (!raw || typeof raw !== 'object') return null;
+
+  // Name: Format A has firstName+lastName, Format B has full_name
+  let fullName = '';
+  if (raw.firstName || raw.lastName) {
+    fullName = [raw.firstName, raw.lastName].filter(Boolean).join(' ');
+  } else {
+    fullName = raw.full_name || raw.name || '';
+  }
+
+  return {
+    fullName,
+    company: raw.company || raw.company_name || '',
+    line1: raw.addressLine1 || raw.street_address || raw.address_line1 || raw.line1 || '',
+    line2: raw.addressLine2 || raw.address_line2 || raw.line2 || '',
+    city: raw.city || '',
+    province: raw.state || raw.province || '',
+    postalCode: raw.postalCode || raw.postal_code || '',
+    country: raw.country || '',
+    phone: raw.phone || '',
+  };
+};
+
 export default function AdminQuoteDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -462,7 +514,11 @@ export default function AdminQuoteDetail() {
     source_language:languages!source_language_id(id, name, code, price_multiplier),
     target_language:languages!target_language_id(id, name, code),
     delivery_option:delivery_options!delivery_option_id(id, name, price, description),
-    physical_delivery_option:delivery_options!physical_delivery_option_id(id, name, price)
+    physical_delivery_option:delivery_options!physical_delivery_option_id(id, name, price),
+    pickup_location:pickup_locations!selected_pickup_location_id(id, name, address_line1, city, state, postal_code, phone, hours),
+    intended_use:intended_uses!intended_use_id(id, name),
+    payment_method:payment_methods!payment_method_id(id, name, code),
+    payment_confirmed_by:staff_users!payment_confirmed_by_staff_id(id, full_name)
   `;
 
   const refetchQuote = async () => {
@@ -585,41 +641,45 @@ export default function AdminQuoteDetail() {
       setCertifications(certificationsData);
 
       // Addresses are stored as JSONB columns in quotes table, not in a separate table
-      // Parse billing_address and shipping_address from quote data
+      // Parse billing_address and shipping_address from quote data using normalizeAddress
       const addressesFromQuote: QuoteAddress[] = [];
       if (quoteData?.billing_address) {
-        const billing = quoteData.billing_address;
-        addressesFromQuote.push({
-          id: 'billing',
-          quote_id: id!,
-          address_type: 'billing',
-          full_name: billing.name || billing.full_name || '',
-          company_name: billing.company_name,
-          address_line1: billing.address_line1 || '',
-          address_line2: billing.address_line2,
-          city: billing.city || '',
-          province: billing.province || billing.state || '',
-          postal_code: billing.postal_code || '',
-          country: billing.country || 'Canada',
-          phone: billing.phone,
-        });
+        const norm = normalizeAddress(quoteData.billing_address);
+        if (norm) {
+          addressesFromQuote.push({
+            id: 'billing',
+            quote_id: id!,
+            address_type: 'billing',
+            full_name: norm.fullName,
+            company_name: norm.company,
+            address_line1: norm.line1,
+            address_line2: norm.line2,
+            city: norm.city,
+            province: norm.province,
+            postal_code: norm.postalCode,
+            country: norm.country || 'Canada',
+            phone: norm.phone,
+          });
+        }
       }
       if (quoteData?.shipping_address) {
-        const shipping = quoteData.shipping_address;
-        addressesFromQuote.push({
-          id: 'shipping',
-          quote_id: id!,
-          address_type: 'shipping',
-          full_name: shipping.name || shipping.full_name || '',
-          company_name: shipping.company_name,
-          address_line1: shipping.address_line1 || '',
-          address_line2: shipping.address_line2,
-          city: shipping.city || '',
-          province: shipping.province || shipping.state || '',
-          postal_code: shipping.postal_code || '',
-          country: shipping.country || 'Canada',
-          phone: shipping.phone,
-        });
+        const norm = normalizeAddress(quoteData.shipping_address);
+        if (norm) {
+          addressesFromQuote.push({
+            id: 'shipping',
+            quote_id: id!,
+            address_type: 'shipping',
+            full_name: norm.fullName,
+            company_name: norm.company,
+            address_line1: norm.line1,
+            address_line2: norm.line2,
+            city: norm.city,
+            province: norm.province,
+            postal_code: norm.postalCode,
+            country: norm.country || 'Canada',
+            phone: norm.phone,
+          });
+        }
       }
       setAddresses(addressesFromQuote);
 
@@ -678,11 +738,10 @@ export default function AdminQuoteDetail() {
         .order("sort_order");
       setTurnaroundOptions(turnaroundData || []);
 
-      // Fetch delivery options for delivery method dropdown
+      // Fetch all active delivery options (digital + physical) for display and resolution
       const { data: deliveryData } = await supabase
         .from("delivery_options")
         .select("id, code, name, price, delivery_group, requires_address, is_always_selected")
-        .eq("category", "delivery")
         .eq("is_active", true)
         .order("sort_order");
       setDeliveryOptionsList(deliveryData || []);
@@ -698,16 +757,19 @@ export default function AdminQuoteDetail() {
         setSelectedDeliveryOptionId(defaultDelivery?.id || "");
       }
 
-      // Initialize shipping address
+      // Initialize shipping address from normalized data
       if (quoteData?.shipping_address) {
-        setShippingAddress({
-          line1: quoteData.shipping_address.line1 || "",
-          line2: quoteData.shipping_address.line2 || "",
-          city: quoteData.shipping_address.city || "",
-          province: quoteData.shipping_address.province || "",
-          postal_code: quoteData.shipping_address.postal_code || "",
-          country: quoteData.shipping_address.country || "Canada",
-        });
+        const norm = normalizeAddress(quoteData.shipping_address);
+        if (norm) {
+          setShippingAddress({
+            line1: norm.line1,
+            line2: norm.line2,
+            city: norm.city,
+            province: norm.province,
+            postal_code: norm.postalCode,
+            country: norm.country || "Canada",
+          });
+        }
       }
 
       if (quoteData?.status === "converted") {
@@ -930,10 +992,24 @@ export default function AdminQuoteDetail() {
     if (!id) return;
     setIsSavingShippingAddress(true);
     try {
+      // Save in Format A (camelCase) to match customer checkout format
+      const addressPayload = {
+        firstName: '',
+        lastName: '',
+        company: '',
+        addressLine1: shippingAddress.line1,
+        addressLine2: shippingAddress.line2,
+        city: shippingAddress.city,
+        state: shippingAddress.province,
+        postalCode: shippingAddress.postal_code,
+        country: shippingAddress.country,
+        phone: '',
+      };
+
       const { error } = await supabase
         .from("quotes")
         .update({
-          shipping_address: shippingAddress,
+          shipping_address: addressPayload,
           updated_at: new Date().toISOString(),
         })
         .eq("id", id);
@@ -1937,10 +2013,23 @@ export default function AdminQuoteDetail() {
                 <p className="font-medium">{quote.country_of_issue || "—"}</p>
               </div>
               <div>
+                <p className="text-sm text-gray-500">Intended Use</p>
+                <p className="font-medium">{quote.intended_use?.name || "—"}</p>
+              </div>
+              <div>
                 <p className="text-sm text-gray-500">Turnaround</p>
                 <p className="font-medium">
-                  {quote.turnaround_days} business day
-                  {quote.turnaround_days !== 1 ? "s" : ""}
+                  {(() => {
+                    const opt = turnaroundOptions.find(o =>
+                      o.id === quote.turnaround_option_id ||
+                      o.code === (quote.turnaround_type || 'standard')
+                    );
+                    const days = quote.turnaround_days || opt?.estimated_days;
+                    const label = opt?.name || formatLabel(quote.turnaround_type);
+                    return days
+                      ? `${label} — ${days} business day${days !== 1 ? 's' : ''}`
+                      : label || '—';
+                  })()}
                 </p>
               </div>
               {quote.special_instructions && (
@@ -2565,6 +2654,11 @@ export default function AdminQuoteDetail() {
                   )}
                 </div>
               </div>
+              {quote.estimated_delivery_date && (
+                <p className="text-xs text-gray-400 -mt-2 text-right">
+                  System estimate: {format(new Date(quote.estimated_delivery_date), "MMM d, yyyy")}
+                </p>
+              )}
 
               {/* Delivery Method */}
               {deliveryOptionsList.length > 0 && (
@@ -3014,24 +3108,44 @@ export default function AdminQuoteDetail() {
                 </div>
               )}
 
-              <div>
-                <p className="text-sm text-gray-500">Method</p>
-                <p className="font-medium">
-                  {quote.delivery_option?.name || "—"}
-                </p>
-                {quote.delivery_option?.description && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    {quote.delivery_option.description}
-                  </p>
-                )}
-              </div>
+              {/* Digital Delivery Options */}
+              {quote.digital_delivery_options && quote.digital_delivery_options.length > 0 && (
+                <div>
+                  <p className="text-sm text-gray-500">Digital Delivery</p>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {quote.digital_delivery_options.map((optId: string) => {
+                      const opt = deliveryOptionsList.find(o => o.id === optId);
+                      return opt ? (
+                        <span key={optId} className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">
+                          {opt.name}
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
 
+              {/* Physical Delivery Method */}
               {quote.physical_delivery_option && (
                 <div>
                   <p className="text-sm text-gray-500">Physical Delivery</p>
                   <p className="font-medium">
                     {quote.physical_delivery_option.name}
                   </p>
+                </div>
+              )}
+
+              {/* Pickup Location */}
+              {quote.pickup_location && (
+                <div>
+                  <p className="text-sm text-gray-500">Pickup Location</p>
+                  <p className="font-medium">{quote.pickup_location.name}</p>
+                  <p className="text-sm text-gray-600">
+                    {[quote.pickup_location.address_line1, quote.pickup_location.city, quote.pickup_location.state, quote.pickup_location.postal_code].filter(Boolean).join(', ')}
+                  </p>
+                  {quote.pickup_location.hours && (
+                    <p className="text-xs text-gray-500 mt-1">{quote.pickup_location.hours}</p>
+                  )}
                 </div>
               )}
 
@@ -3166,6 +3280,34 @@ export default function AdminQuoteDetail() {
               </div>
             </div>
           </div>
+
+          {/* Payment Info — visible only when quote is paid */}
+          {['paid', 'converted'].includes(quote.status) && (
+            <div className="bg-white rounded-lg border p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-gray-400" />
+                Payment Info
+              </h2>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Method</span>
+                  <span className="font-medium">{quote.payment_method?.name || "Stripe"}</span>
+                </div>
+                {quote.payment_confirmed_at && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Confirmed</span>
+                    <span>{format(new Date(quote.payment_confirmed_at), "MMM d, yyyy h:mm a")}</span>
+                  </div>
+                )}
+                {quote.payment_confirmed_by && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Confirmed By</span>
+                    <span className="font-medium">{quote.payment_confirmed_by.full_name}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
