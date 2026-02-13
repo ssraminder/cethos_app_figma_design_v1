@@ -2522,6 +2522,238 @@ export default function Step4ReviewCheckout() {
         )}
       </div>
 
+      {/* Billing Information */}
+      <div className="bg-white rounded-xl border border-cethos-border p-6 mb-6 shadow-cethos-card">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Billing Information
+        </h3>
+
+        {geoLoading && (
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Detecting your location...</span>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {/* Full Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Full Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={billingAddress.fullName}
+              onChange={(e) =>
+                handleBillingFieldChange("fullName", e.target.value)
+              }
+              onBlur={() => handleBillingFieldBlur("fullName")}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                touched.billing_fullName && errors.billing_fullName
+                  ? "border-red-500"
+                  : "border-gray-300"
+              }`}
+              placeholder="John Doe"
+            />
+            {touched.billing_fullName && errors.billing_fullName && (
+              <p className="text-xs text-red-600 mt-1">
+                {errors.billing_fullName}
+              </p>
+            )}
+          </div>
+
+          {/* Country */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Country <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={billingAddress.country}
+              onChange={(e) =>
+                handleBillingFieldChange("country", e.target.value)
+              }
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
+            >
+              <option value="">Select country...</option>
+              {commonCountries.length > 0 && (
+                <optgroup label="Common Countries">
+                  {commonCountries.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {otherCountries.length > 0 && (
+                <optgroup label="All Countries">
+                  {otherCountries.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+
+          {/* Street Address */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Street Address <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={billingAddress.streetAddress}
+              onChange={(e) =>
+                handleBillingFieldChange("streetAddress", e.target.value)
+              }
+              onBlur={() => handleBillingFieldBlur("streetAddress")}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                touched.billing_streetAddress && errors.billing_streetAddress
+                  ? "border-red-500"
+                  : "border-gray-300"
+              }`}
+              placeholder="123 Main Street"
+            />
+            {touched.billing_streetAddress && errors.billing_streetAddress && (
+              <p className="text-xs text-red-600 mt-1">
+                {errors.billing_streetAddress}
+              </p>
+            )}
+          </div>
+
+          {/* City and Province/State */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                City <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={billingAddress.city}
+                onChange={(e) =>
+                  handleBillingFieldChange("city", e.target.value)
+                }
+                onBlur={() => handleBillingFieldBlur("city")}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                  touched.billing_city && errors.billing_city
+                    ? "border-red-500"
+                    : "border-gray-300"
+                }`}
+                placeholder="Calgary"
+              />
+              {touched.billing_city && errors.billing_city && (
+                <p className="text-xs text-red-600 mt-1">
+                  {errors.billing_city}
+                </p>
+              )}
+            </div>
+
+            {/* Province/State - Conditional */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {getProvinceLabel(billingAddress.country)}{" "}
+                {(billingAddress.country === "CA" ||
+                  billingAddress.country === "US") && (
+                  <span className="text-red-500">*</span>
+                )}
+              </label>
+              {billingAddress.country === "CA" ? (
+                <select
+                  value={billingAddress.province}
+                  onChange={(e) =>
+                    handleBillingFieldChange("province", e.target.value)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
+                >
+                  {CANADIAN_PROVINCES.map((province) => (
+                    <option key={province.code} value={province.code}>
+                      {province.name}
+                    </option>
+                  ))}
+                </select>
+              ) : billingAddress.country === "US" ? (
+                <select
+                  value={billingAddress.province}
+                  onChange={(e) =>
+                    handleBillingFieldChange("province", e.target.value)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
+                >
+                  <option value="">Select state...</option>
+                  {US_STATES.map((usState) => (
+                    <option key={usState.code} value={usState.code}>
+                      {usState.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={billingAddress.province}
+                  onChange={(e) =>
+                    handleBillingFieldChange("province", e.target.value)
+                  }
+                  onBlur={() => handleBillingFieldBlur("province")}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
+                  placeholder="Province/State (optional)"
+                />
+              )}
+              {touched.billing_province && errors.billing_province && (
+                <p className="text-xs text-red-600 mt-1">
+                  {errors.billing_province}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Postal Code */}
+          <div className="sm:w-1/2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {getPostalCodeLabel(billingAddress.country)}{" "}
+              <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={billingAddress.postalCode}
+              onChange={(e) =>
+                handleBillingFieldChange(
+                  "postalCode",
+                  billingAddress.country === "CA"
+                    ? e.target.value.toUpperCase()
+                    : e.target.value
+                )
+              }
+              onBlur={() => handleBillingFieldBlur("postalCode")}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
+                touched.billing_postalCode && errors.billing_postalCode
+                  ? "border-red-500"
+                  : "border-gray-300"
+              }`}
+              placeholder={
+                billingAddress.country === "CA"
+                  ? "T2P 1J9"
+                  : billingAddress.country === "US"
+                  ? "12345"
+                  : "Postal code"
+              }
+              maxLength={
+                billingAddress.country === "CA"
+                  ? 7
+                  : billingAddress.country === "US"
+                  ? 10
+                  : 20
+              }
+            />
+            {touched.billing_postalCode && errors.billing_postalCode && (
+              <p className="text-xs text-red-600 mt-1">
+                {errors.billing_postalCode}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Shipping Address Form - Show when mail/courier selected */}
       {needsShippingAddress && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
@@ -2877,238 +3109,6 @@ export default function Step4ReviewCheckout() {
           )}
         </div>
       )}
-
-      {/* Billing Information */}
-      <div className="bg-white rounded-xl border border-cethos-border p-6 mb-6 shadow-cethos-card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Billing Information
-        </h3>
-
-        {geoLoading && (
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Detecting your location...</span>
-          </div>
-        )}
-
-        <div className="space-y-4">
-          {/* Full Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Full Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={billingAddress.fullName}
-              onChange={(e) =>
-                handleBillingFieldChange("fullName", e.target.value)
-              }
-              onBlur={() => handleBillingFieldBlur("fullName")}
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
-                touched.billing_fullName && errors.billing_fullName
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
-              placeholder="John Doe"
-            />
-            {touched.billing_fullName && errors.billing_fullName && (
-              <p className="text-xs text-red-600 mt-1">
-                {errors.billing_fullName}
-              </p>
-            )}
-          </div>
-
-          {/* Country */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Country <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={billingAddress.country}
-              onChange={(e) =>
-                handleBillingFieldChange("country", e.target.value)
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
-            >
-              <option value="">Select country...</option>
-              {commonCountries.length > 0 && (
-                <optgroup label="Common Countries">
-                  {commonCountries.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {otherCountries.length > 0 && (
-                <optgroup label="All Countries">
-                  {otherCountries.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </div>
-
-          {/* Street Address */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Street Address <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={billingAddress.streetAddress}
-              onChange={(e) =>
-                handleBillingFieldChange("streetAddress", e.target.value)
-              }
-              onBlur={() => handleBillingFieldBlur("streetAddress")}
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
-                touched.billing_streetAddress && errors.billing_streetAddress
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
-              placeholder="123 Main Street"
-            />
-            {touched.billing_streetAddress && errors.billing_streetAddress && (
-              <p className="text-xs text-red-600 mt-1">
-                {errors.billing_streetAddress}
-              </p>
-            )}
-          </div>
-
-          {/* City and Province/State */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                City <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={billingAddress.city}
-                onChange={(e) =>
-                  handleBillingFieldChange("city", e.target.value)
-                }
-                onBlur={() => handleBillingFieldBlur("city")}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
-                  touched.billing_city && errors.billing_city
-                    ? "border-red-500"
-                    : "border-gray-300"
-                }`}
-                placeholder="Calgary"
-              />
-              {touched.billing_city && errors.billing_city && (
-                <p className="text-xs text-red-600 mt-1">
-                  {errors.billing_city}
-                </p>
-              )}
-            </div>
-
-            {/* Province/State - Conditional */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {getProvinceLabel(billingAddress.country)}{" "}
-                {(billingAddress.country === "CA" ||
-                  billingAddress.country === "US") && (
-                  <span className="text-red-500">*</span>
-                )}
-              </label>
-              {billingAddress.country === "CA" ? (
-                <select
-                  value={billingAddress.province}
-                  onChange={(e) =>
-                    handleBillingFieldChange("province", e.target.value)
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
-                >
-                  {CANADIAN_PROVINCES.map((province) => (
-                    <option key={province.code} value={province.code}>
-                      {province.name}
-                    </option>
-                  ))}
-                </select>
-              ) : billingAddress.country === "US" ? (
-                <select
-                  value={billingAddress.province}
-                  onChange={(e) =>
-                    handleBillingFieldChange("province", e.target.value)
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
-                >
-                  <option value="">Select state...</option>
-                  {US_STATES.map((usState) => (
-                    <option key={usState.code} value={usState.code}>
-                      {usState.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={billingAddress.province}
-                  onChange={(e) =>
-                    handleBillingFieldChange("province", e.target.value)
-                  }
-                  onBlur={() => handleBillingFieldBlur("province")}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal"
-                  placeholder="Province/State (optional)"
-                />
-              )}
-              {touched.billing_province && errors.billing_province && (
-                <p className="text-xs text-red-600 mt-1">
-                  {errors.billing_province}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Postal Code */}
-          <div className="sm:w-1/2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {getPostalCodeLabel(billingAddress.country)}{" "}
-              <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={billingAddress.postalCode}
-              onChange={(e) =>
-                handleBillingFieldChange(
-                  "postalCode",
-                  billingAddress.country === "CA"
-                    ? e.target.value.toUpperCase()
-                    : e.target.value
-                )
-              }
-              onBlur={() => handleBillingFieldBlur("postalCode")}
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal ${
-                touched.billing_postalCode && errors.billing_postalCode
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
-              placeholder={
-                billingAddress.country === "CA"
-                  ? "T2P 1J9"
-                  : billingAddress.country === "US"
-                  ? "12345"
-                  : "Postal code"
-              }
-              maxLength={
-                billingAddress.country === "CA"
-                  ? 7
-                  : billingAddress.country === "US"
-                  ? 10
-                  : 20
-              }
-            />
-            {touched.billing_postalCode && errors.billing_postalCode && (
-              <p className="text-xs text-red-600 mt-1">
-                {errors.billing_postalCode}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
 
       </div>{/* END LEFT COLUMN */}
 
