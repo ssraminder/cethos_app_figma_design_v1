@@ -749,8 +749,8 @@ export default function AdminQuoteDetail() {
         .order("sort_order");
       setDeliveryOptionsList(deliveryData || []);
 
-      // Initialize promised delivery date
-      setPromisedDeliveryDate(quoteData?.promised_delivery_date || "");
+      // Initialize promised delivery date — auto-populate from system estimate if not set
+      setPromisedDeliveryDate(quoteData?.promised_delivery_date || quoteData?.estimated_delivery_date || "");
 
       // Initialize delivery option
       if (quoteData?.physical_delivery_option_id) {
@@ -2627,91 +2627,91 @@ export default function AdminQuoteDetail() {
               </button>
             </div>
 
-            <div className="space-y-4">
-              {/* Turnaround Speed */}
-              {turnaroundOptions.length > 0 && (
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-500">Turnaround:</span>
-                  <div className="flex items-center gap-1">
-                    <select
-                      value={quote.turnaround_option_id || turnaroundOptions.find(o => o.code === (quote.turnaround_type || "standard"))?.id || turnaroundOptions.find(o => o.is_default)?.id || ""}
-                      onChange={(e) => handleTurnaroundChange(e.target.value)}
-                      disabled={isSavingTurnaround}
-                      className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50 max-w-[250px]"
-                    >
-                      {turnaroundOptions.map((opt) => {
-                        let label = opt.name;
-                        if (opt.fee_value === 0) {
-                          label += " \u2014 No extra charge";
-                        } else if (opt.fee_type === "percentage") {
-                          const extra = (quote.subtotal || 0) * (opt.fee_value / 100);
-                          label += ` (+${opt.fee_value}%) \u2014 +$${extra.toFixed(2)}`;
-                        } else {
-                          label += ` \u2014 +$${opt.fee_value.toFixed(2)}`;
-                        }
+            <div className="space-y-0">
+              {/* === Settings Section === */}
+              <div className="space-y-4 pb-4">
+                {/* Turnaround Speed */}
+                {turnaroundOptions.length > 0 && (
+                  <div className="space-y-1">
+                    <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Turnaround
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <select
+                        value={quote.turnaround_option_id || turnaroundOptions.find(o => o.code === (quote.turnaround_type || "standard"))?.id || turnaroundOptions.find(o => o.is_default)?.id || ""}
+                        onChange={(e) => handleTurnaroundChange(e.target.value)}
+                        disabled={isSavingTurnaround}
+                        className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 text-gray-700 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50"
+                      >
+                        {turnaroundOptions.map((opt) => {
+                          let label = opt.name;
+                          if (opt.fee_value === 0) {
+                            label += " \u2014 No extra charge";
+                          } else if (opt.fee_type === "percentage") {
+                            const extra = (quote.subtotal || 0) * (opt.fee_value / 100);
+                            label += ` (+${opt.fee_value}%) \u2014 +$${extra.toFixed(2)}`;
+                          } else {
+                            label += ` \u2014 +$${opt.fee_value.toFixed(2)}`;
+                          }
+                          return (
+                            <option key={opt.id} value={opt.id}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {isSavingTurnaround && (
+                        <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                      )}
+                    </div>
+                    {(() => {
+                      const currentOpt = turnaroundOptions.find(o =>
+                        o.id === quote.turnaround_option_id ||
+                        o.code === (quote.turnaround_type || "standard")
+                      );
+                      if (currentOpt?.estimated_days) {
                         return (
-                          <option key={opt.id} value={opt.id}>
-                            {label}
-                          </option>
+                          <p className="text-xs text-gray-400">
+                            Estimated: {currentOpt.estimated_days} business day{currentOpt.estimated_days !== 1 ? "s" : ""} from today
+                          </p>
                         );
-                      })}
-                    </select>
-                    {isSavingTurnaround && (
+                      }
+                      return null;
+                    })()}
+                  </div>
+                )}
+
+                {/* Promised Delivery Date */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Delivery Date
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="date"
+                      value={promisedDeliveryDate || quote.estimated_delivery_date || ''}
+                      onChange={(e) => handlePromisedDateChange(e.target.value)}
+                      disabled={isSavingPromisedDate}
+                      className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 text-gray-700 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50"
+                    />
+                    {isSavingPromisedDate && (
                       <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
                     )}
                   </div>
                 </div>
-              )}
 
-              {/* Estimated days hint */}
-              {(() => {
-                const currentOpt = turnaroundOptions.find(o =>
-                  o.id === quote.turnaround_option_id ||
-                  o.code === (quote.turnaround_type || "standard")
-                );
-                if (currentOpt?.estimated_days) {
-                  return (
-                    <p className="text-xs text-gray-400 -mt-2 text-right">
-                      Estimated: {currentOpt.estimated_days} business day{currentOpt.estimated_days !== 1 ? "s" : ""} from today
-                    </p>
-                  );
-                }
-                return null;
-              })()}
-
-              {/* Promised Delivery Date */}
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-500">Delivery Date:</span>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="date"
-                    value={promisedDeliveryDate}
-                    onChange={(e) => handlePromisedDateChange(e.target.value)}
-                    disabled={isSavingPromisedDate}
-                    className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50"
-                  />
-                  {isSavingPromisedDate && (
-                    <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
-                  )}
-                </div>
-              </div>
-              {quote.estimated_delivery_date && (
-                <p className="text-xs text-gray-400 -mt-2 text-right">
-                  System estimate: {format(new Date(quote.estimated_delivery_date), "MMM d, yyyy")}
-                </p>
-              )}
-
-              {/* Delivery Method */}
-              {deliveryOptionsList.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500">Delivery:</span>
+                {/* Delivery Method */}
+                {deliveryOptionsList.length > 0 && (
+                  <div className="space-y-1">
+                    <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Delivery
+                    </label>
                     <div className="flex items-center gap-1">
                       <select
                         value={selectedDeliveryOptionId}
                         onChange={(e) => handleDeliveryOptionChange(e.target.value)}
                         disabled={isSavingDelivery}
-                        className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50 max-w-[250px]"
+                        className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 text-gray-700 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50"
                       >
                         <option value="">Select delivery...</option>
                         {(() => {
@@ -2745,9 +2745,8 @@ export default function AdminQuoteDetail() {
                         <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
                       )}
                     </div>
-                  </div>
 
-                  {/* Shipping Address Form — shown when delivery requires address */}
+                    {/* Shipping Address Form — shown when delivery requires address */}
                   {(() => {
                     const selected = deliveryOptionsList.find(o => o.id === selectedDeliveryOptionId);
                     if (!selected?.requires_address) return null;
@@ -2811,97 +2810,78 @@ export default function AdminQuoteDetail() {
                       </div>
                     );
                   })()}
-                </div>
-              )}
-
-              {/* Per-Document Breakdown — Translation Total */}
-              {analysis.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                    Documents
-                  </p>
-                  {analysis.map((item, index) => {
-                    const nf = normalizedFiles.find(
-                      (f) => f.id === item.quote_file_id,
-                    );
-                    const qf = files.find(
-                      (f) => f.id === item.quote_file_id,
-                    );
-                    const fileName = nf?.displayName || qf?.original_filename || `Document ${index + 1}`;
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex justify-between text-sm py-1"
-                      >
-                        <span
-                          className="text-gray-600 truncate max-w-[60%]"
-                          title={fileName}
-                        >
-                          {fileName}
-                        </span>
-                        <span className="font-medium">
-                          ${Number(item.line_total || 0).toFixed(2)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  <div className="flex justify-between text-sm pt-1 border-t">
-                    <span className="text-gray-700 font-medium">Translation Total</span>
-                    <span className="font-medium">
-                      ${quote.subtotal?.toFixed(2) || "0.00"}
-                    </span>
                   </div>
-                </div>
-              )}
-
-              {/* Document Certifications */}
-              {(quote.calculated_totals?.doc_certification_total ?? 0) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Document Certifications</span>
-                  <span>
-                    ${Number(quote.calculated_totals?.doc_certification_total || 0).toFixed(2)}
-                  </span>
-                </div>
-              )}
-
-              {/* Quote Certifications */}
-              {(quote.calculated_totals?.quote_certification_total ?? 0) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Quote Certifications</span>
-                  <span>
-                    ${Number(quote.calculated_totals?.quote_certification_total || 0).toFixed(2)}
-                  </span>
-                </div>
-              )}
-
-              {/* Subtotal (Translation + Certification) */}
-              <div className="flex justify-between text-sm pt-2 border-t">
-                <span className="text-gray-700 font-semibold">Subtotal</span>
-                <span className="font-semibold">
-                  ${((quote.subtotal || 0) + (quote.certification_total || 0)).toFixed(2)}
-                </span>
+                )}
               </div>
 
-              {/* Rush Fee */}
-              {quote.is_rush && quote.rush_fee > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 flex items-center gap-1">
-                    <Zap className="w-3 h-3 text-amber-500" />
-                    Rush Fee
-                  </span>
-                  <span>${quote.rush_fee?.toFixed(2) || "0.00"}</span>
-                </div>
-              )}
+              {/* === Documents Section === */}
+              <div className="py-4 border-t border-gray-100">
+                {analysis.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                      Documents
+                    </p>
+                    {analysis.map((item, index) => {
+                      const nf = normalizedFiles.find(
+                        (f) => f.id === item.quote_file_id,
+                      );
+                      const qf = files.find(
+                        (f) => f.id === item.quote_file_id,
+                      );
+                      const fileName = nf?.displayName || qf?.original_filename || `Document ${index + 1}`;
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex justify-between text-sm"
+                        >
+                          <span
+                            className="text-gray-600 truncate pr-3"
+                            title={fileName}
+                          >
+                            {fileName}
+                          </span>
+                          <span className="flex-shrink-0 text-gray-600">
+                            ${Number(item.line_total || 0).toFixed(2)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {/* Translation Total — only show if multiple documents */}
+                    {analysis.length > 1 && (
+                      <div className="flex justify-between text-sm text-gray-500 pt-1.5 mt-1.5 border-t border-dashed border-gray-200">
+                        <span>Translation Total</span>
+                        <span>${quote.subtotal?.toFixed(2) || "0.00"}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-              {/* Delivery Fee */}
-              {quote.delivery_fee > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">
-                    Delivery ({quote.delivery_option?.name || "Standard"})
+                {/* Certification totals — only show if > 0 */}
+                {(quote.calculated_totals?.doc_certification_total ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-gray-500 mt-1">
+                    <span>Document Certifications</span>
+                    <span>
+                      ${Number(quote.calculated_totals?.doc_certification_total || 0).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+
+                {(quote.calculated_totals?.quote_certification_total ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-gray-500 mt-1">
+                    <span>Quote Certifications</span>
+                    <span>
+                      ${Number(quote.calculated_totals?.quote_certification_total || 0).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Subtotal (Translation + Certification) */}
+                <div className="flex justify-between text-sm font-medium text-gray-700 pt-2 mt-2 border-t border-gray-200">
+                  <span>Subtotal</span>
+                  <span>
+                    ${((quote.subtotal || 0) + (quote.certification_total || 0)).toFixed(2)}
                   </span>
-                  <span>${quote.delivery_fee?.toFixed(2) || "0.00"}</span>
                 </div>
-              )}
 
               {/* Surcharge lines */}
               {adjustments
@@ -3095,42 +3075,68 @@ export default function AdminQuoteDetail() {
                 </div>
               )}
 
-              {/* Pre-tax Total */}
-              <div className="flex justify-between text-sm pt-2 border-t">
-                <span className="text-gray-700 font-medium">Pre-tax Total</span>
-                <span className="font-medium">
-                  ${((quote.total || 0) - (quote.tax_amount || 0)).toFixed(2)}
-                </span>
               </div>
 
-              {/* Tax — editable dropdown */}
-              <div className="flex justify-between items-center text-sm">
-                <div className="flex items-center gap-1">
-                  <select
-                    value={quote.tax_rate_id || taxRates.find(t => Math.abs(t.rate - (quote.tax_rate || 0)) < 0.001)?.id || ""}
-                    onChange={(e) => handleTaxRateChange(e.target.value)}
-                    disabled={isSavingTax}
-                    className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50 max-w-[200px]"
-                  >
-                    {taxRates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.region_name} {t.tax_name} ({(t.rate * 100).toFixed(t.rate * 100 % 1 === 0 ? 0 : 2)}%)
-                      </option>
-                    ))}
-                  </select>
-                  {isSavingTax && (
-                    <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
-                  )}
+              {/* === Totals Section === */}
+              <div className="space-y-2 pt-4 border-t border-gray-200">
+                {/* Rush Fee — only if > 0 */}
+                {quote.is_rush && quote.rush_fee > 0 && (
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span className="flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-amber-500" />
+                      Rush Fee
+                    </span>
+                    <span>${quote.rush_fee?.toFixed(2) || "0.00"}</span>
+                  </div>
+                )}
+
+                {/* Delivery Fee — only if > 0 */}
+                {quote.delivery_fee > 0 && (
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>
+                      Delivery ({quote.delivery_option?.name || "Standard"})
+                    </span>
+                    <span>${quote.delivery_fee?.toFixed(2) || "0.00"}</span>
+                  </div>
+                )}
+
+                {/* Pre-tax Total */}
+                <div className="flex justify-between text-sm font-medium text-gray-700 pt-2 border-t border-gray-100">
+                  <span>Pre-tax Total</span>
+                  <span>
+                    ${((quote.total || 0) - (quote.tax_amount || 0)).toFixed(2)}
+                  </span>
                 </div>
-                <span>${quote.tax_amount?.toFixed(2) || "0.00"}</span>
-              </div>
 
-              {/* Total */}
-              <div className="border-t pt-3 mt-3 flex justify-between">
-                <span className="font-semibold text-gray-900">Total</span>
-                <span className="text-xl font-bold text-teal-600">
-                  ${quote.total?.toFixed(2) || "0.00"} CAD
-                </span>
+                {/* Tax — editable dropdown */}
+                <div className="flex justify-between items-center text-sm text-gray-600">
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={quote.tax_rate_id || taxRates.find(t => Math.abs(t.rate - (quote.tax_rate || 0)) < 0.001)?.id || ""}
+                      onChange={(e) => handleTaxRateChange(e.target.value)}
+                      disabled={isSavingTax}
+                      className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50 max-w-[200px]"
+                    >
+                      {taxRates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.region_name} {t.tax_name} ({(t.rate * 100).toFixed(t.rate * 100 % 1 === 0 ? 0 : 2)}%)
+                        </option>
+                      ))}
+                    </select>
+                    {isSavingTax && (
+                      <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                    )}
+                  </div>
+                  <span>${quote.tax_amount?.toFixed(2) || "0.00"}</span>
+                </div>
+
+                {/* Grand Total */}
+                <div className="flex justify-between text-base font-bold text-gray-900 pt-3 border-t border-gray-200">
+                  <span>Total</span>
+                  <span className="text-teal-700">
+                    ${quote.total?.toFixed(2) || "0.00"} CAD
+                  </span>
+                </div>
               </div>
             </div>
           </div>
