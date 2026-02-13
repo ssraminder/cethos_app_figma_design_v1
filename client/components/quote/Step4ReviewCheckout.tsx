@@ -722,7 +722,7 @@ export default function Step4ReviewCheckout() {
       const { data: analysisResults, error: analysisError } = await supabase
         .from("ai_analysis_results")
         .select(
-          "id, quote_file_id, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status, ocr_confidence, language_confidence, document_type_confidence, complexity_confidence",
+          "id, quote_file_id, manual_filename, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status, ocr_confidence, language_confidence, document_type_confidence, complexity_confidence",
         )
         .eq("quote_id", quoteId)
         .eq("processing_status", "completed");
@@ -805,29 +805,40 @@ export default function Step4ReviewCheckout() {
         return;
       }
 
-      // Query 2: Get file names separately (guard against null file IDs from manual entries)
-      const fileIds = analysisResults
-        .map((r) => r.quote_file_id)
-        .filter((id): id is string => !!id);
-      let files: { id: string; original_filename: string }[] = [];
-      if (fileIds.length > 0) {
-        const { data: filesData, error: filesError } = await supabase
-          .from("quote_files")
-          .select("id, original_filename")
-          .in("id", fileIds);
-        if (filesError) throw filesError;
-        files = filesData || [];
-      }
+      // Query 2: Get file names separately by quote_id (covers all files including when quote_file_id is null)
+      const { data: quoteFiles, error: filesError } = await supabase
+        .from("quote_files")
+        .select("id, original_filename, storage_path")
+        .eq("quote_id", quoteId)
+        .in("upload_status", ["uploaded", "completed"])
+        .order("created_at", { ascending: true });
+      if (filesError) throw filesError;
 
-      // Merge the data
-      const filesMap = new Map(files.map((f) => [f.id, f]));
-      const mergedData = analysisResults.map((analysis) => ({
-        ...analysis,
-        quote_files: filesMap.get(analysis.quote_file_id) || {
-          id: analysis.quote_file_id,
-          original_filename: "Unknown",
-        },
-      }));
+      // Merge the data — use manual_filename first, then match by file ID, then by index
+      const filesMap = new Map((quoteFiles || []).map((f) => [f.id, f]));
+      const mergedData = analysisResults.map((analysis, index) => {
+        // Priority: manual_filename > matched quote_file > index-matched file > fallback
+        const matchedFile = analysis.quote_file_id
+          ? filesMap.get(analysis.quote_file_id)
+          : null;
+        const indexFile = quoteFiles?.[index] || null;
+        const resolvedFilename =
+          analysis.manual_filename ||
+          matchedFile?.original_filename ||
+          (quoteFiles?.length === 1
+            ? quoteFiles[0].original_filename
+            : indexFile?.original_filename) ||
+          null;
+
+        return {
+          ...analysis,
+          original_filename: resolvedFilename,
+          quote_files: matchedFile || {
+            id: analysis.quote_file_id,
+            original_filename: resolvedFilename,
+          },
+        };
+      });
 
       // Get intended use from quote AND check HITL status AND get language info
       const { data: quoteData } = await supabase
@@ -2106,7 +2117,7 @@ export default function Step4ReviewCheckout() {
         {/* Individual file rows */}
         <div className="px-5">
           {documents.map((doc, index) => {
-            const filename = doc.quote_files?.original_filename || `Document ${index + 1}`;
+            const filename = doc.original_filename || doc.quote_files?.original_filename || `Document ${index + 1}`;
             const langLabel = `${doc.language_name || doc.detected_language || sourceLanguageName || "Unknown"} → ${targetLanguageName || "English"}`;
             const docType = doc.detected_document_type || "Other";
 
