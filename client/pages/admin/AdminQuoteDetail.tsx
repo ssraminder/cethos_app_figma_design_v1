@@ -1856,13 +1856,13 @@ export default function AdminQuoteDetail() {
               </>
             )}
 
-            {/* Receive Payment Button - visible for draft, quote_ready, or awaiting_payment */}
-            {["draft", "quote_ready", "awaiting_payment"].includes(quote.status) && (
+            {/* Receive Payment Button - visible when payment hasn't been received yet */}
+            {["draft", "quote_ready", "awaiting_payment", "pending_payment", "checkout_started"].includes(quote.status) && (
               <button
                 onClick={openReceivePaymentModal}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium text-sm"
               >
-                <CreditCard className="w-4 h-4" />
+                <DollarSign className="w-4 h-4" />
                 Receive Payment
               </button>
             )}
@@ -3358,39 +3358,13 @@ export default function AdminQuoteDetail() {
         </div>
       </div>
 
-      <div className="mt-8 bg-white border rounded-lg p-6 flex flex-wrap items-center gap-3">
-        {!hitlReview && (
-          <button
-            onClick={startReview}
-            disabled={actionLoading || !currentStaff}
-            className="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
-          >
-            Start Review
-          </button>
-        )}
-        {["processing", "in_review"].includes(quote.status) && (
-          <>
-            <button
-              onClick={approveQuote}
-              disabled={actionLoading || !currentStaff}
-              className="px-4 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
-            >
-              Approve Quote
-            </button>
-            <button
-              onClick={requestBetterScan}
-              disabled={actionLoading || !currentStaff}
-              className="px-4 py-2 rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50"
-            >
-              Request Better Scan
-            </button>
-          </>
-        )}
+      <div className="flex items-center gap-3 mt-8 pt-6 border-t border-gray-200">
         <button
           onClick={() => setShowMessageModal(true)}
           disabled={!currentStaff}
-          className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm font-medium text-gray-700 disabled:opacity-50"
         >
+          <MessageSquare className="w-4 h-4" />
           Message Customer
         </button>
       </div>
