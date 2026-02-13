@@ -2035,88 +2035,114 @@ export default function Step4ReviewCheckout() {
       {/* LEFT COLUMN */}
       <div className="flex-1 min-w-0">
 
-      {/* Document Breakdown */}
-      <div className="bg-white rounded-xl border border-cethos-border shadow-cethos-card overflow-hidden mb-6">
-        <div className="px-4 sm:px-6 py-4 bg-cethos-bg-light border-b border-cethos-border">
-          <h2 className="font-semibold text-gray-900">
-            {documents.length > 0
-              ? `Certified Translation${intendedUse ? ` for ${intendedUse.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}` : ''}`
-              : "Quote Details"}
-          </h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {documents.length} document{documents.length !== 1 ? 's' : ''} · {sourceLanguageName} → {targetLanguageName}
-          </p>
+      {/* AI-Analyzed Documents Section */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
+
+        {/* Summary header with capsule pills */}
+        <div className="px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle className="w-4 h-4 text-emerald-500" />
+            <h3 className="text-base font-semibold text-gray-900">
+              AI-Analyzed Document{documents.length !== 1 ? "s" : ""}
+            </h3>
+          </div>
+
+          {/* Language pair pills — deduplicated, teal */}
+          {(() => {
+            const uniqueLangPairs = [...new Set(
+              documents.map(doc => {
+                const srcName = doc.language_name || doc.detected_language || sourceLanguageName || "Unknown";
+                const tgtName = targetLanguageName || "English";
+                return `${srcName} → ${tgtName}`;
+              })
+            )];
+            const uniqueDocTypes = [...new Set(
+              documents.map(doc => doc.detected_document_type || "Other").filter(Boolean)
+            )];
+            const totalPages = documents.reduce((sum, doc) => sum + (doc.billable_pages || 0), 0);
+            const totalWords = documents.reduce((sum, doc) => sum + (doc.word_count || 0), 0);
+
+            return (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  {uniqueLangPairs.map((pair, i) => (
+                    <span key={`lang-${i}`} className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 text-xs font-medium rounded-full border border-teal-200 whitespace-nowrap">
+                      {pair}
+                    </span>
+                  ))}
+                  {uniqueDocTypes.map((type, i) => (
+                    <span key={`type-${i}`} className="inline-flex items-center px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full border border-gray-200 whitespace-nowrap">
+                      {type}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {documents.length} document{documents.length !== 1 ? "s" : ""} · {totalPages.toFixed(1)} pages · {totalWords.toLocaleString()} words
+                </p>
+              </>
+            );
+          })()}
         </div>
-        {documents.length > 0 ? (
-          <div className="divide-y divide-gray-100">
-            {documents.map((doc, index) => (
-              <div key={doc.id} className="px-4 sm:px-6 py-4">
-                <div className="flex justify-between items-start gap-4">
-                  {/* Left: file info */}
-                  <div className="flex-1 min-w-0">
-                    {/* Filename */}
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      <p className="font-medium text-gray-900 truncate text-sm">
-                        {doc.quote_files?.original_filename && doc.quote_files.original_filename !== "Unknown"
-                          ? doc.quote_files.original_filename
-                          : `Document ${index + 1}`}
-                      </p>
-                    </div>
 
-                    {/* Badges row */}
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <span className="inline-flex items-center text-xs bg-cethos-teal-50 text-cethos-teal px-2 py-0.5 rounded whitespace-nowrap">
-                        {sourceLanguageName || doc.language_name || doc.detected_language} → {targetLanguageName}
-                      </span>
-                      <span className="inline-flex items-center text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded whitespace-nowrap">
-                        {doc.billable_pages.toFixed(1)} pages
-                      </span>
-                      {doc.word_count > 0 && (
-                        <span className="inline-flex items-center text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded whitespace-nowrap">
-                          {doc.word_count.toLocaleString()} words
-                        </span>
-                      )}
-                      {doc.detected_document_type && (
-                        <span className="inline-flex items-center text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded whitespace-nowrap capitalize">
-                          {doc.detected_document_type.replace(/_/g, ' ')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+        {/* Individual file rows */}
+        <div className="px-5">
+          {documents.map((doc, index) => {
+            const filename = doc.quote_files?.original_filename || `Document ${index + 1}`;
+            const langLabel = `${doc.language_name || doc.detected_language || sourceLanguageName || "Unknown"} → ${targetLanguageName || "English"}`;
+            const docType = doc.detected_document_type || "Other";
 
-                  {/* Right: price */}
-                  <div className="text-right flex-shrink-0">
-                    <p className="font-semibold text-gray-900 whitespace-nowrap">
-                      ${parseFloat(doc.line_total).toFixed(2)}
+            return (
+              <div key={doc.id || index} className="flex items-start justify-between py-3 border-b border-gray-100 last:border-0">
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                  <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate" title={filename}>
+                      {filename}
                     </p>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                      <span className="inline-flex items-center px-2.5 py-0.5 bg-teal-50 text-teal-700 text-xs font-medium rounded-full border border-teal-200 whitespace-nowrap">
+                        {langLabel}
+                      </span>
+                      <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-500 text-xs rounded whitespace-nowrap">
+                        {doc.billable_pages?.toFixed(1)} pages
+                      </span>
+                      <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-500 text-xs rounded whitespace-nowrap">
+                        {doc.word_count?.toLocaleString()} words
+                      </span>
+                      <span className="inline-flex items-center px-2.5 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full border border-gray-200 whitespace-nowrap">
+                        {docType}
+                      </span>
+                    </div>
                   </div>
                 </div>
+                <span className="text-sm font-semibold text-gray-900 ml-4 whitespace-nowrap">
+                  ${parseFloat(doc.line_total).toFixed(2)}
+                </span>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="px-4 sm:px-6 py-4">
-            <p className="text-sm text-gray-600">
-              This quote was prepared by our team.
-            </p>
-            {sourceLanguageName && targetLanguageName && (
-              <p className="text-xs text-gray-500 mt-1">
-                {sourceLanguageName} → {targetLanguageName}
-              </p>
-            )}
-          </div>
-        )}
-        {/* Pricing footer inside documents card */}
-        <div className="px-4 sm:px-6 py-3 bg-gray-50 border-t border-gray-200">
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-gray-600">
-              {documents.length > 0
-                ? `${totalBillablePages.toFixed(1)} pages × $${effectiveRate.toFixed(2)}/page`
-                : 'Translation'}
+            );
+          })}
+        </div>
+
+        {/* Price calculation footer */}
+        <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">
+              {documents.reduce((sum, doc) => sum + (doc.billable_pages || 0), 0).toFixed(1)} pages × ${effectiveRate.toFixed(2)}/page
             </span>
-            <span className="font-semibold text-gray-900">${totals.subtotal.toFixed(2)}</span>
+            <span className="text-sm font-semibold text-gray-900">
+              ${totals.translationSubtotal.toFixed(2)}
+            </span>
           </div>
+          {totals.certificationTotal > 0 && (
+            <div className="flex justify-between items-center mt-1">
+              <span className="text-sm text-gray-600">
+                Certification ({documents.length} document{documents.length !== 1 ? "s" : ""})
+              </span>
+              <span className="text-sm font-semibold text-gray-900">
+                ${totals.certificationTotal.toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
