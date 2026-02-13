@@ -116,6 +116,11 @@ interface IntendedUse {
   is_active: boolean;
 }
 
+interface QuoteSource {
+  id: string;
+  name: string;
+}
+
 interface Customer {
   id: string;
   full_name: string;
@@ -185,6 +190,7 @@ export default function UseInQuoteModal({
   const [selectedIntendedUseId, setSelectedIntendedUseId] =
     useState<string>("");
   const [countryOfIssue, setCountryOfIssue] = useState<string>("");
+  const [quoteSourceId, setQuoteSourceId] = useState<string>("");
   const [customerNote, setCustomerNote] = useState<string>("");
 
   // Customer state
@@ -208,6 +214,7 @@ export default function UseInQuoteModal({
   // Reference data
   const [languages, setLanguages] = useState<Language[]>([]);
   const [intendedUses, setIntendedUses] = useState<IntendedUse[]>([]);
+  const [quoteSources, setQuoteSources] = useState<QuoteSource[]>([]);
   const [refDataLoaded, setRefDataLoaded] = useState(false);
 
   // Submit state
@@ -231,6 +238,7 @@ export default function UseInQuoteModal({
       setSelectedTargetLanguageId("");
       setSelectedIntendedUseId("");
       setCountryOfIssue("");
+      setQuoteSourceId("");
       setCustomerNote("");
       setCustomerSearch("");
       setSearchResults([]);
@@ -252,7 +260,7 @@ export default function UseInQuoteModal({
     }
 
     const fetchReferenceData = async () => {
-      const [langsRes, usesRes] = await Promise.all([
+      const [langsRes, usesRes, sourcesRes] = await Promise.all([
         supabase
           .from("languages")
           .select("id, name, code, price_multiplier, is_active")
@@ -265,6 +273,10 @@ export default function UseInQuoteModal({
           )
           .eq("is_active", true)
           .order("sort_order"),
+        supabase
+          .from("quote_sources")
+          .select("id, name")
+          .order("name"),
       ]);
 
       const langs = langsRes.data || [];
@@ -272,6 +284,7 @@ export default function UseInQuoteModal({
 
       setLanguages(langs);
       setIntendedUses(uses);
+      setQuoteSources(sourcesRes.data || []);
 
       // Pre-fill from AI detection
       const detectedCode = detectMostCommonLanguage(analysisResults);
@@ -460,6 +473,7 @@ export default function UseInQuoteModal({
           intendedUseId: selectedIntendedUseId || null,
           certificationTypeId: activeRows[0]?.defaultCertTypeId || "",
           countryOfIssue: countryOfIssue || null,
+          quoteSourceId: quoteSourceId || null,
           customerId: selectedCustomer.id,
           customerNote: customerNote.trim() || null,
         },
@@ -616,26 +630,45 @@ export default function UseInQuoteModal({
               </div>
             </div>
 
-            {/* Country of Issue */}
-            <div className="mt-4 max-w-[calc(50%-0.5rem)]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Country of Issue
-                {aiDetectedCountry && (
-                  <span className="ml-1 text-xs text-blue-600 font-normal">
-                    (AI detected)
-                  </span>
-                )}
-              </label>
-              <input
-                type="text"
-                value={countryOfIssue}
-                onChange={(e) => {
-                  setCountryOfIssue(e.target.value);
-                  if (aiDetectedCountry) setAiDetectedCountry(false);
-                }}
-                placeholder="e.g. Mexico, Canada..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+            {/* Country of Issue & Quote Source */}
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Country of Issue
+                  {aiDetectedCountry && (
+                    <span className="ml-1 text-xs text-blue-600 font-normal">
+                      (AI detected)
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  value={countryOfIssue}
+                  onChange={(e) => {
+                    setCountryOfIssue(e.target.value);
+                    if (aiDetectedCountry) setAiDetectedCountry(false);
+                  }}
+                  placeholder="e.g. Mexico, Canada..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Quote Source
+                </label>
+                <select
+                  value={quoteSourceId}
+                  onChange={(e) => setQuoteSourceId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select source...</option>
+                  {quoteSources.map((src) => (
+                    <option key={src.id} value={src.id}>
+                      {src.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
