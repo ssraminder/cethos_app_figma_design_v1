@@ -26,6 +26,8 @@ import {
   User,
   XCircle,
   Zap,
+  MessageSquare,
+  Paperclip,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -281,7 +283,7 @@ export default function AdminOrderDetail() {
     try {
       const { data, error } = await supabase
         .from("quote_files")
-        .select("id, original_filename, file_size, mime_type, storage_path, created_at")
+        .select("id, original_filename, file_size, mime_type, storage_path, category_id, created_at")
         .eq("quote_id", quoteId)
         .order("created_at", { ascending: true });
 
@@ -295,10 +297,15 @@ export default function AdminOrderDetail() {
     }
   };
 
+  const REFERENCE_CATEGORY_ID = "f1aed462-a25f-4dd0-96c0-f952c3a72950";
+
+  const getBucketForFile = (file: any) =>
+    file.category_id === REFERENCE_CATEGORY_ID ? "quote-reference-files" : "quote-files";
+
   const handlePreviewFile = async (file: any) => {
     try {
       const { data } = await supabase.storage
-        .from("quote-files")
+        .from(getBucketForFile(file))
         .createSignedUrl(file.storage_path, 3600);
       if (data?.signedUrl) {
         window.open(data.signedUrl, "_blank");
@@ -311,7 +318,7 @@ export default function AdminOrderDetail() {
   const handleDownloadFile = async (file: any) => {
     try {
       const { data } = await supabase.storage
-        .from("quote-files")
+        .from(getBucketForFile(file))
         .download(file.storage_path);
       if (data) {
         const url = URL.createObjectURL(data);
@@ -352,6 +359,7 @@ export default function AdminOrderDetail() {
             quote_number,
             promised_delivery_date,
             country_of_issue,
+            special_instructions,
             source_language:languages!source_language_id(id, code, name),
             target_language:languages!target_language_id(id, code, name)
           )
@@ -1121,6 +1129,15 @@ export default function AdminOrderDetail() {
                   <p className="font-medium">{order.quote.country_of_issue}</p>
                 </div>
               )}
+              {order.quote?.special_instructions && (
+                <div className="col-span-2">
+                  <p className="text-sm text-gray-500 flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Customer Instructions
+                  </p>
+                  <p className="font-medium whitespace-pre-wrap">{order.quote.special_instructions}</p>
+                </div>
+              )}
             </div>
 
             {/* Per-Document Analysis Summary */}
@@ -1187,71 +1204,105 @@ export default function AdminOrderDetail() {
 
           {/* Documents Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Documents ({quoteFiles.length})
-            </h3>
+            {(() => {
+              const translateFiles = quoteFiles.filter((f: any) => f.category_id !== REFERENCE_CATEGORY_ID);
+              const referenceFiles = quoteFiles.filter((f: any) => f.category_id === REFERENCE_CATEGORY_ID);
 
-            {loadingFiles ? (
-              <div className="flex items-center justify-center py-8">
-                <RefreshCw className="w-5 h-5 animate-spin text-gray-400" />
-              </div>
-            ) : quoteFiles.length === 0 ? (
-              <p className="text-gray-500 text-sm py-4">No documents uploaded</p>
-            ) : (
-              <div className="space-y-3">
-                {quoteFiles.map((file) => (
-                  <div
-                    key={file.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <FileText className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {file.original_filename}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {file.file_size
-                            ? `${(file.file_size / 1024).toFixed(1)} KB`
-                            : "—"}{" "}
-                          • {file.mime_type || "Unknown type"}
-                        </p>
+              return (
+                <>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Documents ({translateFiles.length})
+                  </h3>
+
+                  {loadingFiles ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="w-5 h-5 animate-spin text-gray-400" />
+                    </div>
+                  ) : translateFiles.length === 0 ? (
+                    <p className="text-gray-500 text-sm py-4">No documents uploaded</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {translateFiles.map((file: any) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <FileText className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {file.original_filename}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {file.file_size
+                                  ? `${(file.file_size / 1024).toFixed(1)} KB`
+                                  : "—"}{" "}
+                                • {file.mime_type || "Unknown type"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => handlePreviewFile(file)}
+                              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Preview"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDownloadFile(file)}
+                              className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                              title="Download"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedFileForOcr(file);
+                                setShowOcrModal(true);
+                              }}
+                              className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                              title="OCR & Pricing"
+                            >
+                              <Brain className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {referenceFiles.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
+                        Reference Files
+                      </h4>
+                      <div className="space-y-1.5">
+                        {referenceFiles.map((rf: any) => (
+                          <div key={rf.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                            <Paperclip className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                            <span className="truncate text-gray-600">{rf.original_filename}</span>
+                            <span className="text-xs text-gray-400 flex-shrink-0">
+                              {rf.file_size ? `${(rf.file_size / 1024).toFixed(1)} KB` : "—"}
+                            </span>
+                            <button
+                              onClick={() => handleDownloadFile(rf)}
+                              className="text-xs text-teal-600 hover:underline flex-shrink-0 ml-auto"
+                            >
+                              Download
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => handlePreviewFile(file)}
-                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Preview"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDownloadFile(file)}
-                        className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                        title="Download"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedFileForOcr(file);
-                          setShowOcrModal(true);
-                        }}
-                        className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                        title="OCR & Pricing"
-                      >
-                        <Brain className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           <div className="bg-white rounded-lg border p-6">

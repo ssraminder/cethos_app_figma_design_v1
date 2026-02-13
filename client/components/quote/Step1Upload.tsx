@@ -79,6 +79,14 @@ export default function Step1Upload() {
     state.targetLanguageId || "",
   );
 
+  // Special instructions
+  const [specialInstructions, setSpecialInstructions] = useState(state.specialInstructions || "");
+
+  // Reference file state
+  const [refFiles, setRefFiles] = useState<LocalFile[]>([]);
+  const [isRefDragging, setIsRefDragging] = useState(false);
+  const refFileInputRef = useRef<HTMLInputElement>(null);
+
   // UI state
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -312,6 +320,138 @@ export default function Step1Upload() {
     }
   };
 
+  // ── Reference file handlers ─────────────────────────────────────────────
+
+  const processRefFiles = (files: File[]) => {
+    const newFiles: LocalFile[] = [];
+    const fileErrors: string[] = [];
+
+    for (const file of files) {
+      if (refFiles.some((f) => f.name === file.name && f.size === file.size))
+        continue;
+
+      const err = validateFile(file);
+      if (err) {
+        fileErrors.push(err);
+        continue;
+      }
+
+      newFiles.push({
+        id: `ref-${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        file,
+        name: file.name,
+        size: file.size,
+        mimeType: file.type,
+        status: "uploading",
+        progress: 0,
+      });
+    }
+
+    if (fileErrors.length > 0) {
+      setErrors((prev) => ({ ...prev, refFiles: fileErrors.join(" ") }));
+    } else {
+      clearError("refFiles");
+    }
+
+    if (newFiles.length > 0) {
+      setRefFiles((prev) => [...prev, ...newFiles]);
+      newFiles.forEach((lf) => uploadRefFile(lf));
+    }
+  };
+
+  const uploadRefFile = async (localFile: LocalFile) => {
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += Math.random() * 25 + 5;
+      if (progress >= 95) {
+        clearInterval(interval);
+        progress = 95;
+      }
+      setRefFiles((prev) =>
+        prev.map((f) =>
+          f.id === localFile.id && f.status === "uploading"
+            ? { ...f, progress: Math.min(Math.round(progress), 95) }
+            : f,
+        ),
+      );
+    }, 200);
+
+    try {
+      if (!supabase) throw new Error("Supabase not configured");
+
+      const ext = localFile.name.split(".").pop();
+      const tempPath = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from("quote-reference-files")
+        .upload(tempPath, localFile.file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      clearInterval(interval);
+
+      if (error) throw error;
+
+      setRefFiles((prev) =>
+        prev.map((f) =>
+          f.id === localFile.id
+            ? { ...f, progress: 100, status: "success", storagePath: tempPath }
+            : f,
+        ),
+      );
+    } catch (err: any) {
+      clearInterval(interval);
+      setRefFiles((prev) =>
+        prev.map((f) =>
+          f.id === localFile.id
+            ? {
+                ...f,
+                status: "error",
+                error: err?.message || "Upload failed",
+              }
+            : f,
+        ),
+      );
+    }
+  };
+
+  const removeRefFile = (fileId: string) => {
+    const file = refFiles.find((f) => f.id === fileId);
+
+    if (file?.storagePath && supabase) {
+      supabase.storage
+        .from("quote-reference-files")
+        .remove([file.storagePath])
+        .catch(() => {});
+    }
+
+    setRefFiles((prev) => prev.filter((f) => f.id !== fileId));
+  };
+
+  const handleRefDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsRefDragging(true);
+  };
+
+  const handleRefDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsRefDragging(false);
+  };
+
+  const handleRefDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsRefDragging(false);
+    processRefFiles(Array.from(e.dataTransfer.files));
+  };
+
+  const handleRefFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      processRefFiles(Array.from(e.target.files));
+      e.target.value = "";
+    }
+  };
+
   // ── Validation ──────────────────────────────────────────────────────────
 
   const successFiles = localFiles.filter((f) => f.status === "success");
@@ -369,6 +509,7 @@ export default function Step1Upload() {
             source_language_id: sourceLanguageId,
             target_language_id: targetLanguageId,
             entry_point: "customer_web",
+            special_instructions: specialInstructions || null,
           })
           .select("id, quote_number")
           .single();
@@ -386,6 +527,7 @@ export default function Step1Upload() {
           .update({
             source_language_id: sourceLanguageId,
             target_language_id: targetLanguageId,
+            special_instructions: specialInstructions || null,
           })
           .eq("id", quoteId);
 
@@ -420,6 +562,7 @@ export default function Step1Upload() {
             file_size: lf.size,
             mime_type: lf.mimeType,
             upload_status: "uploaded",
+            category_id: "45cb02ba-fca5-423a-8cb9-6ad807ad3bbc", // "To Translate"
           });
 
         if (recordError) {
@@ -431,6 +574,50 @@ export default function Step1Upload() {
           supabase.storage
             .from("quote-files")
             .remove([lf.storagePath])
+            .catch(() => {});
+        }
+      }
+
+      // 2b. Upload reference files to final path and create quote_files records
+      const successRefFiles = refFiles.filter((f) => f.status === "success");
+
+      for (const rf of successRefFiles) {
+        const sanitized = sanitizeFilename(rf.name);
+        const finalPath = `${quoteId}/ref_${sanitized}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("quote-reference-files")
+          .upload(finalPath, rf.file, {
+            cacheControl: "3600",
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error(`Failed to upload ref file ${rf.name}:`, uploadError);
+          continue;
+        }
+
+        const { error: recordError } = await supabase
+          .from("quote_files")
+          .insert({
+            quote_id: quoteId,
+            original_filename: rf.name,
+            storage_path: finalPath,
+            file_size: rf.size,
+            mime_type: rf.mimeType,
+            upload_status: "uploaded",
+            ai_processing_status: "skipped",
+            category_id: "f1aed462-a25f-4dd0-96c0-f952c3a72950", // "Reference"
+          });
+
+        if (recordError) {
+          console.error(`Failed to create ref file record for ${rf.name}:`, recordError);
+        }
+
+        if (rf.storagePath && rf.storagePath !== finalPath) {
+          supabase.storage
+            .from("quote-reference-files")
+            .remove([rf.storagePath])
             .catch(() => {});
         }
       }
@@ -670,6 +857,114 @@ export default function Step1Upload() {
       {errors.sameLang && (
         <p className="text-sm text-red-600 mt-2">{errors.sameLang}</p>
       )}
+
+      {/* Special Instructions */}
+      <div className="mt-6">
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          Special Instructions <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <textarea
+          value={specialInstructions}
+          onChange={(e) => {
+            setSpecialInstructions(e.target.value);
+            updateState({ specialInstructions: e.target.value });
+          }}
+          placeholder="Any context for the translator — preferred terminology, formatting notes, special requirements, etc."
+          rows={3}
+          maxLength={2000}
+          className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-y"
+        />
+        <p className="text-xs text-gray-400 mt-1 text-right">
+          {specialInstructions.length}/2000
+        </p>
+      </div>
+
+      {/* Reference Files Upload */}
+      <div className="mt-6">
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          Reference Files <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <p className="text-xs text-gray-500 mb-2">
+          Upload glossaries, style guides, or reference materials to help the translator. These files won't be translated or counted toward pricing.
+        </p>
+
+        <div
+          role="button"
+          tabIndex={0}
+          className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${
+            isRefDragging
+              ? "border-gray-400 bg-gray-50"
+              : "border-gray-200 bg-gray-50/50 hover:border-gray-400 hover:bg-gray-50"
+          }`}
+          onDragOver={handleRefDragOver}
+          onDragLeave={handleRefDragLeave}
+          onDrop={handleRefDrop}
+          onClick={() => refFileInputRef.current?.click()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") refFileInputRef.current?.click();
+          }}
+        >
+          <div className="flex flex-col items-center py-2">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-2">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+            </svg>
+            <p className="text-sm text-gray-500">
+              Drag and drop reference files or click to browse
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              PDF, JPG, PNG, DOCX &mdash; max 20MB per file
+            </p>
+          </div>
+
+          <input
+            ref={refFileInputRef}
+            type="file"
+            multiple
+            accept={ACCEPTED_EXTENSIONS}
+            onChange={handleRefFileSelect}
+            className="hidden"
+          />
+        </div>
+
+        {errors.refFiles && (
+          <p className="text-sm text-red-600 mt-2">{errors.refFiles}</p>
+        )}
+
+        {refFiles.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {refFiles.map((f) => (
+              <div key={f.id} className="flex items-center gap-2.5 p-2.5 px-3.5 bg-white border border-gray-200 rounded-lg">
+                <span className="text-lg flex-shrink-0">{fileIcon(f.mimeType)}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-700 truncate">{f.name}</p>
+                  {f.status === "uploading" && (
+                    <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
+                      <div className="bg-gray-400 h-1 rounded-full transition-all duration-200" style={{ width: `${f.progress}%` }} />
+                    </div>
+                  )}
+                  {f.status === "error" && f.error && (
+                    <p className="text-xs text-red-500 mt-0.5 truncate">{f.error}</p>
+                  )}
+                </div>
+                <span className="text-[10px] uppercase tracking-wider text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded flex-shrink-0">Ref</span>
+                <span className="text-xs text-gray-400 flex-shrink-0">{formatFileSize(f.size)}</span>
+                <span className="flex-shrink-0">
+                  {f.status === "uploading" && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+                  {f.status === "success" && <CheckCircle className="w-4 h-4 text-green-500" />}
+                  {f.status === "error" && <XCircle className="w-4 h-4 text-red-500" />}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); removeRefFile(f.id); }}
+                  className="p-1 text-gray-400 hover:text-red-500 transition flex-shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* General submit error */}
       {errors.submit && (
