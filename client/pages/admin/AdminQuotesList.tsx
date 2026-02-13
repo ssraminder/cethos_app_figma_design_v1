@@ -48,6 +48,7 @@ const BUSINESS_STATUS_OPTIONS = [
   { value: "lead", label: "New Lead" },
   { value: "pending_payment", label: "Pending Payment" },
   { value: "paid", label: "Paid" },
+  { value: "in_review", label: "In Review" },
   { value: "expired", label: "Expired" },
   { value: "cancelled", label: "Cancelled" },
 ];
@@ -926,6 +927,7 @@ function BusinessStatusBadge({ status }: { status?: string }) {
     pending_payment: { bg: "bg-amber-100",  text: "text-amber-700", label: "Pending Payment" },
     paid:            { bg: "bg-green-100",  text: "text-green-700", label: "Paid" },
     expired:         { bg: "bg-red-100",    text: "text-red-700",   label: "Expired" },
+    in_review:       { bg: "bg-amber-100",  text: "text-amber-700", label: "In Review" },
     cancelled:       { bg: "bg-gray-100",   text: "text-gray-500",  label: "Cancelled" },
   };
 

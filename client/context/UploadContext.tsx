@@ -354,7 +354,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         throw new Error("Processing failed");
       }
 
-      if (data?.processing_status === "hitl_pending") {
+      if (data?.processing_status === "review_required") {
         throw new Error("Manual review required");
       }
 
@@ -508,7 +508,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         .single();
 
       // 2. If HITL is required, automatically create HITL review
-      if (quote?.hitl_required || quote?.processing_status === "hitl_pending") {
+      if (quote?.hitl_required) {
         console.log("🚨 HITL required! Reasons:", quote?.hitl_reasons);
         updateState({ showProcessingModal: false });
 
@@ -701,9 +701,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       await supabase
         .from("quotes")
         .update({
-          status: "hitl_pending",
+          status: "in_review",
           hitl_required: true,
-          hitl_reasons: ["customer_requested"],
+          review_required_reasons: ["customer_requested"],
           hitl_requested_at: new Date().toISOString(),
         })
         .eq("id", state.quoteId);

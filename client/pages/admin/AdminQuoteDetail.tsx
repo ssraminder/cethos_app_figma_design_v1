@@ -248,8 +248,7 @@ const STATUS_STYLES: Record<string, string> = {
   details_pending: "bg-yellow-100 text-yellow-700",
   processing: "bg-blue-100 text-blue-700",
   quote_ready: "bg-green-100 text-green-700",
-  hitl_pending: "bg-amber-100 text-amber-700",
-  hitl_in_review: "bg-amber-100 text-amber-700",
+  in_review: "bg-amber-100 text-amber-700",
   revision_needed: "bg-orange-100 text-orange-700",
   awaiting_payment: "bg-teal-100 text-teal-700",
   expired: "bg-red-100 text-red-700",
@@ -261,8 +260,7 @@ const STATUS_LABELS: Record<string, string> = {
   details_pending: "Details Pending",
   processing: "Processing",
   quote_ready: "Quote Ready",
-  hitl_pending: "HITL Pending",
-  hitl_in_review: "HITL In Review",
+  in_review: "In Review",
   revision_needed: "Revision Needed",
   awaiting_payment: "Awaiting Payment",
   expired: "Expired",
@@ -1171,8 +1169,7 @@ export default function AdminQuoteDetail() {
       await supabase
         .from("quotes")
         .update({
-          status: "hitl_in_review",
-          processing_status: "hitl_in_review",
+          status: "in_review",
         })
         .eq("id", id);
 
@@ -1202,8 +1199,7 @@ export default function AdminQuoteDetail() {
       await supabase
         .from("quotes")
         .update({
-          status: "hitl_in_review",
-          processing_status: "hitl_in_review",
+          status: "in_review",
         })
         .eq("id", id);
 
@@ -3183,7 +3179,7 @@ export default function AdminQuoteDetail() {
             Start Review
           </button>
         )}
-        {["processing", "hitl_pending"].includes(quote.status) && (
+        {["processing", "in_review"].includes(quote.status) && (
           <>
             <button
               onClick={approveQuote}
