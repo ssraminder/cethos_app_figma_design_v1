@@ -5,9 +5,7 @@ import ProcessingStatus from "@/components/ProcessingStatus";
 import Step1Upload from "@/components/quote/Step1Upload";
 import Step2Details from "@/components/quote/Step2Details";
 import Step3Contact from "@/components/quote/Step3Contact";
-import Step4Review from "@/components/quote/Step4Review";
-import Step5Delivery from "@/components/quote/Step5Delivery";
-import Step6Pay from "@/components/quote/Step6Pay";
+import Step4ReviewCheckout from "@/components/quote/Step4ReviewCheckout";
 import { Loader2, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 
 export default function QuoteFlow() {
@@ -40,7 +38,7 @@ export default function QuoteFlow() {
       const source: "website_embed" | "email_link" = embedQuoteId
         ? "website_embed"
         : "email_link";
-      const defaultStep = embedQuoteId ? 2 : 5;
+      const defaultStep = embedQuoteId ? 2 : 4;
       const stepOverride = embedStep ? parseInt(embedStep, 10) : defaultStep;
       hydrateFromUrl(incomingQuoteId, stepOverride, source, emailToken || null, () => cancelled);
     } else {
@@ -144,10 +142,10 @@ export default function QuoteFlow() {
 
       // 7. Determine valid step
       const validStep =
-        targetStep >= 2 && targetStep <= 6
+        targetStep >= 2 && targetStep <= 4
           ? targetStep
           : source === "email_link"
-            ? 5
+            ? 4
             : 2;
 
       // 8. Hydrate context state — overrides localStorage
@@ -342,13 +340,7 @@ export default function QuoteFlow() {
         {state.currentStep === 2 && <Step2Details />}
         {state.currentStep === 3 && <Step3Contact />}
         {!state.showProcessingModal && state.currentStep === 4 && (
-          <Step4Review />
-        )}
-        {!state.showProcessingModal && state.currentStep === 5 && (
-          <Step5Delivery />
-        )}
-        {!state.showProcessingModal && state.currentStep === 6 && (
-          <Step6Pay />
+          <Step4ReviewCheckout />
         )}
       </div>
     </div>

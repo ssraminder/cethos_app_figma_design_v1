@@ -7,9 +7,7 @@ const STEPS = [
   { number: 1, label: "Upload", shortLabel: "Upload" },
   { number: 2, label: "Details", shortLabel: "Details" },
   { number: 3, label: "Contact", shortLabel: "Contact" },
-  { number: 4, label: "Review", shortLabel: "Review" },
-  { number: 5, label: "Delivery", shortLabel: "Delivery" },
-  { number: 6, label: "Pay", shortLabel: "Pay" },
+  { number: 4, label: "Checkout", shortLabel: "Checkout" },
 ];
 
 export default function ProgressStepper({
