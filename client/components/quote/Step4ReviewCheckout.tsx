@@ -17,6 +17,9 @@ import {
   Globe,
   Mail,
   MapPin,
+  CreditCard,
+  Lock,
+  AlertCircle,
 } from "lucide-react";
 import StartOverLink from "@/components/StartOverLink";
 import { toast } from "sonner";
@@ -291,7 +294,11 @@ export default function Step4ReviewCheckout() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-  // ... Phase 4 state will be added later ...
+  // === STATE FROM STEP 6 (Payment) ===
+  const [payLoading, setPayLoading] = useState(false);
+  const [savingQuote, setSavingQuote] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [entryPoint, setEntryPoint] = useState<string | null>(null);
 
   // === DERIVED STATE ===
 
@@ -320,6 +327,7 @@ export default function Step4ReviewCheckout() {
     fetchTurnaroundOptions();
     fetchAnalysisData();
     fetchDeliveryData();
+    fetchExpiryData();
   }, [state.quoteId]);
 
   useEffect(() => {
@@ -1578,34 +1586,273 @@ export default function Step4ReviewCheckout() {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Calculate fees based on selection
-  const calculateFees = () => {
-    const subtotal = totals.subtotal;
-    let turnaroundFee = 0;
+  // Fetch expiry data and entry point
+  const fetchExpiryData = async () => {
+    if (!state.quoteId) return;
+    const { data } = await supabase
+      .from("quotes")
+      .select("expires_at, entry_point")
+      .eq("id", state.quoteId)
+      .single();
 
-    const selectedOption = turnaroundOptions.find(
-      (opt) => opt.code === turnaroundType,
-    );
-
-    if (selectedOption && selectedOption.is_rush) {
-      const multiplier =
-        selectedOption.code === "rush"
-          ? rushMultiplier
-          : selectedOption.code === "same_day"
-            ? sameDayMultiplier
-            : selectedOption.multiplier;
-      turnaroundFee = subtotal * (multiplier - 1);
+    if (data?.expires_at) {
+      const expiryDate = new Date(data.expires_at);
+      if (expiryDate < new Date()) {
+        navigate("/quote/expired", {
+          replace: true,
+          state: { quoteNumber: state.quoteNumber },
+        });
+        return;
+      }
+      setExpiresAt(data.expires_at);
     }
-
-    const subtotalWithTurnaround = subtotal + turnaroundFee;
-    const taxRate = 0.05;
-    const taxAmount = subtotalWithTurnaround * taxRate;
-    const total = subtotalWithTurnaround + taxAmount;
-
-    return { turnaroundFee, taxAmount, total };
+    if (data?.entry_point) setEntryPoint(data.entry_point);
   };
 
-  const { turnaroundFee, taxAmount, total } = calculateFees();
+  // Single source of truth for all pricing
+  const calculateFinalPricing = () => {
+    const baseSubtotal = totals.subtotal; // translation + certification from AI analysis
+
+    // Turnaround fee
+    let turnaroundFee = 0;
+    if (turnaroundType === "rush") {
+      turnaroundFee = baseSubtotal * (rushMultiplier - 1);
+    } else if (turnaroundType === "same_day") {
+      turnaroundFee = baseSubtotal * (sameDayMultiplier - 1);
+    }
+
+    // Delivery fee
+    const selectedDelivery = physicalOptions.find(opt => opt.code === selectedPhysicalOption);
+    const deliveryFee = selectedDelivery?.price || 0;
+
+    // Tax
+    const taxableAmount = baseSubtotal + turnaroundFee + deliveryFee;
+    const taxAmount = taxableAmount * taxRate;
+
+    // Final total
+    const finalTotal = taxableAmount + taxAmount;
+
+    return {
+      translationTotal: totals.translationSubtotal,
+      certificationTotal: totals.certificationTotal,
+      baseSubtotal,
+      turnaroundFee,
+      deliveryFee,
+      taxRate,
+      taxName,
+      taxAmount,
+      finalTotal,
+    };
+  };
+
+  const pricing = calculateFinalPricing();
+
+  // Handle Pay — validates, writes all data, then redirects to Stripe
+  const handlePay = async () => {
+    // 1. Validate billing form
+    if (!validateForm()) {
+      toast.error("Please complete all required fields");
+      const firstErrorEl = document.querySelector('.border-red-500');
+      firstErrorEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    // 2. Validate physical delivery selection
+    if (!selectedPhysicalOption) {
+      setErrors(prev => ({ ...prev, physicalDelivery: "Please select a delivery option" }));
+      toast.error("Please select a physical delivery option");
+      return;
+    }
+
+    // 3. Validate pricing
+    if (pricing.finalTotal <= 0) {
+      toast.error("Invalid order total. Please review your quote.");
+      return;
+    }
+
+    setPayLoading(true);
+    setError(null);
+
+    try {
+      const quoteId = state.quoteId;
+      if (!quoteId) throw new Error("Quote ID not found");
+
+      const selectedPhysicalObj = physicalOptions.find(opt => opt.code === selectedPhysicalOption);
+      const needsShipping = physicalOptions
+        .filter(opt => opt.requires_address)
+        .some(opt => opt.code === selectedPhysicalOption);
+
+      const shipAddr = sameAsBilling ? billingAddress : shippingAddress;
+
+      // 4. SINGLE DB WRITE — all data in one update
+      const { error: updateError } = await supabase
+        .from("quotes")
+        .update({
+          // Turnaround data
+          turnaround_type: turnaroundType,
+          rush_fee: pricing.turnaroundFee,
+          estimated_delivery_date:
+            turnaroundType === "same_day" ? new Date().toISOString()
+            : turnaroundType === "rush" ? rushDeliveryDate.toISOString()
+            : standardDeliveryDate.toISOString(),
+
+          // Delivery data
+          physical_delivery_option_id: selectedPhysicalObj?.id || null,
+          selected_pickup_location_id: selectedPhysicalOption === "pickup" ? selectedPickupLocation : null,
+          delivery_fee: pricing.deliveryFee,
+
+          // Billing address
+          billing_address: {
+            firstName: billingAddress.fullName.split(" ")[0] || billingAddress.fullName,
+            lastName: billingAddress.fullName.split(" ").slice(1).join(" ") || "",
+            company: state.companyName || "",
+            addressLine1: billingAddress.streetAddress,
+            addressLine2: "",
+            city: billingAddress.city,
+            state: billingAddress.province,
+            postalCode: billingAddress.postalCode,
+            country: billingAddress.country,
+            phone: state.phone || "",
+          },
+
+          // Shipping address
+          shipping_address: needsShipping ? {
+            firstName: shipAddr.fullName.split(" ")[0] || shipAddr.fullName,
+            lastName: shipAddr.fullName.split(" ").slice(1).join(" ") || "",
+            company: state.companyName || "",
+            addressLine1: shipAddr.streetAddress,
+            addressLine2: "",
+            city: shipAddr.city,
+            state: shipAddr.province,
+            postalCode: shipAddr.postalCode,
+            country: shipAddr.country,
+            phone: state.phone || "",
+          } : null,
+
+          // Calculated totals — single source of truth
+          calculated_totals: {
+            translation_total: pricing.translationTotal,
+            certification_total: pricing.certificationTotal,
+            subtotal: pricing.baseSubtotal,
+            rush_fee: pricing.turnaroundFee,
+            delivery_fee: pricing.deliveryFee,
+            tax_rate: pricing.taxRate,
+            tax_name: pricing.taxName,
+            tax_amount: pricing.taxAmount,
+            total: pricing.finalTotal,
+          },
+
+          subtotal: pricing.translationTotal,
+          certification_total: pricing.certificationTotal,
+          tax_rate: pricing.taxRate,
+          tax_amount: pricing.taxAmount,
+          total: pricing.finalTotal,
+
+          status: "pending_payment",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", quoteId);
+
+      if (updateError) throw updateError;
+
+      // 5. Create Stripe checkout session
+      const { data, error: fnError } = await supabase.functions.invoke(
+        "create-checkout-session",
+        { body: { quoteId } }
+      );
+
+      if (fnError) throw new Error(fnError.message || "Failed to create checkout session");
+      if (!data?.success || !data?.checkoutUrl) throw new Error(data?.error || "Failed to create checkout session");
+
+      // 6. Redirect to Stripe
+      window.location.href = data.checkoutUrl;
+
+    } catch (err: any) {
+      console.error("Payment error:", err);
+      setError(err.message || "An error occurred. Please try again.");
+      toast.error(err.message || "Failed to process payment");
+      setPayLoading(false);
+    }
+  };
+
+  // Handle Save and Email — saves all data then navigates to saved page
+  const handleSaveAndEmail = async () => {
+    if (!validateForm()) {
+      toast.error("Please complete billing information before saving");
+      return;
+    }
+
+    setSavingQuote(true);
+    setError(null);
+
+    try {
+      const quoteId = state.quoteId;
+      if (!quoteId) throw new Error("Quote ID not found.");
+
+      const selectedPhysicalObj = physicalOptions.find(opt => opt.code === selectedPhysicalOption);
+      const needsShipping = physicalOptions
+        .filter(opt => opt.requires_address)
+        .some(opt => opt.code === selectedPhysicalOption);
+
+      const shipAddr = sameAsBilling ? billingAddress : shippingAddress;
+
+      await supabase
+        .from("quotes")
+        .update({
+          turnaround_type: turnaroundType,
+          rush_fee: pricing.turnaroundFee,
+          physical_delivery_option_id: selectedPhysicalObj?.id || null,
+          billing_address: {
+            firstName: billingAddress.fullName.split(" ")[0] || billingAddress.fullName,
+            lastName: billingAddress.fullName.split(" ").slice(1).join(" ") || "",
+            company: state.companyName || "",
+            addressLine1: billingAddress.streetAddress,
+            addressLine2: "",
+            city: billingAddress.city,
+            state: billingAddress.province,
+            postalCode: billingAddress.postalCode,
+            country: billingAddress.country,
+            phone: state.phone || "",
+          },
+          shipping_address: needsShipping ? {
+            firstName: shipAddr.fullName.split(" ")[0] || shipAddr.fullName,
+            lastName: shipAddr.fullName.split(" ").slice(1).join(" ") || "",
+            company: state.companyName || "",
+            addressLine1: shipAddr.streetAddress,
+            addressLine2: "",
+            city: shipAddr.city,
+            state: shipAddr.province,
+            postalCode: shipAddr.postalCode,
+            country: shipAddr.country,
+            phone: state.phone || "",
+          } : null,
+          calculated_totals: {
+            translation_total: pricing.translationTotal,
+            certification_total: pricing.certificationTotal,
+            subtotal: pricing.baseSubtotal,
+            rush_fee: pricing.turnaroundFee,
+            delivery_fee: pricing.deliveryFee,
+            tax_rate: pricing.taxRate,
+            tax_name: pricing.taxName,
+            tax_amount: pricing.taxAmount,
+            total: pricing.finalTotal,
+          },
+          total: pricing.finalTotal,
+          status: "pending_payment",
+          saved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", quoteId);
+
+      await supabase.functions.invoke("send-quote-link-email", { body: { quoteId } });
+      navigate(`/quote/saved?quote_id=${quoteId}`);
+    } catch (err: any) {
+      console.error("Save and email error:", err);
+      setError(err.message || "Failed to save quote.");
+      toast.error(err.message || "Failed to save quote");
+      setSavingQuote(false);
+    }
+  };
 
   // Handle HITL Review Request
   const handleRequestReview = async () => {
@@ -1830,12 +2077,46 @@ export default function Step4ReviewCheckout() {
         )}
       </div>
 
+      {/* Expiry Warning Banner */}
+      {expiresAt &&
+        (() => {
+          const daysUntilExpiry = Math.ceil(
+            (new Date(expiresAt).getTime() - Date.now()) /
+              (1000 * 60 * 60 * 24),
+          );
+          return daysUntilExpiry > 0 && daysUntilExpiry <= 7 ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 flex items-start gap-3">
+              <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-amber-800 font-medium">
+                  Quote expires in {daysUntilExpiry} day
+                  {daysUntilExpiry !== 1 ? "s" : ""}
+                </p>
+                <p className="text-amber-700 text-sm">
+                  Complete your payment before{" "}
+                  {new Date(expiresAt).toLocaleDateString()} to secure this
+                  price.
+                </p>
+              </div>
+            </div>
+          ) : null;
+        })()}
+
       {/* Error banner */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <p className="text-sm text-red-700">{error}</p>
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            <span>{error}</span>
+          </div>
         </div>
       )}
+
+      {/* Two-column layout */}
+      <div className="flex flex-col lg:flex-row gap-8">
+
+      {/* LEFT COLUMN */}
+      <div className="flex-1 min-w-0">
 
       {/* Document Breakdown */}
       <div className="bg-white rounded-xl border border-cethos-border shadow-cethos-card overflow-hidden mb-6">
@@ -2869,21 +3150,160 @@ export default function Step4ReviewCheckout() {
         </div>
       </div>
 
-      {/* Placeholder for Order Summary + Pay — Phase 4 */}
-      <div className="bg-gray-50 rounded-xl border border-dashed border-gray-300 p-6 mt-6 text-center text-gray-400">
-        Order summary & payment coming in Phase 4
-      </div>
-
       {/* Navigation */}
       <div className="flex items-center justify-between mt-6">
         <StartOverLink />
         <button
           onClick={goToPreviousStep}
-          className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+          disabled={saving || payLoading}
+          className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
         >
           &larr; Back
         </button>
       </div>
+
+      </div>{/* END LEFT COLUMN */}
+
+      {/* RIGHT COLUMN — Sticky Order Summary */}
+      <div className="w-full lg:w-[380px] flex-shrink-0">
+        <div className="lg:sticky lg:top-6">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+              <h3 className="font-semibold text-gray-900">Order Summary</h3>
+            </div>
+
+            <div className="px-6 py-4">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Translation</span>
+                  <span className="text-gray-900 font-medium">${pricing.translationTotal.toFixed(2)}</span>
+                </div>
+
+                {pricing.certificationTotal > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Certification</span>
+                    <span className="text-gray-900 font-medium">${pricing.certificationTotal.toFixed(2)}</span>
+                  </div>
+                )}
+
+                {pricing.turnaroundFee > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">
+                      {turnaroundType === "rush" ? "Rush Fee" : "Same-Day Fee"}
+                    </span>
+                    <span className="text-gray-900 font-medium">${pricing.turnaroundFee.toFixed(2)}</span>
+                  </div>
+                )}
+
+                {pricing.deliveryFee > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Delivery</span>
+                    <span className="text-gray-900 font-medium">${pricing.deliveryFee.toFixed(2)}</span>
+                  </div>
+                )}
+
+                {pricing.taxRate > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">{pricing.taxName} ({(pricing.taxRate * 100).toFixed(0)}%)</span>
+                    <span className="text-gray-900 font-medium">${pricing.taxAmount.toFixed(2)}</span>
+                  </div>
+                )}
+
+                {pricing.taxRate === 0 && billingAddress.country !== "CA" && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Tax</span>
+                    <span className="text-gray-500 font-medium">Not applicable</span>
+                  </div>
+                )}
+
+                <div className="pt-3 border-t-2 border-gray-300 flex justify-between items-center">
+                  <span className="text-xl font-bold text-gray-900">TOTAL CAD</span>
+                  <span className="text-2xl font-bold text-gray-900">${pricing.finalTotal.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Pay Button — hidden on mobile */}
+              <button
+                onClick={handlePay}
+                disabled={payLoading || pricing.finalTotal <= 0 || hitlRequested || hitlRequired}
+                className="hidden sm:flex w-full mt-6 py-3 px-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed items-center justify-center gap-2"
+              >
+                {payLoading ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
+                ) : hitlRequested || hitlRequired ? (
+                  "Awaiting Review"
+                ) : (
+                  <><CreditCard className="w-5 h-5" /> Pay ${pricing.finalTotal.toFixed(2)} CAD</>
+                )}
+              </button>
+
+              {/* Security badge */}
+              <div className="flex items-center justify-center gap-2 text-xs text-gray-500 mt-3">
+                <Lock className="w-3 h-3" />
+                <span>Secure payment powered by Stripe</span>
+              </div>
+
+              {/* E-Transfer (staff_manual only) */}
+              {entryPoint === "staff_manual" && (
+                <div className="mt-4">
+                  <div className="text-center mb-2"><span className="text-xs text-gray-500">or</span></div>
+                  <button
+                    onClick={() => navigate(`/etransfer/confirm?quote_id=${state.quoteId}`)}
+                    disabled={payLoading || pricing.finalTotal <= 0}
+                    className="w-full py-2.5 px-4 border-2 border-cethos-teal text-cethos-teal rounded-xl hover:bg-cethos-teal hover:text-white transition-colors font-medium text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <Mail className="w-4 h-4" /> Pay by E-Transfer
+                  </button>
+                </div>
+              )}
+
+              {/* Save & Email */}
+              <div className="text-center mt-4 pt-4 border-t border-gray-100">
+                <p className="text-xs text-gray-500 mb-1">Not ready to pay now?</p>
+                <button
+                  onClick={handleSaveAndEmail}
+                  disabled={savingQuote || pricing.finalTotal <= 0}
+                  className="text-sm text-cethos-teal hover:underline disabled:opacity-50"
+                >
+                  {savingQuote ? "Saving..." : "Save and email my quote"}
+                </button>
+              </div>
+
+              {/* Quote info */}
+              {state.quoteNumber && (
+                <p className="text-xs text-gray-400 text-center mt-3">Quote: {state.quoteNumber}</p>
+              )}
+
+              {/* Terms */}
+              <p className="text-xs text-gray-400 text-center mt-2">
+                By clicking &quot;Pay&quot;, you agree to our{" "}
+                <a href="/terms" className="text-cethos-teal hover:underline">Terms</a>
+                {" & "}
+                <a href="/privacy" className="text-cethos-teal hover:underline">Privacy Policy</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>{/* END RIGHT COLUMN */}
+
+      </div>{/* END Two-column layout */}
+
+      {/* Mobile sticky footer */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 sm:hidden z-40 shadow-lg">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium text-gray-600">Total</span>
+          <span className="text-lg font-bold text-gray-900">${pricing.finalTotal.toFixed(2)} CAD</span>
+        </div>
+        <button
+          onClick={handlePay}
+          disabled={payLoading || pricing.finalTotal <= 0 || hitlRequested || hitlRequired}
+          className="w-full py-3 bg-green-600 text-white rounded-xl font-semibold disabled:opacity-50"
+        >
+          {payLoading ? "Processing..." : hitlRequested || hitlRequired ? "Awaiting Review" : `Pay $${pricing.finalTotal.toFixed(2)} CAD`}
+        </button>
+      </div>
+      {/* Spacer for mobile sticky footer */}
+      <div className="h-28 sm:hidden" />
 
       {/* HITL Request Modal */}
       {showHitlModal && (
