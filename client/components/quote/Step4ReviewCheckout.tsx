@@ -243,7 +243,7 @@ export default function Step4ReviewCheckout() {
   const [languageMultiplier, setLanguageMultiplier] = useState(1.0);
   const [languageTier, setLanguageTier] = useState(1);
 
-  // NEW: Calculated effective rate (base_rate * multiplier, rounded to nearest 2.5)
+  // Display effective rate (read from first document's stored base_rate)
   const [effectiveRate, setEffectiveRate] = useState(65);
 
   // Delivery dates
@@ -338,13 +338,7 @@ export default function Step4ReviewCheckout() {
     }
   }, [sourceLanguage, targetLanguage, documentType, intendedUse, standardDays]);
 
-  // NEW: Calculate effective rate when baseRate or languageMultiplier changes
-  useEffect(() => {
-    const rawRate = baseRate * languageMultiplier;
-    const calculated = Math.ceil(rawRate / 2.5) * 2.5;
-    setEffectiveRate(calculated);
-    console.log(`💰 Effective rate calculation: $${baseRate} × ${languageMultiplier} = $${rawRate} → rounded to $${calculated}`);
-  }, [baseRate, languageMultiplier]);
+  // effectiveRate is now set from the first document's stored base_rate in fetchAnalysisData
 
   // Auto-polling effect
   useEffect(() => {
@@ -858,29 +852,13 @@ export default function Step4ReviewCheckout() {
         .eq("id", quoteId)
         .single();
 
-      // Fetch base rate from settings
-      const { data: baseRateSetting } = await supabase
-        .from("app_settings")
-        .select("setting_value")
-        .eq("setting_key", "base_rate")
-        .single();
-
-      const fetchedBaseRate = parseFloat(baseRateSetting?.setting_value || "65");
-      setBaseRate(fetchedBaseRate);
-      console.log(`📊 Base rate from settings: $${fetchedBaseRate}`);
-
-      // Set source language info from quote data (user-selected language)
-      let fetchedMultiplier = 1.0;
-      let fetchedTier = 1;
+      // Set source language info from quote data (for display and same-day eligibility)
       if (quoteData?.source_language) {
         const srcLang = quoteData.source_language as any;
-        fetchedMultiplier = parseFloat(srcLang?.multiplier || "1.0");
-        fetchedTier = srcLang?.tier || 1;
         setSourceLanguage(srcLang?.code || "");
         setSourceLanguageName(srcLang?.name || "");
-        setLanguageMultiplier(fetchedMultiplier);
-        setLanguageTier(fetchedTier);
-        console.log(`📊 Source language: ${srcLang?.name} (Tier ${fetchedTier}, multiplier: ${fetchedMultiplier})`);
+        setLanguageMultiplier(parseFloat(srcLang?.multiplier || "1.0"));
+        setLanguageTier(srcLang?.tier || 1);
       }
 
       // Set target language from quote data
@@ -910,37 +888,30 @@ export default function Step4ReviewCheckout() {
         setDocumentType(firstDoc.detected_document_type || "");
       }
 
-      // Calculate the correct effective rate
-      const rawRate = fetchedBaseRate * fetchedMultiplier;
-      const calculatedEffectiveRate = Math.ceil(rawRate / 2.5) * 2.5;
-      setEffectiveRate(calculatedEffectiveRate);
-      console.log(`💰 Calculated effective rate: $${fetchedBaseRate} × ${fetchedMultiplier} = $${rawRate} → rounded to $${calculatedEffectiveRate}`);
+      // Use stored pricing from DB — the backend is the source of truth
+      // base_rate and line_total in ai_analysis_results already reflect the effective rate
+      const displayRate = mergedData[0]?.base_rate || 65;
+      setEffectiveRate(displayRate);
+      setBaseRate(displayRate);
 
-      // RECALCULATE totals using the correct effective rate
-      // This ensures the displayed totals match the user-selected language, not AI-detected
-      const totalBillablePages = mergedData.reduce(
-        (sum, doc) => sum + (doc.billable_pages || 0),
+      // Read totals directly from stored values
+      const translationSubtotal = mergedData.reduce(
+        (sum, doc) => sum + (parseFloat(doc.line_total) || 0),
         0,
       );
-
-      const translationSubtotal = totalBillablePages * calculatedEffectiveRate;
       const certificationTotal = mergedData.reduce(
         (sum, doc) => sum + (parseFloat(doc.certification_price) || 0),
         0,
       );
       const subtotal = translationSubtotal + certificationTotal;
 
-      console.log(`📊 Recalculated totals: ${totalBillablePages.toFixed(1)} pages × $${calculatedEffectiveRate} = $${translationSubtotal.toFixed(2)}`);
+      const totalBillablePages = mergedData.reduce(
+        (sum, doc) => sum + (doc.billable_pages || 0),
+        0,
+      );
 
-      // Update documents with recalculated line_total for display
-      const recalculatedDocuments = mergedData.map(doc => ({
-        ...doc,
-        base_rate: calculatedEffectiveRate,
-        line_total: (doc.billable_pages * calculatedEffectiveRate).toFixed(2),
-      }));
-
-      // Set documents and totals
-      setDocuments(recalculatedDocuments);
+      // Set documents and totals using stored values (no recalculation)
+      setDocuments(mergedData);
       setTotals({
         translationSubtotal,
         certificationTotal,
@@ -955,17 +926,6 @@ export default function Step4ReviewCheckout() {
       const rushDate = await getDeliveryDate(Math.max(1, days - 1));
       setStandardDeliveryDate(standardDate);
       setRushDeliveryDate(rushDate);
-
-      // Update quotes table with recalculated totals
-      await supabase
-        .from("quotes")
-        .update({
-          subtotal: translationSubtotal,
-          certification_total: certificationTotal,
-          tax_rate: 0.05,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", quoteId);
 
     } catch (err) {
       console.error("Error fetching analysis data:", err);

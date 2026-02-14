@@ -88,7 +88,7 @@ export default function EditDocumentModal({
       const [docTypesRes, certTypesRes, settingsRes] = await Promise.all([
         supabase.from("document_types").select("id, code, name").eq("is_active", true).order("name"),
         supabase.from("certification_types").select("id, code, name, price").eq("is_active", true).order("sort_order"),
-        supabase.from("app_settings").select("setting_key, setting_value").in("setting_key", ["base_rate_per_page", "words_per_page"]),
+        supabase.from("app_settings").select("setting_key, setting_value").in("setting_key", ["words_per_page"]),
       ]);
 
       setDocumentTypes(docTypesRes.data || []);
@@ -96,9 +96,17 @@ export default function EditDocumentModal({
 
       if (settingsRes.data) {
         settingsRes.data.forEach((s) => {
-          if (s.setting_key === "base_rate_per_page") setBaseRate(parseFloat(s.setting_value) || 65);
           if (s.setting_key === "words_per_page") setWordsPerPage(parseInt(s.setting_value) || 225);
         });
+      }
+
+      // Derive effective base rate from the document's stored pricing
+      // line_total / billable_pages gives us the effective rate (already language-adjusted)
+      if (document.billable_pages > 0 && document.line_total > 0) {
+        const storedEffectiveRate = document.line_total / document.billable_pages;
+        // Round to nearest $2.50 to clean up any floating point drift
+        const cleanRate = Math.ceil(storedEffectiveRate / 2.5) * 2.5;
+        setBaseRate(cleanRate);
       }
     } catch (err) {
       console.error("Error loading reference data:", err);
@@ -119,10 +127,9 @@ export default function EditDocumentModal({
   const rawBillablePages = (parsedWordCount / wordsPerPage) * complexityMultiplier;
   const billablePages = Math.max(1, Math.ceil(rawBillablePages * 10) / 10);
 
-  // Calculate line total: billable_pages * base_rate (translation only, no certification)
-  // Rounded up to nearest $2.50
-  const rawTranslationCost = billablePages * baseRate;
-  const translationCost = Math.ceil(rawTranslationCost / 2.5) * 2.5;
+  // Calculate line total: billable_pages * effective_rate (translation only, no certification)
+  // baseRate is already the effective rate (language-adjusted and rounded to $2.50)
+  const translationCost = billablePages * baseRate;
   const lineTotal = translationCost;
 
   const handleSave = () => {
