@@ -33,6 +33,12 @@ interface Message {
   created_at: string;
   read_by_customer_at?: string;
   attachments?: Attachment[];
+  quote_id?: string | null;
+  metadata?: {
+    quote_number?: string;
+    order_number?: string;
+    [key: string]: any;
+  } | null;
 }
 
 interface MessageCustomerModalProps {
@@ -57,6 +63,7 @@ export default function MessageCustomerModal({
   staffName,
 }: MessageCustomerModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [filterByQuote, setFilterByQuote] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -268,7 +275,7 @@ export default function MessageCustomerModal({
   // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, filterByQuote]);
 
   // Send message
   const handleSend = async () => {
@@ -428,6 +435,10 @@ export default function MessageCustomerModal({
     );
   };
 
+  const filteredMessages = filterByQuote
+    ? messages.filter(msg => msg.quote_id === quoteId)
+    : messages;
+
   if (!isOpen) return null;
 
   return (
@@ -447,13 +458,55 @@ export default function MessageCustomerModal({
           </button>
         </div>
 
+        {/* Quote filter toggle */}
+        {quoteId && (
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setFilterByQuote(false)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                  !filterByQuote
+                    ? "bg-white text-gray-900 shadow-sm border border-gray-200"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                All Messages
+              </button>
+              <button
+                onClick={() => setFilterByQuote(true)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                  filterByQuote
+                    ? "bg-white text-gray-900 shadow-sm border border-gray-200"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                This Quote Only
+              </button>
+            </div>
+            {filterByQuote && (
+              <span className="text-xs text-gray-400">
+                {filteredMessages.length} of {messages.length} messages
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[300px]">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
             </div>
-          ) : messages.length === 0 ? (
+          ) : filteredMessages.length === 0 && filterByQuote ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-gray-400">No messages tagged to this quote</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Messages sent from this page will be tagged automatically.
+                <br />
+                Switch to "All Messages" to see the full conversation.
+              </p>
+            </div>
+          ) : filteredMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <MessageSquare className="w-8 h-8 mb-2 opacity-50" />
               <p className="text-sm">No messages yet</p>
@@ -462,7 +515,7 @@ export default function MessageCustomerModal({
               </p>
             </div>
           ) : (
-            messages.map((msg) => (
+            filteredMessages.map((msg) => (
               <div key={msg.id} className="flex">
                 <div
                   className={`max-w-[80%] rounded-xl px-4 py-3 ${
@@ -505,6 +558,21 @@ export default function MessageCustomerModal({
                             <Check className="w-3 h-3" />
                           ))}
                       </span>
+                      {!filterByQuote && msg.metadata?.quote_number && (
+                        <span className="inline-block text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-mono">
+                          {msg.metadata.quote_number}
+                        </span>
+                      )}
+                      {!filterByQuote && msg.metadata?.order_number && (
+                        <span className="inline-block text-xs bg-green-50 text-green-600 px-1.5 py-0.5 rounded font-mono">
+                          {msg.metadata.order_number}
+                        </span>
+                      )}
+                      {!filterByQuote && !msg.quote_id && msg.sender_type !== "system" && (
+                        <span className="inline-block text-xs bg-gray-50 text-gray-400 px-1.5 py-0.5 rounded">
+                          General
+                        </span>
+                      )}
                     </div>
                   )}
                   <p className="text-sm whitespace-pre-wrap">

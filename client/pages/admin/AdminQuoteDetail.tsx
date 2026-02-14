@@ -9,6 +9,7 @@ import {
   Building,
   Calculator,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Clock,
   CreditCard,
@@ -452,6 +453,7 @@ export default function AdminQuoteDetail() {
   const [analysis, setAnalysis] = useState<AIAnalysis[]>([]);
   const [hitlReviews, setHitlReviews] = useState<HITLReview[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationMessages, setConversationMessages] = useState<any[]>([]);
   const [certifications, setCertifications] = useState<DocumentCertification[]>([]);
   const [addresses, setAddresses] = useState<QuoteAddress[]>([]);
   const [adjustments, setAdjustments] = useState<QuoteAdjustment[]>([]);
@@ -583,6 +585,13 @@ export default function AdminQuoteDetail() {
       fetchQuoteDetails();
     }
   }, [id]);
+
+  // Fetch conversation messages for preview card once quote is loaded
+  useEffect(() => {
+    if (quote?.customer_id) {
+      fetchConversationMessages();
+    }
+  }, [quote?.customer_id]);
 
   // Check if an OCR batch exists for this quote
   useEffect(() => {
@@ -898,6 +907,45 @@ export default function AdminQuoteDetail() {
       setError(err.message || "Failed to load quote");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch all conversation messages for preview card (not filtered by quote_id)
+  const fetchConversationMessages = async () => {
+    if (!quote?.customer_id) return;
+
+    try {
+      const { data: conv } = await supabase
+        .from("customer_conversations")
+        .select("id")
+        .eq("customer_id", quote.customer_id)
+        .maybeSingle();
+
+      if (!conv?.id) {
+        setConversationMessages([]);
+        return;
+      }
+
+      const { data: messages } = await supabase
+        .from("conversation_messages")
+        .select(`
+          id, conversation_id, quote_id, sender_type, message_text,
+          message_type, source, created_at, read_by_staff_at,
+          metadata,
+          staff_users:sender_staff_id(full_name),
+          customers:sender_customer_id(full_name)
+        `)
+        .eq("conversation_id", conv.id)
+        .order("created_at", { ascending: true });
+
+      setConversationMessages(messages || []);
+
+      const unread = (messages || []).filter(
+        (m: any) => m.sender_type === "customer" && !m.read_by_staff_at
+      ).length;
+      setUnreadStaffCount(unread);
+    } catch (err) {
+      console.error("Failed to fetch conversation messages:", err);
     }
   };
 
@@ -3128,79 +3176,42 @@ export default function AdminQuoteDetail() {
             </div>
           </div>
 
-          {/* ============ MESSAGES SECTION ============ */}
+          {/* ============ MESSAGES PREVIEW CARD ============ */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowMessageModal(true)}
+              className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
                 <MessageSquare className="w-5 h-5 text-blue-600" />
-                <h3 className="text-base font-semibold text-gray-900">Messages</h3>
-                {messages.length > 0 && (
-                  <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-0.5 rounded-full">
-                    {messages.length}
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900 text-left">Messages</h3>
+                  {conversationMessages.length > 0 ? (
+                    <p className="text-sm text-gray-500 text-left mt-0.5 max-w-md truncate">
+                      {conversationMessages[conversationMessages.length - 1]?.sender_type === "staff" ? "You" : "Customer"}
+                      {": "}
+                      {conversationMessages[conversationMessages.length - 1]?.message_text?.substring(0, 60)}
+                      {(conversationMessages[conversationMessages.length - 1]?.message_text?.length || 0) > 60 ? "..." : ""}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-400 text-left mt-0.5">No messages yet — click to start a conversation</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                {conversationMessages.length > 0 && (
+                  <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                    {conversationMessages.length}
                   </span>
                 )}
                 {unreadStaffCount > 0 && (
-                  <span className="bg-red-500 text-white text-xs font-medium px-2 py-0.5 rounded-full">
-                    {unreadStaffCount} new
+                  <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
+                    {unreadStaffCount}
                   </span>
                 )}
+                <ChevronRight className="w-4 h-4 text-gray-400" />
               </div>
-              <button
-                onClick={() => setShowMessageModal(true)}
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-              >
-                <Send className="w-4 h-4" />
-                Send Message
-              </button>
-            </div>
-
-            <div className="px-6 py-4">
-              {messages.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">No messages yet</p>
-              ) : (
-                <div className="space-y-3 max-h-80 overflow-y-auto">
-                  {messages.map((msg) => {
-                    const isStaff = msg.sender_type === "staff";
-                    const isSystem = msg.sender_type === "system";
-                    const senderName = msg.sender_name;
-
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`flex ${isStaff ? "justify-end" : isSystem ? "justify-center" : "justify-start"}`}
-                      >
-                        <div
-                          className={`max-w-[75%] rounded-xl px-4 py-3 ${
-                            isSystem
-                              ? "bg-gray-50 text-gray-500 text-center text-sm italic"
-                              : isStaff
-                              ? "bg-blue-600 text-white"
-                              : "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {!isSystem && (
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`text-xs font-medium ${isStaff ? "text-blue-100" : "text-gray-500"}`}>
-                                {senderName}
-                              </span>
-                              <span className={`text-xs ${isStaff ? "text-blue-200" : "text-gray-400"}`}>
-                                {formatMessageDate(msg.created_at)}
-                              </span>
-                            </div>
-                          )}
-                          <p className="text-sm whitespace-pre-wrap">{msg.message_text}</p>
-                          {isSystem && (
-                            <span className="text-xs text-gray-400 block mt-1">
-                              {formatMessageDate(msg.created_at)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            </button>
           </div>
 
         </div>
@@ -4036,7 +4047,10 @@ export default function AdminQuoteDetail() {
 
       <MessageCustomerModal
         isOpen={showMessageModal}
-        onClose={() => setShowMessageModal(false)}
+        onClose={() => {
+          setShowMessageModal(false);
+          fetchConversationMessages();
+        }}
         customerId={quote.customer_id}
         customerName={quote.customer?.full_name || "Customer"}
         customerEmail={quote.customer?.email || ""}
