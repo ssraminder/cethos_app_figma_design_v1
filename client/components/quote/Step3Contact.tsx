@@ -128,6 +128,34 @@ export default function Step3Contact() {
             }),
           }
         ).catch((err) => console.warn('Staff notification failed (non-blocking):', err));
+
+        // Fire-and-forget: Send welcome email with magic link
+        try {
+          const quoteNumber = state.quoteNumber || '';
+          const submDate = new Date().toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          });
+
+          supabase.functions.invoke('send-customer-login-otp', {
+            body: {
+              email: email,
+              quoteNumber: quoteNumber,
+              submissionDate: submDate,
+            },
+          }).then((res) => {
+            if (res.error) {
+              console.warn('Welcome email failed (non-blocking):', res.error);
+            } else {
+              console.log('Welcome email sent to:', email);
+            }
+          }).catch((err) => {
+            console.warn('Welcome email failed (non-blocking):', err);
+          });
+        } catch (emailErr) {
+          console.warn('Welcome email setup failed (non-blocking):', emailErr);
+        }
       }
 
       // 3. Show processing modal (Index.tsx renders ProcessingStatus overlay)
