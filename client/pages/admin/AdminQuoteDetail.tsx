@@ -41,6 +41,7 @@ import {
   StickyNote,
   HelpCircle,
   FileEdit,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -522,8 +523,10 @@ export default function AdminQuoteDetail() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   // Activity Log, Notes, and enhanced Messages state
+  const [activityLogOpen, setActivityLogOpen] = useState(false);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
-  const [showAllActivity, setShowAllActivity] = useState(false);
+  const [activityLogLoading, setActivityLogLoading] = useState(false);
+  const [activityLogLoaded, setActivityLogLoaded] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [filesWithUrls, setFilesWithUrls] = useState<(NormalizedFile & { downloadUrl: string | null })[]>([]);
 
@@ -869,14 +872,6 @@ export default function AdminQuoteDetail() {
         setOrderId(orderData?.id || null);
       }
 
-      // Fetch activity log
-      const { data: activityLogData } = await supabase
-        .from("quote_activity_log")
-        .select("*, staff:staff_users(full_name)")
-        .eq("quote_id", id)
-        .order("created_at", { ascending: false });
-      setActivityLog(activityLogData || []);
-
       // Generate signed URLs for files
       const urlFiles = await Promise.all(
         normalized.map(async (file) => {
@@ -998,6 +993,7 @@ export default function AdminQuoteDetail() {
         from_rate: quote.tax_rate,
         to_rate: selectedRate.rate,
       });
+      setActivityLogLoaded(false);
 
       // Update local state immediately
       setQuote(prev => prev ? {
@@ -1040,6 +1036,7 @@ export default function AdminQuoteDetail() {
         from: quote.turnaround_type,
         to: selectedOption.code,
       });
+      setActivityLogLoaded(false);
 
       // Call recalculate-quote-pricing edge function and re-fetch quote
       await callRecalculatePricing();
@@ -1107,6 +1104,7 @@ export default function AdminQuoteDetail() {
         from: previousOption?.name || quote.physical_delivery_option_id,
         to: selectedOption.name,
       });
+      setActivityLogLoaded(false);
 
       // Call recalculate-quote-pricing
       await callRecalculatePricing();
@@ -1177,6 +1175,7 @@ export default function AdminQuoteDetail() {
         old_total: oldTotal,
         new_total: quote?.total,
       });
+      setActivityLogLoaded(false);
       toast.success("Totals recalculated");
     } catch (err) {
       console.error("Failed to recalculate totals:", err);
@@ -1220,6 +1219,7 @@ export default function AdminQuoteDetail() {
         amount: calculatedAmount,
         reason: adjustmentForm.reason.trim(),
       });
+      setActivityLogLoaded(false);
 
       const { data: adjData } = await supabase
         .from("quote_adjustments")
@@ -1255,6 +1255,7 @@ export default function AdminQuoteDetail() {
         type: removedAdj?.adjustment_type,
         amount: removedAdj?.calculated_amount,
       });
+      setActivityLogLoaded(false);
 
       const { data: adjData } = await supabase
         .from("quote_adjustments")
@@ -1435,6 +1436,7 @@ export default function AdminQuoteDetail() {
       await logQuoteActivity(id, currentStaff.staffId, "hitl_review_claimed", {
         review_id: hitlReview.id,
       });
+      setActivityLogLoaded(false);
 
       await fetchQuoteDetails();
     } catch (err) {
@@ -1476,6 +1478,7 @@ export default function AdminQuoteDetail() {
         from_status: quote?.status,
         to_status: "awaiting_payment",
       });
+      setActivityLogLoaded(false);
 
       await fetchQuoteDetails();
     } catch (err) {
@@ -1525,6 +1528,7 @@ export default function AdminQuoteDetail() {
         from_status: quote?.status,
         to_status: "revision_needed",
       });
+      setActivityLogLoaded(false);
 
       await fetchQuoteDetails();
     } catch (err) {
@@ -1543,6 +1547,7 @@ export default function AdminQuoteDetail() {
       await logQuoteActivity(id, currentStaff.staffId, "quote_deleted", {
         previous_status: quote?.status,
       });
+      setActivityLogLoaded(false);
 
       const deletedAt = new Date().toISOString();
 
@@ -1640,6 +1645,7 @@ export default function AdminQuoteDetail() {
         customer_email: quote?.customer?.email,
         custom_message: resendCustomMessage.trim() || undefined,
       });
+      setActivityLogLoaded(false);
 
       setShowResendModal(false);
       setResendCustomMessage("");
@@ -1707,6 +1713,7 @@ export default function AdminQuoteDetail() {
         from_status: quote.status,
         to_status: "awaiting_payment",
       });
+      setActivityLogLoaded(false);
 
       alert("Quote link sent to customer!");
       await fetchQuoteDetails();
@@ -1806,6 +1813,7 @@ export default function AdminQuoteDetail() {
         from_status: quote.status,
         to_status: "awaiting_payment",
       });
+      setActivityLogLoaded(false);
 
       alert("Payment link sent to customer!");
       await fetchQuoteDetails();
@@ -1944,6 +1952,7 @@ export default function AdminQuoteDetail() {
         amount: parsedAmountPaid,
         remarks: rpRemarks || undefined,
       });
+      setActivityLogLoaded(false);
 
       setShowReceivePaymentModal(false);
       setSelectedPaymentMethodId("");
@@ -1980,8 +1989,39 @@ export default function AdminQuoteDetail() {
       await logQuoteActivity(quote.id, currentStaff.staffId, "note_added", {
         note_preview: newNote.trim().substring(0, 100),
       });
+      setActivityLogLoaded(false);
       setNewNote("");
       fetchQuoteDetails();
+    }
+  };
+
+  // --- Activity Log lazy-fetch & accordion toggle ---
+  const fetchActivityLog = async () => {
+    if (activityLogLoaded || !quote?.id) return;
+    setActivityLogLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("quote_activity_log")
+        .select("*, staff:staff_users(full_name)")
+        .eq("quote_id", quote.id)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setActivityLog(data);
+      }
+      setActivityLogLoaded(true);
+    } catch (err) {
+      console.error("Failed to fetch activity log:", err);
+    } finally {
+      setActivityLogLoading(false);
+    }
+  };
+
+  const toggleActivityLog = () => {
+    const willOpen = !activityLogOpen;
+    setActivityLogOpen(willOpen);
+    if (willOpen && !activityLogLoaded) {
+      fetchActivityLog();
     }
   };
 
@@ -3146,53 +3186,6 @@ export default function AdminQuoteDetail() {
             </div>
           </div>
 
-          {/* ============ ACTIVITY LOG SECTION ============ */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-indigo-600" />
-              <h3 className="text-base font-semibold text-gray-900">Activity Log</h3>
-              {activityLog.length > 0 && (
-                <span className="text-xs text-gray-500">({activityLog.length})</span>
-              )}
-            </div>
-
-            <div className="px-6 py-4">
-              {activityLog.length === 0 ? (
-                <div className="text-center py-4">
-                  <p className="text-sm text-gray-400">No activity recorded yet</p>
-                  <p className="text-xs text-gray-400 mt-1">Actions on this quote will appear here</p>
-                </div>
-              ) : (
-                <div className="space-y-0">
-                  {(showAllActivity ? activityLog : activityLog.slice(0, 10)).map((entry) => (
-                    <div key={entry.id} className="flex gap-3 py-2.5 border-b border-gray-50 last:border-0">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${getActivityIconStyle(entry.action_type)}`}>
-                        {getActivityIcon(entry.action_type)}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-800">
-                          {formatActivityDescription(entry)}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {entry.staff?.full_name || "System"} · {formatRelativeTime(entry.created_at)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-
-                  {activityLog.length > 10 && !showAllActivity && (
-                    <button
-                      onClick={() => setShowAllActivity(true)}
-                      className="w-full text-center py-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      Show all {activityLog.length} entries
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
         <div className="space-y-6">
@@ -3916,6 +3909,71 @@ export default function AdminQuoteDetail() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* ============ ACTIVITY LOG ACCORDION ============ */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* Accordion Header — always visible */}
+            <button
+              onClick={toggleActivityLog}
+              className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-base font-semibold text-gray-900">Activity Log</h3>
+                {activityLogLoaded && activityLog.length > 0 && (
+                  <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                    {activityLog.length}
+                  </span>
+                )}
+              </div>
+              {activityLogOpen ? (
+                <ChevronUp className="w-5 h-5 text-gray-400" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-400" />
+              )}
+            </button>
+
+            {/* Accordion Body — only rendered when open */}
+            {activityLogOpen && (
+              <div className="px-6 pb-4 border-t border-gray-100">
+                {activityLogLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                    <span className="ml-2 text-sm text-gray-500">Loading activity...</span>
+                  </div>
+                ) : activityLog.length === 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-sm text-gray-400">No activity recorded yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Actions on this quote will appear here</p>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-0">
+                    {activityLog.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex gap-3 py-2.5 border-b border-gray-50 last:border-0"
+                      >
+                        {/* Icon */}
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${getActivityIconStyle(entry.action_type)}`}>
+                          {getActivityIcon(entry.action_type)}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800">
+                            {formatActivityDescription(entry)}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {entry.staff?.full_name || "System"} · {formatRelativeTime(entry.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Payment Info — visible only when quote is paid */}
