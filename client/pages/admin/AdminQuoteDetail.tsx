@@ -461,6 +461,7 @@ export default function AdminQuoteDetail() {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
+  const [unreadStaffCount, setUnreadStaffCount] = useState(0);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showResendModal, setShowResendModal] = useState(false);
@@ -709,6 +710,16 @@ export default function AdminQuoteDetail() {
                 : "System",
         })),
       );
+
+      // Count unread messages (customer messages not yet read by staff)
+      const { count: unread } = await supabase
+        .from("conversation_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("quote_id", id)
+        .eq("sender_type", "customer")
+        .is("read_by_staff_at", null);
+
+      setUnreadStaffCount(unread || 0);
 
       // Fetch document certifications by quote_file_id (document_certifications doesn't have quote_id column)
       const fileIds = (filesData || []).map((f: any) => f.id);
@@ -3128,9 +3139,9 @@ export default function AdminQuoteDetail() {
                     {messages.length}
                   </span>
                 )}
-                {messages.some(m => m.sender_type === 'customer' && !m.read_by_staff_at) && (
-                  <span className="bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded-full">
-                    Unread
+                {unreadStaffCount > 0 && (
+                  <span className="bg-red-500 text-white text-xs font-medium px-2 py-0.5 rounded-full">
+                    {unreadStaffCount} new
                   </span>
                 )}
               </div>

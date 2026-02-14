@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { logQuoteActivity } from "../../utils/quoteActivityLog";
 import {
   X,
   Send,
@@ -203,6 +204,24 @@ export default function MessageCustomerModal({
     }
   }, [isOpen, customerId, quoteId]);
 
+  // Mark messages as read when modal opens
+  useEffect(() => {
+    if (isOpen && conversationId && staffId) {
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-messages-read`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          reader_type: "staff",
+          reader_id: staffId,
+        }),
+      }).catch(err => console.error("Failed to mark messages read:", err));
+    }
+  }, [isOpen, conversationId, staffId]);
+
   // Realtime subscription with polling fallback
   useEffect(() => {
     if (!conversationId) return;
@@ -293,6 +312,14 @@ export default function MessageCustomerModal({
 
       const data = await response.json();
       console.log("✅ Message sent");
+
+      // Log to activity log (non-blocking)
+      if (quoteId && staffId) {
+        logQuoteActivity(quoteId, staffId, "message_sent", {
+          customer_email: customerEmail,
+          message_preview: (newMessage.trim() || "").substring(0, 100),
+        }).catch(() => {});
+      }
 
       setNewMessage("");
       setSelectedFile(null);
