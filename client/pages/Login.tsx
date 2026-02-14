@@ -183,15 +183,6 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <img
-            src="https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/png_logo_cethos_light_bg.png"
-            alt="Cethos Translation Services"
-            className="h-10 mx-auto"
-          />
-        </div>
-
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
           {/* ── Screen 1: Email + Method Toggle ── */}
           {step === "email" && (
