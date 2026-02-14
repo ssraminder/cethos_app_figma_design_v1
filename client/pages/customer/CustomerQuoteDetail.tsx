@@ -11,6 +11,11 @@ import {
   Download,
   XCircle,
   RotateCcw,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  Send,
+  Loader2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
@@ -66,6 +71,14 @@ export default function CustomerQuoteDetail() {
   const [loading, setLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Messaging state
+  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [quoteMessages, setQuoteMessages] = useState<any[]>([]);
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [newMessage, setNewMessage] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+
   useEffect(() => {
     if (id && customer?.id) {
       loadQuote();
@@ -102,6 +115,92 @@ export default function CustomerQuoteDetail() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleMessages = () => {
+    const willOpen = !messagesOpen;
+    setMessagesOpen(willOpen);
+    if (willOpen && !messagesLoaded) {
+      fetchQuoteMessages();
+    }
+  };
+
+  const fetchQuoteMessages = async () => {
+    setMessagesLoading(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-quote-messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ quote_id: id }),
+        },
+      );
+      const result = await response.json();
+      if (result.success) {
+        setQuoteMessages(result.messages || []);
+      }
+      setMessagesLoaded(true);
+    } catch (err) {
+      console.error("Failed to fetch messages:", err);
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || sendingMessage) return;
+    setSendingMessage(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-message`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            customer_id: customer?.id,
+            quote_id: id,
+            message_text: newMessage.trim(),
+          }),
+        },
+      );
+      const result = await response.json();
+      if (result.success) {
+        setNewMessage("");
+        setMessagesLoaded(false);
+        fetchQuoteMessages();
+      }
+    } catch (err) {
+      console.error("Failed to send message:", err);
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const formatRelativeTime = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
   };
 
   const handlePayment = () => {
@@ -445,6 +544,118 @@ export default function CustomerQuoteDetail() {
             </div>
           </div>
         )}
+
+        {/* ============ MESSAGES SECTION ============ */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-6">
+          <button
+            onClick={toggleMessages}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-blue-600" />
+              <h3 className="text-base font-semibold text-gray-900">
+                Messages
+              </h3>
+              {quoteMessages.length > 0 && (
+                <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                  {quoteMessages.length}
+                </span>
+              )}
+            </div>
+            {messagesOpen ? (
+              <ChevronUp className="w-5 h-5 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            )}
+          </button>
+
+          {messagesOpen && (
+            <div className="border-t border-gray-100">
+              {/* Message thread */}
+              <div className="px-6 py-4 max-h-96 overflow-y-auto space-y-3">
+                {messagesLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                  </div>
+                ) : quoteMessages.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">
+                    No messages for this quote
+                  </p>
+                ) : (
+                  quoteMessages.map((msg: any) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.sender_type === "customer" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[75%] rounded-xl px-4 py-3 ${
+                          msg.sender_type === "customer"
+                            ? "bg-blue-600 text-white"
+                            : msg.sender_type === "system"
+                              ? "bg-gray-50 text-gray-500 italic text-sm"
+                              : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={`text-xs font-medium ${
+                              msg.sender_type === "customer"
+                                ? "text-blue-100"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {msg.sender_name}
+                          </span>
+                          <span
+                            className={`text-xs ${
+                              msg.sender_type === "customer"
+                                ? "text-blue-200"
+                                : "text-gray-400"
+                            }`}
+                          >
+                            {formatRelativeTime(msg.created_at)}
+                          </span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">
+                          {msg.message_text}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Composer */}
+              <div className="px-6 py-4 border-t border-gray-100 bg-gray-50">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" &&
+                      !e.shiftKey &&
+                      handleSendMessage()
+                    }
+                    placeholder="Type a message..."
+                    className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!newMessage.trim() || sendingMessage}
+                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    {sendingMessage ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </CustomerLayout>
   );
