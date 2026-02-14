@@ -33,12 +33,21 @@ import {
   Zap,
   FileSearch,
   Paperclip,
+  LinkIcon,
+  UserCheck,
+  CheckCircle,
+  Percent,
+  Activity,
+  StickyNote,
+  HelpCircle,
+  FileEdit,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import MessageCustomerModal from "../../components/admin/MessageCustomerModal";
 import OcrAnalysisModal from "../../components/admin/OcrAnalysisModal";
+import { logQuoteActivity } from "../../utils/quoteActivityLog";
 
 interface QuoteDetail {
   id: string;
@@ -106,6 +115,7 @@ interface QuoteDetail {
   processing_status?: string;
   review_required_reasons?: string[];
   customer_note?: string;
+  manual_quote_notes?: string;
   calculated_totals?: {
     translation_total?: number;
     doc_certification_total?: number;
@@ -176,6 +186,8 @@ interface HITLReview {
   created_at: string;
   completed_at: string;
   resolution_notes: string;
+  internal_notes?: string;
+  escalation_reason?: string;
 }
 
 interface Message {
@@ -184,6 +196,20 @@ interface Message {
   message_text: string;
   created_at: string;
   sender_name: string;
+  read_by_customer_at?: string | null;
+  read_by_staff_at?: string | null;
+  staff_sender?: { full_name: string } | null;
+  sender_customer?: { full_name: string } | null;
+}
+
+interface ActivityLogEntry {
+  id: string;
+  quote_id: string;
+  staff_id: string | null;
+  action_type: string;
+  details: Record<string, any>;
+  created_at: string;
+  staff?: { full_name: string } | null;
 }
 
 interface DocumentCertification {
@@ -494,6 +520,12 @@ export default function AdminQuoteDetail() {
   const [rpAmountPaid, setRpAmountPaid] = useState("");
   const [rpRemarks, setRpRemarks] = useState("");
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // Activity Log, Notes, and enhanced Messages state
+  const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [showAllActivity, setShowAllActivity] = useState(false);
+  const [newNote, setNewNote] = useState("");
+  const [filesWithUrls, setFilesWithUrls] = useState<(NormalizedFile & { downloadUrl: string | null })[]>([]);
 
   const fetchQuoteFiles = async (quoteId: string): Promise<NormalizedFile[]> => {
     // Try quote_files first (customer upload route)
@@ -836,6 +868,25 @@ export default function AdminQuoteDetail() {
           .single();
         setOrderId(orderData?.id || null);
       }
+
+      // Fetch activity log
+      const { data: activityLogData } = await supabase
+        .from("quote_activity_log")
+        .select("*, staff:staff_users(full_name)")
+        .eq("quote_id", id)
+        .order("created_at", { ascending: false });
+      setActivityLog(activityLogData || []);
+
+      // Generate signed URLs for files
+      const urlFiles = await Promise.all(
+        normalized.map(async (file) => {
+          const { data: signedUrl } = await supabase.storage
+            .from(file.bucket)
+            .createSignedUrl(file.bucketPath, 3600);
+          return { ...file, downloadUrl: signedUrl?.signedUrl || null };
+        })
+      );
+      setFilesWithUrls(urlFiles);
     } catch (err: any) {
       console.error("Error fetching quote:", err);
       setError(err.message || "Failed to load quote");
@@ -943,6 +994,11 @@ export default function AdminQuoteDetail() {
 
       if (error) throw error;
 
+      await logQuoteActivity(id, currentStaff?.staffId || "", "tax_rate_changed", {
+        from_rate: quote.tax_rate,
+        to_rate: selectedRate.rate,
+      });
+
       // Update local state immediately
       setQuote(prev => prev ? {
         ...prev,
@@ -979,6 +1035,11 @@ export default function AdminQuoteDetail() {
         .eq("id", id);
 
       if (updateError) throw updateError;
+
+      await logQuoteActivity(id, currentStaff?.staffId || "", "turnaround_changed", {
+        from: quote.turnaround_type,
+        to: selectedOption.code,
+      });
 
       // Call recalculate-quote-pricing edge function and re-fetch quote
       await callRecalculatePricing();
@@ -1040,6 +1101,12 @@ export default function AdminQuoteDetail() {
         .eq("id", id);
 
       if (updateError) throw updateError;
+
+      const previousOption = deliveryOptionsList.find(o => o.id === quote.physical_delivery_option_id);
+      await logQuoteActivity(id, currentStaff?.staffId || "", "delivery_changed", {
+        from: previousOption?.name || quote.physical_delivery_option_id,
+        to: selectedOption.name,
+      });
 
       // Call recalculate-quote-pricing
       await callRecalculatePricing();
@@ -1103,8 +1170,13 @@ export default function AdminQuoteDetail() {
   const handleRecalculateTotals = async () => {
     if (!id) return;
     setIsRecalculating(true);
+    const oldTotal = quote?.total;
     try {
       await callRecalculatePricing();
+      await logQuoteActivity(id, currentStaff?.staffId || "", "totals_recalculated", {
+        old_total: oldTotal,
+        new_total: quote?.total,
+      });
       toast.success("Totals recalculated");
     } catch (err) {
       console.error("Failed to recalculate totals:", err);
@@ -1143,6 +1215,12 @@ export default function AdminQuoteDetail() {
 
       await callRecalculatePricing();
 
+      await logQuoteActivity(id, currentStaff?.staffId || "", "adjustment_added", {
+        type: adjustmentForm.type,
+        amount: calculatedAmount,
+        reason: adjustmentForm.reason.trim(),
+      });
+
       const { data: adjData } = await supabase
         .from("quote_adjustments")
         .select("*")
@@ -1160,6 +1238,7 @@ export default function AdminQuoteDetail() {
 
   const handleRemoveAdjustment = async (adjustmentId: string) => {
     if (!id) return;
+    const removedAdj = adjustments.find(a => a.id === adjustmentId);
     setRemovingAdjustmentId(adjustmentId);
     try {
       const { error: deleteError } = await supabase
@@ -1170,6 +1249,12 @@ export default function AdminQuoteDetail() {
       if (deleteError) throw deleteError;
 
       await callRecalculatePricing();
+
+      await logQuoteActivity(id, currentStaff?.staffId || "", "adjustment_removed", {
+        adjustment_id: adjustmentId,
+        type: removedAdj?.adjustment_type,
+        amount: removedAdj?.calculated_amount,
+      });
 
       const { data: adjData } = await supabase
         .from("quote_adjustments")
@@ -1347,6 +1432,10 @@ export default function AdminQuoteDetail() {
         })
         .eq("id", id);
 
+      await logQuoteActivity(id, currentStaff.staffId, "hitl_review_claimed", {
+        review_id: hitlReview.id,
+      });
+
       await fetchQuoteDetails();
     } catch (err) {
       console.error("Failed to claim HITL review:", err);
@@ -1379,6 +1468,14 @@ export default function AdminQuoteDetail() {
           },
         );
       }
+
+      await logQuoteActivity(id, currentStaff.staffId, "hitl_review_approved", {
+        review_id: hitlReview?.id,
+      });
+      await logQuoteActivity(id, currentStaff.staffId, "status_changed", {
+        from_status: quote?.status,
+        to_status: "awaiting_payment",
+      });
 
       await fetchQuoteDetails();
     } catch (err) {
@@ -1421,6 +1518,14 @@ export default function AdminQuoteDetail() {
         },
       );
 
+      await logQuoteActivity(id, currentStaff.staffId, "revision_requested", {
+        reason,
+      });
+      await logQuoteActivity(id, currentStaff.staffId, "status_changed", {
+        from_status: quote?.status,
+        to_status: "revision_needed",
+      });
+
       await fetchQuoteDetails();
     } catch (err) {
       console.error("Failed to request better scan:", err);
@@ -1434,6 +1539,11 @@ export default function AdminQuoteDetail() {
     setIsDeleting(true);
 
     try {
+      // Log before deletion since the row will be soft-deleted
+      await logQuoteActivity(id, currentStaff.staffId, "quote_deleted", {
+        previous_status: quote?.status,
+      });
+
       const deletedAt = new Date().toISOString();
 
       // Soft delete quote (only set deleted_at, don't change status)
@@ -1526,6 +1636,11 @@ export default function AdminQuoteDetail() {
           `Expires: ${new Date(result.expiresAt).toLocaleString()}`,
       );
 
+      await logQuoteActivity(id, currentStaff.staffId, "quote_email_resent", {
+        customer_email: quote?.customer?.email,
+        custom_message: resendCustomMessage.trim() || undefined,
+      });
+
       setShowResendModal(false);
       setResendCustomMessage("");
     } catch (error) {
@@ -1584,6 +1699,14 @@ export default function AdminQuoteDetail() {
         .eq("id", id);
 
       if (quoteError) throw quoteError;
+
+      await logQuoteActivity(id, currentStaff.staffId, "quote_link_sent", {
+        customer_email: quote.customer?.email,
+      });
+      await logQuoteActivity(id, currentStaff.staffId, "status_changed", {
+        from_status: quote.status,
+        to_status: "awaiting_payment",
+      });
 
       alert("Quote link sent to customer!");
       await fetchQuoteDetails();
@@ -1674,6 +1797,15 @@ export default function AdminQuoteDetail() {
         .eq("id", id);
 
       if (quoteError) throw quoteError;
+
+      await logQuoteActivity(id, currentStaff.staffId, "payment_link_sent", {
+        customer_email: quote.customer?.email,
+        amount: quote.total,
+      });
+      await logQuoteActivity(id, currentStaff.staffId, "status_changed", {
+        from_status: quote.status,
+        to_status: "awaiting_payment",
+      });
 
       alert("Payment link sent to customer!");
       await fetchQuoteDetails();
@@ -1807,6 +1939,12 @@ export default function AdminQuoteDetail() {
         );
       }
 
+      await logQuoteActivity(id, currentStaff.staffId, "manual_payment_recorded", {
+        method: methodName,
+        amount: parsedAmountPaid,
+        remarks: rpRemarks || undefined,
+      });
+
       setShowReceivePaymentModal(false);
       setSelectedPaymentMethodId("");
       setSelectedPaymentMethodCode("");
@@ -1820,6 +1958,131 @@ export default function AdminQuoteDetail() {
     } finally {
       setIsProcessingPayment(false);
     }
+  };
+
+  // --- Add Internal Note handler ---
+  const handleAddNote = async () => {
+    if (!newNote.trim() || !quote || !id || !currentStaff?.staffId) return;
+
+    const existingNotes = (quote as any).manual_quote_notes || "";
+    const timestamp = new Date().toISOString();
+    const staffName = currentStaff?.staffName || "Staff";
+    const appendedNote = existingNotes
+      ? `${existingNotes}\n\n---\n[${staffName} — ${new Date(timestamp).toLocaleString()}]\n${newNote.trim()}`
+      : `[${staffName} — ${new Date(timestamp).toLocaleString()}]\n${newNote.trim()}`;
+
+    const { error } = await supabase
+      .from("quotes")
+      .update({ manual_quote_notes: appendedNote })
+      .eq("id", quote.id);
+
+    if (!error) {
+      await logQuoteActivity(quote.id, currentStaff.staffId, "note_added", {
+        note_preview: newNote.trim().substring(0, 100),
+      });
+      setNewNote("");
+      fetchQuoteDetails();
+    }
+  };
+
+  // --- Activity Log helper functions ---
+  const getActivityIcon = (actionType: string) => {
+    const icons: Record<string, JSX.Element> = {
+      quote_link_sent: <LinkIcon className="w-3.5 h-3.5" />,
+      payment_link_sent: <CreditCard className="w-3.5 h-3.5" />,
+      quote_email_resent: <Mail className="w-3.5 h-3.5" />,
+      status_changed: <RefreshCw className="w-3.5 h-3.5" />,
+      hitl_review_claimed: <UserCheck className="w-3.5 h-3.5" />,
+      hitl_review_approved: <CheckCircle className="w-3.5 h-3.5" />,
+      revision_requested: <AlertTriangle className="w-3.5 h-3.5" />,
+      adjustment_added: <Plus className="w-3.5 h-3.5" />,
+      adjustment_removed: <Minus className="w-3.5 h-3.5" />,
+      payment_recorded: <DollarSign className="w-3.5 h-3.5" />,
+      manual_payment_recorded: <DollarSign className="w-3.5 h-3.5" />,
+      turnaround_changed: <Clock className="w-3.5 h-3.5" />,
+      delivery_changed: <Truck className="w-3.5 h-3.5" />,
+      tax_rate_changed: <Percent className="w-3.5 h-3.5" />,
+      quote_deleted: <Trash2 className="w-3.5 h-3.5" />,
+      totals_recalculated: <Calculator className="w-3.5 h-3.5" />,
+      message_sent: <MessageSquare className="w-3.5 h-3.5" />,
+      note_added: <StickyNote className="w-3.5 h-3.5" />,
+      escalation: <AlertCircle className="w-3.5 h-3.5" />,
+      customer_hitl_requested: <HelpCircle className="w-3.5 h-3.5" />,
+      quote_version_updated: <FileEdit className="w-3.5 h-3.5" />,
+    };
+    return icons[actionType] || <Activity className="w-3.5 h-3.5" />;
+  };
+
+  const getActivityIconStyle = (actionType: string): string => {
+    const styles: Record<string, string> = {
+      quote_link_sent: "bg-blue-100 text-blue-600",
+      payment_link_sent: "bg-green-100 text-green-600",
+      quote_email_resent: "bg-blue-100 text-blue-600",
+      status_changed: "bg-purple-100 text-purple-600",
+      hitl_review_approved: "bg-green-100 text-green-600",
+      revision_requested: "bg-amber-100 text-amber-600",
+      payment_recorded: "bg-green-100 text-green-600",
+      manual_payment_recorded: "bg-green-100 text-green-600",
+      quote_deleted: "bg-red-100 text-red-600",
+      escalation: "bg-red-100 text-red-600",
+      note_added: "bg-amber-100 text-amber-600",
+    };
+    return styles[actionType] || "bg-gray-100 text-gray-600";
+  };
+
+  const formatActivityDescription = (entry: ActivityLogEntry): string => {
+    const d = entry.details || {};
+    const descriptions: Record<string, string> = {
+      quote_link_sent: `Quote link sent to ${d.customer_email || "customer"}`,
+      payment_link_sent: `Payment link sent${d.amount ? ` ($${Number(d.amount).toFixed(2)})` : ""}`,
+      quote_email_resent: `Quote email resent to ${d.customer_email || "customer"}`,
+      status_changed: `Status changed: ${d.from_status || "?"} \u2192 ${d.to_status || "?"}`,
+      hitl_review_claimed: "HITL review claimed",
+      hitl_review_approved: "HITL review approved \u2014 quote ready for payment",
+      revision_requested: `Better scan requested${d.reason ? `: ${d.reason}` : ""}`,
+      adjustment_added: `${d.type || "Adjustment"} added: $${Number(d.amount || 0).toFixed(2)}${d.reason ? ` \u2014 ${d.reason}` : ""}`,
+      adjustment_removed: `${d.type || "Adjustment"} removed: $${Number(d.amount || 0).toFixed(2)}`,
+      payment_recorded: `Payment recorded: ${d.method || "unknown method"} \u2014 $${Number(d.amount || 0).toFixed(2)}`,
+      manual_payment_recorded: `Manual payment: ${d.method || "unknown"} \u2014 $${Number(d.amount || 0).toFixed(2)}`,
+      turnaround_changed: `Turnaround changed: ${d.from || "?"} \u2192 ${d.to || "?"}`,
+      delivery_changed: `Delivery changed: ${d.from || "?"} \u2192 ${d.to || "?"}`,
+      tax_rate_changed: `Tax rate changed: ${d.from_rate || "?"} \u2192 ${d.to_rate || "?"}`,
+      quote_deleted: `Quote deleted (was ${d.previous_status || "unknown status"})`,
+      totals_recalculated: `Totals recalculated${d.old_total && d.new_total ? `: $${Number(d.old_total).toFixed(2)} \u2192 $${Number(d.new_total).toFixed(2)}` : ""}`,
+      message_sent: "Message sent to customer",
+      note_added: `Note added${d.note_preview ? `: "${d.note_preview.substring(0, 60)}${d.note_preview.length > 60 ? "..." : ""}"` : ""}`,
+      escalation: `Escalated${d.reason ? `: ${d.reason}` : ""}`,
+      customer_hitl_requested: "Customer requested human review",
+      quote_version_updated: `Quote updated${d.old_total && d.new_total ? `: $${Number(d.old_total).toFixed(2)} \u2192 $${Number(d.new_total).toFixed(2)}` : ""} & payment link sent`,
+    };
+    return descriptions[entry.action_type] || entry.action_type.replace(/_/g, " ");
+  };
+
+  const formatRelativeTime = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  };
+
+  const formatMessageDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / 3600000);
+
+    if (diffHours < 24) {
+      return formatRelativeTime(dateString);
+    }
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   };
 
   // Check if quote has been converted to an order (hide send buttons)
@@ -1900,24 +2163,44 @@ export default function AdminQuoteDetail() {
             {!isConvertedToOrder && (
               <>
                 {/* Send Quote Link Button - purple outline */}
-                <button
-                  onClick={handleSendQuoteLink}
-                  disabled={isSendingLink}
-                  className="flex items-center gap-2 px-4 py-2 border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-50"
-                >
-                  <Mail className="w-4 h-4" />
-                  {isSendingLink ? "Sending..." : "Send Quote Link"}
-                </button>
+                <div>
+                  <button
+                    onClick={handleSendQuoteLink}
+                    disabled={isSendingLink}
+                    className="flex items-center gap-2 px-4 py-2 border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  >
+                    <Mail className="w-4 h-4" />
+                    {isSendingLink ? "Sending..." : "Send Quote Link"}
+                  </button>
+                  {(() => {
+                    const lastSent = activityLog.find(a => a.action_type === "quote_link_sent");
+                    return lastSent ? (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Last sent: {formatRelativeTime(lastSent.created_at)} by {lastSent.staff?.full_name || "staff"}
+                      </p>
+                    ) : null;
+                  })()}
+                </div>
 
                 {/* Send Payment Link Button - purple solid */}
-                <button
-                  onClick={handleSendPaymentLink}
-                  disabled={isSendingLink}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  {isSendingLink ? "Sending..." : "Send Payment Link"}
-                </button>
+                <div>
+                  <button
+                    onClick={handleSendPaymentLink}
+                    disabled={isSendingLink}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    {isSendingLink ? "Sending..." : "Send Payment Link"}
+                  </button>
+                  {(() => {
+                    const lastSent = activityLog.find(a => a.action_type === "payment_link_sent");
+                    return lastSent ? (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Last sent: {formatRelativeTime(lastSent.created_at)} by {lastSent.staff?.full_name || "staff"}
+                      </p>
+                    ) : null;
+                  })()}
+                </div>
               </>
             )}
 
@@ -2693,42 +2976,223 @@ export default function AdminQuoteDetail() {
             </div>
           )}
 
-          {messages.length > 0 && (
-            <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-gray-400" />
-                Messages ({messages.length})
-              </h2>
+          {/* ============ NOTES SECTION ============ */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+              <StickyNote className="w-5 h-5 text-amber-600" />
+              <h3 className="text-base font-semibold text-gray-900">Notes</h3>
+            </div>
 
-              <div className="space-y-3">
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`p-3 rounded-lg ${
-                      msg.sender_type === "staff"
-                        ? "bg-teal-50 ml-8"
-                        : msg.sender_type === "customer"
-                          ? "bg-gray-50 mr-8"
-                          : "bg-blue-50"
-                    }`}
+            <div className="px-6 py-4 space-y-4">
+              {quote?.special_instructions && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs font-medium text-amber-700 uppercase tracking-wide mb-1">
+                    Customer Instructions
+                  </p>
+                  <p className="text-sm text-gray-800">{quote.special_instructions}</p>
+                </div>
+              )}
+
+              {hitlReview?.customer_note && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">
+                    Customer Review Request Note
+                  </p>
+                  <p className="text-sm text-gray-800">{hitlReview.customer_note}</p>
+                </div>
+              )}
+
+              {(quote as any)?.manual_quote_notes && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-1">
+                    Staff Notes (Quote Creation)
+                  </p>
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{(quote as any).manual_quote_notes}</p>
+                </div>
+              )}
+
+              {hitlReview?.internal_notes && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-1">
+                    HITL Review Notes
+                  </p>
+                  <p className="text-sm text-gray-800">{hitlReview.internal_notes}</p>
+                </div>
+              )}
+
+              {hitlReview?.resolution_notes && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <p className="text-xs font-medium text-green-700 uppercase tracking-wide mb-1">
+                    Resolution Notes
+                  </p>
+                  <p className="text-sm text-gray-800">{hitlReview.resolution_notes}</p>
+                </div>
+              )}
+
+              {hitlReview?.escalation_reason && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-xs font-medium text-red-700 uppercase tracking-wide mb-1">
+                    Escalation Reason
+                  </p>
+                  <p className="text-sm text-gray-800">{hitlReview.escalation_reason}</p>
+                </div>
+              )}
+
+              {!quote?.special_instructions &&
+               !(quote as any)?.manual_quote_notes &&
+               !hitlReview?.internal_notes &&
+               !hitlReview?.resolution_notes &&
+               !hitlReview?.customer_note &&
+               !hitlReview?.escalation_reason && (
+                <p className="text-sm text-gray-400 text-center py-2">No notes</p>
+              )}
+
+              <div className="border-t border-gray-100 pt-4">
+                <label className="text-xs font-medium text-gray-600 uppercase tracking-wide block mb-2">
+                  Add Internal Note
+                </label>
+                <div className="flex gap-2">
+                  <textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Add an internal note visible only to staff..."
+                    rows={2}
+                    className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  />
+                  <button
+                    onClick={handleAddNote}
+                    disabled={!newNote.trim()}
+                    className="self-end px-4 py-2 bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium">
-                        {msg.sender_name}
-                        <span className="text-gray-400 font-normal ml-1">
-                          ({msg.sender_type})
-                        </span>
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {format(new Date(msg.created_at), "MMM d, h:mm a")}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-700">{msg.message_text}</p>
-                  </div>
-                ))}
+                    Save
+                  </button>
+                </div>
               </div>
             </div>
-          )}
+          </div>
+
+          {/* ============ MESSAGES SECTION ============ */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-blue-600" />
+                <h3 className="text-base font-semibold text-gray-900">Messages</h3>
+                {messages.length > 0 && (
+                  <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                    {messages.length}
+                  </span>
+                )}
+                {messages.some(m => m.sender_type === 'customer' && !m.read_by_staff_at) && (
+                  <span className="bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                    Unread
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setShowMessageModal(true)}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+              >
+                <Send className="w-4 h-4" />
+                Send Message
+              </button>
+            </div>
+
+            <div className="px-6 py-4">
+              {messages.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">No messages yet</p>
+              ) : (
+                <div className="space-y-3 max-h-80 overflow-y-auto">
+                  {messages.map((msg) => {
+                    const isStaff = msg.sender_type === "staff";
+                    const isSystem = msg.sender_type === "system";
+                    const senderName = msg.sender_name;
+
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex ${isStaff ? "justify-end" : isSystem ? "justify-center" : "justify-start"}`}
+                      >
+                        <div
+                          className={`max-w-[75%] rounded-xl px-4 py-3 ${
+                            isSystem
+                              ? "bg-gray-50 text-gray-500 text-center text-sm italic"
+                              : isStaff
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {!isSystem && (
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`text-xs font-medium ${isStaff ? "text-blue-100" : "text-gray-500"}`}>
+                                {senderName}
+                              </span>
+                              <span className={`text-xs ${isStaff ? "text-blue-200" : "text-gray-400"}`}>
+                                {formatMessageDate(msg.created_at)}
+                              </span>
+                            </div>
+                          )}
+                          <p className="text-sm whitespace-pre-wrap">{msg.message_text}</p>
+                          {isSystem && (
+                            <span className="text-xs text-gray-400 block mt-1">
+                              {formatMessageDate(msg.created_at)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ============ ACTIVITY LOG SECTION ============ */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-base font-semibold text-gray-900">Activity Log</h3>
+              {activityLog.length > 0 && (
+                <span className="text-xs text-gray-500">({activityLog.length})</span>
+              )}
+            </div>
+
+            <div className="px-6 py-4">
+              {activityLog.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-400">No activity recorded yet</p>
+                  <p className="text-xs text-gray-400 mt-1">Actions on this quote will appear here</p>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {(showAllActivity ? activityLog : activityLog.slice(0, 10)).map((entry) => (
+                    <div key={entry.id} className="flex gap-3 py-2.5 border-b border-gray-50 last:border-0">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${getActivityIconStyle(entry.action_type)}`}>
+                        {getActivityIcon(entry.action_type)}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-800">
+                          {formatActivityDescription(entry)}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {entry.staff?.full_name || "System"} · {formatRelativeTime(entry.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+
+                  {activityLog.length > 10 && !showAllActivity && (
+                    <button
+                      onClick={() => setShowAllActivity(true)}
+                      className="w-full text-center py-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      Show all {activityLog.length} entries
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="space-y-6">
