@@ -1227,10 +1227,11 @@ export default function OcrResultsModal({
         hasSaved && r.pricingComplexityMultiplier != null
           ? r.pricingComplexityMultiplier
           : complexityMultipliers[complexity] || 1.0;
+      // Prefer stored effective rate; only fall back to app_settings if nothing stored
       const baseRate =
         hasSaved && r.pricingBaseRate != null
           ? r.pricingBaseRate
-          : pricingBaseRate;
+          : r.pricingBaseRate ?? pricingBaseRate;
       const isExcluded = hasSaved ? !!r.pricingIsExcluded : false;
       const isBillableOverridden = hasSaved ? !!r.pricingIsBillableOverridden : false;
 
@@ -1303,10 +1304,11 @@ export default function OcrResultsModal({
       const certCost = isExcluded
         ? 0
         : docCerts.reduce((sum, dc) => sum + dc.certificationPrice, 0);
+      // baseRate is the stored effective rate (already language-adjusted), so languageMultiplier=1.0
       const transCost =
         isExcluded || billable === 0
           ? 0
-          : calcTranslationCost(billable, baseRate);
+          : calcTranslationCost(billable, baseRate, 1.0);
 
       return {
         analysisId: r.id,
@@ -1432,6 +1434,7 @@ export default function OcrResultsModal({
         }
 
         // Recalculate costs
+        // baseRate is the stored effective rate (already language-adjusted), so languageMultiplier=1.0
         if (updated.billablePages === 0) {
           updated.translationCost = 0;
           updated.certificationCost = 0;
@@ -1439,7 +1442,8 @@ export default function OcrResultsModal({
         } else {
           updated.translationCost = calcTranslationCost(
             updated.billablePages,
-            updated.baseRate
+            updated.baseRate,
+            1.0
           );
           updated.lineTotal = updated.translationCost + updated.certificationCost;
         }
@@ -1626,7 +1630,12 @@ export default function OcrResultsModal({
     const defaultCert =
       certificationTypes.find((c) => c.code === "notarization") ||
       certificationTypes[0];
-    const baseRate = pricingBaseRate || 65;
+    // Use the effective rate from existing pricing rows if available,
+    // otherwise fall back to the system base rate
+    const existingRate = pricingRows.length > 0
+      ? pricingRows.find(r => !r.isExcluded)?.baseRate
+      : undefined;
+    const baseRate = existingRate || pricingBaseRate || 65;
 
     try {
       const { data, error } = await supabase
@@ -1668,7 +1677,8 @@ export default function OcrResultsModal({
 
       // Add new row directly to local state
       const certUnitPrice = defaultCert?.price ?? 0;
-      const translationCost = calcTranslationCost(1.0, baseRate);
+      // baseRate is already the effective rate (from existing rows or system default)
+      const translationCost = calcTranslationCost(1.0, baseRate, 1.0);
       const certCost = certUnitPrice;
       const newRow: PricingRow = {
         analysisId: data.id,
@@ -3105,7 +3115,8 @@ export default function OcrResultsModal({
                   (complexity === "hard" ? 1.25 : complexity === "medium" ? 1.15 : 1.00);
                 const baseRate = analysis.pricing_base_rate || 65.00;
                 const billablePages = analysis.pricing_billable_pages || analysis.billable_pages || 0;
-                const lineTotal = billablePages * baseRate * multiplier;
+                const perPageRate = Math.ceil((baseRate * multiplier) / 2.5) * 2.5;
+                const lineTotal = billablePages * perPageRate;
                 const isExcluded = analysis.pricing_is_excluded === true;
 
                 return (
@@ -3162,7 +3173,8 @@ export default function OcrResultsModal({
                         (c === "hard" ? 1.25 : c === "medium" ? 1.15 : 1.00);
                       const br = a.pricing_base_rate || 65.00;
                       const bp = a.pricing_billable_pages || a.billable_pages || 0;
-                      return sum + (bp * br * m);
+                      const ppr = Math.ceil((br * m) / 2.5) * 2.5;
+                      return sum + (bp * ppr);
                     }, 0)
                     .toFixed(2)}
                 </td>
@@ -3172,7 +3184,7 @@ export default function OcrResultsModal({
         </div>
 
         <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600 space-y-1">
-          <p><strong>Rate:</strong> $65.00/page base rate</p>
+          <p><strong>Base Rate:</strong> ${(pricingBaseRate || 65).toFixed(2)}/page (before language/complexity adjustment)</p>
           <p><strong>Words/Page:</strong> 225 words = 1 billable page</p>
           <p><strong>Complexity Multipliers:</strong> Easy (1.0&times;), Medium (1.15&times;), Hard (1.25&times;)</p>
           {aiAnalysis.some(a => a.pricing_saved_at) && (
