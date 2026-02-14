@@ -17,6 +17,7 @@ import {
   UserCircle,
   FileSearch,
   Scissors,
+  Handshake,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -41,6 +42,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Orders",
     path: "/admin/orders",
     icon: ShoppingCart,
+    section: "Main",
+  },
+  {
+    label: "Partners",
+    path: "/admin/partners",
+    icon: Handshake,
     section: "Main",
   },
   {

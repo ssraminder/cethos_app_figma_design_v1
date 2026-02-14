@@ -18,6 +18,58 @@ export default function QuoteFlow() {
   });
   const [hydrationError, setHydrationError] = useState<string | null>(null);
 
+  // ── Partner ?ref= capture on mount ──────────────────────────────────────
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const refParam = searchParams.get("ref");
+
+    if (refParam) {
+      // Clear any existing partner sessionStorage keys before validating
+      sessionStorage.removeItem("cethos_partner_id");
+      sessionStorage.removeItem("cethos_partner_code");
+      sessionStorage.removeItem("cethos_partner_rate");
+      sessionStorage.removeItem("cethos_partner_name");
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (supabaseUrl && supabaseAnonKey) {
+        fetch(`${supabaseUrl}/functions/v1/validate-partner-code`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: supabaseAnonKey,
+          },
+          body: JSON.stringify({ code: refParam }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.valid === true) {
+              sessionStorage.setItem("cethos_partner_id", data.partner_id);
+              sessionStorage.setItem("cethos_partner_code", refParam);
+              sessionStorage.setItem("cethos_partner_rate", String(data.customer_rate));
+              sessionStorage.setItem("cethos_partner_name", data.name);
+            }
+          })
+          .catch(() => {
+            // Invalid code or network error — silently continue with standard pricing
+          });
+      }
+
+      // Strip ?ref= from URL to keep it clean
+      searchParams.delete("ref");
+      const remaining = searchParams.toString();
+      const cleanUrl = window.location.pathname + (remaining ? `?${remaining}` : "");
+      window.history.replaceState({}, "", cleanUrl);
+    } else {
+      // No ?ref= — customer arrived directly, clear partner data
+      sessionStorage.removeItem("cethos_partner_id");
+      sessionStorage.removeItem("cethos_partner_code");
+      sessionStorage.removeItem("cethos_partner_rate");
+      sessionStorage.removeItem("cethos_partner_name");
+    }
+  }, []);
+
   // ── URL param detection on mount ────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;

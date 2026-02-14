@@ -70,6 +70,7 @@ import CustomerDetail from "./pages/admin/CustomerDetail";
 import OCRWordCountPage from "./pages/admin/OCRWordCountPage";
 import OCRBatchResultsPage from "./pages/admin/OCRBatchResultsPage";
 import PreprocessOCRPage from "./pages/admin/PreprocessOCRPage";
+import AdminPartners from "./pages/admin/AdminPartners";
 
 // Admin Settings pages
 import PricingSettings from "./pages/admin/settings/PricingSettings";
@@ -264,6 +265,7 @@ const App = () => (
                     <Route path="quotes/:id" element={<AdminQuoteDetail />} />
                     <Route path="orders" element={<AdminOrdersList />} />
                     <Route path="orders/:id" element={<AdminOrderDetail />} />
+                    <Route path="partners" element={<AdminPartners />} />
                     <Route path="settings" element={<AdminSettings />} />
                     <Route path="settings/*" element={<AdminSettings />} />
                     <Route
