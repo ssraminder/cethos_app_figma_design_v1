@@ -32,7 +32,7 @@ export default function DocumentGroupCard({
   onRemoveItem,
   isAnalyzing,
   isEditable,
-  perPageRate = 65,
+  perPageRate = 65, // Fallback to system default; callers should pass the stored effective rate
   certificationTypes,
   onCertificationChange,
   onComplexityChange,

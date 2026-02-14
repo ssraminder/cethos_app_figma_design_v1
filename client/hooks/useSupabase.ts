@@ -334,9 +334,9 @@ const { error: quoteUpdateError } = await supabase
     setError(null);
 
     try {
-      // Calculate pricing (Phase 1 placeholders)
-      const subtotal = fileCount * 65;
-      const certificationTotal = fileCount * 50;
+      // Placeholder pricing — actual pricing is calculated by process-quote-documents
+      const subtotal = 0;
+      const certificationTotal = 0;
       const taxRate = 0.05;
       const taxAmount = subtotal * taxRate;
       const total = subtotal + certificationTotal + taxAmount;

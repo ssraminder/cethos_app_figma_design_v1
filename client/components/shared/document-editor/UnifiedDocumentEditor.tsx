@@ -690,6 +690,14 @@ export default function UnifiedDocumentEditor({
         const certType = certificationTypes.find((c) => c.id === certificationTypeId);
         const certPrice = certType?.price || 0;
 
+        // Get effective base rate from existing files' analysis data if available.
+        // The stored base_rate in ai_analysis_results IS the effective rate
+        // (already includes language multiplier + $2.50 rounding).
+        const existingAnalysis = files
+          .map((f) => (f as any).ai_analysis_results?.[0] || (f as any).ai_analysis_results)
+          .find((a: any) => a?.base_rate);
+        const effectiveRate = existingAnalysis?.base_rate || DEFAULT_BASE_RATE;
+
         const { data, error } = await supabase
           .from("quote_document_groups")
           .insert({
@@ -706,7 +714,7 @@ export default function UnifiedDocumentEditor({
               : null,
             certification_type_id: certificationTypeId || null,
             certification_price: certPrice,
-            base_rate: DEFAULT_BASE_RATE,
+            base_rate: effectiveRate,
           })
           .select()
           .single();
@@ -721,7 +729,7 @@ export default function UnifiedDocumentEditor({
         toast.error("Failed to create document group");
       }
     },
-    [quoteId, groups, certificationTypes, fetchData]
+    [quoteId, groups, certificationTypes, files, fetchData]
   );
 
   // Edit group

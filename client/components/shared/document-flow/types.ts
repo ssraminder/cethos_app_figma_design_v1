@@ -214,6 +214,8 @@ export const COMPLEXITY_MULTIPLIERS: Record<Complexity, number> = {
   hard: 1.25,
 };
 
+// System default pricing — base_rate is a fallback only. In normal operation,
+// the effective rate (with language multiplier) is stored per-document in the DB.
 export const DEFAULT_PRICING_SETTINGS: PricingSettings = {
   base_rate: 65,
   words_per_page: 225,

@@ -1,4 +1,6 @@
-// Base rate for translation per page
+// System default base rate — used as fallback only when no stored effective rate is available.
+// The actual per-document rate is stored in ai_analysis_results.base_rate
+// and includes the language multiplier adjustment (CEIL(base × mult / 2.5) × 2.5).
 export const BASE_RATE_PER_PAGE = 65.00;
 
 /**

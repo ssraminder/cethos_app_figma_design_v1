@@ -454,7 +454,7 @@ export default function DocumentGroupEditor({
   groups,
   unassignedItems,
   certificationTypes,
-  baseRate = 65,
+  baseRate = 65, // Fallback to system default; callers should pass the stored effective rate
   wordsPerPage = 250,
   isEditable = true,
   isLoading = false,

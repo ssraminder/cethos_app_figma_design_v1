@@ -427,7 +427,7 @@ export default function ManualEntryModal({
         word_count: wordCount || null,
         page_count: 1, // Default for manual entries
         billable_pages: billablePages,
-        base_rate: settings.base_rate,
+        base_rate: Math.ceil(settings.base_rate * quoteLanguageMultiplier / 2.5) * 2.5,
         line_total: pricingSummary.lineTotal,
         certification_type_id: selectedCertificationId || null,
         certification_price: pricingSummary.certificationCost,
