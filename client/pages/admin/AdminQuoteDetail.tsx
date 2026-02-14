@@ -2160,124 +2160,130 @@ export default function AdminQuoteDetail() {
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
+        {/* Back link */}
         <Link
           to="/admin/quotes"
-          className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 mb-4"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-3"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Quotes
         </Link>
 
-        <div className="flex items-start justify-between">
-          <div>
+        {/* Quote number + status row */}
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">
               {quote.quote_number}
             </h1>
-            <div className="flex items-center gap-3 mt-2">
-              <span
-                className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
-                  STATUS_STYLES[quote.status] || "bg-gray-100 text-gray-700"
-                }`}
-              >
-                {STATUS_LABELS[quote.status] || quote.status}
-              </span>
-              <span className="text-gray-500 text-sm">
-                Created{" "}
-                {format(new Date(quote.created_at), "MMM d, yyyy 'at' h:mm a")}
-              </span>
-            </div>
+            <span
+              className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
+                STATUS_STYLES[quote.status] || "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {STATUS_LABELS[quote.status] || quote.status}
+            </span>
           </div>
 
-          <div className="flex items-center gap-3">
-            {orderId && (
-              <Link
-                to={`/admin/orders/${orderId}`}
-                className="inline-flex items-center gap-2 bg-purple-100 text-purple-700 px-4 py-2 rounded-lg hover:bg-purple-200"
-              >
-                View Order
-                <ExternalLink className="w-4 h-4" />
-              </Link>
-            )}
-
-            {/* Send Quote Link & Send Payment Link - hidden when paid or converted */}
-            {!isConvertedToOrder && (
-              <>
-                {/* Send Quote Link Button - purple outline */}
-                <div>
-                  <button
-                    onClick={handleSendQuoteLink}
-                    disabled={isSendingLink}
-                    className="flex items-center gap-2 px-4 py-2 border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-50"
-                  >
-                    <Mail className="w-4 h-4" />
-                    {isSendingLink ? "Sending..." : "Send Quote Link"}
-                  </button>
-                  {(() => {
-                    const lastSent = activityLog.find(a => a.action_type === "quote_link_sent");
-                    return lastSent ? (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Last sent: {formatRelativeTime(lastSent.created_at)} by {lastSent.staff?.full_name || "staff"}
-                      </p>
-                    ) : null;
-                  })()}
-                </div>
-
-                {/* Send Payment Link Button - purple solid */}
-                <div>
-                  <button
-                    onClick={handleSendPaymentLink}
-                    disabled={isSendingLink}
-                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    {isSendingLink ? "Sending..." : "Send Payment Link"}
-                  </button>
-                  {(() => {
-                    const lastSent = activityLog.find(a => a.action_type === "payment_link_sent");
-                    return lastSent ? (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Last sent: {formatRelativeTime(lastSent.created_at)} by {lastSent.staff?.full_name || "staff"}
-                      </p>
-                    ) : null;
-                  })()}
-                </div>
-              </>
-            )}
-
-            {/* Receive Payment Button - visible when payment hasn't been received yet */}
-            {["draft", "quote_ready", "awaiting_payment", "pending_payment", "checkout_started"].includes(quote.status) && (
-              <button
-                onClick={openReceivePaymentModal}
-                className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium text-sm"
-              >
-                <DollarSign className="w-4 h-4" />
-                Receive Payment
-              </button>
-            )}
-
-            {/* Delete Quote Button */}
-            {!orderId && !["paid", "converted"].includes(quote.status) ? (
-              <button
-                onClick={() => setShowDeleteModal(true)}
-                className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete Quote
-              </button>
-            ) : (
-              orderId && (
-                <button
-                  disabled
-                  className="flex items-center gap-2 px-4 py-2 text-gray-400 border border-gray-200 rounded-lg cursor-not-allowed"
-                  title="Cannot delete - converted to order"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete Quote
-                </button>
-              )
-            )}
-          </div>
+          {/* Meta info */}
+          <p className="text-sm text-gray-500">
+            Created{" "}
+            {format(new Date(quote.created_at), "MMM d, yyyy 'at' h:mm a")}
+          </p>
         </div>
+
+        {/* Action buttons row — compact */}
+        <div className="flex items-center gap-2 mt-4 flex-wrap">
+          {orderId && (
+            <Link
+              to={`/admin/orders/${orderId}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            >
+              View Order
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
+          )}
+
+          {/* Send Quote Link & Send Payment Link - hidden when paid or converted */}
+          {!isConvertedToOrder && (
+            <>
+              <button
+                onClick={handleSendQuoteLink}
+                disabled={isSendingLink}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                {isSendingLink ? "Sending..." : "Send Quote Link"}
+              </button>
+
+              <button
+                onClick={handleSendPaymentLink}
+                disabled={isSendingLink}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                {isSendingLink ? "Sending..." : "Send Payment Link"}
+              </button>
+            </>
+          )}
+
+          {/* Receive Payment Button - visible when payment hasn't been received yet */}
+          {["draft", "quote_ready", "awaiting_payment", "pending_payment", "checkout_started"].includes(quote.status) && (
+            <button
+              onClick={openReceivePaymentModal}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            >
+              <DollarSign className="w-3.5 h-3.5" />
+              Receive Payment
+            </button>
+          )}
+
+          {/* Spacer to push destructive action right */}
+          <div className="flex-1" />
+
+          {/* Delete Quote Button */}
+          {!orderId && !["paid", "converted"].includes(quote.status) ? (
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete
+            </button>
+          ) : (
+            orderId && (
+              <button
+                disabled
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-400 cursor-not-allowed"
+                title="Cannot delete - converted to order"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete
+              </button>
+            )
+          )}
+        </div>
+
+        {/* "Last sent" indicators — subtle, below buttons */}
+        {!isConvertedToOrder && (
+          <div className="flex items-center gap-4 mt-2">
+            {(() => {
+              const lastSent = activityLog.find(a => a.action_type === "quote_link_sent");
+              return lastSent ? (
+                <p className="text-xs text-gray-400">
+                  Quote link last sent: {formatRelativeTime(lastSent.created_at)} by {lastSent.staff?.full_name || "staff"}
+                </p>
+              ) : null;
+            })()}
+            {(() => {
+              const lastSent = activityLog.find(a => a.action_type === "payment_link_sent");
+              return lastSent ? (
+                <p className="text-xs text-gray-400">
+                  Payment link last sent: {formatRelativeTime(lastSent.created_at)} by {lastSent.staff?.full_name || "staff"}
+                </p>
+              ) : null;
+            })()}
+          </div>
+        )}
       </div>
 
       {hitlReview && (
