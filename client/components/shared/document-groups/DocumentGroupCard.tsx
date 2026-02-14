@@ -32,7 +32,7 @@ export default function DocumentGroupCard({
   onRemoveItem,
   isAnalyzing,
   isEditable,
-  perPageRate = 65,
+  perPageRate = 65, // Fallback to system default; effective rate comes from ai_analysis_results.base_rate
   certificationTypes,
   onCertificationChange,
   onComplexityChange,

@@ -306,6 +306,9 @@ export interface QuoteTotals {
 // ============================================
 
 export const DEFAULT_WORDS_PER_PAGE = 225;
+// System default — only used as fallback when no stored effective rate is available.
+// The actual per-document rate is stored in ai_analysis_results.base_rate
+// and includes the language multiplier adjustment.
 export const DEFAULT_BASE_RATE = 65.00;
 
 export const COMPLEXITY_MULTIPLIERS: Record<Complexity, number> = {

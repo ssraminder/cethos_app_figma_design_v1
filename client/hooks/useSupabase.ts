@@ -334,12 +334,13 @@ const { error: quoteUpdateError } = await supabase
     setError(null);
 
     try {
-      // Calculate pricing (Phase 1 placeholders)
-      const subtotal = fileCount * 65;
-      const certificationTotal = fileCount * 50;
+      // Pricing is calculated by process-quote-documents and stored in DB.
+      // These are placeholder zeros — actual totals come from document analysis.
+      const subtotal = 0;
+      const certificationTotal = 0;
       const taxRate = 0.05;
-      const taxAmount = subtotal * taxRate;
-      const total = subtotal + certificationTotal + taxAmount;
+      const taxAmount = 0;
+      const total = 0;
 
       const { error: updateError } = await supabase
         .from("quotes")

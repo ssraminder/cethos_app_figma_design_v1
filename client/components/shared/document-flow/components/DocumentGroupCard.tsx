@@ -130,7 +130,7 @@ export const DocumentGroupCard: React.FC<DocumentGroupCardProps> = ({
         {/* Translation */}
         <div className="flex items-center justify-between">
           <span className="text-gray-600">
-            Translation: {(group.total_billable_pages ?? 0).toFixed(2)} × ${(baseRate ?? 65).toFixed(2)} ×{' '}
+            Translation: {(group.total_billable_pages ?? 0).toFixed(2)} × ${(baseRate ?? 65 /* fallback to system default */).toFixed(2)} ×{' '}
             {(languageMultiplier ?? 1).toFixed(2)} =
           </span>
           <span className="font-medium">${(group.translation_cost ?? 0).toFixed(2)}</span>
