@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import {
@@ -47,7 +47,7 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
-import MessageCustomerModal from "../../components/admin/MessageCustomerModal";
+
 import OcrAnalysisModal from "../../components/admin/OcrAnalysisModal";
 import { logQuoteActivity } from "../../utils/quoteActivityLog";
 
@@ -462,8 +462,16 @@ export default function AdminQuoteDetail() {
   const [error, setError] = useState("");
   const [orderId, setOrderId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [showMessageModal, setShowMessageModal] = useState(false);
+
   const [unreadStaffCount, setUnreadStaffCount] = useState(0);
+
+  // Inline chat state
+  const [messageFilter, setMessageFilter] = useState<"all" | "quote">("all");
+  const [newMessage, setNewMessage] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const messagesBottomRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showResendModal, setShowResendModal] = useState(false);
@@ -910,7 +918,7 @@ export default function AdminQuoteDetail() {
     }
   };
 
-  // Fetch all conversation messages for preview card (not filtered by quote_id)
+  // Fetch all conversation messages for inline chat
   const fetchConversationMessages = async () => {
     if (!quote?.customer_id) return;
 
@@ -931,9 +939,10 @@ export default function AdminQuoteDetail() {
         .select(`
           id, conversation_id, quote_id, sender_type, message_text,
           message_type, source, created_at, read_by_staff_at,
-          metadata,
+          read_by_customer_at, metadata,
           staff_users:sender_staff_id(full_name),
-          customers:sender_customer_id(full_name)
+          customers:sender_customer_id(full_name),
+          message_attachments(id, filename, original_filename, file_size, storage_path, mime_type)
         `)
         .eq("conversation_id", conv.id)
         .order("created_at", { ascending: true });
@@ -944,10 +953,131 @@ export default function AdminQuoteDetail() {
         (m: any) => m.sender_type === "customer" && !m.read_by_staff_at
       ).length;
       setUnreadStaffCount(unread);
+
+      // Mark unread customer messages as read by staff
+      if (unread > 0) {
+        const unreadIds = (messages || [])
+          .filter((m: any) => m.sender_type === "customer" && !m.read_by_staff_at)
+          .map((m: any) => m.id);
+
+        await supabase
+          .from("conversation_messages")
+          .update({ read_by_staff_at: new Date().toISOString() })
+          .in("id", unreadIds);
+
+        setUnreadStaffCount(0);
+      }
     } catch (err) {
       console.error("Failed to fetch conversation messages:", err);
     }
   };
+
+  // Computed filtered messages for inline chat
+  const filteredMessages = messageFilter === "quote"
+    ? conversationMessages.filter((msg: any) => msg.quote_id === id)
+    : conversationMessages;
+
+  // Auto-scroll to bottom when messages load or new message sent
+  useEffect(() => {
+    if (messagesBottomRef.current) {
+      messagesBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [filteredMessages.length]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (messageInputRef.current) {
+      messageInputRef.current.style.height = "auto";
+      messageInputRef.current.style.height =
+        Math.min(messageInputRef.current.scrollHeight, 120) + "px";
+    }
+  }, [newMessage]);
+
+  // Send message handler for inline chat
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || sendingMessage) return;
+    setSendingMessage(true);
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-staff-message`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            customer_id: quote?.customer_id,
+            quote_id: id,
+            staff_id: currentStaff?.staffId,
+            message_text: newMessage.trim(),
+            attachments: [],
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        setNewMessage("");
+        await fetchConversationMessages();
+
+        if (typeof logQuoteActivity === "function") {
+          logQuoteActivity(id!, currentStaff?.staffId || "", "message_sent", {
+            message_preview: newMessage.trim().substring(0, 100),
+          });
+        }
+      } else {
+        console.error("Failed to send message:", result.error);
+        toast.error("Failed to send message");
+      }
+    } catch (err) {
+      console.error("Send message error:", err);
+      toast.error("Failed to send message");
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  // Realtime subscription for new messages
+  useEffect(() => {
+    if (!quote?.customer_id) return;
+
+    let channel: any = null;
+    const setupSubscription = async () => {
+      const { data: conv } = await supabase
+        .from("customer_conversations")
+        .select("id")
+        .eq("customer_id", quote.customer_id)
+        .maybeSingle();
+
+      if (!conv?.id) return;
+
+      channel = supabase
+        .channel(`messages-${conv.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "conversation_messages",
+            filter: `conversation_id=eq.${conv.id}`,
+          },
+          () => {
+            fetchConversationMessages();
+          }
+        )
+        .subscribe();
+    };
+
+    setupSubscription();
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [quote?.customer_id]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -3176,42 +3306,234 @@ export default function AdminQuoteDetail() {
             </div>
           </div>
 
-          {/* ============ MESSAGES PREVIEW CARD ============ */}
+          {/* ============ MESSAGES CHAT SECTION ============ */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <button
-              onClick={() => setShowMessageModal(true)}
-              className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <MessageSquare className="w-5 h-5 text-blue-600" />
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 text-left">Messages</h3>
-                  {conversationMessages.length > 0 ? (
-                    <p className="text-sm text-gray-500 text-left mt-0.5 max-w-md truncate">
-                      {conversationMessages[conversationMessages.length - 1]?.sender_type === "staff" ? "You" : "Customer"}
-                      {": "}
-                      {conversationMessages[conversationMessages.length - 1]?.message_text?.substring(0, 60)}
-                      {(conversationMessages[conversationMessages.length - 1]?.message_text?.length || 0) > 60 ? "..." : ""}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-gray-400 text-left mt-0.5">No messages yet — click to start a conversation</p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
+                <h3 className="text-base font-semibold text-gray-900">Messages</h3>
                 {conversationMessages.length > 0 && (
                   <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
                     {conversationMessages.length}
                   </span>
                 )}
                 {unreadStaffCount > 0 && (
-                  <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
-                    {unreadStaffCount}
+                  <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    {unreadStaffCount} new
                   </span>
                 )}
-                <ChevronRight className="w-4 h-4 text-gray-400" />
               </div>
-            </button>
+
+              {/* Filter toggle */}
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                <button
+                  onClick={() => setMessageFilter("all")}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                    messageFilter === "all"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setMessageFilter("quote")}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                    messageFilter === "quote"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  This Quote
+                </button>
+              </div>
+            </div>
+
+            {/* Message Thread */}
+            <div
+              className="px-6 py-4 space-y-3 overflow-y-auto"
+              style={{ maxHeight: "400px" }}
+            >
+              {filteredMessages.length === 0 ? (
+                <div className="text-center py-8">
+                  <MessageSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-400">
+                    {messageFilter === "quote"
+                      ? "No messages tagged to this quote"
+                      : "No messages yet"}
+                  </p>
+                  {messageFilter === "quote" && conversationMessages.length > 0 && (
+                    <button
+                      onClick={() => setMessageFilter("all")}
+                      className="text-xs text-blue-500 hover:text-blue-600 mt-1"
+                    >
+                      View all {conversationMessages.length} messages
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {filteredMessages.map((msg: any, idx: number) => {
+                    const isStaff = msg.sender_type === "staff";
+                    const isSystem = msg.sender_type === "system";
+                    const senderName = isStaff
+                      ? msg.staff_users?.full_name || "Staff"
+                      : msg.customers?.full_name || "Customer";
+                    const isViaEmail = msg.source === "email";
+
+                    return (
+                      <div key={msg.id}>
+                        {/* Date separator */}
+                        {(idx === 0 ||
+                          new Date(msg.created_at).toDateString() !==
+                            new Date(filteredMessages[idx - 1].created_at).toDateString()) && (
+                          <div className="flex items-center gap-3 my-4">
+                            <div className="flex-1 border-t border-gray-200"></div>
+                            <span className="text-xs text-gray-400 font-medium">
+                              {new Date(msg.created_at).toLocaleDateString("en-US", {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                            <div className="flex-1 border-t border-gray-200"></div>
+                          </div>
+                        )}
+
+                        {/* System message */}
+                        {isSystem ? (
+                          <div className="text-center">
+                            <span className="text-xs text-gray-400 italic bg-gray-50 px-3 py-1 rounded-full">
+                              {msg.message_text}
+                            </span>
+                          </div>
+                        ) : (
+                          /* Chat bubble */
+                          <div className={`flex ${isStaff ? "justify-end" : "justify-start"}`}>
+                            <div className={`max-w-[75%] ${isStaff ? "order-1" : ""}`}>
+                              {/* Sender info + badges */}
+                              <div className={`flex items-center gap-1.5 mb-1 ${isStaff ? "justify-end" : ""}`}>
+                                <span className="text-xs font-medium text-gray-500">{senderName}</span>
+                                <span className="text-xs text-gray-400">
+                                  {new Date(msg.created_at).toLocaleTimeString("en-US", {
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                                {isViaEmail && (
+                                  <span className="text-xs bg-amber-50 text-amber-600 px-1 py-0.5 rounded">
+                                    via email
+                                  </span>
+                                )}
+                                {/* Quote badge (only in "All" view) */}
+                                {messageFilter === "all" && msg.metadata?.quote_number && (
+                                  <span className="text-xs bg-blue-50 text-blue-600 px-1 py-0.5 rounded font-mono">
+                                    {msg.metadata.quote_number}
+                                  </span>
+                                )}
+                                {messageFilter === "all" && !msg.quote_id && !isSystem && (
+                                  <span className="text-xs bg-gray-50 text-gray-400 px-1 py-0.5 rounded">
+                                    General
+                                  </span>
+                                )}
+                                {/* Read receipt for staff messages */}
+                                {isStaff && msg.read_by_customer_at && (
+                                  <span className="text-xs text-blue-400" title="Read by customer">✓✓</span>
+                                )}
+                                {isStaff && !msg.read_by_customer_at && (
+                                  <span className="text-xs text-gray-300" title="Delivered">✓</span>
+                                )}
+                              </div>
+
+                              {/* Bubble */}
+                              <div
+                                className={`rounded-2xl px-4 py-2.5 ${
+                                  isStaff
+                                    ? "bg-blue-600 text-white rounded-br-md"
+                                    : "bg-gray-100 text-gray-800 rounded-bl-md"
+                                }`}
+                              >
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.message_text}</p>
+
+                                {/* Attachments */}
+                                {msg.message_attachments && msg.message_attachments.length > 0 && (
+                                  <div className="mt-2 space-y-1">
+                                    {msg.message_attachments.map((att: any) => (
+                                      <a
+                                        key={att.id}
+                                        href={att.signed_url || "#"}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg ${
+                                          isStaff
+                                            ? "bg-blue-500 text-blue-100 hover:bg-blue-400"
+                                            : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+                                        }`}
+                                      >
+                                        <Paperclip className="w-3 h-3" />
+                                        <span className="truncate">{att.original_filename || att.filename}</span>
+                                        <span className="flex-shrink-0">
+                                          {att.file_size ? `${(att.file_size / 1024).toFixed(0)} KB` : ""}
+                                        </span>
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {/* Scroll anchor */}
+                  <div ref={messagesBottomRef} />
+                </>
+              )}
+            </div>
+
+            {/* Composer */}
+            <div className="px-6 py-3 border-t border-gray-100 bg-gray-50/50">
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <textarea
+                    ref={messageInputRef}
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder={
+                      quote?.customer?.full_name
+                        ? `Message ${quote.customer.full_name}...`
+                        : "Type a message..."
+                    }
+                    rows={1}
+                    className="w-full text-sm border border-gray-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                    style={{ minHeight: "40px", maxHeight: "120px" }}
+                  />
+                </div>
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!newMessage.trim() || sendingMessage}
+                  className="flex-shrink-0 p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="Send message (Enter)"
+                >
+                  {sendingMessage ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5">
+                Press Enter to send · Shift+Enter for new line · Customer will receive an email notification
+              </p>
+            </div>
           </div>
 
         </div>
@@ -4033,31 +4355,6 @@ export default function AdminQuoteDetail() {
           )}
         </div>
       </div>
-
-      <div className="flex items-center gap-3 mt-8 pt-6 border-t border-gray-200">
-        <button
-          onClick={() => setShowMessageModal(true)}
-          disabled={!currentStaff}
-          className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm font-medium text-gray-700 disabled:opacity-50"
-        >
-          <MessageSquare className="w-4 h-4" />
-          Message Customer
-        </button>
-      </div>
-
-      <MessageCustomerModal
-        isOpen={showMessageModal}
-        onClose={() => {
-          setShowMessageModal(false);
-          fetchConversationMessages();
-        }}
-        customerId={quote.customer_id}
-        customerName={quote.customer?.full_name || "Customer"}
-        customerEmail={quote.customer?.email || ""}
-        quoteId={quote.id}
-        staffId={currentStaff?.staffId || ""}
-        staffName={currentStaff?.staffName || "Staff"}
-      />
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
