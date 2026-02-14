@@ -16,6 +16,7 @@ import { CustomerAuthProvider } from "./context/CustomerAuthContext";
 import { BrandingProvider } from "./context/BrandingContext";
 import AppLayout from "./components/layouts/AppLayout";
 import Login from "./pages/Login";
+import LoginVerify from "./pages/LoginVerify";
 import Index from "./pages/Index";
 import Success from "./pages/Success";
 import NotFound from "./pages/NotFound";
@@ -115,6 +116,8 @@ const App = () => (
                 <Routes>
                   <Route element={<AppLayout />}>
                     <Route path="/" element={<Login />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/login/verify" element={<LoginVerify />} />
                     <Route path="/quote" element={<Index />} />
                     <Route path="/success" element={<Success />} />
                     <Route
