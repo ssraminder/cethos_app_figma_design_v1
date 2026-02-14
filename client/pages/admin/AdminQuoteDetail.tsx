@@ -469,8 +469,13 @@ export default function AdminQuoteDetail() {
   const [messageFilter, setMessageFilter] = useState<"all" | "quote">("all");
   const [newMessage, setNewMessage] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const messagesBottomRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -920,26 +925,49 @@ export default function AdminQuoteDetail() {
 
   // Fetch all conversation messages for inline chat
   const fetchConversationMessages = async () => {
-    if (!quote?.customer_id) return;
+    const customerId = quote?.customer_id;
+    console.log("📨 fetchConversationMessages called, customer_id:", customerId);
+
+    if (!customerId) {
+      console.log("⚠️ No customer_id, skipping message fetch");
+      return;
+    }
+
+    setMessagesLoading(true);
 
     try {
-      const { data: conv } = await supabase
+      // Step 1: Get conversation_id for this customer
+      const { data: conv, error: convError } = await supabase
         .from("customer_conversations")
         .select("id")
-        .eq("customer_id", quote.customer_id)
+        .eq("customer_id", customerId)
         .maybeSingle();
 
-      if (!conv?.id) {
-        setConversationMessages([]);
+      if (convError) {
+        console.error("❌ Error fetching conversation:", convError);
+        setMessagesLoading(false);
         return;
       }
 
-      const { data: messages } = await supabase
+      if (!conv?.id) {
+        console.log("ℹ️ No conversation exists yet for this customer");
+        setConversationMessages([]);
+        setConversationId(null);
+        setMessagesLoading(false);
+        return;
+      }
+
+      setConversationId(conv.id);
+      console.log("📬 Found conversation:", conv.id);
+
+      // Step 2: Fetch ALL messages in this conversation
+      const { data: messages, error: msgError } = await supabase
         .from("conversation_messages")
         .select(`
-          id, conversation_id, quote_id, sender_type, message_text,
-          message_type, source, created_at, read_by_staff_at,
-          read_by_customer_at, metadata,
+          id, conversation_id, quote_id, order_id, sender_type,
+          sender_staff_id, sender_customer_id,
+          message_text, message_type, source, created_at,
+          read_by_staff_at, read_by_customer_at, metadata,
           staff_users:sender_staff_id(full_name),
           customers:sender_customer_id(full_name),
           message_attachments(id, filename, original_filename, file_size, storage_path, mime_type)
@@ -947,14 +975,22 @@ export default function AdminQuoteDetail() {
         .eq("conversation_id", conv.id)
         .order("created_at", { ascending: true });
 
+      if (msgError) {
+        console.error("❌ Error fetching messages:", msgError);
+        setMessagesLoading(false);
+        return;
+      }
+
+      console.log(`✅ Loaded ${messages?.length || 0} messages`);
       setConversationMessages(messages || []);
 
+      // Step 3: Count unread customer messages
       const unread = (messages || []).filter(
         (m: any) => m.sender_type === "customer" && !m.read_by_staff_at
       ).length;
       setUnreadStaffCount(unread);
 
-      // Mark unread customer messages as read by staff
+      // Step 4: Auto-mark customer messages as read
       if (unread > 0) {
         const unreadIds = (messages || [])
           .filter((m: any) => m.sender_type === "customer" && !m.read_by_staff_at)
@@ -968,7 +1004,9 @@ export default function AdminQuoteDetail() {
         setUnreadStaffCount(0);
       }
     } catch (err) {
-      console.error("Failed to fetch conversation messages:", err);
+      console.error("❌ fetchConversationMessages error:", err);
+    } finally {
+      setMessagesLoading(false);
     }
   };
 
@@ -976,6 +1014,28 @@ export default function AdminQuoteDetail() {
   const filteredMessages = messageFilter === "quote"
     ? conversationMessages.filter((msg: any) => msg.quote_id === id)
     : conversationMessages;
+
+  // Helper: format message time with relative labels
+  const formatMessageTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+
+    const time = date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    if (isToday) return time;
+    if (isYesterday) return `Yesterday ${time}`;
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }) + ` ${time}`;
+  };
 
   // Auto-scroll to bottom when messages load or new message sent
   useEffect(() => {
@@ -993,26 +1053,58 @@ export default function AdminQuoteDetail() {
     }
   }, [newMessage]);
 
-  // Send message handler for inline chat
+  // Send message handler for inline chat (with attachment support)
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || sendingMessage) return;
+    if ((!newMessage.trim() && !attachmentFile) || sendingMessage) return;
     setSendingMessage(true);
 
     try {
+      let attachmentPaths: string[] = [];
+
+      // Upload attachment first if present
+      if (attachmentFile) {
+        setUploadingAttachment(true);
+        try {
+          const timestamp = Date.now();
+          const randomId = Math.random().toString(36).substring(2, 8);
+          const tempPath = `temp/${timestamp}-${randomId}-${attachmentFile.name}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("message-attachments")
+            .upload(tempPath, attachmentFile, {
+              contentType: attachmentFile.type,
+              upsert: false,
+            });
+
+          if (uploadError) {
+            console.error("❌ Attachment upload failed:", uploadError);
+            toast.error("Failed to upload attachment. Please try again.");
+            setSendingMessage(false);
+            setUploadingAttachment(false);
+            return;
+          }
+
+          attachmentPaths = [tempPath];
+          console.log("📎 Attachment uploaded to temp:", tempPath);
+        } finally {
+          setUploadingAttachment(false);
+        }
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-staff-message`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             customer_id: quote?.customer_id,
             quote_id: id,
             staff_id: currentStaff?.staffId,
-            message_text: newMessage.trim(),
-            attachments: [],
+            message_text: newMessage.trim() || (attachmentFile ? `Sent a file: ${attachmentFile.name}` : ""),
+            attachments: attachmentPaths,
           }),
         }
       );
@@ -1021,6 +1113,8 @@ export default function AdminQuoteDetail() {
 
       if (result.success) {
         setNewMessage("");
+        setAttachmentFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         await fetchConversationMessages();
 
         if (typeof logQuoteActivity === "function") {
@@ -1029,55 +1123,41 @@ export default function AdminQuoteDetail() {
           });
         }
       } else {
-        console.error("Failed to send message:", result.error);
-        toast.error("Failed to send message");
+        console.error("❌ Send failed:", result.error);
+        toast.error("Failed to send message: " + (result.error || "Unknown error"));
       }
     } catch (err) {
-      console.error("Send message error:", err);
-      toast.error("Failed to send message");
+      console.error("❌ Send message error:", err);
+      toast.error("Failed to send message. Please try again.");
     } finally {
       setSendingMessage(false);
     }
   };
 
-  // Realtime subscription for new messages
+  // Realtime subscription for new messages (uses conversationId state)
   useEffect(() => {
-    if (!quote?.customer_id) return;
+    if (!conversationId) return;
 
-    let channel: any = null;
-    const setupSubscription = async () => {
-      const { data: conv } = await supabase
-        .from("customer_conversations")
-        .select("id")
-        .eq("customer_id", quote.customer_id)
-        .maybeSingle();
+    const channel = supabase
+      .channel(`admin-messages-${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        () => {
+          fetchConversationMessages();
+        }
+      )
+      .subscribe();
 
-      if (!conv?.id) return;
-
-      channel = supabase
-        .channel(`messages-${conv.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "conversation_messages",
-            filter: `conversation_id=eq.${conv.id}`,
-          },
-          () => {
-            fetchConversationMessages();
-          }
-        )
-        .subscribe();
-    };
-
-    setupSubscription();
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      supabase.removeChannel(channel);
     };
-  }, [quote?.customer_id]);
+  }, [conversationId]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -3306,74 +3386,89 @@ export default function AdminQuoteDetail() {
             </div>
           </div>
 
-          {/* ============ MESSAGES CHAT SECTION ============ */}
+          {/* ================================================================
+              MESSAGES — INLINE CHAT
+              ================================================================ */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-blue-600" />
-                <h3 className="text-base font-semibold text-gray-900">Messages</h3>
-                {conversationMessages.length > 0 && (
-                  <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
-                    {conversationMessages.length}
-                  </span>
-                )}
+            {/* ── Header ── */}
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <MessageSquare className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Messages</h3>
+                  {conversationMessages.length > 0 && (
+                    <p className="text-xs text-gray-500">{conversationMessages.length} message{conversationMessages.length !== 1 ? "s" : ""}</p>
+                  )}
+                </div>
                 {unreadStaffCount > 0 && (
-                  <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                    {unreadStaffCount} new
+                  <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                    {unreadStaffCount}
                   </span>
                 )}
               </div>
 
               {/* Filter toggle */}
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                <button
-                  onClick={() => setMessageFilter("all")}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                    messageFilter === "all"
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => setMessageFilter("quote")}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                    messageFilter === "quote"
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  This Quote
-                </button>
-              </div>
+              {conversationMessages.length > 0 && (
+                <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setMessageFilter("all")}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      messageFilter === "all"
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    All ({conversationMessages.length})
+                  </button>
+                  <button
+                    onClick={() => setMessageFilter("quote")}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      messageFilter === "quote"
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    This Quote ({conversationMessages.filter((m: any) => m.quote_id === id).length})
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Message Thread */}
+            {/* ── Message Thread ── */}
             <div
-              className="px-6 py-4 space-y-3 overflow-y-auto"
-              style={{ maxHeight: "400px" }}
+              className="px-5 py-4 overflow-y-auto bg-gradient-to-b from-gray-50/30 to-white"
+              style={{ maxHeight: "420px", minHeight: "120px" }}
             >
-              {filteredMessages.length === 0 ? (
-                <div className="text-center py-8">
-                  <MessageSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-400">
-                    {messageFilter === "quote"
-                      ? "No messages tagged to this quote"
-                      : "No messages yet"}
+              {messagesLoading ? (
+                <div className="flex flex-col items-center justify-center py-10">
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-500 mb-2" />
+                  <p className="text-xs text-gray-400">Loading messages...</p>
+                </div>
+              ) : filteredMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                    <MessageSquare className="w-5 h-5 text-gray-300" />
+                  </div>
+                  <p className="text-sm text-gray-400 font-medium">
+                    {messageFilter === "quote" ? "No messages for this quote" : "No messages yet"}
                   </p>
-                  {messageFilter === "quote" && conversationMessages.length > 0 && (
-                    <button
-                      onClick={() => setMessageFilter("all")}
-                      className="text-xs text-blue-500 hover:text-blue-600 mt-1"
-                    >
-                      View all {conversationMessages.length} messages
-                    </button>
-                  )}
+                  <p className="text-xs text-gray-400 mt-1">
+                    {messageFilter === "quote" && conversationMessages.length > 0 ? (
+                      <button
+                        onClick={() => setMessageFilter("all")}
+                        className="text-blue-500 hover:text-blue-600 underline"
+                      >
+                        View all {conversationMessages.length} messages
+                      </button>
+                    ) : (
+                      "Send a message below to start the conversation"
+                    )}
+                  </p>
                 </div>
               ) : (
-                <>
+                <div className="space-y-1">
                   {filteredMessages.map((msg: any, idx: number) => {
                     const isStaff = msg.sender_type === "staff";
                     const isSystem = msg.sender_type === "system";
@@ -3382,101 +3477,113 @@ export default function AdminQuoteDetail() {
                       : msg.customers?.full_name || "Customer";
                     const isViaEmail = msg.source === "email";
 
+                    // Date separator
+                    const showDateSep =
+                      idx === 0 ||
+                      new Date(msg.created_at).toDateString() !==
+                        new Date(filteredMessages[idx - 1].created_at).toDateString();
+
                     return (
                       <div key={msg.id}>
-                        {/* Date separator */}
-                        {(idx === 0 ||
-                          new Date(msg.created_at).toDateString() !==
-                            new Date(filteredMessages[idx - 1].created_at).toDateString()) && (
-                          <div className="flex items-center gap-3 my-4">
-                            <div className="flex-1 border-t border-gray-200"></div>
-                            <span className="text-xs text-gray-400 font-medium">
+                        {showDateSep && (
+                          <div className="flex items-center gap-3 py-3">
+                            <div className="flex-1 border-t border-gray-200" />
+                            <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
                               {new Date(msg.created_at).toLocaleDateString("en-US", {
                                 weekday: "short",
                                 month: "short",
                                 day: "numeric",
                               })}
                             </span>
-                            <div className="flex-1 border-t border-gray-200"></div>
+                            <div className="flex-1 border-t border-gray-200" />
                           </div>
                         )}
 
-                        {/* System message */}
                         {isSystem ? (
-                          <div className="text-center">
-                            <span className="text-xs text-gray-400 italic bg-gray-50 px-3 py-1 rounded-full">
+                          <div className="text-center py-1">
+                            <span className="text-[11px] text-gray-400 italic bg-gray-50 px-3 py-1 rounded-full">
                               {msg.message_text}
                             </span>
                           </div>
                         ) : (
-                          /* Chat bubble */
-                          <div className={`flex ${isStaff ? "justify-end" : "justify-start"}`}>
-                            <div className={`max-w-[75%] ${isStaff ? "order-1" : ""}`}>
-                              {/* Sender info + badges */}
-                              <div className={`flex items-center gap-1.5 mb-1 ${isStaff ? "justify-end" : ""}`}>
-                                <span className="text-xs font-medium text-gray-500">{senderName}</span>
-                                <span className="text-xs text-gray-400">
-                                  {new Date(msg.created_at).toLocaleTimeString("en-US", {
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                  })}
+                          <div className={`flex ${isStaff ? "justify-end" : "justify-start"} mb-2`}>
+                            <div className={`max-w-[78%] group`}>
+                              {/* Sender + meta */}
+                              <div className={`flex items-center gap-1.5 mb-0.5 ${isStaff ? "justify-end" : ""}`}>
+                                <span className="text-[11px] font-medium text-gray-500">
+                                  {senderName}
+                                </span>
+                                <span className="text-[11px] text-gray-400">
+                                  {formatMessageTime(msg.created_at)}
                                 </span>
                                 {isViaEmail && (
-                                  <span className="text-xs bg-amber-50 text-amber-600 px-1 py-0.5 rounded">
-                                    via email
+                                  <span className="text-[10px] bg-amber-50 text-amber-600 px-1 py-0.5 rounded font-medium">
+                                    email
                                   </span>
                                 )}
-                                {/* Quote badge (only in "All" view) */}
                                 {messageFilter === "all" && msg.metadata?.quote_number && (
-                                  <span className="text-xs bg-blue-50 text-blue-600 px-1 py-0.5 rounded font-mono">
+                                  <span className="text-[10px] bg-blue-50 text-blue-600 px-1 py-0.5 rounded font-mono">
                                     {msg.metadata.quote_number}
                                   </span>
                                 )}
                                 {messageFilter === "all" && !msg.quote_id && !isSystem && (
-                                  <span className="text-xs bg-gray-50 text-gray-400 px-1 py-0.5 rounded">
-                                    General
+                                  <span className="text-[10px] bg-gray-100 text-gray-400 px-1 py-0.5 rounded">
+                                    general
                                   </span>
                                 )}
-                                {/* Read receipt for staff messages */}
                                 {isStaff && msg.read_by_customer_at && (
-                                  <span className="text-xs text-blue-400" title="Read by customer">✓✓</span>
+                                  <span className="text-[10px] text-blue-400">✓✓</span>
                                 )}
                                 {isStaff && !msg.read_by_customer_at && (
-                                  <span className="text-xs text-gray-300" title="Delivered">✓</span>
+                                  <span className="text-[10px] text-gray-300">✓</span>
                                 )}
                               </div>
 
                               {/* Bubble */}
                               <div
-                                className={`rounded-2xl px-4 py-2.5 ${
+                                className={`rounded-2xl px-3.5 py-2 ${
                                   isStaff
-                                    ? "bg-blue-600 text-white rounded-br-md"
-                                    : "bg-gray-100 text-gray-800 rounded-bl-md"
+                                    ? "bg-blue-600 text-white rounded-br-sm"
+                                    : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm shadow-sm"
                                 }`}
                               >
-                                <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.message_text}</p>
+                                {msg.message_text && (
+                                  <p className="text-[13px] whitespace-pre-wrap leading-relaxed">
+                                    {msg.message_text}
+                                  </p>
+                                )}
 
                                 {/* Attachments */}
                                 {msg.message_attachments && msg.message_attachments.length > 0 && (
-                                  <div className="mt-2 space-y-1">
+                                  <div className={`${msg.message_text ? "mt-2 pt-2 border-t" : ""} ${
+                                    isStaff ? "border-blue-500/30" : "border-gray-100"
+                                  } space-y-1`}>
                                     {msg.message_attachments.map((att: any) => (
-                                      <a
+                                      <div
                                         key={att.id}
-                                        href={att.signed_url || "#"}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg ${
+                                        className={`flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-lg cursor-pointer ${
                                           isStaff
-                                            ? "bg-blue-500 text-blue-100 hover:bg-blue-400"
-                                            : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+                                            ? "bg-blue-500/30 text-blue-100 hover:bg-blue-500/40"
+                                            : "bg-gray-50 text-gray-600 hover:bg-gray-100"
                                         }`}
+                                        onClick={async () => {
+                                          const { data } = await supabase.storage
+                                            .from("message-attachments")
+                                            .createSignedUrl(att.storage_path, 300);
+                                          if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+                                        }}
                                       >
-                                        <Paperclip className="w-3 h-3" />
-                                        <span className="truncate">{att.original_filename || att.filename}</span>
-                                        <span className="flex-shrink-0">
-                                          {att.file_size ? `${(att.file_size / 1024).toFixed(0)} KB` : ""}
-                                        </span>
-                                      </a>
+                                        <Paperclip className="w-3 h-3 flex-shrink-0" />
+                                        <span className="truncate flex-1">{att.original_filename || att.filename}</span>
+                                        {att.file_size && (
+                                          <span className="flex-shrink-0 opacity-70">
+                                            {att.file_size > 1048576
+                                              ? `${(att.file_size / 1048576).toFixed(1)} MB`
+                                              : `${Math.round(att.file_size / 1024)} KB`}
+                                          </span>
+                                        )}
+                                        <Download className="w-3 h-3 flex-shrink-0 opacity-50" />
+                                      </div>
                                     ))}
                                   </div>
                                 )}
@@ -3487,41 +3594,84 @@ export default function AdminQuoteDetail() {
                       </div>
                     );
                   })}
-                  {/* Scroll anchor */}
                   <div ref={messagesBottomRef} />
-                </>
+                </div>
               )}
             </div>
 
-            {/* Composer */}
-            <div className="px-6 py-3 border-t border-gray-100 bg-gray-50/50">
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <textarea
-                    ref={messageInputRef}
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
+            {/* ── Composer ── */}
+            <div className="px-4 py-3 border-t border-gray-100 bg-white">
+              {/* Attachment preview */}
+              {attachmentFile && (
+                <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-blue-50 rounded-lg text-sm">
+                  <Paperclip className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                  <span className="text-blue-700 truncate flex-1">{attachmentFile.name}</span>
+                  <span className="text-blue-500 text-xs flex-shrink-0">
+                    {attachmentFile.size > 1048576
+                      ? `${(attachmentFile.size / 1048576).toFixed(1)} MB`
+                      : `${Math.round(attachmentFile.size / 1024)} KB`}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setAttachmentFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
                     }}
-                    placeholder={
-                      quote?.customer?.full_name
-                        ? `Message ${quote.customer.full_name}...`
-                        : "Type a message..."
-                    }
-                    rows={1}
-                    className="w-full text-sm border border-gray-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                    style={{ minHeight: "40px", maxHeight: "120px" }}
-                  />
+                    className="text-blue-400 hover:text-blue-600 flex-shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
+              )}
+
+              <div className="flex items-end gap-2">
+                {/* Attachment button */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-shrink-0 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Attach file"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) {
+                        toast.error("File must be under 10MB");
+                        return;
+                      }
+                      setAttachmentFile(file);
+                    }
+                  }}
+                />
+
+                {/* Text input */}
+                <textarea
+                  ref={messageInputRef}
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder={quote?.customer?.full_name ? `Message ${quote.customer.full_name}...` : "Type a message..."}
+                  rows={1}
+                  className="flex-1 text-sm border border-gray-200 rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-gray-50 focus:bg-white transition-colors placeholder:text-gray-400"
+                  style={{ minHeight: "38px", maxHeight: "100px" }}
+                />
+
+                {/* Send button */}
                 <button
                   onClick={handleSendMessage}
-                  disabled={!newMessage.trim() || sendingMessage}
-                  className="flex-shrink-0 p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title="Send message (Enter)"
+                  disabled={(!newMessage.trim() && !attachmentFile) || sendingMessage}
+                  className="flex-shrink-0 p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  title="Send (Enter)"
                 >
                   {sendingMessage ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -3530,8 +3680,9 @@ export default function AdminQuoteDetail() {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-gray-400 mt-1.5">
-                Press Enter to send · Shift+Enter for new line · Customer will receive an email notification
+
+              <p className="text-[11px] text-gray-400 mt-1.5 px-1">
+                Enter to send · Shift+Enter for new line · Customer receives an email notification
               </p>
             </div>
           </div>
