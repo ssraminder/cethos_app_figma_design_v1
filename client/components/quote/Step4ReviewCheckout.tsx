@@ -191,6 +191,7 @@ export default function Step4ReviewCheckout() {
   const [hitlRequested, setHitlRequested] = useState(false);
   const [hitlRequired, setHitlRequired] = useState(false);
   const [hitlReason, setHitlReason] = useState("");
+  const [quoteStatus, setQuoteStatus] = useState("");
 
   // Turnaround options
   const [turnaroundType, setTurnaroundType] = useState<
@@ -846,6 +847,7 @@ export default function Step4ReviewCheckout() {
         .from("quotes")
         .select(
           `intended_use:intended_uses(code),
+           status,
            hitl_required,
            hitl_reason,
            target_language_id,
@@ -889,6 +891,11 @@ export default function Step4ReviewCheckout() {
 
       if (quoteData?.intended_use) {
         setIntendedUse((quoteData.intended_use as any)?.code || "");
+      }
+
+      // Set quote status
+      if (quoteData?.status) {
+        setQuoteStatus(quoteData.status);
       }
 
       // Set HITL status
@@ -2177,8 +2184,8 @@ export default function Step4ReviewCheckout() {
         </div>
       </div>
 
-      {/* HITL Request Banner */}
-      {!hitlRequested && !hitlRequired && !state.isStaffReviewed && processingState === "complete" && (
+      {/* HITL Request Banner — only show when quote is still a lead */}
+      {quoteStatus === "lead" && !hitlRequested && !hitlRequired && !state.isStaffReviewed && processingState === "complete" && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
           <div className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-start gap-3">
