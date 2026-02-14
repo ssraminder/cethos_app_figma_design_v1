@@ -427,7 +427,9 @@ export default function ManualEntryModal({
         word_count: wordCount || null,
         page_count: 1, // Default for manual entries
         billable_pages: billablePages,
-        base_rate: settings.base_rate,
+        // Store the effective rate (includes language multiplier + $2.50 rounding),
+        // e.g., $75 for Arabic 1.15×, not the raw $65 system default.
+        base_rate: perPageRate,
         line_total: pricingSummary.lineTotal,
         certification_type_id: selectedCertificationId || null,
         certification_price: pricingSummary.certificationCost,

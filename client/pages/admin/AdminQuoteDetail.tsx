@@ -2487,9 +2487,11 @@ export default function AdminQuoteDetail() {
                           <span className="font-medium">
                             $
                             {(() => {
-                              const baseRate = Number(currentAnalysis.base_rate || 65);
-                              const langMult = (quote as any).source_language?.price_multiplier || 1.0;
-                              return (Math.ceil(baseRate * langMult / 2.5) * 2.5).toFixed(2);
+                              // base_rate in DB is the effective rate (already includes
+                              // language multiplier + $2.50 rounding). Display directly.
+                              // Fallback to system default $65 if no stored rate.
+                              const effectiveRate = Number(currentAnalysis.base_rate || 65);
+                              return effectiveRate.toFixed(2);
                             })()}
                             /page
                           </span>

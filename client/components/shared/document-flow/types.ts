@@ -214,6 +214,9 @@ export const COMPLEXITY_MULTIPLIERS: Record<Complexity, number> = {
   hard: 1.25,
 };
 
+// Fallback defaults — only used when app_settings values are unavailable.
+// In normal operation, the effective per-document rate is stored in
+// ai_analysis_results.base_rate and includes the language multiplier.
 export const DEFAULT_PRICING_SETTINGS: PricingSettings = {
   base_rate: 65,
   words_per_page: 225,

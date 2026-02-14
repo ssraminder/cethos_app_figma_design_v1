@@ -454,7 +454,7 @@ export default function DocumentGroupEditor({
   groups,
   unassignedItems,
   certificationTypes,
-  baseRate = 65,
+  baseRate = 65, // Fallback to system default; effective rate comes from ai_analysis_results.base_rate
   wordsPerPage = 250,
   isEditable = true,
   isLoading = false,
