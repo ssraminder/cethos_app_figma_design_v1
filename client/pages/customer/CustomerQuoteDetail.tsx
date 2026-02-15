@@ -61,6 +61,119 @@ const STATUS_LABELS: Record<string, string> = {
   paid: "Paid",
 };
 
+function FileSection({
+  title,
+  icon,
+  files,
+  emptyText,
+}: {
+  title: string;
+  icon: string;
+  files: any[];
+  emptyText?: string;
+}) {
+  if (files.length === 0 && !emptyText) return null;
+
+  return (
+    <div
+      style={{
+        background: "#fff",
+        borderRadius: 12,
+        border: "1px solid #e5e7eb",
+        overflow: "hidden",
+        marginBottom: 16,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "14px 16px",
+          borderBottom: "1px solid #e5e7eb",
+        }}
+      >
+        <span>{icon}</span>
+        <span style={{ fontSize: 14, fontWeight: 700 }}>{title}</span>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: "#4F8CFF",
+            background: "rgba(79,140,255,0.1)",
+            padding: "2px 8px",
+            borderRadius: 10,
+          }}
+        >
+          {files.length}
+        </span>
+      </div>
+      <div>
+        {files.length === 0 ? (
+          <div style={{ padding: 16, fontSize: 13, color: "#9ca3af" }}>
+            {emptyText}
+          </div>
+        ) : (
+          files.map((file) => (
+            <div
+              key={file.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 16px",
+                borderBottom: "1px solid #f3f4f6",
+              }}
+            >
+              <span style={{ fontSize: 18 }}>📄</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {file.filename}
+                </div>
+                <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+                  {file.size ? `${(file.size / 1024).toFixed(0)} KB` : ""}
+                  {file.size && file.category_name ? " · " : ""}
+                  {file.category_name}
+                </div>
+              </div>
+              {file.signed_url && (
+                <a
+                  href={file.signed_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "5px 12px",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#6b7280",
+                    border: "1px solid #e5e7eb",
+                    textDecoration: "none",
+                    background: "#fff",
+                  }}
+                >
+                  ⬇ Download
+                </a>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CustomerQuoteDetail() {
   const { id } = useParams();
   const { customer } = useAuth();
@@ -68,6 +181,10 @@ export default function CustomerQuoteDetail() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Files state
+  const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
 
   // Messaging state
   const [messagesOpen, setMessagesOpen] = useState(false);
@@ -90,6 +207,41 @@ export default function CustomerQuoteDetail() {
       loadQuote();
     }
   }, [id, customer?.id]);
+
+  useEffect(() => {
+    if (!customer?.id || !id) return;
+
+    const fetchFiles = async () => {
+      setFilesLoading(true);
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-customer-documents`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              customer_id: customer.id,
+              context: "quote",
+              quote_id: id,
+            }),
+          },
+        );
+        const data = await response.json();
+        if (data.success) {
+          setQuoteFiles(data.files || []);
+        }
+      } catch (err) {
+        console.error("Error fetching quote files:", err);
+      } finally {
+        setFilesLoading(false);
+      }
+    };
+
+    fetchFiles();
+  }, [customer?.id, id]);
 
   const loadQuote = async () => {
     try {
@@ -523,6 +675,95 @@ export default function CustomerQuoteDetail() {
             </div>
           </div>
         )}
+
+        {/* ============ DOCUMENTS SECTION ============ */}
+        {(() => {
+          const sourceFiles = quoteFiles.filter(
+            (f) => f.display_category === "source",
+          );
+          const referenceFiles = quoteFiles.filter(
+            (f) => f.display_category === "reference",
+          );
+
+          return (
+            <>
+              <h3
+                style={{
+                  fontSize: 15,
+                  fontWeight: 700,
+                  marginBottom: 12,
+                  marginTop: 24,
+                }}
+              >
+                Documents
+              </h3>
+
+              {filesLoading ? (
+                <div
+                  style={{
+                    padding: 24,
+                    textAlign: "center",
+                    color: "#9ca3af",
+                  }}
+                >
+                  Loading files...
+                </div>
+              ) : quoteFiles.length === 0 ? (
+                <div
+                  style={{
+                    padding: 24,
+                    textAlign: "center",
+                    color: "#9ca3af",
+                    background: "#fff",
+                    borderRadius: 12,
+                    border: "1px solid #e5e7eb",
+                    marginBottom: 16,
+                  }}
+                >
+                  <p style={{ fontSize: 13, marginBottom: 4 }}>
+                    No documents uploaded yet for this quote.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <FileSection
+                    title="Your Uploaded Documents"
+                    icon="📁"
+                    files={sourceFiles}
+                    emptyText="No documents uploaded yet"
+                  />
+                  {referenceFiles.length > 0 && (
+                    <FileSection
+                      title="Reference Files"
+                      icon="📎"
+                      files={referenceFiles}
+                    />
+                  )}
+                </>
+              )}
+              <div
+                style={{
+                  padding: "12px 16px",
+                  borderRadius: 10,
+                  background: "rgba(79,140,255,0.06)",
+                  border: "1px solid rgba(79,140,255,0.15)",
+                  fontSize: 12,
+                  color: "#4F8CFF",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 16,
+                }}
+              >
+                <span>ℹ️</span>
+                <span>
+                  Staff files and completed translations will appear on your{" "}
+                  <strong>Order Details</strong> page after payment.
+                </span>
+              </div>
+            </>
+          );
+        })()}
 
         {/* ============ MESSAGES SECTION ============ */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-6">
