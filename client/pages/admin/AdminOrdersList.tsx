@@ -38,8 +38,10 @@ const STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },
   { value: "paid", label: "Paid" },
   { value: "processing", label: "Processing" },
+  { value: "draft_review", label: "Draft Review" },
   { value: "completed", label: "Completed" },
   { value: "delivered", label: "Delivered" },
+  { value: "invoiced", label: "Invoiced" },
   { value: "refunded", label: "Refunded" },
   { value: "cancelled", label: "Cancelled" },
 ];
@@ -572,8 +574,10 @@ function OrderStatusBadge({ status }: { status?: string }) {
     pending_payment: "bg-amber-100 text-amber-700",
     paid: "bg-green-100 text-green-700",
     processing: "bg-blue-100 text-blue-700",
+    draft_review: "bg-purple-100 text-purple-700",
     completed: "bg-green-100 text-green-700",
     delivered: "bg-green-100 text-green-700",
+    invoiced: "bg-emerald-100 text-emerald-700",
     refunded: "bg-red-100 text-red-700",
     cancelled: "bg-gray-100 text-gray-700",
   };
@@ -583,8 +587,10 @@ function OrderStatusBadge({ status }: { status?: string }) {
     pending_payment: "Pending Payment",
     paid: "Paid",
     processing: "Processing",
+    draft_review: "Draft Review",
     completed: "Completed",
     delivered: "Delivered",
+    invoiced: "Invoiced",
     refunded: "Refunded",
     cancelled: "Cancelled",
   };

@@ -28,18 +28,22 @@ interface Order {
 const STATUS_TIMELINE = [
   { status: "paid", label: "Payment Confirmed" },
   { status: "in_production", label: "In Production" },
+  { status: "draft_review", label: "Draft Review" },
   { status: "ready_for_pickup", label: "Ready" },
   { status: "out_for_delivery", label: "Out for Delivery" },
   { status: "delivered", label: "Delivered" },
+  { status: "invoiced", label: "Invoiced" },
   { status: "completed", label: "Completed" },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
   paid: "bg-green-100 text-green-800",
   in_production: "bg-blue-100 text-blue-800",
+  draft_review: "bg-purple-100 text-purple-800",
   ready_for_pickup: "bg-purple-100 text-purple-800",
   out_for_delivery: "bg-yellow-100 text-yellow-800",
   delivered: "bg-teal-100 text-teal-800",
+  invoiced: "bg-emerald-100 text-emerald-800",
   completed: "bg-gray-100 text-gray-800",
   cancelled: "bg-red-100 text-red-800",
 };
