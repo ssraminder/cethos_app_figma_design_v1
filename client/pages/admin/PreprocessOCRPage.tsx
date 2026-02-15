@@ -586,29 +586,37 @@ export default function PreprocessOCRPage() {
       .in('status', ['completed', 'pending', 'processing']);
 
     if (!ocrError && ocrFiles && ocrFiles.length > 0) {
-      allFiles.push(...ocrFiles.map(f => ({
-        id: f.id,
-        displayName: f.filename || f.original_filename || extractFilename(f.storage_path),
-        storagePath: f.storage_path,
-        bucket: 'ocr-uploads' as const,
-        bucketPath: f.storage_path,
-        fileSize: f.file_size || 0,
-        mimeType: f.mime_type || 'application/pdf',
-        source: 'ocr' as const,
-      })));
+      allFiles.push(...ocrFiles.map(f => {
+        // Infer the correct bucket from the storage_path format:
+        // - ocr-uploads paths are flat: "1234567-abc123-filename.pdf" (no /)
+        // - quote-files paths have directories: "{quoteId}/filename.pdf" or "uploads/..."
+        const bucket = f.storage_path.includes('/') ? 'quote-files' : 'ocr-uploads';
+        return {
+          id: f.id,
+          displayName: f.filename || f.original_filename || extractFilename(f.storage_path),
+          storagePath: f.storage_path,
+          bucket,
+          bucketPath: f.storage_path,
+          fileSize: f.file_size || 0,
+          mimeType: f.mime_type || 'application/pdf',
+          source: 'ocr' as const,
+        };
+      }));
     }
 
-    // 3. Deduplicate by display name (same file may exist in both tables)
-    const seen = new Map<string, QuoteFileRecord>();
+    // 3. Deduplicate by display name AND storage path (same file may exist in both tables)
+    // quote_files records are queried first and take priority over ocr_batch_files
+    const seenByName = new Map<string, QuoteFileRecord>();
+    const seenByPath = new Set<string>();
     for (const file of allFiles) {
-      const key = file.displayName.toLowerCase();
-      if (!seen.has(key)) {
-        seen.set(key, file);
+      const nameKey = file.displayName.toLowerCase();
+      if (!seenByName.has(nameKey) && !seenByPath.has(file.storagePath)) {
+        seenByName.set(nameKey, file);
+        seenByPath.add(file.storagePath);
       }
-      // If duplicate, keep the first one (quote_files takes priority since queried first)
     }
 
-    return Array.from(seen.values());
+    return Array.from(seenByName.values());
   };
 
   const loadQuoteFiles = async () => {
