@@ -4,6 +4,7 @@ import {
   MessageSquare,
   FileText,
   Package,
+  File,
   User,
   LogOut,
   Menu,
@@ -36,6 +37,7 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
     { path: "/dashboard", label: "Dashboard", icon: FileText },
     { path: "/dashboard/quotes", label: "Quotes", icon: FileText },
     { path: "/dashboard/orders", label: "Orders", icon: Package },
+    { path: "/dashboard/documents", label: "Documents", icon: File },
     { path: "/dashboard/messages", label: "Messages", icon: MessageSquare },
     { path: "/dashboard/profile", label: "Profile", icon: User },
   ];

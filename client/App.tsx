@@ -42,6 +42,7 @@ import CustomerQuotes from "./pages/customer/CustomerQuotes";
 import CustomerQuoteDetail from "./pages/customer/CustomerQuoteDetail";
 import CustomerOrders from "./pages/customer/CustomerOrders";
 import CustomerOrderDetail from "./pages/customer/CustomerOrderDetail";
+import CustomerDocuments from "./pages/customer/CustomerDocuments";
 import CustomerMessages from "./pages/customer/CustomerMessages";
 import CustomerProfile from "./pages/customer/CustomerProfile";
 
@@ -218,6 +219,16 @@ const App = () => (
                       <CustomerAuthProvider>
                         <ProtectedCustomerRoute>
                           <CustomerOrderDetail />
+                        </ProtectedCustomerRoute>
+                      </CustomerAuthProvider>
+                    }
+                  />
+                  <Route
+                    path="/dashboard/documents"
+                    element={
+                      <CustomerAuthProvider>
+                        <ProtectedCustomerRoute>
+                          <CustomerDocuments />
                         </ProtectedCustomerRoute>
                       </CustomerAuthProvider>
                     }
