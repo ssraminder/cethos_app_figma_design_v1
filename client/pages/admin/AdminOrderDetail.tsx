@@ -28,6 +28,8 @@ import {
   Zap,
   MessageSquare,
   Paperclip,
+  Upload,
+  Send,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -227,6 +229,16 @@ export default function AdminOrderDetail() {
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [showActivityLog, setShowActivityLog] = useState(false);
 
+  // File upload & draft management
+  const [orderFiles, setOrderFiles] = useState<any[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadType, setUploadType] = useState<"draft" | "final" | "other">("draft");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadCategory, setUploadCategory] = useState("reference");
+  const [reviewHistory, setReviewHistory] = useState<any[]>([]);
+
   const fetchTurnaroundOptions = async () => {
     const { data } = await supabase
       .from("turnaround_options")
@@ -268,6 +280,7 @@ export default function AdminOrderDetail() {
   useEffect(() => {
     if (order?.quote_id) {
       fetchDocuments(order.quote_id);
+      fetchOrderFiles();
     }
   }, [order?.quote_id]);
 
@@ -294,6 +307,215 @@ export default function AdminOrderDetail() {
       console.error("Error fetching documents:", err);
     } finally {
       setLoadingFiles(false);
+    }
+  };
+
+  const fetchOrderFiles = async () => {
+    if (!order?.quote_id) return;
+    setFilesLoading(true);
+    try {
+      const { data: files, error } = await supabase
+        .from("quote_files")
+        .select(`
+          id, quote_id, original_filename, storage_path, file_size, mime_type,
+          upload_status, is_staff_created, created_at,
+          file_category_id, review_status, review_comment, reviewed_at, review_version,
+          file_categories ( id, name, slug )
+        `)
+        .eq("quote_id", order.quote_id)
+        .is("deleted_at", null)
+        .in("upload_status", ["uploaded", "completed"])
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      const filesWithUrls = await Promise.all(
+        (files || []).map(async (file: any) => {
+          const categorySlug = file.file_categories?.slug;
+
+          let signedUrl = null;
+          const tryPaths = [
+            file.storage_path,
+            `uploads/${file.original_filename}`,
+            `${order.quote_id}/${file.storage_path}`,
+          ];
+
+          for (const path of tryPaths) {
+            const { data } = await supabase.storage
+              .from("quote-files")
+              .createSignedUrl(path, 600);
+            if (data?.signedUrl) {
+              signedUrl = data.signedUrl;
+              break;
+            }
+          }
+
+          return { ...file, signed_url: signedUrl, category_slug: categorySlug };
+        })
+      );
+
+      setOrderFiles(filesWithUrls);
+
+      // Fetch review history for draft files
+      const draftIds = filesWithUrls
+        .filter(f => f.category_slug === "draft_translation")
+        .map(f => f.id);
+
+      if (draftIds.length > 0) {
+        const { data: history } = await supabase
+          .from("file_review_history")
+          .select("*")
+          .in("file_id", draftIds)
+          .order("created_at", { ascending: false });
+
+        setReviewHistory(history || []);
+      } else {
+        setReviewHistory([]);
+      }
+    } catch (err) {
+      console.error("Error fetching order files:", err);
+    } finally {
+      setFilesLoading(false);
+    }
+  };
+
+  const handleFileUpload = async () => {
+    if (!uploadFile || !order?.quote_id || !currentStaff?.staffId) return;
+    setUploading(true);
+
+    try {
+      // Determine file category slug
+      let categorySlug = "reference";
+      if (uploadType === "draft") categorySlug = "draft_translation";
+      else if (uploadType === "final") categorySlug = "final_deliverable";
+      else categorySlug = uploadCategory;
+
+      // Look up category ID
+      const { data: category } = await supabase
+        .from("file_categories")
+        .select("id")
+        .eq("slug", categorySlug)
+        .single();
+
+      if (!category) {
+        toast.error(`Category "${categorySlug}" not found. Run the migration first.`);
+        return;
+      }
+
+      // Upload via existing upload-staff-quote-file edge function
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      formData.append("quoteId", order.quote_id);
+      formData.append("staffId", currentStaff.staffId);
+      formData.append("processWithAI", "false");
+
+      const uploadResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: formData,
+        }
+      );
+
+      const uploadData = await uploadResponse.json();
+
+      if (!uploadResponse.ok || !uploadData.fileId) {
+        throw new Error(uploadData.error || "Upload failed");
+      }
+
+      // Update the file category and review fields
+      const updateFields: any = {
+        file_category_id: category.id,
+      };
+
+      if (uploadType === "draft") {
+        const existingDrafts = orderFiles.filter(
+          f => f.category_slug === "draft_translation"
+        );
+        updateFields.review_version = existingDrafts.length + 1;
+      }
+
+      await supabase
+        .from("quote_files")
+        .update(updateFields)
+        .eq("id", uploadData.fileId);
+
+      // If draft, submit for customer review
+      if (uploadType === "draft") {
+        const reviewResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              file_id: uploadData.fileId,
+              action: "submit_for_review",
+              actor_type: "staff",
+              actor_id: currentStaff.staffId,
+            }),
+          }
+        );
+
+        const reviewData = await reviewResponse.json();
+        if (!reviewData.success) {
+          console.error("Review submission failed:", reviewData.error);
+        }
+      }
+
+      // Reset and refresh
+      setShowUploadModal(false);
+      setUploadFile(null);
+      setUploadType("draft");
+      toast.success(
+        uploadType === "draft"
+          ? "Draft uploaded and customer notified"
+          : uploadType === "final"
+          ? "Final deliverable uploaded"
+          : "File uploaded"
+      );
+      await fetchOrderFiles();
+    } catch (err: any) {
+      console.error("Upload error:", err);
+      toast.error(err.message || "Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemindCustomer = async (fileId: string) => {
+    if (!currentStaff?.staffId) return;
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            file_id: fileId,
+            action: "submit_for_review",
+            actor_type: "staff",
+            actor_id: currentStaff.staffId,
+          }),
+        }
+      );
+      const data = await response.json();
+      if (data.success) {
+        toast.success("Reminder sent to customer");
+      } else {
+        toast.error(data.error || "Failed to send reminder");
+      }
+    } catch (err) {
+      console.error("Remind error:", err);
+      toast.error("Failed to send reminder");
     }
   };
 
@@ -1305,6 +1527,330 @@ export default function AdminOrderDetail() {
             })()}
           </div>
 
+          {/* Files & Translations Section */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <Upload className="w-5 h-5 text-gray-400" />
+              Files & Translations
+            </h3>
+
+            {/* Upload actions */}
+            <div className="flex gap-2 p-3 mb-4 bg-blue-50/60 rounded-xl border border-blue-100 flex-wrap">
+              <button
+                onClick={() => { setUploadType("draft"); setShowUploadModal(true); }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Upload Draft Translation
+              </button>
+              <button
+                onClick={() => { setUploadType("final"); setShowUploadModal(true); }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
+              >
+                <CheckCircle className="w-3.5 h-3.5" />
+                Upload Final Deliverable
+              </button>
+              <button
+                onClick={() => { setUploadType("other"); setShowUploadModal(true); }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors"
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+                Upload Other File
+              </button>
+            </div>
+
+            {filesLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="w-5 h-5 animate-spin text-gray-400" />
+              </div>
+            ) : orderFiles.length === 0 ? (
+              <p className="text-gray-500 text-sm py-4">No categorized files yet. Upload a draft or final translation above.</p>
+            ) : (
+              <div className="space-y-5">
+                {/* Draft Translations */}
+                {(() => {
+                  const drafts = orderFiles.filter(f => f.category_slug === "draft_translation");
+                  if (drafts.length === 0) return null;
+                  return (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
+                        Draft Translations ({drafts.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {drafts.map((file: any) => (
+                          <div key={file.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-9 h-9 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <FileText className="w-4 h-4 text-amber-700" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{file.original_filename}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  {file.review_version && (
+                                    <span className="text-xs text-gray-500">v{file.review_version}</span>
+                                  )}
+                                  <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${
+                                    file.review_status === "approved"
+                                      ? "bg-green-100 text-green-700"
+                                      : file.review_status === "changes_requested"
+                                      ? "bg-red-100 text-red-700"
+                                      : file.review_status === "pending_review"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-gray-100 text-gray-600"
+                                  }`}>
+                                    {file.review_status === "approved" ? "Approved" :
+                                     file.review_status === "changes_requested" ? "Changes Requested" :
+                                     file.review_status === "pending_review" ? "Pending Review" :
+                                     file.review_status || "Draft"}
+                                  </span>
+                                  <span className="text-xs text-gray-400">
+                                    {format(new Date(file.created_at), "MMM d, h:mm a")}
+                                  </span>
+                                </div>
+                                {file.review_comment && (
+                                  <p className="text-xs text-red-600 mt-1 italic">"{file.review_comment}"</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {file.signed_url && (
+                                <a
+                                  href={file.signed_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="Preview"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </a>
+                              )}
+                              <button
+                                onClick={() => handleDownloadFile(file)}
+                                className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                title="Download"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                              {file.review_status === "pending_review" && (
+                                <button
+                                  onClick={() => handleRemindCustomer(file.id)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-700 bg-amber-100 rounded-md hover:bg-amber-200 transition-colors"
+                                  title="Resend review notification"
+                                >
+                                  <Send className="w-3 h-3" />
+                                  Remind
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Customer Documents */}
+                {(() => {
+                  const customerDocs = orderFiles.filter(
+                    f => !f.is_staff_created &&
+                      f.category_slug !== "draft_translation" &&
+                      f.category_slug !== "final_deliverable"
+                  );
+                  if (customerDocs.length === 0) return null;
+                  return (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
+                        Customer Documents ({customerDocs.length})
+                      </h4>
+                      <div className="space-y-1.5">
+                        {customerDocs.map((file: any) => (
+                          <div key={file.id} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{file.original_filename}</p>
+                                <p className="text-xs text-gray-400">
+                                  {file.file_size ? `${(file.file_size / 1024).toFixed(1)} KB` : "—"} • {file.category_slug || "source"}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {file.signed_url && (
+                                <a
+                                  href={file.signed_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="Preview"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </a>
+                              )}
+                              <button
+                                onClick={() => handleDownloadFile(file)}
+                                className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                title="Download"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Final Deliverables */}
+                {(() => {
+                  const finals = orderFiles.filter(f => f.category_slug === "final_deliverable");
+                  if (finals.length === 0) return null;
+                  return (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
+                        Completed Translations ({finals.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {finals.map((file: any) => (
+                          <div key={file.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <CheckCircle className="w-4 h-4 text-green-700" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{file.original_filename}</p>
+                                <p className="text-xs text-gray-400">
+                                  {file.file_size ? `${(file.file_size / 1024).toFixed(1)} KB` : "—"} • {format(new Date(file.created_at), "MMM d, h:mm a")}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {file.signed_url && (
+                                <a
+                                  href={file.signed_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="Preview"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </a>
+                              )}
+                              <button
+                                onClick={() => handleDownloadFile(file)}
+                                className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                title="Download"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Staff Files (other) */}
+                {(() => {
+                  const staffFiles = orderFiles.filter(
+                    f => f.is_staff_created &&
+                      f.category_slug !== "draft_translation" &&
+                      f.category_slug !== "final_deliverable"
+                  );
+                  if (staffFiles.length === 0) return null;
+                  return (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
+                        Staff Files ({staffFiles.length})
+                      </h4>
+                      <div className="space-y-1.5">
+                        {staffFiles.map((file: any) => (
+                          <div key={file.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                            <Paperclip className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                            <span className="truncate text-gray-600">{file.original_filename}</span>
+                            <span className="text-xs text-gray-400 flex-shrink-0">
+                              {file.category_slug || "other"} • {file.file_size ? `${(file.file_size / 1024).toFixed(1)} KB` : "—"}
+                            </span>
+                            <div className="flex items-center gap-1 ml-auto flex-shrink-0">
+                              {file.signed_url && (
+                                <a
+                                  href={file.signed_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:underline"
+                                >
+                                  View
+                                </a>
+                              )}
+                              <button
+                                onClick={() => handleDownloadFile(file)}
+                                className="text-xs text-teal-600 hover:underline"
+                              >
+                                Download
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Review History Timeline */}
+            {reviewHistory.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-gray-100">
+                <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-3">
+                  Review History
+                </h4>
+                <div className="space-y-0">
+                  {reviewHistory.map((entry: any, idx: number) => {
+                    const isStaff = entry.actor_type === "staff";
+                    const isApproval = entry.action === "approved";
+                    const isChangeRequest = entry.action === "changes_requested";
+                    const dotColor = isApproval
+                      ? "bg-green-400"
+                      : isChangeRequest
+                      ? "bg-red-400"
+                      : isStaff
+                      ? "bg-blue-400"
+                      : "bg-amber-400";
+
+                    return (
+                      <div key={entry.id} className="flex items-start gap-3 pb-3 relative">
+                        {idx < reviewHistory.length - 1 && (
+                          <div className="absolute left-[7px] top-4 bottom-0 w-px bg-gray-200" />
+                        )}
+                        <div className={`w-3.5 h-3.5 ${dotColor} rounded-full mt-0.5 flex-shrink-0 relative z-10`} />
+                        <div className="min-w-0 text-sm">
+                          <p className="font-medium text-gray-900">
+                            {entry.action === "submit_for_review"
+                              ? "Submitted for review"
+                              : entry.action === "approved"
+                              ? "Approved by customer"
+                              : entry.action === "changes_requested"
+                              ? "Changes requested"
+                              : entry.action?.replace(/_/g, " ") || "Action"}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {isStaff ? "Staff" : "Customer"} • {format(new Date(entry.created_at), "MMM d, h:mm a")}
+                          </p>
+                          {entry.comment && (
+                            <p className="text-xs text-gray-600 mt-1 bg-gray-50 rounded px-2 py-1 italic">
+                              "{entry.comment}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="bg-white rounded-lg border p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-gray-400" />
@@ -1996,6 +2542,107 @@ export default function AdminOrderDetail() {
                 className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
               >
                 {savingPayment ? "Recording..." : "Record Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Upload Modal */}
+      {showUploadModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
+          onClick={() => !uploading && setShowUploadModal(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl w-[480px] max-w-[90vw] p-6"
+          >
+            <h3 className="text-lg font-bold text-gray-900 mb-1">
+              {uploadType === "draft" ? "Upload Draft Translation" :
+               uploadType === "final" ? "Upload Final Deliverable" : "Upload File"}
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              {uploadType === "draft"
+                ? "Upload a draft for customer review. Customer will be notified via email."
+                : uploadType === "final"
+                ? "Upload the certified final translation for customer download."
+                : "Upload a supporting file for this order."}
+            </p>
+
+            {/* File drop zone */}
+            <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 cursor-pointer mb-4 transition-colors hover:border-blue-400"
+              style={{ background: uploadFile ? "rgba(79,140,255,0.04)" : "#f9fafb" }}
+            >
+              <input
+                type="file"
+                className="hidden"
+                accept=".pdf,.docx,.doc,.jpg,.jpeg,.png"
+                onChange={e => setUploadFile(e.target.files?.[0] || null)}
+              />
+              {uploadFile ? (
+                <>
+                  <FileText className="w-8 h-8 text-blue-500 mb-2" />
+                  <p className="text-sm font-semibold text-gray-900">{uploadFile.name}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {(uploadFile.size / 1024 / 1024).toFixed(1)} MB — Click to change
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                  <p className="text-sm font-semibold text-gray-900">Drop file here or click to browse</p>
+                  <p className="text-xs text-gray-500 mt-1">PDF, DOCX, JPG, PNG — Max 10 MB</p>
+                </>
+              )}
+            </label>
+
+            {/* Draft notification callout */}
+            {uploadType === "draft" && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 mb-4">
+                <Zap className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>This will set the file to <strong>Pending Review</strong> and send the customer a notification email asking them to review the draft.</span>
+              </div>
+            )}
+
+            {/* Category selector for "other" type */}
+            {uploadType === "other" && (
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">
+                  File Category
+                </label>
+                <select
+                  value={uploadCategory}
+                  onChange={e => setUploadCategory(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="reference">Reference</option>
+                  <option value="source">Source</option>
+                  <option value="glossary">Glossary</option>
+                  <option value="style_guide">Style Guide</option>
+                </select>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setShowUploadModal(false); setUploadFile(null); }}
+                disabled={uploading}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFileUpload}
+                disabled={uploading || !uploadFile}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {uploading
+                  ? "Uploading..."
+                  : uploadType === "draft"
+                  ? "Upload & Notify Customer"
+                  : "Upload"}
               </button>
             </div>
           </div>
