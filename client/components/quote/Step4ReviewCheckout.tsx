@@ -732,6 +732,7 @@ export default function Step4ReviewCheckout() {
           .from("quotes")
           .select(
             `subtotal, certification_total, rush_fee, delivery_fee, tax_amount, tax_rate, total, calculated_totals,
+             base_rate_override, partner_id, partner_code,
              intended_use:intended_uses(code),
              target_language:languages!quotes_target_language_id_fkey(id, name, code),
              source_language:languages!quotes_source_language_id_fkey(id, name, code, multiplier, tier)`,
@@ -846,6 +847,9 @@ export default function Step4ReviewCheckout() {
            hitl_reason,
            target_language_id,
            source_language_id,
+           base_rate_override,
+           partner_id,
+           partner_code,
            target_language:languages!quotes_target_language_id_fkey(id, name, code),
            source_language:languages!quotes_source_language_id_fkey(id, name, code, multiplier, tier)`,
         )
@@ -890,7 +894,10 @@ export default function Step4ReviewCheckout() {
 
       // Use stored pricing from DB — the backend is the source of truth
       // base_rate and line_total in ai_analysis_results already reflect the effective rate
-      const displayRate = mergedData[0]?.base_rate || 65;
+      // Partner pricing override: use quote's base_rate_override if set, otherwise first doc rate or default
+      const displayRate = (quoteData as any)?.base_rate_override
+        ? parseFloat((quoteData as any).base_rate_override)
+        : mergedData[0]?.base_rate || 65;
       setEffectiveRate(displayRate);
       setBaseRate(displayRate);
 
@@ -1478,7 +1485,7 @@ export default function Step4ReviewCheckout() {
     if (!state.quoteId) return;
     const { data } = await supabase
       .from("quotes")
-      .select("expires_at, entry_point")
+      .select("expires_at, entry_point, base_rate_override, partner_id, partner_code")
       .eq("id", state.quoteId)
       .single();
 

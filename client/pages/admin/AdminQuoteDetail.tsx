@@ -114,6 +114,9 @@ interface QuoteDetail {
   payment_method?: { id: string; name: string; code: string } | null;
   payment_confirmed_by?: { id: string; full_name: string } | null;
   payment_confirmed_at?: string | null;
+  partner_id?: string | null;
+  partner_code?: string | null;
+  base_rate_override?: number | null;
   processing_status?: string;
   review_required_reasons?: string[];
   customer_note?: string;
@@ -545,6 +548,7 @@ export default function AdminQuoteDetail() {
   const [activityLogLoaded, setActivityLogLoaded] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [filesWithUrls, setFilesWithUrls] = useState<(NormalizedFile & { downloadUrl: string | null })[]>([]);
+  const [partner, setPartner] = useState<{ name: string; customer_rate: number } | null>(null);
 
   const fetchQuoteFiles = async (quoteId: string): Promise<NormalizedFile[]> => {
     // Try quote_files first (customer upload route)
@@ -659,6 +663,20 @@ export default function AdminQuoteDetail() {
 
       if (quoteError) throw quoteError;
       setQuote(quoteData as QuoteDetail);
+
+      // Fetch partner info if this is a partner-referred quote
+      if ((quoteData as any)?.partner_id) {
+        const { data: partnerData } = await supabase
+          .from("partners")
+          .select("name, customer_rate")
+          .eq("id", (quoteData as any).partner_id)
+          .single();
+        if (partnerData) {
+          setPartner(partnerData);
+        }
+      } else {
+        setPartner(null);
+      }
 
       // Fetch raw quote_files for certifications and analysis lookups
       const { data: filesData } = await supabase
@@ -2451,6 +2469,11 @@ export default function AdminQuoteDetail() {
             >
               {STATUS_LABELS[quote.status] || quote.status}
             </span>
+            {partner && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                🤝 {partner.name} — ${parseFloat(String(partner.customer_rate)).toFixed(2)}/page
+              </span>
+            )}
           </div>
 
           {/* Meta info */}

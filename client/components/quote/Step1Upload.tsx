@@ -500,6 +500,11 @@ export default function Step1Upload() {
 
       // 1. Create or update quote
       if (!quoteId) {
+        // Read partner data from sessionStorage (set by ?ref= capture)
+        const partnerId = sessionStorage.getItem("cethos_partner_id");
+        const partnerCode = sessionStorage.getItem("cethos_partner_code");
+        const partnerRate = sessionStorage.getItem("cethos_partner_rate");
+
         const { data: quote, error: quoteError } = await supabase
           .from("quotes")
           .insert({
@@ -507,6 +512,12 @@ export default function Step1Upload() {
             source_language_id: sourceLanguageId,
             target_language_id: targetLanguageId,
             entry_point: "customer_web",
+            ...(partnerId ? {
+              partner_id: partnerId,
+              partner_code: partnerCode,
+              base_rate_override: parseFloat(partnerRate!),
+              referral_url: window.location.href,
+            } : {}),
           })
           .select("id, quote_number")
           .single();
