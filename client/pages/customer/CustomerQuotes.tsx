@@ -2,7 +2,17 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/CustomerAuthContext";
 import CustomerLayout from "../../components/layouts/CustomerLayout";
-import { FileText, Search, Calendar, DollarSign, Eye } from "lucide-react";
+import {
+  FileText,
+  Search,
+  Calendar,
+  DollarSign,
+  Eye,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 interface Quote {
@@ -17,33 +27,45 @@ interface Quote {
   document_count: number;
 }
 
+// Statuses that should never appear in the quotes list (they belong in Orders)
+const EXCLUDED_STATUSES = ["paid", "converted"];
+
 const STATUS_COLORS: Record<string, string> = {
   pending_payment: "bg-yellow-100 text-yellow-800",
   awaiting_payment: "bg-yellow-100 text-yellow-800",
   quote_ready: "bg-green-100 text-green-800",
-  // DEPRECATED: HITL removed — replaced by review_required tag
-  // hitl_pending: "bg-blue-100 text-blue-800",
   review_required: "bg-blue-100 text-blue-800",
   ai_processing: "bg-purple-100 text-purple-800",
-  quote_expired: "bg-gray-100 text-gray-800",
+  quote_expired: "bg-orange-100 text-orange-800",
+  expired: "bg-orange-100 text-orange-800",
   quote_cancelled: "bg-red-100 text-red-800",
-  cancelled: "bg-orange-100 text-orange-800",
-  paid: "bg-teal-100 text-teal-800",
+  cancelled: "bg-red-100 text-red-800",
+  lead: "bg-gray-100 text-gray-800",
+  draft: "bg-gray-100 text-gray-800",
+  pending_review: "bg-blue-100 text-blue-800",
+  approved: "bg-green-100 text-green-800",
+  rejected: "bg-red-100 text-red-800",
 };
 
 const STATUS_LABELS: Record<string, string> = {
   pending_payment: "Pending Payment",
   awaiting_payment: "Awaiting Payment",
   quote_ready: "Ready",
-  // DEPRECATED: HITL removed — replaced by review_required tag
-  // hitl_pending: "Under Review",
   review_required: "Under Review",
   ai_processing: "Processing",
   quote_expired: "Expired",
+  expired: "Expired",
   quote_cancelled: "Cancelled",
   cancelled: "Cancelled",
-  paid: "Paid",
+  lead: "Lead",
+  draft: "Draft",
+  pending_review: "Pending Review",
+  approved: "Approved",
+  rejected: "Rejected",
 };
+
+const EXPIRED_STATUSES = ["quote_expired", "expired"];
+const CANCELLED_STATUSES = ["quote_cancelled", "cancelled"];
 
 export default function CustomerQuotes() {
   const { customer } = useAuth();
@@ -51,6 +73,7 @@ export default function CustomerQuotes() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showCancelled, setShowCancelled] = useState(false);
 
   useEffect(() => {
     if (customer?.id) {
@@ -82,7 +105,11 @@ export default function CustomerQuotes() {
         throw new Error(result.error || "Failed to load quotes");
       }
 
-      setQuotes(result.data || []);
+      // Filter out paid/converted quotes — those belong in Orders
+      const filtered = (result.data || []).filter(
+        (q: Quote) => !EXCLUDED_STATUSES.includes(q.status),
+      );
+      setQuotes(filtered);
     } catch (err) {
       console.error("Failed to load quotes:", err);
     } finally {
@@ -98,6 +125,100 @@ export default function CustomerQuotes() {
       statusFilter === "all" || quote.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  // Separate active quotes from cancelled quotes
+  const activeQuotes = filteredQuotes.filter(
+    (q) => !CANCELLED_STATUSES.includes(q.status),
+  );
+  const cancelledQuotes = filteredQuotes.filter((q) =>
+    CANCELLED_STATUSES.includes(q.status),
+  );
+
+  const isExpired = (quote: Quote) => EXPIRED_STATUSES.includes(quote.status);
+
+  const renderQuoteCard = (quote: Quote) => {
+    const expired = isExpired(quote);
+
+    return (
+      <div key={quote.id} className="relative">
+        <Link
+          to={`/dashboard/quotes/${quote.id}`}
+          className={`block p-6 hover:bg-gray-50 transition-colors ${
+            expired ? "bg-orange-50/50" : ""
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <div
+                  className={`h-10 w-10 rounded-lg flex items-center justify-center ${
+                    expired ? "bg-orange-100" : "bg-blue-100"
+                  }`}
+                >
+                  {expired ? (
+                    <AlertTriangle className="w-5 h-5 text-orange-600" />
+                  ) : (
+                    <FileText className="w-5 h-5 text-blue-600" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">
+                    {quote.quote_number}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    {quote.source_language} → {quote.target_language}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 ml-13">
+                <div className="flex items-center gap-1">
+                  <Calendar className="w-4 h-4" />
+                  {new Date(quote.created_at).toLocaleDateString()}
+                </div>
+                <div className="flex items-center gap-1">
+                  <FileText className="w-4 h-4" />
+                  {quote.document_count} document
+                  {quote.document_count !== 1 ? "s" : ""}
+                </div>
+                <div className="flex items-center gap-1">
+                  <DollarSign className="w-4 h-4" />${quote.total_amount.toFixed(2)}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  STATUS_COLORS[quote.status] || "bg-gray-100 text-gray-800"
+                }`}
+              >
+                {STATUS_LABELS[quote.status] || quote.status}
+              </span>
+              <Eye className="w-5 h-5 text-gray-400" />
+            </div>
+          </div>
+        </Link>
+
+        {/* "Request New Quote" action for expired quotes */}
+        {expired && (
+          <div className="px-6 pb-4 pt-0 bg-orange-50/50">
+            <div className="flex items-center gap-2 text-sm text-orange-700 mb-2">
+              <AlertTriangle className="w-4 h-4" />
+              <span>This quote has expired</span>
+            </div>
+            <Link
+              to="/quote"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Request New Quote
+            </Link>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <CustomerLayout>
@@ -125,7 +246,7 @@ export default function CustomerQuotes() {
               />
             </div>
 
-            {/* Status Filter */}
+            {/* Status Filter — excludes paid/converted since those are in Orders */}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -135,12 +256,11 @@ export default function CustomerQuotes() {
               <option value="quote_ready">Ready</option>
               <option value="awaiting_payment">Awaiting Payment</option>
               <option value="pending_payment">Pending Payment</option>
-              {/* DEPRECATED: HITL removed — replaced by review_required tag */}
               <option value="review_required">Under Review</option>
               <option value="ai_processing">Processing</option>
-              <option value="paid">Paid</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="approved">Approved</option>
               <option value="quote_expired">Expired</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </div>
         </div>
@@ -154,67 +274,62 @@ export default function CustomerQuotes() {
               <div className="h-20 bg-gray-200 rounded"></div>
             </div>
           </div>
-        ) : filteredQuotes.length > 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-200">
-            {filteredQuotes.map((quote) => (
-              <Link
-                key={quote.id}
-                to={`/dashboard/quotes/${quote.id}`}
-                className="block p-6 hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-gray-900">
-                          {quote.quote_number}
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          {quote.source_language} → {quote.target_language}
-                        </p>
-                      </div>
-                    </div>
+        ) : activeQuotes.length > 0 || cancelledQuotes.length > 0 ? (
+          <>
+            {/* Active Quotes */}
+            {activeQuotes.length > 0 ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-200">
+                {activeQuotes.map((quote) => renderQuoteCard(quote))}
+              </div>
+            ) : statusFilter === "all" ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+                <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  No active quotes
+                </h3>
+                <p className="text-gray-500 mb-6">
+                  You have no active quotes right now.
+                </p>
+                <Link
+                  to="/quote"
+                  className="inline-flex items-center px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                >
+                  Start New Quote
+                </Link>
+              </div>
+            ) : null}
 
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 ml-13">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(quote.created_at).toLocaleDateString()}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <FileText className="w-4 h-4" />
-                        {quote.document_count} document
-                        {quote.document_count !== 1 ? "s" : ""}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <DollarSign className="w-4 h-4" />$
-                        {quote.total_amount.toFixed(2)}
-                      </div>
+            {/* Cancelled Quotes — collapsed section */}
+            {cancelledQuotes.length > 0 &&
+              (statusFilter === "all" || CANCELLED_STATUSES.includes(statusFilter)) && (
+                <div className="mt-4">
+                  <button
+                    onClick={() => setShowCancelled(!showCancelled)}
+                    className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-2 transition-colors"
+                  >
+                    {showCancelled ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                    {showCancelled ? "Hide" : "Show"} cancelled quotes (
+                    {cancelledQuotes.length})
+                  </button>
+                  {showCancelled && (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-200 opacity-75">
+                      {cancelledQuotes.map((quote) => renderQuoteCard(quote))}
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        STATUS_COLORS[quote.status] ||
-                        "bg-gray-100 text-gray-800"
-                      }`}
-                    >
-                      {STATUS_LABELS[quote.status] || quote.status}
-                    </span>
-                    <Eye className="w-5 h-5 text-gray-400" />
-                  </div>
+                  )}
                 </div>
-              </Link>
-            ))}
-          </div>
+              )}
+          </>
         ) : (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
             <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No quotes found
+              {searchTerm || statusFilter !== "all"
+                ? "No quotes found"
+                : "No active quotes"}
             </h3>
             <p className="text-gray-500 mb-6">
               {searchTerm || statusFilter !== "all"
@@ -225,7 +340,7 @@ export default function CustomerQuotes() {
               to="/quote"
               className="inline-flex items-center px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
             >
-              Create New Quote
+              Start New Quote
             </Link>
           </div>
         )}

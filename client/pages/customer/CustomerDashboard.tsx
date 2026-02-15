@@ -10,10 +10,12 @@ import {
   ArrowRight,
   Receipt,
   MessageSquare,
+  AlertCircle,
 } from "lucide-react";
 
 interface DashboardStats {
   activeQuotes: number;
+  actionNeeded: number;
   inProgressOrders: number;
   completedOrders: number;
   totalSpent: number;
@@ -111,8 +113,9 @@ export default function CustomerDashboard() {
           </p>
         </div>
 
-        {/* Stats Cards - 2x2 on mobile, 4 columns on desktop */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+        {/* Stats Cards - 2x2 on mobile, 5 columns on desktop */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+          {/* Active Quotes — excludes paid/converted/cancelled */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
@@ -129,6 +132,24 @@ export default function CustomerDashboard() {
             </div>
           </div>
 
+          {/* Action Needed — quotes ready to pay or needing customer action */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">
+                  Action Needed
+                </p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-orange-600">
+                  {stats?.actionNeeded || 0}
+                </p>
+              </div>
+              <div className="h-10 w-10 sm:h-12 sm:w-12 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
+              </div>
+            </div>
+          </div>
+
+          {/* In Progress Orders */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
@@ -145,6 +166,7 @@ export default function CustomerDashboard() {
             </div>
           </div>
 
+          {/* Completed Orders */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
@@ -161,6 +183,7 @@ export default function CustomerDashboard() {
             </div>
           </div>
 
+          {/* Total Spent */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">

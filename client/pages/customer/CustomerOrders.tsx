@@ -24,7 +24,11 @@ interface Order {
 
 const STATUS_COLORS: Record<string, string> = {
   paid: "bg-green-100 text-green-800",
+  pending: "bg-yellow-100 text-yellow-800",
+  processing: "bg-blue-100 text-blue-800",
   in_production: "bg-blue-100 text-blue-800",
+  quality_check: "bg-indigo-100 text-indigo-800",
+  ready_for_delivery: "bg-purple-100 text-purple-800",
   ready_for_pickup: "bg-purple-100 text-purple-800",
   out_for_delivery: "bg-yellow-100 text-yellow-800",
   delivered: "bg-teal-100 text-teal-800",
@@ -34,7 +38,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   paid: "Payment Confirmed",
+  pending: "Pending",
+  processing: "In Progress",
   in_production: "In Production",
+  quality_check: "Quality Check",
+  ready_for_delivery: "Ready for Delivery",
   ready_for_pickup: "Ready for Pickup",
   out_for_delivery: "Out for Delivery",
   delivered: "Delivered",
@@ -130,7 +138,11 @@ export default function CustomerOrders() {
             >
               <option value="all">All Statuses</option>
               <option value="paid">Payment Confirmed</option>
+              <option value="pending">Pending</option>
+              <option value="processing">In Progress</option>
               <option value="in_production">In Production</option>
+              <option value="quality_check">Quality Check</option>
+              <option value="ready_for_delivery">Ready for Delivery</option>
               <option value="ready_for_pickup">Ready for Pickup</option>
               <option value="out_for_delivery">Out for Delivery</option>
               <option value="delivered">Delivered</option>
