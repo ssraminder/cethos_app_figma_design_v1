@@ -605,10 +605,10 @@ export default function AdminQuoteDetail() {
 
   // Fetch conversation messages for preview card once quote is loaded
   useEffect(() => {
-    if (quote?.customer_id) {
+    if (quote?.customer_id || id) {
       fetchConversationMessages();
     }
-  }, [quote?.customer_id]);
+  }, [quote?.customer_id, id]);
 
   // Check if an OCR batch exists for this quote
   useEffect(() => {
@@ -944,73 +944,107 @@ export default function AdminQuoteDetail() {
   // Fetch all conversation messages for inline chat
   const fetchConversationMessages = async () => {
     const customerId = quote?.customer_id;
-    console.log("📨 fetchConversationMessages called, customer_id:", customerId);
+    console.log("📨 fetchConversationMessages called, customer_id:", customerId, "quote_id:", id);
 
-    if (!customerId) {
-      console.log("⚠️ No customer_id, skipping message fetch");
+    if (!customerId && !id) {
+      console.log("⚠️ No customer_id or quote_id, skipping message fetch");
       return;
     }
 
     setMessagesLoading(true);
 
     try {
-      // Step 1: Get conversation_id for this customer
-      const { data: conv, error: convError } = await supabase
-        .from("customer_conversations")
-        .select("id")
-        .eq("customer_id", customerId)
-        .maybeSingle();
+      const messageSelectFields = `
+        id, conversation_id, quote_id, order_id, sender_type,
+        sender_staff_id, sender_customer_id,
+        message_text, message_type, source, created_at,
+        read_by_staff_at, read_by_customer_at, metadata,
+        staff_users:sender_staff_id(full_name),
+        customers:sender_customer_id(full_name),
+        message_attachments(id, filename, original_filename, file_size, storage_path, mime_type)
+      `;
 
-      if (convError) {
-        console.error("❌ Error fetching conversation:", convError);
-        setMessagesLoading(false);
-        return;
+      // Step 1: Fetch messages tagged to this quote directly (for "This Quote" filter)
+      let quoteMessages: any[] = [];
+      if (id) {
+        const { data: qm, error: qmError } = await supabase
+          .from("conversation_messages")
+          .select(messageSelectFields)
+          .eq("quote_id", id)
+          .order("created_at", { ascending: true });
+
+        if (qmError) {
+          console.error("❌ Error fetching quote messages:", qmError);
+        } else {
+          quoteMessages = qm || [];
+          console.log(`📋 Loaded ${quoteMessages.length} messages by quote_id`);
+        }
       }
 
-      if (!conv?.id) {
-        console.log("ℹ️ No conversation exists yet for this customer");
-        setConversationMessages([]);
-        setConversationId(null);
-        setMessagesLoading(false);
-        return;
+      // Step 2: Fetch all messages from the customer's conversation (for "All" filter)
+      let convMessages: any[] = [];
+      let resolvedConvId: string | null = null;
+
+      if (customerId) {
+        const { data: conv, error: convError } = await supabase
+          .from("customer_conversations")
+          .select("id")
+          .eq("customer_id", customerId)
+          .maybeSingle();
+
+        if (convError) {
+          console.error("❌ Error fetching conversation:", convError);
+        } else if (conv?.id) {
+          resolvedConvId = conv.id;
+          console.log("📬 Found conversation:", conv.id);
+
+          const { data: cm, error: cmError } = await supabase
+            .from("conversation_messages")
+            .select(messageSelectFields)
+            .eq("conversation_id", conv.id)
+            .order("created_at", { ascending: true });
+
+          if (cmError) {
+            console.error("❌ Error fetching conversation messages:", cmError);
+          } else {
+            convMessages = cm || [];
+            console.log(`📬 Loaded ${convMessages.length} messages by conversation_id`);
+          }
+        }
       }
 
-      setConversationId(conv.id);
-      console.log("📬 Found conversation:", conv.id);
-
-      // Step 2: Fetch ALL messages in this conversation
-      const { data: messages, error: msgError } = await supabase
-        .from("conversation_messages")
-        .select(`
-          id, conversation_id, quote_id, order_id, sender_type,
-          sender_staff_id, sender_customer_id,
-          message_text, message_type, source, created_at,
-          read_by_staff_at, read_by_customer_at, metadata,
-          staff_users:sender_staff_id(full_name),
-          customers:sender_customer_id(full_name),
-          message_attachments(id, filename, original_filename, file_size, storage_path, mime_type)
-        `)
-        .eq("conversation_id", conv.id)
-        .order("created_at", { ascending: true });
-
-      if (msgError) {
-        console.error("❌ Error fetching messages:", msgError);
-        setMessagesLoading(false);
-        return;
+      // Fallback: extract conversationId from quote-tagged messages if none found via customer_id
+      if (!resolvedConvId && quoteMessages.length > 0) {
+        resolvedConvId = quoteMessages[0].conversation_id || null;
+        console.log("📬 Using fallback conversation_id from quote messages:", resolvedConvId);
       }
 
-      console.log(`✅ Loaded ${messages?.length || 0} messages`);
-      setConversationMessages(messages || []);
+      setConversationId(resolvedConvId);
 
-      // Step 3: Count unread customer messages
-      const unread = (messages || []).filter(
+      // Step 3: Merge and deduplicate by message id, sort by created_at
+      const messageMap = new Map<string, any>();
+      for (const msg of quoteMessages) {
+        messageMap.set(msg.id, msg);
+      }
+      for (const msg of convMessages) {
+        messageMap.set(msg.id, msg);
+      }
+      const mergedMessages = Array.from(messageMap.values()).sort(
+        (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+
+      console.log(`✅ Merged total: ${mergedMessages.length} messages (deduped)`);
+      setConversationMessages(mergedMessages);
+
+      // Step 4: Count unread customer messages
+      const unread = mergedMessages.filter(
         (m: any) => m.sender_type === "customer" && !m.read_by_staff_at
       ).length;
       setUnreadStaffCount(unread);
 
-      // Step 4: Auto-mark customer messages as read
+      // Step 5: Auto-mark customer messages as read
       if (unread > 0) {
-        const unreadIds = (messages || [])
+        const unreadIds = mergedMessages
           .filter((m: any) => m.sender_type === "customer" && !m.read_by_staff_at)
           .map((m: any) => m.id);
 
