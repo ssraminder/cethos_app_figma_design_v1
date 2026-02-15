@@ -1,23 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/CustomerAuthContext";
 import CustomerLayout from "../../components/layouts/CustomerLayout";
+import MessageComposer from "../../components/messaging/MessageComposer";
+import FileAttachment from "../../components/messaging/FileAttachment";
 import {
-  FileText,
   Calendar,
   DollarSign,
   ArrowLeft,
   CreditCard,
-  Download,
   XCircle,
   RotateCcw,
   MessageSquare,
   ChevronDown,
   ChevronUp,
-  Send,
   Loader2,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
 
 interface Quote {
@@ -76,8 +74,16 @@ export default function CustomerQuoteDetail() {
   const [quoteMessages, setQuoteMessages] = useState<any[]>([]);
   const [messagesLoaded, setMessagesLoaded] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
-  const [newMessage, setNewMessage] = useState("");
-  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageFilter, setMessageFilter] = useState<"quote" | "all">("quote");
+  const [composerSending, setComposerSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Filtered messages
+  const filteredMessages =
+    messageFilter === "quote"
+      ? quoteMessages.filter((msg: any) => msg.quote_id === id)
+      : quoteMessages;
+  const quoteOnlyCount = quoteMessages.filter((msg: any) => msg.quote_id === id).length;
 
   useEffect(() => {
     if (id && customer?.id) {
@@ -151,36 +157,9 @@ export default function CustomerQuoteDetail() {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || sendingMessage) return;
-    setSendingMessage(true);
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-message`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            customer_id: customer?.id,
-            quote_id: id,
-            message_text: newMessage.trim(),
-          }),
-        },
-      );
-      const result = await response.json();
-      if (result.success) {
-        setNewMessage("");
-        setMessagesLoaded(false);
-        fetchQuoteMessages();
-      }
-    } catch (err) {
-      console.error("Failed to send message:", err);
-    } finally {
-      setSendingMessage(false);
-    }
+  const handleMessageSent = () => {
+    setMessagesLoaded(false);
+    fetchQuoteMessages();
   };
 
   const formatRelativeTime = (dateString: string): string => {
@@ -558,7 +537,9 @@ export default function CustomerQuoteDetail() {
               </h3>
               {quoteMessages.length > 0 && (
                 <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
-                  {quoteMessages.length}
+                  {messageFilter === "quote" && quoteMessages.length !== quoteOnlyCount
+                    ? `${quoteOnlyCount} of ${quoteMessages.length}`
+                    : filteredMessages.length}
                 </span>
               )}
             </div>
@@ -571,87 +552,124 @@ export default function CustomerQuoteDetail() {
 
           {messagesOpen && (
             <div className="border-t border-gray-100">
+              {/* Filter toggle */}
+              {quoteMessages.length > 0 && (
+                <div className="px-6 pt-3 pb-1 flex items-center">
+                  <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                    <button
+                      onClick={() => setMessageFilter("quote")}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                        messageFilter === "quote"
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      This Quote ({quoteOnlyCount})
+                    </button>
+                    <button
+                      onClick={() => setMessageFilter("all")}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                        messageFilter === "all"
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      All ({quoteMessages.length})
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Message thread */}
               <div className="px-6 py-4 max-h-96 overflow-y-auto space-y-3">
                 {messagesLoading ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                   </div>
-                ) : quoteMessages.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">
-                    No messages for this quote
-                  </p>
-                ) : (
-                  quoteMessages.map((msg: any) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${msg.sender_type === "customer" ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[75%] rounded-xl px-4 py-3 ${
-                          msg.sender_type === "customer"
-                            ? "bg-blue-600 text-white"
-                            : msg.sender_type === "system"
-                              ? "bg-gray-50 text-gray-500 italic text-sm"
-                              : "bg-gray-100 text-gray-800"
-                        }`}
+                ) : filteredMessages.length === 0 ? (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-400">
+                      {messageFilter === "quote" && quoteMessages.length > 0
+                        ? "No messages for this quote."
+                        : "No messages yet"}
+                    </p>
+                    {messageFilter === "quote" && quoteMessages.length > 0 && (
+                      <button
+                        onClick={() => setMessageFilter("all")}
+                        className="text-sm text-blue-600 hover:text-blue-700 mt-1"
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className={`text-xs font-medium ${
-                              msg.sender_type === "customer"
-                                ? "text-blue-100"
-                                : "text-gray-500"
-                            }`}
-                          >
-                            {msg.sender_name}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              msg.sender_type === "customer"
-                                ? "text-blue-200"
-                                : "text-gray-400"
-                            }`}
-                          >
-                            {formatRelativeTime(msg.created_at)}
-                          </span>
+                        View all {quoteMessages.length} messages
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {filteredMessages.map((msg: any) => (
+                      <div
+                        key={msg.id}
+                        className={`flex ${msg.sender_type === "customer" ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className={`max-w-[75%] rounded-xl px-4 py-3 ${
+                            msg.sender_type === "customer"
+                              ? "bg-blue-600 text-white"
+                              : msg.sender_type === "system"
+                                ? "bg-gray-50 text-gray-500 italic text-sm"
+                                : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className={`text-xs font-medium ${
+                                msg.sender_type === "customer"
+                                  ? "text-blue-100"
+                                  : "text-gray-500"
+                              }`}
+                            >
+                              {msg.sender_name}
+                            </span>
+                            <span
+                              className={`text-xs ${
+                                msg.sender_type === "customer"
+                                  ? "text-blue-200"
+                                  : "text-gray-400"
+                              }`}
+                            >
+                              {formatRelativeTime(msg.created_at)}
+                            </span>
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap">
+                            {msg.message_text}
+                          </p>
+                          {/* Attachments */}
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {msg.attachments.map((att: any) => (
+                                <FileAttachment
+                                  key={att.id}
+                                  attachment={att}
+                                  isOwn={msg.sender_type === "customer"}
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <p className="text-sm whitespace-pre-wrap">
-                          {msg.message_text}
-                        </p>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </>
                 )}
               </div>
 
               {/* Composer */}
               <div className="px-6 py-4 border-t border-gray-100 bg-gray-50">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" &&
-                      !e.shiftKey &&
-                      handleSendMessage()
-                    }
-                    placeholder="Type a message..."
-                    className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!newMessage.trim() || sendingMessage}
-                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                  >
-                    {sendingMessage ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
+                <MessageComposer
+                  customerId={customer?.id}
+                  quoteId={id}
+                  onMessageSent={handleMessageSent}
+                  isSending={composerSending}
+                  placeholder="Type a message..."
+                />
               </div>
             </div>
           )}
