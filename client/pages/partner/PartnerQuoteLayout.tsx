@@ -112,7 +112,7 @@ export default function PartnerQuoteLayout({ partnerData }: Props) {
         >
           {/* Left: Partner logo or name */}
           <div>
-            {partnerData.logo_url ? (
+            {partnerData.logo_url && partnerData.logo_url.trim() !== "" ? (
               <img
                 src={partnerData.logo_url}
                 alt={partnerData.name}
@@ -125,7 +125,7 @@ export default function PartnerQuoteLayout({ partnerData }: Props) {
               />
             ) : (
               <span
-                style={{ fontSize: 20, fontWeight: 700, color: "#0C2340" }}
+                style={{ fontSize: 20, fontWeight: 400, color: "#0C2340" }}
               >
                 {partnerData.name}
               </span>
@@ -140,7 +140,7 @@ export default function PartnerQuoteLayout({ partnerData }: Props) {
                   href={`tel:${contactPhone}`}
                   style={{
                     fontSize: 14,
-                    fontWeight: 600,
+                    fontWeight: 500,
                     color: "#0C2340",
                     textDecoration: "none",
                     display: "block",
