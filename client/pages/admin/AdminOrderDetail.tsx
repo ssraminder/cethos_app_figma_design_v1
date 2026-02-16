@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import {
@@ -32,6 +32,7 @@ import {
   Send,
   Trash2,
   Loader2,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -247,6 +248,20 @@ export default function AdminOrderDetail() {
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ fileId: string; filename: string } | null>(null);
 
+  // Inline chat state
+  const [conversationMessages, setConversationMessages] = useState<any[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [messageFilter, setMessageFilter] = useState<"all" | "order">("all");
+  const [newMessage, setNewMessage] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [unreadStaffCount, setUnreadStaffCount] = useState(0);
+  const messagesBottomRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const fetchTurnaroundOptions = async () => {
     const { data } = await supabase
       .from("turnaround_options")
@@ -298,6 +313,53 @@ export default function AdminOrderDetail() {
       setPaymentLinkUrl(order.balance_payment_link || null);
     }
   }, [order?.balance_payment_link]);
+
+  // ── Inline chat: filtered messages ──
+  const filteredMessages = messageFilter === "order"
+    ? conversationMessages.filter((msg: any) => msg.order_id === id)
+    : conversationMessages;
+
+  // Fetch messages when order loads
+  useEffect(() => {
+    if (order?.customer_id || id) {
+      fetchConversationMessages();
+    }
+  }, [order?.customer_id, id]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (messagesBottomRef.current) {
+      messagesBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [filteredMessages.length]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (messageInputRef.current) {
+      messageInputRef.current.style.height = "auto";
+      messageInputRef.current.style.height =
+        Math.min(messageInputRef.current.scrollHeight, 120) + "px";
+    }
+  }, [newMessage]);
+
+  // Realtime subscription
+  useEffect(() => {
+    if (!conversationId) return;
+    const channel = supabase
+      .channel(`admin-order-messages-${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        () => { fetchConversationMessages(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [conversationId]);
 
   const fetchDocuments = async (quoteId: string) => {
     setLoadingFiles(true);
@@ -1202,6 +1264,194 @@ export default function AdminOrderDetail() {
       </div>
     );
   }
+
+  // ── Inline chat: fetch conversation messages ──
+  const fetchConversationMessages = async () => {
+    const customerId = order?.customer_id;
+    const orderId = id;
+    const quoteId = order?.quote_id;
+
+    if (!customerId && !orderId) return;
+    setMessagesLoading(true);
+
+    try {
+      const messageSelectFields = `
+        id, conversation_id, quote_id, order_id, sender_type,
+        sender_staff_id, sender_customer_id,
+        message_text, message_type, source, created_at,
+        read_by_staff_at, read_by_customer_at, metadata,
+        staff_users:sender_staff_id(full_name),
+        customers:sender_customer_id(full_name),
+        message_attachments(id, filename, original_filename, file_size, storage_path, mime_type)
+      `;
+
+      // Step 1: Fetch messages tagged to this order directly
+      let orderMessages: any[] = [];
+      if (orderId) {
+        const { data: om, error: omError } = await supabase
+          .from("conversation_messages")
+          .select(messageSelectFields)
+          .eq("order_id", orderId)
+          .order("created_at", { ascending: true });
+        if (!omError) orderMessages = om || [];
+      }
+
+      // Step 1b: Also fetch messages tagged to the original quote
+      let quoteMessages: any[] = [];
+      if (quoteId) {
+        const { data: qm, error: qmError } = await supabase
+          .from("conversation_messages")
+          .select(messageSelectFields)
+          .eq("quote_id", quoteId)
+          .order("created_at", { ascending: true });
+        if (!qmError) quoteMessages = qm || [];
+      }
+
+      // Step 2: Fetch all messages from the customer's conversation
+      let convMessages: any[] = [];
+      let resolvedConvId: string | null = null;
+
+      if (customerId) {
+        const { data: conv } = await supabase
+          .from("customer_conversations")
+          .select("id")
+          .eq("customer_id", customerId)
+          .maybeSingle();
+
+        if (conv?.id) {
+          resolvedConvId = conv.id;
+          const { data: cm } = await supabase
+            .from("conversation_messages")
+            .select(messageSelectFields)
+            .eq("conversation_id", conv.id)
+            .order("created_at", { ascending: true });
+          convMessages = cm || [];
+        }
+      }
+
+      // Fallback conversation_id from fetched messages
+      if (!resolvedConvId) {
+        const firstMsg = orderMessages[0] || quoteMessages[0];
+        resolvedConvId = firstMsg?.conversation_id || null;
+      }
+
+      setConversationId(resolvedConvId);
+
+      // Step 3: Merge and deduplicate
+      const messageMap = new Map<string, any>();
+      for (const msg of orderMessages) messageMap.set(msg.id, msg);
+      for (const msg of quoteMessages) messageMap.set(msg.id, msg);
+      for (const msg of convMessages) messageMap.set(msg.id, msg);
+
+      const mergedMessages = Array.from(messageMap.values()).sort(
+        (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+      setConversationMessages(mergedMessages);
+
+      // Step 4: Count unread + auto-mark as read
+      const unreadIds = mergedMessages
+        .filter((m: any) => m.sender_type === "customer" && !m.read_by_staff_at)
+        .map((m: any) => m.id);
+
+      setUnreadStaffCount(unreadIds.length);
+
+      if (unreadIds.length > 0) {
+        await supabase
+          .from("conversation_messages")
+          .update({ read_by_staff_at: new Date().toISOString() })
+          .in("id", unreadIds);
+        setUnreadStaffCount(0);
+      }
+    } catch (err) {
+      console.error("fetchConversationMessages error:", err);
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
+  // ── Inline chat: send message handler ──
+  const handleSendMessage = async () => {
+    if ((!newMessage.trim() && !attachmentFile) || sendingMessage) return;
+    setSendingMessage(true);
+
+    try {
+      let attachmentPaths: string[] = [];
+
+      if (attachmentFile) {
+        setUploadingAttachment(true);
+        try {
+          const timestamp = Date.now();
+          const randomId = Math.random().toString(36).substring(2, 8);
+          const tempPath = `temp/${timestamp}-${randomId}-${attachmentFile.name}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("message-attachments")
+            .upload(tempPath, attachmentFile, {
+              contentType: attachmentFile.type,
+              upsert: false,
+            });
+
+          if (uploadError) {
+            toast.error("Failed to upload attachment.");
+            setSendingMessage(false);
+            setUploadingAttachment(false);
+            return;
+          }
+          attachmentPaths = [tempPath];
+        } finally {
+          setUploadingAttachment(false);
+        }
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-staff-message`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            customer_id: order?.customer_id,
+            quote_id: order?.quote_id,
+            staff_id: currentStaff?.staffId,
+            message_text: newMessage.trim() || (attachmentFile ? `Sent a file: ${attachmentFile.name}` : ""),
+            attachments: attachmentPaths,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        setNewMessage("");
+        setAttachmentFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        await fetchConversationMessages();
+      } else {
+        toast.error("Failed to send message: " + (result.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Send message error:", err);
+      toast.error("Failed to send message.");
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  // ── Inline chat: format message time ──
+  const formatMessageTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+    const time = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    if (isToday) return time;
+    if (isYesterday) return `Yesterday ${time}`;
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + ` ${time}`;
+  };
 
   const totalAdjustments = adjustments.reduce(
     (sum, adjustment) =>
@@ -2178,6 +2428,307 @@ export default function AdminOrderDetail() {
             )}
           </div>
         </div>
+
+          {/* ================================================================
+              MESSAGES — INLINE CHAT
+              ================================================================ */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* ── Header ── */}
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <MessageSquare className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Messages</h3>
+                  {conversationMessages.length > 0 && (
+                    <p className="text-xs text-gray-500">{conversationMessages.length} message{conversationMessages.length !== 1 ? "s" : ""}</p>
+                  )}
+                </div>
+                {unreadStaffCount > 0 && (
+                  <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                    {unreadStaffCount}
+                  </span>
+                )}
+              </div>
+
+              {/* Filter toggle */}
+              {conversationMessages.length > 0 && (
+                <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setMessageFilter("all")}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      messageFilter === "all"
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    All ({conversationMessages.length})
+                  </button>
+                  <button
+                    onClick={() => setMessageFilter("order")}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      messageFilter === "order"
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    This Order ({conversationMessages.filter((m: any) => m.order_id === id).length})
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ── Message Thread ── */}
+            <div
+              className="px-5 py-4 overflow-y-auto bg-gradient-to-b from-gray-50/30 to-white"
+              style={{ maxHeight: "420px", minHeight: "120px" }}
+            >
+              {messagesLoading ? (
+                <div className="flex flex-col items-center justify-center py-10">
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-500 mb-2" />
+                  <p className="text-xs text-gray-400">Loading messages...</p>
+                </div>
+              ) : filteredMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                    <MessageSquare className="w-5 h-5 text-gray-300" />
+                  </div>
+                  <p className="text-sm text-gray-400 font-medium">
+                    {messageFilter === "order" ? "No messages for this order" : "No messages yet"}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {messageFilter === "order" && conversationMessages.length > 0 ? (
+                      <button
+                        onClick={() => setMessageFilter("all")}
+                        className="text-blue-500 hover:text-blue-600 underline"
+                      >
+                        View all {conversationMessages.length} messages
+                      </button>
+                    ) : (
+                      "Send a message below to start the conversation"
+                    )}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {filteredMessages.map((msg: any, idx: number) => {
+                    const isStaff = msg.sender_type === "staff";
+                    const isSystem = msg.sender_type === "system";
+                    const senderName = isStaff
+                      ? msg.staff_users?.full_name || "Staff"
+                      : msg.customers?.full_name || "Customer";
+                    const isViaEmail = msg.source === "email";
+
+                    // Date separator
+                    const showDateSep =
+                      idx === 0 ||
+                      new Date(msg.created_at).toDateString() !==
+                        new Date(filteredMessages[idx - 1].created_at).toDateString();
+
+                    return (
+                      <div key={msg.id}>
+                        {showDateSep && (
+                          <div className="flex items-center gap-3 py-3">
+                            <div className="flex-1 border-t border-gray-200" />
+                            <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+                              {new Date(msg.created_at).toLocaleDateString("en-US", {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                            <div className="flex-1 border-t border-gray-200" />
+                          </div>
+                        )}
+
+                        {isSystem ? (
+                          <div className="text-center py-1">
+                            <span className="text-[11px] text-gray-400 italic bg-gray-50 px-3 py-1 rounded-full">
+                              {msg.message_text}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className={`flex ${isStaff ? "justify-end" : "justify-start"} mb-2`}>
+                            <div className={`max-w-[78%] group`}>
+                              {/* Sender + meta */}
+                              <div className={`flex items-center gap-1.5 mb-0.5 ${isStaff ? "justify-end" : ""}`}>
+                                <span className="text-[11px] font-medium text-gray-500">
+                                  {senderName}
+                                </span>
+                                <span className="text-[11px] text-gray-400">
+                                  {formatMessageTime(msg.created_at)}
+                                </span>
+                                {isViaEmail && (
+                                  <span className="text-[10px] bg-amber-50 text-amber-600 px-1 py-0.5 rounded font-medium">
+                                    email
+                                  </span>
+                                )}
+                                {messageFilter === "all" && msg.metadata?.quote_number && (
+                                  <span className="text-[10px] bg-blue-50 text-blue-600 px-1 py-0.5 rounded font-mono">
+                                    {msg.metadata.quote_number}
+                                  </span>
+                                )}
+                                {messageFilter === "all" && !msg.quote_id && !msg.order_id && !isSystem && (
+                                  <span className="text-[10px] bg-gray-100 text-gray-400 px-1 py-0.5 rounded">
+                                    general
+                                  </span>
+                                )}
+                                {isStaff && msg.read_by_customer_at && (
+                                  <span className="text-[10px] text-blue-400">{"\u2713\u2713"}</span>
+                                )}
+                                {isStaff && !msg.read_by_customer_at && (
+                                  <span className="text-[10px] text-gray-300">{"\u2713"}</span>
+                                )}
+                              </div>
+
+                              {/* Bubble */}
+                              <div
+                                className={`rounded-2xl px-3.5 py-2 ${
+                                  isStaff
+                                    ? "bg-blue-600 text-white rounded-br-sm"
+                                    : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm shadow-sm"
+                                }`}
+                              >
+                                {msg.message_text && (
+                                  <p className="text-[13px] whitespace-pre-wrap leading-relaxed">
+                                    {msg.message_text}
+                                  </p>
+                                )}
+
+                                {/* Attachments */}
+                                {msg.message_attachments && msg.message_attachments.length > 0 && (
+                                  <div className={`${msg.message_text ? "mt-2 pt-2 border-t" : ""} ${
+                                    isStaff ? "border-blue-500/30" : "border-gray-100"
+                                  } space-y-1`}>
+                                    {msg.message_attachments.map((att: any) => (
+                                      <div
+                                        key={att.id}
+                                        className={`flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-lg cursor-pointer ${
+                                          isStaff
+                                            ? "bg-blue-500/30 text-blue-100 hover:bg-blue-500/40"
+                                            : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                                        }`}
+                                        onClick={async () => {
+                                          const { data } = await supabase.storage
+                                            .from("message-attachments")
+                                            .createSignedUrl(att.storage_path, 300);
+                                          if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+                                        }}
+                                      >
+                                        <Paperclip className="w-3 h-3 flex-shrink-0" />
+                                        <span className="truncate flex-1">{att.original_filename || att.filename}</span>
+                                        {att.file_size && (
+                                          <span className="flex-shrink-0 opacity-70">
+                                            {att.file_size > 1048576
+                                              ? `${(att.file_size / 1048576).toFixed(1)} MB`
+                                              : `${Math.round(att.file_size / 1024)} KB`}
+                                          </span>
+                                        )}
+                                        <Download className="w-3 h-3 flex-shrink-0 opacity-50" />
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div ref={messagesBottomRef} />
+                </div>
+              )}
+            </div>
+
+            {/* ── Composer ── */}
+            <div className="px-4 py-3 border-t border-gray-100 bg-white">
+              {/* Attachment preview */}
+              {attachmentFile && (
+                <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-blue-50 rounded-lg text-sm">
+                  <Paperclip className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                  <span className="text-blue-700 truncate flex-1">{attachmentFile.name}</span>
+                  <span className="text-blue-500 text-xs flex-shrink-0">
+                    {attachmentFile.size > 1048576
+                      ? `${(attachmentFile.size / 1048576).toFixed(1)} MB`
+                      : `${Math.round(attachmentFile.size / 1024)} KB`}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setAttachmentFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    className="text-blue-400 hover:text-blue-600 flex-shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-end gap-2">
+                {/* Attachment button */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-shrink-0 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Attach file"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) {
+                        toast.error("File must be under 10MB");
+                        return;
+                      }
+                      setAttachmentFile(file);
+                    }
+                  }}
+                />
+
+                {/* Text input */}
+                <textarea
+                  ref={messageInputRef}
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder={order?.customer?.full_name ? `Message ${order.customer.full_name}...` : "Type a message..."}
+                  rows={1}
+                  className="flex-1 text-sm border border-gray-200 rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-gray-50 focus:bg-white transition-colors placeholder:text-gray-400"
+                  style={{ minHeight: "38px", maxHeight: "100px" }}
+                />
+
+                {/* Send button */}
+                <button
+                  onClick={handleSendMessage}
+                  disabled={(!newMessage.trim() && !attachmentFile) || sendingMessage}
+                  className="flex-shrink-0 p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  title="Send (Enter)"
+                >
+                  {sendingMessage ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+
+              <p className="text-[11px] text-gray-400 mt-1.5 px-1">
+                Enter to send · Shift+Enter for new line · Customer receives an email notification
+              </p>
+            </div>
+          </div>
 
         <div className="space-y-6">
           <div className="bg-white rounded-lg border p-6">
