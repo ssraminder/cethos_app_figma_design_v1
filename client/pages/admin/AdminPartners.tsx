@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Users,
@@ -12,6 +12,8 @@ import {
   Activity,
   Clock,
   MapPin,
+  Upload,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,6 +40,10 @@ interface Partner {
   payout_frequency: string | null;
   notes: string | null;
   created_at: string;
+  business_address_line1: string | null;
+  business_city: string | null;
+  business_province: string | null;
+  business_postal_code: string | null;
 }
 
 interface OrderSummary {
@@ -85,6 +91,10 @@ interface FormData {
   payoutEmail: string;
   payoutFrequency: string;
   notes: string;
+  businessAddress: string;
+  businessCity: string;
+  businessProvince: string;
+  businessPostalCode: string;
 }
 
 const EMPTY_FORM: FormData = {
@@ -106,6 +116,10 @@ const EMPTY_FORM: FormData = {
   payoutEmail: "",
   payoutFrequency: "monthly",
   notes: "",
+  businessAddress: "",
+  businessCity: "",
+  businessProvince: "",
+  businessPostalCode: "",
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -158,6 +172,10 @@ export default function AdminPartners() {
   const [hasPickupLocation, setHasPickupLocation] = useState(false);
   const [pickupFormData, setPickupFormData] = useState<PickupFormData>(EMPTY_PICKUP_FORM);
   const [pickupLocationId, setPickupLocationId] = useState<string | null>(null);
+
+  // Logo upload state
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoDragActive, setLogoDragActive] = useState(false);
 
   // ── Data Loading ─────────────────────────────────────────────────────────
 
@@ -256,6 +274,10 @@ export default function AdminPartners() {
       payoutEmail: partner.payout_email || "",
       payoutFrequency: partner.payout_frequency || "monthly",
       notes: partner.notes || "",
+      businessAddress: partner.business_address_line1 || "",
+      businessCity: partner.business_city || "",
+      businessProvince: partner.business_province || "",
+      businessPostalCode: partner.business_postal_code || "",
     });
     setFormErrors({});
 
@@ -399,6 +421,10 @@ export default function AdminPartners() {
         payout_email: formData.payoutEmail || null,
         payout_frequency: formData.payoutFrequency || "monthly",
         notes: formData.notes || null,
+        business_address_line1: formData.businessAddress || null,
+        business_city: formData.businessCity || null,
+        business_province: formData.businessProvince || null,
+        business_postal_code: formData.businessPostalCode || null,
       };
 
       let savedPartnerId: string;
@@ -468,6 +494,60 @@ export default function AdminPartners() {
       setSaving(false);
     }
   };
+
+  // ── Logo Upload Handler ─────────────────────────────────────────────────
+
+  const handleLogoUpload = useCallback(async (file: File) => {
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Logo must be under 2MB");
+      return;
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/svg+xml", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Logo must be PNG, JPG, SVG, or WebP");
+      return;
+    }
+
+    setLogoUploading(true);
+    try {
+      const extension = file.name.split(".").pop();
+      const filePath = `${editingPartner?.id || "new"}/logo.${extension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("partner-logos")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) {
+        toast.error("Upload failed: " + uploadError.message);
+        return;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("partner-logos")
+        .getPublicUrl(filePath);
+
+      setFormData((prev) => ({ ...prev, logoUrl: publicUrl }));
+      toast.success("Logo uploaded");
+    } catch (err: any) {
+      toast.error("Upload failed: " + (err?.message || "Unknown error"));
+    } finally {
+      setLogoUploading(false);
+    }
+  }, [editingPartner]);
+
+  const handleLogoDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setLogoDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleLogoUpload(file);
+  }, [handleLogoUpload]);
+
+  const handleLogoFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleLogoUpload(file);
+    e.target.value = "";
+  }, [handleLogoUpload]);
 
   // ── Copy Referral Link ───────────────────────────────────────────────────
 
@@ -1005,24 +1085,161 @@ export default function AdminPartners() {
                 </div>
               </div>
 
+              {/* Business Address Section */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">
+                  Business Address
+                </h3>
+                <p className="text-xs text-gray-400 mb-3">
+                  This address appears in the branded quote page footer.
+                </p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Address
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.businessAddress}
+                      onChange={(e) => updateField("businessAddress", e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                      placeholder="456 Partner Street"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        City
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.businessCity}
+                        onChange={(e) => updateField("businessCity", e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                        placeholder="Calgary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Province
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.businessProvince}
+                        onChange={(e) => updateField("businessProvince", e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                        placeholder="AB"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Postal Code
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.businessPostalCode}
+                        onChange={(e) => updateField("businessPostalCode", e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                        placeholder="T2P 2B2"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Branding Section */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">
                   Branding
                 </h3>
                 <div className="space-y-4">
+                  {/* Logo Upload */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Custom Logo URL
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Partner Logo
                     </label>
-                    <input
-                      type="text"
-                      value={formData.logoUrl}
-                      onChange={(e) => updateField("logoUrl", e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
-                      placeholder="https://example.com/logo.png"
-                    />
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setLogoDragActive(true); }}
+                      onDragLeave={() => setLogoDragActive(false)}
+                      onDrop={handleLogoDrop}
+                      className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer ${
+                        logoDragActive
+                          ? "border-teal-500 bg-teal-50"
+                          : "border-gray-300 hover:border-gray-400"
+                      }`}
+                      onClick={() => document.getElementById("logo-file-input")?.click()}
+                    >
+                      <input
+                        id="logo-file-input"
+                        type="file"
+                        accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                        onChange={handleLogoFileSelect}
+                        className="hidden"
+                      />
+                      {logoUploading ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <Loader2 className="w-5 h-5 animate-spin text-teal-600" />
+                          <span className="text-sm text-gray-600">Uploading...</span>
+                        </div>
+                      ) : (
+                        <>
+                          <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2" />
+                          <p className="text-sm text-gray-600">
+                            Drag & drop or click to upload
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            PNG, JPG, SVG, WebP &middot; Max 2MB
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3 my-3">
+                      <div className="flex-1 border-t border-gray-200" />
+                      <span className="text-xs text-gray-400">or</span>
+                      <div className="flex-1 border-t border-gray-200" />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Logo URL
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.logoUrl}
+                        onChange={(e) => updateField("logoUrl", e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                        placeholder="https://example.com/logo.png"
+                      />
+                    </div>
+
+                    {/* Logo Preview */}
+                    {formData.logoUrl && (
+                      <div className="mt-3 flex items-center gap-3">
+                        <div className="border border-gray-200 rounded-lg p-2 bg-gray-50">
+                          <img
+                            src={formData.logoUrl}
+                            alt="Logo preview"
+                            className="h-[60px] max-w-[180px] object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateField("logoUrl", "")}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Remove
+                        </button>
+                      </div>
+                    )}
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Custom Welcome Message
