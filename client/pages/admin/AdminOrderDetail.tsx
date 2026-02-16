@@ -1738,17 +1738,48 @@ export default function AdminOrderDetail() {
             </div>
           )}
 
-          {/* Documents Section */}
+          {/* Documents & Files Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            {/* Header with upload buttons */}
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-gray-400" />
+                Documents & Files
+              </h2>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => { setUploadType("draft"); setShowUploadModal(true); }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  Upload Draft Translation
+                </button>
+                <button
+                  onClick={() => { setUploadType("final"); setShowUploadModal(true); }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Upload Final Deliverable
+                </button>
+                <button
+                  onClick={() => { setUploadType("other"); setShowUploadModal(true); }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors"
+                >
+                  <Paperclip className="w-3.5 h-3.5" />
+                  Upload Other File
+                </button>
+              </div>
+            </div>
+
+            {/* Source Documents */}
             {(() => {
               const translateFiles = quoteFiles.filter((f: any) => f.file_category_id !== REFERENCE_CATEGORY_ID);
               const referenceFiles = quoteFiles.filter((f: any) => f.file_category_id === REFERENCE_CATEGORY_ID);
 
               return (
                 <>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                    <FileText className="w-5 h-5" />
-                    Documents ({translateFiles.length})
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                    Source Documents ({translateFiles.length})
                   </h3>
 
                   {loadingFiles ? (
@@ -1875,39 +1906,12 @@ export default function AdminOrderDetail() {
                 </>
               );
             })()}
-          </div>
 
-          {/* Files & Translations Section */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-              <Upload className="w-5 h-5 text-gray-400" />
-              Files & Translations
+            {/* Translations & Other Files */}
+            <hr className="my-6 border-gray-200" />
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              Translations & Other Files
             </h3>
-
-            {/* Upload actions */}
-            <div className="flex gap-2 p-3 mb-4 bg-blue-50/60 rounded-xl border border-blue-100 flex-wrap">
-              <button
-                onClick={() => { setUploadType("draft"); setShowUploadModal(true); }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                Upload Draft Translation
-              </button>
-              <button
-                onClick={() => { setUploadType("final"); setShowUploadModal(true); }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
-              >
-                <CheckCircle className="w-3.5 h-3.5" />
-                Upload Final Deliverable
-              </button>
-              <button
-                onClick={() => { setUploadType("other"); setShowUploadModal(true); }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors"
-              >
-                <Paperclip className="w-3.5 h-3.5" />
-                Upload Other File
-              </button>
-            </div>
 
             {filesLoading ? (
               <div className="flex items-center justify-center py-8">
