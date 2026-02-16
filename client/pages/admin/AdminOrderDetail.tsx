@@ -7,7 +7,6 @@ import {
   Brain,
   Building,
   CheckCircle,
-  ChevronDown,
   Clock,
   CreditCard,
   DollarSign,
@@ -232,7 +231,6 @@ export default function AdminOrderDetail() {
 
   // Activity log
   const [activityLog, setActivityLog] = useState<any[]>([]);
-  const [showActivityLog, setShowActivityLog] = useState(false);
 
   // File upload & draft management
   const [orderFiles, setOrderFiles] = useState<any[]>([]);
@@ -3014,77 +3012,95 @@ export default function AdminOrderDetail() {
             </div>
           </div>
 
+          {/* Activity */}
           <div className="bg-white rounded-lg border p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Clock className="w-5 h-5 text-gray-400" />
-              Timeline
+              Activity
             </h2>
 
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Created</span>
-                <span>
-                  {format(new Date(order.created_at), "MMM d, yyyy h:mm a")}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Last Updated</span>
-                <span>
-                  {format(new Date(order.updated_at), "MMM d, yyyy h:mm a")}
-                </span>
-              </div>
-            </div>
-          </div>
+            <div className="space-y-0 relative">
+              {/* Vertical timeline line */}
+              <div className="absolute left-[5px] top-2 bottom-2 w-px bg-gray-200" />
 
-          {/* Activity Log */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <button
-              onClick={() => setShowActivityLog(!showActivityLog)}
-              className="w-full flex items-center justify-between"
-            >
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Clock className="w-5 h-5" />
-                Activity Log ({activityLog.length})
-              </h3>
-              <ChevronDown
-                className={`w-5 h-5 text-gray-400 transition-transform ${
-                  showActivityLog ? "rotate-180" : ""
-                }`}
-              />
-            </button>
+              {(() => {
+                // Build unified entries from timeline + activity log
+                const entries: Array<{
+                  id: string;
+                  date: Date;
+                  label: string;
+                  detail?: string;
+                  detailsJson?: string;
+                  type: "timeline" | "activity";
+                }> = [];
 
-            {showActivityLog && (
-              <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
-                {activityLog.length === 0 ? (
-                  <p className="text-sm text-gray-500">No activity recorded</p>
-                ) : (
-                  activityLog.map((entry) => (
+                // Timeline entries
+                entries.push({
+                  id: "timeline-created",
+                  date: new Date(order.created_at),
+                  label: "Order Created",
+                  type: "timeline",
+                });
+                entries.push({
+                  id: "timeline-updated",
+                  date: new Date(order.updated_at),
+                  label: "Last Updated",
+                  type: "timeline",
+                });
+
+                // Activity log entries
+                activityLog.forEach((entry) => {
+                  entries.push({
+                    id: `activity-${entry.id}`,
+                    date: new Date(entry.created_at),
+                    label: (entry.activity_type || "unknown")
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                    detail: entry.staff_users?.full_name || "System",
+                    detailsJson: entry.details
+                      ? JSON.stringify(entry.details, null, 2).substring(0, 200)
+                      : undefined,
+                    type: "activity",
+                  });
+                });
+
+                // Sort newest first
+                entries.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+                if (entries.length === 0) {
+                  return (
+                    <p className="text-sm text-gray-500 pl-5">No activity recorded</p>
+                  );
+                }
+
+                return entries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-start gap-3 py-2.5 relative text-sm"
+                  >
                     <div
-                      key={entry.id}
-                      className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg text-sm"
-                    >
-                      <div className="w-2 h-2 bg-blue-400 rounded-full mt-1.5 flex-shrink-0" />
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900">
-                          {(entry.activity_type || "unknown")
-                            .replace(/_/g, " ")
-                            .replace(/\b\w/g, (c: string) => c.toUpperCase())}
-                        </p>
-                        <p className="text-gray-500 text-xs">
-                          {entry.staff_users?.full_name || "System"} •{" "}
-                          {new Date(entry.created_at).toLocaleString()}
-                        </p>
-                        {entry.details && (
-                          <pre className="text-xs text-gray-400 mt-1 whitespace-pre-wrap">
-                            {JSON.stringify(entry.details, null, 2).substring(0, 200)}
-                          </pre>
-                        )}
-                      </div>
+                      className={`w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0 z-10 ${
+                        entry.type === "timeline"
+                          ? "bg-gray-400"
+                          : "bg-blue-400"
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-gray-900">{entry.label}</p>
+                      <p className="text-gray-500 text-xs">
+                        {entry.detail ? `${entry.detail} \u2022 ` : ""}
+                        {format(entry.date, "MMM d, yyyy h:mm a")}
+                      </p>
+                      {entry.detailsJson && (
+                        <pre className="text-xs text-gray-400 mt-1 whitespace-pre-wrap">
+                          {entry.detailsJson}
+                        </pre>
+                      )}
                     </div>
-                  ))
-                )}
-              </div>
-            )}
+                  </div>
+                ));
+              })()}
+            </div>
           </div>
           </div>
         </div>
