@@ -200,7 +200,7 @@ export default function PartnerQuoteLayout({ partnerData }: Props) {
       {/* ── QUOTE FLOW CONTENT ─────────────────────────────── */}
       <div
         style={{ flex: 1 }}
-        className={`mx-auto py-10 pb-24 ${state.currentStep === 4 ? "max-w-7xl px-4 sm:px-6 lg:px-8" : "max-w-3xl px-6 sm:px-8"}`}
+        className={`mx-auto py-10 pb-24 ${state.currentStep === 4 ? "w-[90%] px-4 sm:px-6 lg:px-8" : "w-[90%] sm:w-[80%] lg:w-[60%]"}`}
       >
         <ProgressStepper
           currentStep={state.currentStep}
