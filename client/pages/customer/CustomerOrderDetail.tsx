@@ -459,7 +459,7 @@ export default function CustomerOrderDetail() {
 
   const getCurrentStatusIndex = () => {
     // Map invoiced → delivered for timeline display (customer doesn't see internal accounting steps)
-    const displayStatus = order?.status === "invoiced" ? "delivered" : order?.status;
+    const displayStatus = order?.status === "invoiced" ? "completed" : order?.status;
     return STATUS_TIMELINE.findIndex((s) => s.status === displayStatus);
   };
 
