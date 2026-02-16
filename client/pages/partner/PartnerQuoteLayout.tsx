@@ -42,6 +42,16 @@ export default function PartnerQuoteLayout({ partnerData }: Props) {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  // Override scrollbar-gutter on html so backgrounds can span full viewport width
+  useEffect(() => {
+    const html = document.documentElement;
+    const prev = html.style.scrollbarGutter;
+    html.style.scrollbarGutter = "auto";
+    return () => {
+      html.style.scrollbarGutter = prev;
+    };
+  }, []);
+
   const handleProcessingComplete = () => {
     updateState({
       showProcessingModal: false,
@@ -94,6 +104,8 @@ export default function PartnerQuoteLayout({ partnerData }: Props) {
         fontFamily: "'Plus Jakarta Sans', -apple-system, sans-serif",
         display: "flex",
         flexDirection: "column",
+        width: "100vw",
+        overflowX: "hidden",
       }}
     >
       {/* ── HEADER ───────────────────────────────────────────── */}
