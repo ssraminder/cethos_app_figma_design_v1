@@ -298,7 +298,7 @@ export default function AdminOrderDetail() {
     try {
       const { data, error } = await supabase
         .from("quote_files")
-        .select("id, original_filename, file_size, mime_type, storage_path, category_id, created_at")
+        .select("id, original_filename, file_size, mime_type, storage_path, file_category_id, created_at")
         .eq("quote_id", quoteId)
         .order("created_at", { ascending: true });
 
@@ -524,7 +524,7 @@ export default function AdminOrderDetail() {
   const REFERENCE_CATEGORY_ID = "f1aed462-a25f-4dd0-96c0-f952c3a72950";
 
   const getBucketForFile = (file: any) =>
-    file.category_id === REFERENCE_CATEGORY_ID ? "quote-reference-files" : "quote-files";
+    file.file_category_id === REFERENCE_CATEGORY_ID ? "quote-reference-files" : "quote-files";
 
   const handlePreviewFile = async (file: any) => {
     try {
@@ -1429,8 +1429,8 @@ export default function AdminOrderDetail() {
           {/* Documents Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             {(() => {
-              const translateFiles = quoteFiles.filter((f: any) => f.category_id !== REFERENCE_CATEGORY_ID);
-              const referenceFiles = quoteFiles.filter((f: any) => f.category_id === REFERENCE_CATEGORY_ID);
+              const translateFiles = quoteFiles.filter((f: any) => f.file_category_id !== REFERENCE_CATEGORY_ID);
+              const referenceFiles = quoteFiles.filter((f: any) => f.file_category_id === REFERENCE_CATEGORY_ID);
 
               return (
                 <>

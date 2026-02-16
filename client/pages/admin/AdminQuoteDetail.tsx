@@ -554,7 +554,7 @@ export default function AdminQuoteDetail() {
     // Try quote_files first (customer upload route)
     const { data: quoteFiles, error: qfError } = await supabase
       .from('quote_files')
-      .select('id, original_filename, storage_path, file_size, mime_type, category_id')
+      .select('id, original_filename, storage_path, file_size, mime_type, file_category_id')
       .eq('quote_id', quoteId);
 
     if (!qfError && quoteFiles && quoteFiles.length > 0) {
@@ -562,12 +562,12 @@ export default function AdminQuoteDetail() {
         id: f.id,
         displayName: f.original_filename || f.storage_path,
         storagePath: f.storage_path,
-        bucket: f.category_id === REFERENCE_CATEGORY_ID ? 'quote-reference-files' : 'quote-files',
+        bucket: f.file_category_id === REFERENCE_CATEGORY_ID ? 'quote-reference-files' : 'quote-files',
         bucketPath: f.storage_path,
         fileSize: f.file_size || 0,
         mimeType: f.mime_type || 'application/pdf',
         source: 'quote' as const,
-        categoryId: f.category_id,
+        categoryId: f.file_category_id,
       }));
     }
 
