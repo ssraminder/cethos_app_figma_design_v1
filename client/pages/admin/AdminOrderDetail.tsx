@@ -144,10 +144,10 @@ const ORDER_STATUSES = [
   { value: "paid", label: "Paid", color: "green" },
   { value: "balance_due", label: "Balance Due", color: "amber" },
   { value: "in_production", label: "In Production", color: "blue" },
-  { value: "draft_review", label: "Draft Review", color: "purple" },
+  { value: "draft_review", label: "Draft Review", color: "amber" },
   { value: "ready_for_delivery", label: "Ready for Delivery", color: "teal" },
   { value: "delivered", label: "Delivered", color: "green" },
-  { value: "invoiced", label: "Invoiced", color: "emerald" },
+  { value: "invoiced", label: "Invoiced", color: "purple" },
   { value: "completed", label: "Completed", color: "green" },
   { value: "cancelled", label: "Cancelled", color: "red" },
   { value: "refunded", label: "Refunded", color: "red" },
@@ -298,8 +298,9 @@ export default function AdminOrderDetail() {
     try {
       const { data, error } = await supabase
         .from("quote_files")
-        .select("id, original_filename, file_size, mime_type, storage_path, file_category_id, created_at")
+        .select("id, original_filename, file_size, mime_type, storage_path, file_category_id, is_staff_created, review_status, review_version, created_at, file_categories!file_category_id(id, name, slug)")
         .eq("quote_id", quoteId)
+        .in("upload_status", ["uploaded", "completed"])
         .order("created_at", { ascending: true });
 
       if (!error && data) {
@@ -410,6 +411,7 @@ export default function AdminOrderDetail() {
       formData.append("quoteId", order.quote_id);
       formData.append("staffId", currentStaff.staffId);
       formData.append("processWithAI", "false");
+      formData.append("file_category", categorySlug);
 
       const uploadResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
@@ -424,9 +426,20 @@ export default function AdminOrderDetail() {
 
       const uploadData = await uploadResponse.json();
 
-      if (!uploadResponse.ok || !uploadData.fileId) {
+      if (!uploadResponse.ok || !uploadData.success) {
         throw new Error(uploadData.error || "Upload failed");
       }
+
+      // Handle both old (camelCase) and new (snake_case) response shapes
+      const fileId = uploadData.file_id || uploadData.fileId;
+      const storagePath = uploadData.storage_path || uploadData.storagePath;
+      const filename = uploadData.filename;
+
+      if (!fileId) {
+        throw new Error("Upload succeeded but no file ID returned");
+      }
+
+      console.log("File uploaded:", { fileId, filename, storagePath });
 
       // Update the file category and review fields
       const updateFields: any = {
@@ -443,7 +456,7 @@ export default function AdminOrderDetail() {
       await supabase
         .from("quote_files")
         .update(updateFields)
-        .eq("id", uploadData.fileId);
+        .eq("id", fileId);
 
       // If draft, submit for customer review
       if (uploadType === "draft") {
@@ -456,7 +469,7 @@ export default function AdminOrderDetail() {
               Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             },
             body: JSON.stringify({
-              file_id: uploadData.fileId,
+              file_id: fileId,
               action: "submit_for_review",
               actor_type: "staff",
               actor_id: currentStaff.staffId,
@@ -1753,12 +1766,60 @@ export default function AdminOrderDetail() {
                   );
                 })()}
 
+                {/* Reference Files */}
+                {(() => {
+                  const refFiles = orderFiles.filter(f => {
+                    const slug = f.category_slug;
+                    return slug === "reference" || slug === "glossary" || slug === "style_guide";
+                  });
+                  if (refFiles.length === 0) return null;
+                  return (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
+                        Reference Files ({refFiles.length})
+                      </h4>
+                      <div className="space-y-1.5">
+                        {refFiles.map((file: any) => (
+                          <div key={file.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                            <Paperclip className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                            <span className="truncate text-gray-600">{file.original_filename}</span>
+                            <span className="text-xs text-gray-400 flex-shrink-0">
+                              {file.category_slug || "reference"} {file.file_size ? `${(file.file_size / 1024).toFixed(1)} KB` : ""}
+                            </span>
+                            <div className="flex items-center gap-1 ml-auto flex-shrink-0">
+                              {file.signed_url && (
+                                <a
+                                  href={file.signed_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:underline"
+                                >
+                                  View
+                                </a>
+                              )}
+                              <button
+                                onClick={() => handleDownloadFile(file)}
+                                className="text-xs text-teal-600 hover:underline"
+                              >
+                                Download
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Staff Files (other) */}
                 {(() => {
                   const staffFiles = orderFiles.filter(
                     f => f.is_staff_created &&
                       f.category_slug !== "draft_translation" &&
-                      f.category_slug !== "final_deliverable"
+                      f.category_slug !== "final_deliverable" &&
+                      f.category_slug !== "reference" &&
+                      f.category_slug !== "glossary" &&
+                      f.category_slug !== "style_guide"
                   );
                   if (staffFiles.length === 0) return null;
                   return (
@@ -2610,19 +2671,30 @@ export default function AdminOrderDetail() {
             {/* Category selector for "other" type */}
             {uploadType === "other" && (
               <div className="mb-4">
-                <label className="block text-xs font-semibold text-gray-500 mb-1.5">
-                  File Category
-                </label>
-                <select
-                  value={uploadCategory}
-                  onChange={e => setUploadCategory(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="reference">Reference</option>
-                  <option value="source">Source</option>
-                  <option value="glossary">Glossary</option>
-                  <option value="style_guide">Style Guide</option>
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Upload As:</label>
+                <div className="flex gap-2 flex-wrap">
+                  {[
+                    { value: "to_translate", label: "Source Document", color: "blue" },
+                    { value: "reference", label: "Reference File", color: "gray" },
+                    { value: "glossary", label: "Glossary", color: "gray" },
+                    { value: "style_guide", label: "Style Guide", color: "gray" },
+                  ].map((cat) => (
+                    <button
+                      key={cat.value}
+                      type="button"
+                      onClick={() => setUploadCategory(cat.value)}
+                      className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+                        uploadCategory === cat.value
+                          ? cat.color === "blue"
+                            ? "bg-blue-100 border-blue-500 text-blue-800"
+                            : "bg-gray-100 border-gray-500 text-gray-800"
+                          : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
