@@ -608,6 +608,9 @@ export default function AdminOrderDetail() {
 
       toast.success(`File "${data.filename}" deleted successfully.`);
       await fetchOrderFiles();
+      if (order?.quote_id) {
+        await fetchDocuments(order.quote_id);
+      }
     } catch (err: any) {
       console.error("Delete error:", err);
       toast.error(`Failed to delete file: ${err.message}`);
@@ -1553,6 +1556,24 @@ export default function AdminOrderDetail() {
                             >
                               <Brain className="w-4 h-4" />
                             </button>
+                            {file.is_staff_created && (
+                              <button
+                                onClick={() => handleDeleteFile(file.id, file.original_filename)}
+                                disabled={deletingFileId === file.id}
+                                className={`p-2 transition-colors rounded-lg ${
+                                  deletingFileId === file.id
+                                    ? "text-gray-300 cursor-not-allowed"
+                                    : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+                                }`}
+                                title="Delete file"
+                              >
+                                {deletingFileId === file.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4" />
+                                )}
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1578,6 +1599,24 @@ export default function AdminOrderDetail() {
                             >
                               Download
                             </button>
+                            {rf.is_staff_created && (
+                              <button
+                                onClick={() => handleDeleteFile(rf.id, rf.original_filename)}
+                                disabled={deletingFileId === rf.id}
+                                className={`p-1 transition-colors ${
+                                  deletingFileId === rf.id
+                                    ? "text-gray-300 cursor-not-allowed"
+                                    : "text-gray-400 hover:text-red-500"
+                                }`}
+                                title="Delete file"
+                              >
+                                {deletingFileId === rf.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4" />
+                                )}
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
