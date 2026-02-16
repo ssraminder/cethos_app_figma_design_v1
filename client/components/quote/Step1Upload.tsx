@@ -569,7 +569,7 @@ export default function Step1Upload() {
             file_size: lf.size,
             mime_type: lf.mimeType,
             upload_status: "uploaded",
-            category_id: "45cb02ba-fca5-423a-8cb9-6ad807ad3bbc", // "To Translate"
+            file_category_id: "45cb02ba-fca5-423a-8cb9-6ad807ad3bbc", // "To Translate"
           });
 
         if (recordError) {
@@ -614,7 +614,7 @@ export default function Step1Upload() {
             mime_type: rf.mimeType,
             upload_status: "uploaded",
             ai_processing_status: "skipped",
-            category_id: "f1aed462-a25f-4dd0-96c0-f952c3a72950", // "Reference"
+            file_category_id: "f1aed462-a25f-4dd0-96c0-f952c3a72950", // "Reference"
           });
 
         if (recordError) {
