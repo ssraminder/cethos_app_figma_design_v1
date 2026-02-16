@@ -3114,7 +3114,7 @@ export default function AdminOrderDetail() {
                   <div className="w-2 h-2 bg-blue-400 rounded-full mt-1.5 flex-shrink-0" />
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900">
-                      {entry.activity_type
+                      {(entry.activity_type || "unknown")
                         .replace(/_/g, " ")
                         .replace(/\b\w/g, (c: string) => c.toUpperCase())}
                     </p>
