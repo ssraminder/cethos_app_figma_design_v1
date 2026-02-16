@@ -314,53 +314,6 @@ export default function AdminOrderDetail() {
     }
   }, [order?.balance_payment_link]);
 
-  // ── Inline chat: filtered messages ──
-  const filteredMessages = messageFilter === "order"
-    ? conversationMessages.filter((msg: any) => msg.order_id === id)
-    : conversationMessages;
-
-  // Fetch messages when order loads
-  useEffect(() => {
-    if (order?.customer_id || id) {
-      fetchConversationMessages();
-    }
-  }, [order?.customer_id, id]);
-
-  // Auto-scroll to bottom
-  useEffect(() => {
-    if (messagesBottomRef.current) {
-      messagesBottomRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [filteredMessages.length]);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (messageInputRef.current) {
-      messageInputRef.current.style.height = "auto";
-      messageInputRef.current.style.height =
-        Math.min(messageInputRef.current.scrollHeight, 120) + "px";
-    }
-  }, [newMessage]);
-
-  // Realtime subscription
-  useEffect(() => {
-    if (!conversationId) return;
-    const channel = supabase
-      .channel(`admin-order-messages-${conversationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "conversation_messages",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        () => { fetchConversationMessages(); }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [conversationId]);
-
   const fetchDocuments = async (quoteId: string) => {
     setLoadingFiles(true);
     try {
@@ -1235,6 +1188,53 @@ export default function AdminOrderDetail() {
       setRequestingPayment(false);
     }
   };
+
+  // ── Inline chat: filtered messages ──
+  const filteredMessages = messageFilter === "order"
+    ? conversationMessages.filter((msg: any) => msg.order_id === id)
+    : conversationMessages;
+
+  // Fetch messages when order loads
+  useEffect(() => {
+    if (order?.customer_id || id) {
+      fetchConversationMessages();
+    }
+  }, [order?.customer_id, id]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (messagesBottomRef.current) {
+      messagesBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [filteredMessages.length]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (messageInputRef.current) {
+      messageInputRef.current.style.height = "auto";
+      messageInputRef.current.style.height =
+        Math.min(messageInputRef.current.scrollHeight, 120) + "px";
+    }
+  }, [newMessage]);
+
+  // Realtime subscription
+  useEffect(() => {
+    if (!conversationId) return;
+    const channel = supabase
+      .channel(`admin-order-messages-${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        () => { fetchConversationMessages(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [conversationId]);
 
   if (loading) {
     return (
