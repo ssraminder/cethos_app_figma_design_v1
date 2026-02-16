@@ -27,12 +27,9 @@ interface Order {
 
 const STATUS_TIMELINE = [
   { status: "paid", label: "Payment Confirmed" },
-  { status: "in_production", label: "In Production" },
-  { status: "draft_review", label: "Draft Review" },
-  { status: "ready_for_pickup", label: "Ready" },
-  { status: "out_for_delivery", label: "Out for Delivery" },
+  { status: "in_production", label: "In Progress" },
+  { status: "draft_review", label: "Review Draft" },
   { status: "delivered", label: "Delivered" },
-  { status: "invoiced", label: "Invoiced" },
   { status: "completed", label: "Completed" },
 ];
 
@@ -40,10 +37,7 @@ const STATUS_COLORS: Record<string, string> = {
   paid: "bg-green-100 text-green-800",
   in_production: "bg-blue-100 text-blue-800",
   draft_review: "bg-purple-100 text-purple-800",
-  ready_for_pickup: "bg-purple-100 text-purple-800",
-  out_for_delivery: "bg-yellow-100 text-yellow-800",
   delivered: "bg-teal-100 text-teal-800",
-  invoiced: "bg-emerald-100 text-emerald-800",
   completed: "bg-gray-100 text-gray-800",
   cancelled: "bg-red-100 text-red-800",
 };
@@ -688,14 +682,16 @@ export default function CustomerOrderDetail() {
 
         {/* Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ marginTop: 24 }}>
-          <button
-            onClick={handleDownloadInvoice}
-            disabled={downloadingInvoice}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Download className="w-5 h-5" />
-            {downloadingInvoice ? "Generating..." : "Download Invoice"}
-          </button>
+          {["draft_review", "delivered", "completed"].includes(order.status) && (
+            <button
+              onClick={handleDownloadInvoice}
+              disabled={downloadingInvoice}
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="w-5 h-5" />
+              {downloadingInvoice ? "Generating..." : "Download Invoice"}
+            </button>
+          )}
 
           <Link
             to="/dashboard/messages"
