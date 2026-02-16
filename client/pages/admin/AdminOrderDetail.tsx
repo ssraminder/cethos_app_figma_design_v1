@@ -1189,82 +1189,6 @@ export default function AdminOrderDetail() {
     }
   };
 
-  // ── Inline chat: filtered messages ──
-  const filteredMessages = messageFilter === "order"
-    ? conversationMessages.filter((msg: any) => msg.order_id === id)
-    : conversationMessages;
-
-  // Fetch messages when order loads
-  useEffect(() => {
-    if (order?.customer_id || id) {
-      fetchConversationMessages();
-    }
-  }, [order?.customer_id, id]);
-
-  // Auto-scroll to bottom
-  useEffect(() => {
-    if (messagesBottomRef.current) {
-      messagesBottomRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [filteredMessages.length]);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (messageInputRef.current) {
-      messageInputRef.current.style.height = "auto";
-      messageInputRef.current.style.height =
-        Math.min(messageInputRef.current.scrollHeight, 120) + "px";
-    }
-  }, [newMessage]);
-
-  // Realtime subscription
-  useEffect(() => {
-    if (!conversationId) return;
-    const channel = supabase
-      .channel(`admin-order-messages-${conversationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "conversation_messages",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        () => { fetchConversationMessages(); }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [conversationId]);
-
-  if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center">
-        <RefreshCw className="w-8 h-8 animate-spin text-teal-600" />
-      </div>
-    );
-  }
-
-  if (error || !order) {
-    return (
-      <div className="p-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
-          <div>
-            <p className="font-medium text-red-800">Error loading order</p>
-            <p className="text-red-600 text-sm">{error || "Order not found"}</p>
-          </div>
-        </div>
-        <Link
-          to="/admin/orders"
-          className="mt-4 inline-flex items-center gap-2 text-teal-600 hover:underline"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Orders
-        </Link>
-      </div>
-    );
-  }
-
   // ── Inline chat: fetch conversation messages ──
   const fetchConversationMessages = async () => {
     const customerId = order?.customer_id;
@@ -1452,6 +1376,82 @@ export default function AdminOrderDetail() {
     if (isYesterday) return `Yesterday ${time}`;
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + ` ${time}`;
   };
+
+  // ── Inline chat: filtered messages ──
+  const filteredMessages = messageFilter === "order"
+    ? conversationMessages.filter((msg: any) => msg.order_id === id)
+    : conversationMessages;
+
+  // Fetch messages when order loads
+  useEffect(() => {
+    if (order?.customer_id || id) {
+      fetchConversationMessages();
+    }
+  }, [order?.customer_id, id]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (messagesBottomRef.current) {
+      messagesBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [filteredMessages.length]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (messageInputRef.current) {
+      messageInputRef.current.style.height = "auto";
+      messageInputRef.current.style.height =
+        Math.min(messageInputRef.current.scrollHeight, 120) + "px";
+    }
+  }, [newMessage]);
+
+  // Realtime subscription
+  useEffect(() => {
+    if (!conversationId) return;
+    const channel = supabase
+      .channel(`admin-order-messages-${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        () => { fetchConversationMessages(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [conversationId]);
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <RefreshCw className="w-8 h-8 animate-spin text-teal-600" />
+      </div>
+    );
+  }
+
+  if (error || !order) {
+    return (
+      <div className="p-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
+          <div>
+            <p className="font-medium text-red-800">Error loading order</p>
+            <p className="text-red-600 text-sm">{error || "Order not found"}</p>
+          </div>
+        </div>
+        <Link
+          to="/admin/orders"
+          className="mt-4 inline-flex items-center gap-2 text-teal-600 hover:underline"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Orders
+        </Link>
+      </div>
+    );
+  }
 
   const totalAdjustments = adjustments.reduce(
     (sum, adjustment) =>
