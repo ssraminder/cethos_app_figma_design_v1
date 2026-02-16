@@ -1737,7 +1737,7 @@ export default function AdminOrderDetail() {
           )}
 
           {/* Documents & Files Section */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-lg border p-6">
             {/* Header with upload buttons */}
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
               <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -2385,7 +2385,7 @@ export default function AdminOrderDetail() {
           {/* ================================================================
               MESSAGES — INLINE CHAT
               ================================================================ */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-lg border overflow-hidden">
             {/* ── Header ── */}
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <div className="flex items-center gap-2.5">
@@ -2393,7 +2393,7 @@ export default function AdminOrderDetail() {
                   <MessageSquare className="w-4 h-4 text-blue-600" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Messages</h3>
+                  <h2 className="text-sm font-semibold text-gray-900">Messages</h2>
                   {conversationMessages.length > 0 && (
                     <p className="text-xs text-gray-500">{conversationMessages.length} message{conversationMessages.length !== 1 ? "s" : ""}</p>
                   )}
