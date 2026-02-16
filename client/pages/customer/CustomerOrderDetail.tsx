@@ -352,29 +352,38 @@ export default function CustomerOrderDetail() {
   };
 
   const handleDownloadInvoice = async () => {
+    if (!order) return;
+    setDownloadingInvoice(true);
     try {
-      setDownloadingInvoice(true);
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const response = await fetch(
-        `${supabaseUrl}/functions/v1/generate-invoice-pdf?order_id=${order?.id}`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-invoice-pdf?order_id=${order.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        }
       );
 
       if (!response.ok) {
         throw new Error("Failed to generate invoice");
       }
 
-      const html = await response.text();
+      // Get response as binary blob, NOT json/text
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
 
-      // Open in new window for printing or saving
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(html);
-        printWindow.document.close();
-      }
-    } catch (err) {
-      console.error("Failed to download invoice:", err);
-      alert("Failed to download invoice. Please try again.");
+      // Create temporary link and trigger download
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoice-${order.order_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+
+      // Cleanup
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download invoice:", error);
     } finally {
       setDownloadingInvoice(false);
     }
