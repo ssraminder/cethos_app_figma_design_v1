@@ -2376,59 +2376,10 @@ export default function AdminOrderDetail() {
               <p className="text-gray-500">No payments recorded</p>
             )}
           </div>
-
-          <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-gray-400" />
-              Adjustments
-            </h2>
-
-            {adjustments.length > 0 ? (
-              <div className="space-y-3">
-                {adjustments.map((adjustment) => (
-                  <div
-                    key={adjustment.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`font-medium ${
-                            adjustment.type === "refund"
-                              ? "text-red-600"
-                              : "text-green-600"
-                          }`}
-                        >
-                          {adjustment.type === "refund" ? "-" : "+"}$
-                          {adjustment.amount.toFixed(2)}
-                        </span>
-                        <span className="text-sm text-gray-500 capitalize">
-                          {adjustment.type}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {adjustment.reason}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        By {adjustment.created_by_name} •{" "}
-                        {format(new Date(adjustment.created_at), "MMM d, yyyy")}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm">No adjustments</p>
-            )}
-
-            {order.status !== "cancelled" && (
-              <p className="text-xs text-gray-500 mt-3">
-                Use the Edit Order modal to add surcharges or discounts.
-              </p>
-            )}
-          </div>
         </div>
 
+        <div className="lg:col-span-1">
+          <div className="sticky top-4 space-y-6">
           {/* ================================================================
               MESSAGES — INLINE CHAT
               ================================================================ */}
@@ -2730,7 +2681,6 @@ export default function AdminOrderDetail() {
             </div>
           </div>
 
-        <div className="space-y-6">
           <div className="bg-white rounded-lg border p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-gray-400" />
@@ -3081,58 +3031,59 @@ export default function AdminOrderDetail() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Activity Log */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-6">
-        <button
-          onClick={() => setShowActivityLog(!showActivityLog)}
-          className="w-full flex items-center justify-between"
-        >
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Activity Log ({activityLog.length})
-          </h3>
-          <ChevronDown
-            className={`w-5 h-5 text-gray-400 transition-transform ${
-              showActivityLog ? "rotate-180" : ""
-            }`}
-          />
-        </button>
+          {/* Activity Log */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <button
+              onClick={() => setShowActivityLog(!showActivityLog)}
+              className="w-full flex items-center justify-between"
+            >
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                Activity Log ({activityLog.length})
+              </h3>
+              <ChevronDown
+                className={`w-5 h-5 text-gray-400 transition-transform ${
+                  showActivityLog ? "rotate-180" : ""
+                }`}
+              />
+            </button>
 
-        {showActivityLog && (
-          <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
-            {activityLog.length === 0 ? (
-              <p className="text-sm text-gray-500">No activity recorded</p>
-            ) : (
-              activityLog.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg text-sm"
-                >
-                  <div className="w-2 h-2 bg-blue-400 rounded-full mt-1.5 flex-shrink-0" />
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900">
-                      {(entry.activity_type || "unknown")
-                        .replace(/_/g, " ")
-                        .replace(/\b\w/g, (c: string) => c.toUpperCase())}
-                    </p>
-                    <p className="text-gray-500 text-xs">
-                      {entry.staff_users?.full_name || "System"} •{" "}
-                      {new Date(entry.created_at).toLocaleString()}
-                    </p>
-                    {entry.details && (
-                      <pre className="text-xs text-gray-400 mt-1 whitespace-pre-wrap">
-                        {JSON.stringify(entry.details, null, 2).substring(0, 200)}
-                      </pre>
-                    )}
-                  </div>
-                </div>
-              ))
+            {showActivityLog && (
+              <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
+                {activityLog.length === 0 ? (
+                  <p className="text-sm text-gray-500">No activity recorded</p>
+                ) : (
+                  activityLog.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg text-sm"
+                    >
+                      <div className="w-2 h-2 bg-blue-400 rounded-full mt-1.5 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900">
+                          {(entry.activity_type || "unknown")
+                            .replace(/_/g, " ")
+                            .replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                        </p>
+                        <p className="text-gray-500 text-xs">
+                          {entry.staff_users?.full_name || "System"} •{" "}
+                          {new Date(entry.created_at).toLocaleString()}
+                        </p>
+                        {entry.details && (
+                          <pre className="text-xs text-gray-400 mt-1 whitespace-pre-wrap">
+                            {JSON.stringify(entry.details, null, 2).substring(0, 200)}
+                          </pre>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             )}
           </div>
-        )}
+          </div>
+        </div>
       </div>
 
       {/* Cancel Order Modal */}
