@@ -30,6 +30,8 @@ import {
   Paperclip,
   Upload,
   Send,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -240,6 +242,10 @@ export default function AdminOrderDetail() {
   const [uploading, setUploading] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("reference");
   const [reviewHistory, setReviewHistory] = useState<any[]>([]);
+
+  // File delete state
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ fileId: string; filename: string } | null>(null);
 
   const fetchTurnaroundOptions = async () => {
     const { data } = await supabase
@@ -567,6 +573,49 @@ export default function AdminOrderDetail() {
       }
     } catch (err) {
       console.error("Download error:", err);
+    }
+  };
+
+  const handleDeleteFile = (fileId: string, filename: string) => {
+    setDeleteModal({ fileId, filename });
+  };
+
+  const deleteFile = async (fileId: string) => {
+    setDeletingFileId(fileId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-staff-quote-file`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            file_id: fileId,
+            staffId: currentStaff?.staffId || undefined,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || "Delete failed");
+      }
+
+      toast.success(`File "${data.filename}" deleted successfully.`);
+      await fetchOrderFiles();
+      if (order?.quote_id) {
+        await fetchDocuments(order.quote_id);
+      }
+    } catch (err: any) {
+      console.error("Delete error:", err);
+      toast.error(`Failed to delete file: ${err.message}`);
+    } finally {
+      setDeletingFileId(null);
     }
   };
 
@@ -1507,6 +1556,24 @@ export default function AdminOrderDetail() {
                             >
                               <Brain className="w-4 h-4" />
                             </button>
+                            {file.is_staff_created && (
+                              <button
+                                onClick={() => handleDeleteFile(file.id, file.original_filename)}
+                                disabled={deletingFileId === file.id}
+                                className={`p-2 transition-colors rounded-lg ${
+                                  deletingFileId === file.id
+                                    ? "text-gray-300 cursor-not-allowed"
+                                    : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+                                }`}
+                                title="Delete file"
+                              >
+                                {deletingFileId === file.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4" />
+                                )}
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1532,6 +1599,24 @@ export default function AdminOrderDetail() {
                             >
                               Download
                             </button>
+                            {rf.is_staff_created && (
+                              <button
+                                onClick={() => handleDeleteFile(rf.id, rf.original_filename)}
+                                disabled={deletingFileId === rf.id}
+                                className={`p-1 transition-colors ${
+                                  deletingFileId === rf.id
+                                    ? "text-gray-300 cursor-not-allowed"
+                                    : "text-gray-400 hover:text-red-500"
+                                }`}
+                                title="Delete file"
+                              >
+                                {deletingFileId === rf.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4" />
+                                )}
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -1656,6 +1741,24 @@ export default function AdminOrderDetail() {
                                   Remind
                                 </button>
                               )}
+                              {file.is_staff_created && (
+                                <button
+                                  onClick={() => handleDeleteFile(file.id, file.original_filename)}
+                                  disabled={deletingFileId === file.id}
+                                  className={`p-1.5 transition-colors rounded-lg ${
+                                    deletingFileId === file.id
+                                      ? "text-gray-300 cursor-not-allowed"
+                                      : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+                                  }`}
+                                  title="Delete file"
+                                >
+                                  {deletingFileId === file.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -1758,6 +1861,24 @@ export default function AdminOrderDetail() {
                               >
                                 <Download className="w-4 h-4" />
                               </button>
+                              {file.is_staff_created && (
+                                <button
+                                  onClick={() => handleDeleteFile(file.id, file.original_filename)}
+                                  disabled={deletingFileId === file.id}
+                                  className={`p-1.5 transition-colors rounded-lg ${
+                                    deletingFileId === file.id
+                                      ? "text-gray-300 cursor-not-allowed"
+                                      : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+                                  }`}
+                                  title="Delete file"
+                                >
+                                  {deletingFileId === file.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -1803,6 +1924,24 @@ export default function AdminOrderDetail() {
                               >
                                 Download
                               </button>
+                              {file.is_staff_created && (
+                                <button
+                                  onClick={() => handleDeleteFile(file.id, file.original_filename)}
+                                  disabled={deletingFileId === file.id}
+                                  className={`p-1 transition-colors ${
+                                    deletingFileId === file.id
+                                      ? "text-gray-300 cursor-not-allowed"
+                                      : "text-gray-400 hover:text-red-500"
+                                  }`}
+                                  title="Delete file"
+                                >
+                                  {deletingFileId === file.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -1852,6 +1991,24 @@ export default function AdminOrderDetail() {
                               >
                                 Download
                               </button>
+                              {file.is_staff_created && (
+                                <button
+                                  onClick={() => handleDeleteFile(file.id, file.original_filename)}
+                                  disabled={deletingFileId === file.id}
+                                  className={`p-1 transition-colors ${
+                                    deletingFileId === file.id
+                                      ? "text-gray-300 cursor-not-allowed"
+                                      : "text-gray-400 hover:text-red-500"
+                                  }`}
+                                  title="Delete file"
+                                >
+                                  {deletingFileId === file.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -2605,6 +2762,51 @@ export default function AdminOrderDetail() {
                 className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
               >
                 {savingPayment ? "Recording..." : "Record Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete File Confirmation Modal */}
+      {deleteModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
+          onClick={() => !deletingFileId && setDeleteModal(null)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="bg-white rounded-xl p-6 max-w-sm mx-4 shadow-xl"
+          >
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete File</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Are you sure you want to delete <strong>{deleteModal.filename}</strong>?
+              This cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteModal(null)}
+                disabled={!!deletingFileId}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  await deleteFile(deleteModal.fileId);
+                  setDeleteModal(null);
+                }}
+                disabled={!!deletingFileId}
+                className="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                {deletingFileId ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
               </button>
             </div>
           </div>
