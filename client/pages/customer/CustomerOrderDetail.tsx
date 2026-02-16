@@ -10,6 +10,8 @@ import {
   Download,
   MessageSquare,
   CheckCircle,
+  ChevronDown,
+  Send,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -18,11 +20,27 @@ interface Order {
   order_number: string;
   status: string;
   total_amount: number;
+  subtotal?: number;
   tax_amount: number;
   created_at: string;
   updated_at: string;
   quote_id: string;
-  estimated_completion_date: string | null;
+  estimated_completion_date?: string;
+  estimated_delivery_date?: string;
+  actual_delivery_date?: string;
+  amount_paid?: number;
+  balance_due?: number;
+  is_rush?: boolean;
+  delivery_option?: string;
+  // New fields from quote join
+  quote_number?: string;
+  source_language?: string;
+  target_language?: string;
+  intended_use?: string;
+  country_of_issue?: string;
+  certification_type?: string;
+  special_instructions?: string;
+  document_count?: number;
 }
 
 const STATUS_TIMELINE = [
@@ -40,6 +58,17 @@ const STATUS_COLORS: Record<string, string> = {
   delivered: "bg-teal-100 text-teal-800",
   completed: "bg-gray-100 text-gray-800",
   cancelled: "bg-red-100 text-red-800",
+  invoiced: "bg-gray-100 text-gray-800",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  paid: "Payment Confirmed",
+  in_production: "In Progress",
+  draft_review: "Review Draft",
+  delivered: "Delivered",
+  completed: "Completed",
+  invoiced: "Completed",
+  cancelled: "Cancelled",
 };
 
 function FileSection({
@@ -167,6 +196,14 @@ export default function CustomerOrderDetail() {
   const [showChangesModal, setShowChangesModal] = useState<any>(null);
   const [changesComment, setChangesComment] = useState("");
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  // Messaging state
+  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [newMessage, setNewMessage] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   useEffect(() => {
     if (id && customer?.id) {
@@ -343,8 +380,78 @@ export default function CustomerOrderDetail() {
     }
   };
 
+  const fetchMessages = async () => {
+    if (!order?.quote_id || !customer?.id) return;
+    setMessagesLoading(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-customer-messages?customer_id=${customer.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+      const result = await response.json();
+      if (result.success) {
+        // Filter to messages for this order's quote
+        const orderMessages = (result.data?.messages || []).filter(
+          (m: any) => m.quote_id === order.quote_id || !m.quote_id
+        );
+        setMessages(orderMessages);
+        setConversationId(result.data?.conversation_id || null);
+      }
+    } catch (error) {
+      console.error("Failed to fetch messages:", error);
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !customer?.id || sendingMessage) return;
+    setSendingMessage(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-message`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            customer_id: customer.id,
+            quote_id: order?.quote_id,
+            order_id: order?.id,
+            message_text: newMessage.trim(),
+          }),
+        }
+      );
+      const result = await response.json();
+      if (result.success) {
+        setNewMessage("");
+        await fetchMessages();
+      } else {
+        console.error("Send failed:", result.error);
+      }
+    } catch (error) {
+      console.error("Failed to send message:", error);
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  useEffect(() => {
+    if (messagesOpen && order?.quote_id) {
+      fetchMessages();
+    }
+  }, [messagesOpen, order?.quote_id]);
+
   const getCurrentStatusIndex = () => {
-    return STATUS_TIMELINE.findIndex((s) => s.status === order?.status);
+    // Map invoiced → delivered for timeline display (customer doesn't see internal accounting steps)
+    const displayStatus = order?.status === "invoiced" ? "delivered" : order?.status;
+    return STATUS_TIMELINE.findIndex((s) => s.status === displayStatus);
   };
 
   // File categorization
@@ -442,7 +549,7 @@ export default function CustomerOrderDetail() {
                 STATUS_COLORS[order.status] || "bg-gray-100 text-gray-800"
               }`}
             >
-              {STATUS_TIMELINE.find((s) => s.status === order.status)?.label ||
+              {STATUS_LABELS[order.status] || STATUS_TIMELINE.find((s) => s.status === order.status)?.label ||
                 order.status}
             </span>
           </div>
@@ -503,6 +610,49 @@ export default function CustomerOrderDetail() {
             </div>
           </div>
         </div>
+
+        {/* Translation Details */}
+        {(order.source_language || order.target_language || order.intended_use) && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
+            <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+              <h2 className="font-semibold text-gray-900">Translation Details</h2>
+            </div>
+            <div className="px-6 py-4 space-y-3">
+              {order.source_language && order.target_language && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Languages</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {order.source_language} → {order.target_language}
+                  </span>
+                </div>
+              )}
+              {order.intended_use && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Intended Use</span>
+                  <span className="text-sm font-medium text-gray-900">{order.intended_use}</span>
+                </div>
+              )}
+              {order.country_of_issue && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Country of Issue</span>
+                  <span className="text-sm font-medium text-gray-900">{order.country_of_issue}</span>
+                </div>
+              )}
+              {order.certification_type && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Certification</span>
+                  <span className="text-sm font-medium text-gray-900">{order.certification_type}</span>
+                </div>
+              )}
+              {order.document_count && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Documents</span>
+                  <span className="text-sm font-medium text-gray-900">{order.document_count}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Order Summary */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
@@ -680,26 +830,125 @@ export default function CustomerOrderDetail() {
           </>
         )}
 
-        {/* Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ marginTop: 24 }}>
-          {["draft_review", "delivered", "completed"].includes(order.status) && (
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-3 mb-6" style={{ marginTop: 24 }}>
+          {["draft_review", "delivered", "completed", "invoiced"].includes(order.status) && (
             <button
               onClick={handleDownloadInvoice}
               disabled={downloadingInvoice}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors disabled:opacity-50 text-sm font-medium"
             >
-              <Download className="w-5 h-5" />
+              <Download className="w-4 h-4" />
               {downloadingInvoice ? "Generating..." : "Download Invoice"}
             </button>
           )}
+        </div>
 
-          <Link
-            to="/dashboard/messages"
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+        {/* Collapsible Messaging Section */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <button
+            onClick={() => setMessagesOpen(!messagesOpen)}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
           >
-            <MessageSquare className="w-5 h-5" />
-            Message Staff
-          </Link>
+            <div className="flex items-center gap-3">
+              <MessageSquare className="w-5 h-5 text-teal-600" />
+              <span className="font-semibold text-gray-900">Messages</span>
+              {messages.length > 0 && (
+                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                  {messages.length}
+                </span>
+              )}
+            </div>
+            <ChevronDown
+              className={`w-5 h-5 text-gray-400 transition-transform ${
+                messagesOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+
+          {messagesOpen && (
+            <div className="border-t border-gray-200">
+              {/* Message Thread */}
+              <div className="px-6 py-4 max-h-80 overflow-y-auto space-y-4">
+                {messagesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600" />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="text-center py-8">
+                    <MessageSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No messages yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Send a message to our translation team</p>
+                  </div>
+                ) : (
+                  messages.map((msg: any) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.sender_type === "customer" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
+                          msg.sender_type === "customer"
+                            ? "bg-teal-600 text-white rounded-br-md"
+                            : "bg-gray-100 text-gray-900 rounded-bl-md"
+                        }`}
+                      >
+                        {msg.sender_type === "staff" && (
+                          <p className="text-xs font-medium text-teal-700 mb-1">
+                            CETHOS Team
+                          </p>
+                        )}
+                        <p className="text-sm whitespace-pre-wrap">{msg.message_text}</p>
+                        <p
+                          className={`text-xs mt-1 ${
+                            msg.sender_type === "customer" ? "text-teal-100" : "text-gray-400"
+                          }`}
+                        >
+                          {new Date(msg.created_at).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Composer */}
+              <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <div className="flex gap-2">
+                  <textarea
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder="Type a message..."
+                    rows={1}
+                    className="flex-1 resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!newMessage.trim() || sendingMessage}
+                    className="px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {sendingMessage ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Press Enter to send, Shift+Enter for new line</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
