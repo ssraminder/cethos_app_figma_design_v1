@@ -296,6 +296,9 @@ export default function Step4ReviewCheckout() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
+  // Partner
+  const [quotePartnerId, setQuotePartnerId] = useState<string | null>(null);
+
   // === STATE FROM STEP 6 (Payment) ===
   const [payLoading, setPayLoading] = useState(false);
   const [savingQuote, setSavingQuote] = useState(false);
@@ -886,6 +889,11 @@ export default function Step4ReviewCheckout() {
         setHitlReason(quoteData.hitl_reason || "");
       }
 
+      // Set partner ID from quote data
+      if ((quoteData as any)?.partner_id) {
+        setQuotePartnerId((quoteData as any).partner_id);
+      }
+
       // Extract document type from first document for same-day check
       if (mergedData.length > 0) {
         const firstDoc = mergedData[0];
@@ -1154,18 +1162,30 @@ export default function Step4ReviewCheckout() {
       if (physicalError) throw physicalError;
       setPhysicalOptions(physical || []);
 
-      // Fetch pickup locations
-      const { data: locations, error: locationsError } = await supabase
-        .from("pickup_locations")
-        .select("*")
-        .eq("is_active", true)
-        .order("sort_order");
+      // Fetch pickup locations via RPC (returns partner locations + CETHOS offices for partner quotes,
+      // or just CETHOS offices for regular quotes — identical to previous behavior for non-partner quotes)
+      const quoteId = state.quoteId;
+      const { data: locations, error: locationsError } = quoteId
+        ? await supabase.rpc("get_pickup_locations_for_quote", { p_quote_id: quoteId })
+        : await supabase.from("pickup_locations").select("*").eq("is_active", true).order("sort_order");
 
-      if (locationsError) throw locationsError;
-      setPickupLocations(locations || []);
-
-      if (locations && locations.length === 1) {
-        setSelectedPickupLocation(locations[0].id);
+      if (locationsError) {
+        console.error("Error fetching pickup locations:", locationsError);
+        // Fall back to direct query if RPC fails
+        const { data: fallbackLocations } = await supabase
+          .from("pickup_locations")
+          .select("*")
+          .eq("is_active", true)
+          .order("sort_order");
+        setPickupLocations(fallbackLocations || []);
+        if (fallbackLocations && fallbackLocations.length === 1) {
+          setSelectedPickupLocation(fallbackLocations[0].id);
+        }
+      } else {
+        setPickupLocations(locations || []);
+        if (locations && locations.length === 1) {
+          setSelectedPickupLocation(locations[0].id);
+        }
       }
 
       // Fetch countries
@@ -1501,6 +1521,7 @@ export default function Step4ReviewCheckout() {
       setExpiresAt(data.expires_at);
     }
     if (data?.entry_point) setEntryPoint(data.entry_point);
+    if (data?.partner_id) setQuotePartnerId(data.partner_id);
   };
 
   // Single source of truth for all pricing
@@ -2255,8 +2276,8 @@ export default function Step4ReviewCheckout() {
             </label>
           )}
 
-          {/* Rush Option - Always Available */}
-          {rushOption && (
+          {/* Rush and Same-Day Options — hidden for partner quotes */}
+          {!quotePartnerId && rushOption && (
             <label
               className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
                 turnaroundType === "rush"
@@ -2310,8 +2331,8 @@ export default function Step4ReviewCheckout() {
             </label>
           )}
 
-          {/* Same-Day Option */}
-          {sameDayOption && isSameDayEligible && (
+          {/* Same-Day Option — hidden for partner quotes */}
+          {!quotePartnerId && sameDayOption && isSameDayEligible && (
             <label
               className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
                 turnaroundType === "same_day"

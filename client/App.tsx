@@ -72,6 +72,7 @@ import OCRWordCountPage from "./pages/admin/OCRWordCountPage";
 import OCRBatchResultsPage from "./pages/admin/OCRBatchResultsPage";
 import PreprocessOCRPage from "./pages/admin/PreprocessOCRPage";
 import AdminPartners from "./pages/admin/AdminPartners";
+import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 
 // Admin Settings pages
 import PricingSettings from "./pages/admin/settings/PricingSettings";
@@ -171,6 +172,9 @@ const App = () => (
                       element={<UploadConfirmationPage />}
                     />
                   </Route>
+
+                  {/* Branded Partner Quote Flow */}
+                  <Route path="/p/:code" element={<PartnerQuotePage />} />
 
                   {/* Customer Dashboard Routes */}
                   <Route
