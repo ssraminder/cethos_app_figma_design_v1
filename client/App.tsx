@@ -73,6 +73,7 @@ import OCRBatchResultsPage from "./pages/admin/OCRBatchResultsPage";
 import PreprocessOCRPage from "./pages/admin/PreprocessOCRPage";
 import AdminPartners from "./pages/admin/AdminPartners";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
+import LegalPage from "./pages/LegalPage";
 
 // Admin Settings pages
 import PricingSettings from "./pages/admin/settings/PricingSettings";
@@ -175,6 +176,11 @@ const App = () => (
 
                   {/* Branded Partner Quote Flow */}
                   <Route path="/p/:code" element={<PartnerQuotePage />} />
+
+                  {/* Legal Pages */}
+                  <Route path="/terms" element={<LegalPage type="terms" />} />
+                  <Route path="/privacy" element={<LegalPage type="privacy" />} />
+                  <Route path="/refund" element={<LegalPage type="refund" />} />
 
                   {/* Customer Dashboard Routes */}
                   <Route

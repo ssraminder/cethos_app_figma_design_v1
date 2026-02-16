@@ -18,6 +18,12 @@ interface PartnerData {
   logo_url: string | null;
   welcome_message: string | null;
   has_pickup_location: boolean;
+  contact_email: string | null;
+  contact_phone: string | null;
+  business_address_line1: string | null;
+  business_city: string | null;
+  business_province: string | null;
+  business_postal_code: string | null;
 }
 
 export default function PartnerQuotePage() {
@@ -62,6 +68,14 @@ export default function PartnerQuotePage() {
         sessionStorage.setItem("cethos_partner_welcome", data.welcome_message || "");
         sessionStorage.setItem("cethos_partner_flow", "true");
 
+        // Footer contact data (v1.2)
+        sessionStorage.setItem("cethos_partner_email", data.contact_email || "");
+        sessionStorage.setItem("cethos_partner_phone", data.contact_phone || "");
+        sessionStorage.setItem("cethos_partner_address", data.business_address_line1 || "");
+        sessionStorage.setItem("cethos_partner_city", data.business_city || "");
+        sessionStorage.setItem("cethos_partner_province", data.business_province || "");
+        sessionStorage.setItem("cethos_partner_postal", data.business_postal_code || "");
+
         setPartnerData({
           partner_id: data.partner_id,
           code: partnerCode,
@@ -70,6 +84,12 @@ export default function PartnerQuotePage() {
           logo_url: data.logo_url,
           welcome_message: data.welcome_message,
           has_pickup_location: data.has_pickup_location,
+          contact_email: data.contact_email || null,
+          contact_phone: data.contact_phone || null,
+          business_address_line1: data.business_address_line1 || null,
+          business_city: data.business_city || null,
+          business_province: data.business_province || null,
+          business_postal_code: data.business_postal_code || null,
         });
       } else {
         setIsInvalid(true);
