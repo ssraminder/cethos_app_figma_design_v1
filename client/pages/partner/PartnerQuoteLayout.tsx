@@ -112,7 +112,7 @@ export default function PartnerQuoteLayout({ partnerData }: Props) {
         >
           {/* Left: Partner logo or name */}
           <div>
-            {partnerData.logo_url && partnerData.logo_url.trim() !== "" ? (
+            {partnerData.logo_url && partnerData.logo_url.trim().startsWith("http") ? (
               <img
                 src={partnerData.logo_url}
                 alt={partnerData.name}
