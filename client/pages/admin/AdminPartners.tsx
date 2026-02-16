@@ -11,6 +11,7 @@ import {
   DollarSign,
   Activity,
   Clock,
+  MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,6 +45,26 @@ interface OrderSummary {
   partner_margin: number;
   payout_status: string;
 }
+
+interface PickupFormData {
+  name: string;
+  address_line1: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  phone: string;
+  hours: string;
+}
+
+const EMPTY_PICKUP_FORM: PickupFormData = {
+  name: "",
+  address_line1: "",
+  city: "",
+  state: "",
+  postal_code: "",
+  phone: "",
+  hours: "",
+};
 
 interface FormData {
   name: string;
@@ -131,6 +152,12 @@ export default function AdminPartners() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [copiedBrandedCode, setCopiedBrandedCode] = useState<string | null>(null);
+
+  // Pickup location state
+  const [hasPickupLocation, setHasPickupLocation] = useState(false);
+  const [pickupFormData, setPickupFormData] = useState<PickupFormData>(EMPTY_PICKUP_FORM);
+  const [pickupLocationId, setPickupLocationId] = useState<string | null>(null);
 
   // ── Data Loading ─────────────────────────────────────────────────────────
 
@@ -202,10 +229,13 @@ export default function AdminPartners() {
     setEditingPartner(null);
     setFormData(EMPTY_FORM);
     setFormErrors({});
+    setHasPickupLocation(false);
+    setPickupFormData(EMPTY_PICKUP_FORM);
+    setPickupLocationId(null);
     setShowModal(true);
   };
 
-  const openEditModal = (partner: Partner) => {
+  const openEditModal = async (partner: Partner) => {
     setEditingPartner(partner);
     setFormData({
       name: partner.name,
@@ -228,6 +258,32 @@ export default function AdminPartners() {
       notes: partner.notes || "",
     });
     setFormErrors({});
+
+    // Fetch existing pickup location for this partner
+    const { data: existingPickup } = await supabase
+      .from("pickup_locations")
+      .select("*")
+      .eq("partner_id", partner.id)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    setHasPickupLocation(!!existingPickup);
+    if (existingPickup) {
+      setPickupFormData({
+        name: existingPickup.name || "",
+        address_line1: existingPickup.address_line1 || "",
+        city: existingPickup.city || "",
+        state: existingPickup.state || "",
+        postal_code: existingPickup.postal_code || "",
+        phone: existingPickup.phone || "",
+        hours: existingPickup.hours || "",
+      });
+      setPickupLocationId(existingPickup.id);
+    } else {
+      setPickupFormData(EMPTY_PICKUP_FORM);
+      setPickupLocationId(null);
+    }
+
     setShowModal(true);
   };
 
@@ -236,6 +292,9 @@ export default function AdminPartners() {
     setEditingPartner(null);
     setFormData(EMPTY_FORM);
     setFormErrors({});
+    setHasPickupLocation(false);
+    setPickupFormData(EMPTY_PICKUP_FORM);
+    setPickupLocationId(null);
   };
 
   const updateField = (field: keyof FormData, value: string | boolean) => {
@@ -282,6 +341,24 @@ export default function AdminPartners() {
 
   const handleSave = async () => {
     if (!validateForm()) return;
+
+    // Validate pickup location fields if toggle is ON
+    if (hasPickupLocation) {
+      if (
+        !pickupFormData.name.trim() ||
+        !pickupFormData.address_line1.trim() ||
+        !pickupFormData.city.trim() ||
+        !pickupFormData.state.trim() ||
+        !pickupFormData.postal_code.trim()
+      ) {
+        setFormErrors((prev) => ({
+          ...prev,
+          pickup: "Pickup location requires name, address, city, province, and postal code.",
+        }));
+        return;
+      }
+    }
+
     setSaving(true);
 
     try {
@@ -324,19 +401,64 @@ export default function AdminPartners() {
         notes: formData.notes || null,
       };
 
+      let savedPartnerId: string;
+
       if (editingPartner) {
         const { error } = await supabase
           .from("partners")
           .update(record)
           .eq("id", editingPartner.id);
         if (error) throw error;
-        toast.success("Partner updated successfully");
+        savedPartnerId = editingPartner.id;
       } else {
-        const { error } = await supabase.from("partners").insert(record);
+        const { data: inserted, error } = await supabase
+          .from("partners")
+          .insert(record)
+          .select("id")
+          .single();
         if (error) throw error;
-        toast.success("Partner created successfully");
+        savedPartnerId = inserted.id;
       }
 
+      // Handle pickup location save
+      if (hasPickupLocation) {
+        const pickupData = {
+          partner_id: savedPartnerId,
+          name: pickupFormData.name.trim(),
+          address_line1: pickupFormData.address_line1.trim(),
+          city: pickupFormData.city.trim(),
+          state: pickupFormData.state.trim(),
+          postal_code: pickupFormData.postal_code.trim(),
+          phone: pickupFormData.phone?.trim() || null,
+          hours: pickupFormData.hours?.trim() || null,
+          is_active: true,
+        };
+
+        if (pickupLocationId) {
+          // Update existing
+          const { error: pickupError } = await supabase
+            .from("pickup_locations")
+            .update(pickupData)
+            .eq("id", pickupLocationId);
+          if (pickupError) console.error("Error updating pickup location:", pickupError);
+        } else {
+          // Insert new
+          const { error: pickupError } = await supabase
+            .from("pickup_locations")
+            .insert(pickupData);
+          if (pickupError) console.error("Error creating pickup location:", pickupError);
+        }
+      } else {
+        // Toggle is OFF — delete any existing pickup location for this partner
+        if (pickupLocationId) {
+          await supabase
+            .from("pickup_locations")
+            .delete()
+            .eq("id", pickupLocationId);
+        }
+      }
+
+      toast.success(editingPartner ? "Partner updated successfully" : "Partner created successfully");
       closeModal();
       fetchData();
     } catch (err: any) {
@@ -355,6 +477,15 @@ export default function AdminPartners() {
       setCopiedCode(code);
       toast.success("Referral link copied!");
       setTimeout(() => setCopiedCode(null), 2000);
+    });
+  };
+
+  const copyBrandedLink = (code: string) => {
+    const link = `https://portal.cethos.com/p/${code}`;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedBrandedCode(code);
+      toast.success("Branded link copied!");
+      setTimeout(() => setCopiedBrandedCode(null), 2000);
     });
   };
 
@@ -906,6 +1037,142 @@ export default function AdminPartners() {
                 </div>
               </div>
 
+              {/* Office Address (Pickup Location) Section */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">
+                  Office Address (Pickup Location)
+                </h3>
+                <label className="flex items-center gap-3 cursor-pointer mb-4">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={hasPickupLocation}
+                    onClick={() => setHasPickupLocation(!hasPickupLocation)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      hasPickupLocation ? "bg-teal-600" : "bg-gray-300"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        hasPickupLocation ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                  <span className="text-sm text-gray-700">
+                    This partner has an office for customer pickup
+                  </span>
+                </label>
+                {hasPickupLocation && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Office Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={pickupFormData.name}
+                        onChange={(e) =>
+                          setPickupFormData((prev) => ({ ...prev, name: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                        placeholder="ABC Immigration Calgary Office"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Address <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={pickupFormData.address_line1}
+                        onChange={(e) =>
+                          setPickupFormData((prev) => ({ ...prev, address_line1: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                        placeholder="456 Partner Street"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          City <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={pickupFormData.city}
+                          onChange={(e) =>
+                            setPickupFormData((prev) => ({ ...prev, city: e.target.value }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                          placeholder="Calgary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Province <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={pickupFormData.state}
+                          onChange={(e) =>
+                            setPickupFormData((prev) => ({ ...prev, state: e.target.value }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                          placeholder="AB"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Postal Code <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={pickupFormData.postal_code}
+                          onChange={(e) =>
+                            setPickupFormData((prev) => ({ ...prev, postal_code: e.target.value }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                          placeholder="T2P 2B2"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Phone
+                        </label>
+                        <input
+                          type="text"
+                          value={pickupFormData.phone}
+                          onChange={(e) =>
+                            setPickupFormData((prev) => ({ ...prev, phone: e.target.value }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                          placeholder="403-555-0000"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Hours
+                      </label>
+                      <input
+                        type="text"
+                        value={pickupFormData.hours}
+                        onChange={(e) =>
+                          setPickupFormData((prev) => ({ ...prev, hours: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                        placeholder="Mon-Fri 9am-5pm"
+                      />
+                    </div>
+                    {formErrors.pickup && (
+                      <p className="text-xs text-red-500">{formErrors.pickup}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Embed Section */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">
@@ -991,27 +1258,51 @@ export default function AdminPartners() {
                 />
               </div>
 
-              {/* Referral Link (edit mode only) */}
+              {/* Referral Links (edit mode only) */}
               {editingPartner && (
                 <div>
                   <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">
-                    Referral Link
+                    Referral Links
                   </h3>
-                  <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
-                    <code className="text-sm text-gray-700 flex-1 break-all">
-                      https://portal.cethos.com/quote?ref={editingPartner.code}
-                    </code>
-                    <button
-                      onClick={() => copyReferralLink(editingPartner.code)}
-                      className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors flex-shrink-0"
-                      title="Copy referral link"
-                    >
-                      {copiedCode === editingPartner.code ? (
-                        <Check className="w-4 h-4 text-green-600" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
-                    </button>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Standard</p>
+                      <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                        <code className="text-sm text-gray-700 flex-1 break-all">
+                          https://portal.cethos.com/quote?ref={editingPartner.code}
+                        </code>
+                        <button
+                          onClick={() => copyReferralLink(editingPartner.code)}
+                          className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors flex-shrink-0"
+                          title="Copy standard referral link"
+                        >
+                          {copiedCode === editingPartner.code ? (
+                            <Check className="w-4 h-4 text-green-600" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Branded</p>
+                      <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                        <code className="text-sm text-gray-700 flex-1 break-all">
+                          https://portal.cethos.com/p/{editingPartner.code}
+                        </code>
+                        <button
+                          onClick={() => copyBrandedLink(editingPartner.code)}
+                          className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors flex-shrink-0"
+                          title="Copy branded link"
+                        >
+                          {copiedBrandedCode === editingPartner.code ? (
+                            <Check className="w-4 h-4 text-green-600" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
