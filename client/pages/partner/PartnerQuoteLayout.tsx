@@ -112,8 +112,6 @@ export default function PartnerQuoteLayout({ partnerData }: Props) {
       <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0" }}>
         <div
           style={{
-            maxWidth: 720,
-            margin: "0 auto",
             padding: "20px 24px",
             display: "flex",
             flexDirection: isMobile ? "column" : "row",
@@ -187,8 +185,6 @@ export default function PartnerQuoteLayout({ partnerData }: Props) {
         >
           <div
             style={{
-              maxWidth: 720,
-              margin: "0 auto",
               padding: "10px 24px",
               fontSize: 13,
               color: "#0e7490",
@@ -251,7 +247,7 @@ export default function PartnerQuoteLayout({ partnerData }: Props) {
           }}
         />
 
-        <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 24px" }}>
+        <div style={{ padding: "0 24px" }}>
           {/* Main footer content */}
           <div
             style={{
