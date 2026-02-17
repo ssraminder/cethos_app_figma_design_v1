@@ -4,52 +4,47 @@ import { supabase } from "@/lib/supabase";
 import {
   FileText,
   ShoppingCart,
+  ShoppingBag,
   DollarSign,
-  Clock,
-  AlertTriangle,
-  TrendingUp,
-  TrendingDown,
-  Users,
   CheckCircle,
   ArrowRight,
   RefreshCw,
+  BarChart3,
 } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 
 interface DashboardStats {
-  // Quotes
   quotesToday: number;
   quotesThisWeek: number;
-  quotesThisMonth: number;
-  quotesTrend: number; // percentage change from previous period
-
-  // Orders
   ordersToday: number;
   ordersThisWeek: number;
-  ordersThisMonth: number;
-  ordersTrend: number;
-
-  // Revenue
   revenueToday: number;
   revenueThisWeek: number;
-  revenueThisMonth: number;
-  revenueTrend: number;
-
-  // HITL
   hitlPending: number;
-  hitlInReview: number;
-  hitlBreached: number;
-  avgReviewTime: number; // minutes
+}
 
-  // AI
-  aiAccuracy: number;
-  documentsProcessed: number;
-  hitlTriggerRate: number;
+interface NeedsAttention {
+  paidOrdersCount: number;
+  hitlPendingCount: number;
+  unreadMessagesCount: number;
+}
+
+interface OrderStatusCount {
+  status: string;
+  count: number;
+  color: string;
+}
+
+interface UpcomingDelivery {
+  id: string;
+  order_number: string;
+  estimated_delivery_date: string;
+  customer: { first_name: string; last_name: string } | null;
 }
 
 interface RecentActivity {
   id: string;
-  type: "quote" | "order" | "hitl" | "payment";
+  type: "quote" | "order";
   title: string;
   subtitle: string;
   timestamp: string;
@@ -58,6 +53,15 @@ interface RecentActivity {
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [needsAttention, setNeedsAttention] = useState<NeedsAttention>({
+    paidOrdersCount: 0,
+    hitlPendingCount: 0,
+    unreadMessagesCount: 0,
+  });
+  const [ordersByStatus, setOrdersByStatus] = useState<OrderStatusCount[]>([]);
+  const [upcomingDeliveries, setUpcomingDeliveries] = useState<
+    UpcomingDelivery[]
+  >([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -68,10 +72,9 @@ export default function AdminDashboard() {
       const todayStart = startOfDay(now).toISOString();
       const todayEnd = endOfDay(now).toISOString();
       const weekStart = startOfDay(subDays(now, 7)).toISOString();
-      const monthStart = startOfDay(subDays(now, 30)).toISOString();
 
       // Fetch quotes counts
-      const [quotesToday, quotesWeek, quotesMonth] = await Promise.all([
+      const [quotesToday, quotesWeek] = await Promise.all([
         supabase
           .from("quotes")
           .select("id", { count: "exact", head: true })
@@ -81,14 +84,10 @@ export default function AdminDashboard() {
           .from("quotes")
           .select("id", { count: "exact", head: true })
           .gte("created_at", weekStart),
-        supabase
-          .from("quotes")
-          .select("id", { count: "exact", head: true })
-          .gte("created_at", monthStart),
       ]);
 
       // Fetch orders counts
-      const [ordersToday, ordersWeek, ordersMonth] = await Promise.all([
+      const [ordersToday, ordersWeek] = await Promise.all([
         supabase
           .from("orders")
           .select("id", { count: "exact", head: true })
@@ -98,14 +97,10 @@ export default function AdminDashboard() {
           .from("orders")
           .select("id", { count: "exact", head: true })
           .gte("created_at", weekStart),
-        supabase
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .gte("created_at", monthStart),
       ]);
 
       // Fetch revenue
-      const [revenueToday, revenueWeek, revenueMonth] = await Promise.all([
+      const [revenueToday, revenueWeek] = await Promise.all([
         supabase
           .from("orders")
           .select("total_amount")
@@ -117,75 +112,114 @@ export default function AdminDashboard() {
           .select("total_amount")
           .gte("created_at", weekStart)
           .eq("status", "paid"),
-        supabase
-          .from("orders")
-          .select("total_amount")
-          .gte("created_at", monthStart)
-          .eq("status", "paid"),
       ]);
 
-      // Fetch HITL stats
-      const [hitlPending, hitlInReview, hitlBreached] = await Promise.all([
-        supabase
-          .from("hitl_reviews")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "pending"),
-        supabase
-          .from("hitl_reviews")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "in_review"),
-        supabase
-          .from("hitl_reviews")
-          .select("id", { count: "exact", head: true })
-          .eq("sla_breached", true)
-          .in("status", ["pending", "in_review"]),
-      ]);
-
-      // Fetch AI metrics
-      const { data: aiMetrics } = await supabase
-        .from("ai_performance_metrics")
-        .select(
-          "overall_accuracy, total_documents_processed, hitl_trigger_rate",
-        )
-        .eq("metric_type", "daily")
-        .order("metric_date", { ascending: false })
-        .limit(1)
-        .single();
+      // Fetch HITL pending count
+      const hitlPending = await supabase
+        .from("hitl_reviews")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending");
 
       // Calculate revenue sums
       const sumRevenue = (data: any[] | null) =>
         data?.reduce((sum, row) => sum + (row.total_amount || 0), 0) || 0;
 
+      const hitlPendingCount = hitlPending.count || 0;
+
       setStats({
         quotesToday: quotesToday.count || 0,
         quotesThisWeek: quotesWeek.count || 0,
-        quotesThisMonth: quotesMonth.count || 0,
-        quotesTrend: 12, // TODO: Calculate actual trend
-
         ordersToday: ordersToday.count || 0,
         ordersThisWeek: ordersWeek.count || 0,
-        ordersThisMonth: ordersMonth.count || 0,
-        ordersTrend: 8,
-
         revenueToday: sumRevenue(revenueToday.data),
         revenueThisWeek: sumRevenue(revenueWeek.data),
-        revenueThisMonth: sumRevenue(revenueMonth.data),
-        revenueTrend: 15,
-
-        hitlPending: hitlPending.count || 0,
-        hitlInReview: hitlInReview.count || 0,
-        hitlBreached: hitlBreached.count || 0,
-        avgReviewTime: 45,
-
-        aiAccuracy: aiMetrics?.overall_accuracy || 0,
-        documentsProcessed: aiMetrics?.total_documents_processed || 0,
-        hitlTriggerRate: aiMetrics?.hitl_trigger_rate || 0,
+        hitlPending: hitlPendingCount,
       });
 
-      // Fetch recent activity
+      // --- Needs Attention ---
+      const { count: paidOrdersCount } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "paid");
+
+      // Unread customer messages (messages from customers not yet read by staff)
+      let unreadMessagesCount = 0;
+      try {
+        const { count } = await supabase
+          .from("conversation_messages")
+          .select("conversation_id", { count: "exact", head: true })
+          .eq("sender_type", "customer")
+          .is("read_by_staff_at", null);
+        unreadMessagesCount = count || 0;
+      } catch {
+        // read_by_staff_at column may not exist, skip gracefully
+      }
+
+      setNeedsAttention({
+        paidOrdersCount: paidOrdersCount || 0,
+        hitlPendingCount,
+        unreadMessagesCount,
+      });
+
+      // --- Orders by Status ---
+      const { data: activeOrders } = await supabase
+        .from("orders")
+        .select("status")
+        .not("status", "in", '("cancelled","completed","refunded")');
+
+      const statusColorMap: Record<string, string> = {
+        pending: "bg-gray-100 text-gray-800",
+        paid: "bg-yellow-100 text-yellow-800",
+        balance_due: "bg-amber-100 text-amber-800",
+        in_production: "bg-blue-100 text-blue-800",
+        draft_review: "bg-orange-100 text-orange-800",
+        ready_for_delivery: "bg-green-100 text-green-800",
+        delivered: "bg-purple-100 text-purple-800",
+        invoiced: "bg-indigo-100 text-indigo-800",
+      };
+
+      if (activeOrders) {
+        const counts: Record<string, number> = {};
+        activeOrders.forEach((o) => {
+          counts[o.status] = (counts[o.status] || 0) + 1;
+        });
+        setOrdersByStatus(
+          Object.entries(counts).map(([status, count]) => ({
+            status,
+            count,
+            color: statusColorMap[status] || "bg-gray-100 text-gray-800",
+          })),
+        );
+      }
+
+      // --- Upcoming Deliveries ---
+      const threeDaysFromNow = new Date();
+      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+
+      const { data: deliveries } = await supabase
+        .from("orders")
+        .select(
+          `
+          id, order_number, estimated_delivery_date,
+          customer:customers!customer_id(first_name, last_name)
+        `,
+        )
+        .not("status", "in", '("cancelled","completed","delivered")')
+        .not("estimated_delivery_date", "is", null)
+        .lte(
+          "estimated_delivery_date",
+          threeDaysFromNow.toISOString().split("T")[0],
+        )
+        .order("estimated_delivery_date", { ascending: true })
+        .limit(5);
+
+      setUpcomingDeliveries((deliveries as any[]) || []);
+
+      // --- Recent Activity ---
       const { data: recentQuotes } = await supabase
         .from("quotes")
         .select("id, quote_number, status, created_at, customers(full_name)")
+        .is("converted_to_order_id", null)
         .order("created_at", { ascending: false })
         .limit(5);
 
@@ -240,6 +274,12 @@ export default function AdminDashboard() {
     fetchDashboardData();
   };
 
+  const formatStatus = (status: string) =>
+    status
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -270,9 +310,8 @@ export default function AdminDashboard() {
       </div>
 
       <div className="py-2">
-        {/* Primary Stats Grid */}
+        {/* ROW 1: Primary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Quotes Today */}
           <StatCard
             icon={<FileText className="w-5 h-5" />}
             iconBg="bg-blue-50"
@@ -280,10 +319,8 @@ export default function AdminDashboard() {
             label="Quotes Today"
             value={stats?.quotesToday || 0}
             subtext={`${stats?.quotesThisWeek || 0} this week`}
-            trend={stats?.quotesTrend}
           />
 
-          {/* Orders Today */}
           <StatCard
             icon={<ShoppingCart className="w-5 h-5" />}
             iconBg="bg-green-50"
@@ -291,10 +328,8 @@ export default function AdminDashboard() {
             label="Orders Today"
             value={stats?.ordersToday || 0}
             subtext={`${stats?.ordersThisWeek || 0} this week`}
-            trend={stats?.ordersTrend}
           />
 
-          {/* Revenue Today */}
           <StatCard
             icon={<DollarSign className="w-5 h-5" />}
             iconBg="bg-purple-50"
@@ -302,109 +337,137 @@ export default function AdminDashboard() {
             label="Revenue Today"
             value={`$${(stats?.revenueToday || 0).toLocaleString()}`}
             subtext={`$${(stats?.revenueThisWeek || 0).toLocaleString()} this week`}
-            trend={stats?.revenueTrend}
-            isCurrency
           />
 
-          {/* HITL Queue */}
-          <StatCard
-            icon={<Clock className="w-5 h-5" />}
-            iconBg={stats?.hitlBreached ? "bg-red-50" : "bg-amber-50"}
-            iconColor={stats?.hitlBreached ? "text-red-600" : "text-amber-600"}
-            label="HITL Queue"
-            value={stats?.hitlPending || 0}
-            subtext={`${stats?.hitlInReview || 0} in review`}
-            alert={
-              stats?.hitlBreached
-                ? `${stats.hitlBreached} breached SLA`
-                : undefined
-            }
-            linkTo="/admin/hitl"
-          />
-        </div>
-
-        {/* Secondary Stats & HITL Alert */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* HITL SLA Alert */}
-          {stats?.hitlBreached ? (
-            <div className="lg:col-span-2 bg-red-50 border border-red-200 rounded-xl p-6">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-red-800">
-                    {stats.hitlBreached} Review
-                    {stats.hitlBreached > 1 ? "s" : ""} Breached SLA
-                  </h3>
-                  <p className="text-red-600 mt-1">
-                    These reviews have exceeded the 4-hour response time.
-                    Immediate attention required.
-                  </p>
-                  <Link
-                    to="/admin/hitl?filter=breached"
-                    className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                  >
-                    View Breached Reviews
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="lg:col-span-2 bg-green-50 border border-green-200 rounded-xl p-6">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-green-800">
-                    All Reviews On Track
-                  </h3>
-                  <p className="text-green-600 mt-1">
-                    No SLA breaches. Average review time:{" "}
-                    {stats?.avgReviewTime || 0} minutes.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* AI Performance */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">
-              AI Performance
+          {/* Needs Attention */}
+          <div className="bg-white rounded-lg border p-6">
+            <h3 className="text-sm font-medium text-gray-500 mb-3">
+              Needs Attention
             </h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Accuracy Rate</span>
-                <span className="text-lg font-semibold text-gray-900">
-                  {((stats?.aiAccuracy || 0) * 100).toFixed(1)}%
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-green-500 h-2 rounded-full"
-                  style={{ width: `${(stats?.aiAccuracy || 0) * 100}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">HITL Trigger Rate</span>
-                <span className="text-gray-700">
-                  {((stats?.hitlTriggerRate || 0) * 100).toFixed(1)}%
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">Docs Processed (30d)</span>
-                <span className="text-gray-700">
-                  {stats?.documentsProcessed || 0}
-                </span>
-              </div>
+            <div className="space-y-2">
+              {needsAttention.paidOrdersCount > 0 && (
+                <Link
+                  to="/admin/orders?status=paid"
+                  className="flex justify-between items-center text-sm"
+                >
+                  <span className="text-gray-700">
+                    Orders waiting to start
+                  </span>
+                  <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+                    {needsAttention.paidOrdersCount}
+                  </span>
+                </Link>
+              )}
+              {needsAttention.hitlPendingCount > 0 && (
+                <Link
+                  to="/admin/quotes?filter=hitl"
+                  className="flex justify-between items-center text-sm"
+                >
+                  <span className="text-gray-700">HITL reviews pending</span>
+                  <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-medium">
+                    {needsAttention.hitlPendingCount}
+                  </span>
+                </Link>
+              )}
+              {needsAttention.unreadMessagesCount > 0 && (
+                <Link
+                  to="/admin/orders"
+                  className="flex justify-between items-center text-sm"
+                >
+                  <span className="text-gray-700">
+                    Unread customer messages
+                  </span>
+                  <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-medium">
+                    {needsAttention.unreadMessagesCount}
+                  </span>
+                </Link>
+              )}
+              {needsAttention.paidOrdersCount === 0 &&
+                needsAttention.hitlPendingCount === 0 &&
+                needsAttention.unreadMessagesCount === 0 && (
+                  <p className="text-sm text-green-600 flex items-center gap-1">
+                    <CheckCircle className="h-4 w-4" /> All caught up!
+                  </p>
+                )}
             </div>
           </div>
         </div>
 
-        {/* Bottom Section: Recent Activity & Quick Actions */}
+        {/* ROW 2: Operations */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Active Orders */}
+          <div className="bg-white rounded-lg border p-6">
+            <h3 className="text-sm font-medium text-gray-500 mb-3">
+              Active Orders
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {ordersByStatus.length > 0 ? (
+                ordersByStatus.map(({ status, count, color }) => (
+                  <Link
+                    key={status}
+                    to={`/admin/orders?status=${status}`}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium ${color}`}
+                  >
+                    {formatStatus(status)} ({count})
+                  </Link>
+                ))
+              ) : (
+                <p className="text-sm text-gray-400">No active orders</p>
+              )}
+            </div>
+          </div>
+
+          {/* Upcoming Deliveries */}
+          <div className="bg-white rounded-lg border p-6">
+            <h3 className="text-sm font-medium text-gray-500 mb-3">
+              Upcoming Deliveries
+            </h3>
+            <div className="space-y-3">
+              {upcomingDeliveries.map((order) => {
+                const isOverdue =
+                  new Date(order.estimated_delivery_date) < new Date();
+                return (
+                  <Link
+                    key={order.id}
+                    to={`/admin/orders/${order.id}`}
+                    className="flex justify-between items-center text-sm"
+                  >
+                    <div>
+                      <span className="font-medium text-gray-900">
+                        {order.order_number}
+                      </span>
+                      <span className="text-gray-500 ml-2">
+                        {order.customer?.first_name} {order.customer?.last_name}
+                      </span>
+                    </div>
+                    <span
+                      className={
+                        isOverdue
+                          ? "text-red-600 font-medium"
+                          : "text-gray-600"
+                      }
+                    >
+                      {isOverdue ? "OVERDUE \u2014 " : ""}
+                      {new Date(
+                        order.estimated_delivery_date,
+                      ).toLocaleDateString("en-CA", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                  </Link>
+                );
+              })}
+              {upcomingDeliveries.length === 0 && (
+                <p className="text-sm text-gray-400">
+                  No upcoming deliveries
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ROW 3: Activity & Nav */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Activity */}
           <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl">
@@ -412,12 +475,20 @@ export default function AdminDashboard() {
               <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
                 Recent Activity
               </h3>
-              <Link
-                to="/admin/quotes"
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
-                View all
-              </Link>
+              <div className="flex gap-3">
+                <Link
+                  to="/admin/quotes"
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  View Quotes &rarr;
+                </Link>
+                <Link
+                  to="/admin/orders"
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  View Orders &rarr;
+                </Link>
+              </div>
             </div>
             <div className="divide-y divide-gray-100">
               {recentActivity.map((item) => (
@@ -465,20 +536,14 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Quick Actions */}
+          {/* Go To */}
           <div className="bg-white border border-gray-200 rounded-xl">
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-                Quick Actions
+                Go To
               </h3>
             </div>
             <div className="p-4 space-y-2">
-              <QuickActionLink
-                to="/admin/hitl"
-                icon={<Clock className="w-5 h-5" />}
-                label="HITL Review Queue"
-                badge={stats?.hitlPending}
-              />
               <QuickActionLink
                 to="/admin/quotes"
                 icon={<FileText className="w-5 h-5" />}
@@ -486,62 +551,14 @@ export default function AdminDashboard() {
               />
               <QuickActionLink
                 to="/admin/orders"
-                icon={<ShoppingCart className="w-5 h-5" />}
+                icon={<ShoppingBag className="w-5 h-5" />}
                 label="All Orders"
               />
               <QuickActionLink
-                to="/admin/analytics"
-                icon={<TrendingUp className="w-5 h-5" />}
-                label="AI Analytics"
-              />
-              <QuickActionLink
                 to="/admin/reports"
-                icon={<FileText className="w-5 h-5" />}
+                icon={<BarChart3 className="w-5 h-5" />}
                 label="Reports"
               />
-              <QuickActionLink
-                to="/admin/staff"
-                icon={<Users className="w-5 h-5" />}
-                label="Staff"
-              />
-              <QuickActionLink
-                to="/admin/settings"
-                icon={<Users className="w-5 h-5" />}
-                label="Settings"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Monthly Summary */}
-        <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">
-          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-6">
-            30-Day Summary
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div>
-              <p className="text-3xl font-semibold text-gray-900 tabular-nums">
-                {stats?.quotesThisMonth || 0}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">Total Quotes</p>
-            </div>
-            <div>
-              <p className="text-3xl font-semibold text-gray-900 tabular-nums">
-                {stats?.ordersThisMonth || 0}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">Total Orders</p>
-            </div>
-            <div>
-              <p className="text-3xl font-semibold text-gray-900 tabular-nums">
-                ${(stats?.revenueThisMonth || 0).toLocaleString()}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">Total Revenue</p>
-            </div>
-            <div>
-              <p className="text-3xl font-semibold text-gray-900 tabular-nums">
-                {((stats?.aiAccuracy || 0) * 100).toFixed(0)}%
-              </p>
-              <p className="text-sm text-gray-500 mt-1">AI Accuracy</p>
             </div>
           </div>
         </div>
@@ -558,10 +575,6 @@ function StatCard({
   label,
   value,
   subtext,
-  trend,
-  alert,
-  linkTo,
-  isCurrency,
 }: {
   icon: React.ReactNode;
   iconBg: string;
@@ -569,31 +582,15 @@ function StatCard({
   label: string;
   value: string | number;
   subtext: string;
-  trend?: number;
-  alert?: string;
-  linkTo?: string;
-  isCurrency?: boolean;
 }) {
-  const content = (
-    <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-6">
       <div className="flex items-start justify-between">
         <div
           className={`w-10 h-10 ${iconBg} rounded-lg flex items-center justify-center ${iconColor}`}
         >
           {icon}
         </div>
-        {trend !== undefined && (
-          <div
-            className={`flex items-center gap-1 text-sm ${trend >= 0 ? "text-green-600" : "text-red-600"}`}
-          >
-            {trend >= 0 ? (
-              <TrendingUp className="w-4 h-4" />
-            ) : (
-              <TrendingDown className="w-4 h-4" />
-            )}
-            {Math.abs(trend)}%
-          </div>
-        )}
       </div>
       <div className="mt-4">
         <p className="text-2xl font-semibold text-gray-900 tabular-nums">
@@ -601,20 +598,9 @@ function StatCard({
         </p>
         <p className="text-sm text-gray-500 mt-1">{label}</p>
         <p className="text-xs text-gray-400 mt-2">{subtext}</p>
-        {alert && (
-          <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
-            <AlertTriangle className="w-3 h-3" />
-            {alert}
-          </p>
-        )}
       </div>
     </div>
   );
-
-  if (linkTo) {
-    return <Link to={linkTo}>{content}</Link>;
-  }
-  return content;
 }
 
 // Quick Action Link Component
@@ -622,12 +608,10 @@ function QuickActionLink({
   to,
   icon,
   label,
-  badge,
 }: {
   to: string;
   icon: React.ReactNode;
   label: string;
-  badge?: number;
 }) {
   return (
     <Link
@@ -636,11 +620,6 @@ function QuickActionLink({
     >
       <div className="text-gray-400">{icon}</div>
       <span className="flex-1 text-sm text-gray-700">{label}</span>
-      {badge !== undefined && badge > 0 && (
-        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
-          {badge}
-        </span>
-      )}
       <ArrowRight className="w-4 h-4 text-gray-400" />
     </Link>
   );
