@@ -186,7 +186,7 @@ export default function AdminLayout() {
 
   return (
     <NotificationProvider>
-      <div className="min-h-screen bg-gray-50 flex">
+      <div className="admin-panel min-h-screen bg-gray-50 flex">
         <aside
           className={`hidden lg:flex flex-col bg-white border-r border-gray-200 transition-all duration-300 ${
             sidebarOpen ? "w-64" : "w-20"
