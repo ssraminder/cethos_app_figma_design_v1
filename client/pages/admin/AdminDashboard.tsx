@@ -10,7 +10,6 @@ import {
   ArrowRight,
   RefreshCw,
   BarChart3,
-  Settings,
 } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 
@@ -21,12 +20,10 @@ interface DashboardStats {
   ordersThisWeek: number;
   revenueToday: number;
   revenueThisWeek: number;
-  hitlPending: number;
 }
 
 interface NeedsAttention {
   paidOrdersCount: number;
-  hitlPendingCount: number;
   unreadMessagesCount: number;
 }
 
@@ -56,7 +53,6 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [needsAttention, setNeedsAttention] = useState<NeedsAttention>({
     paidOrdersCount: 0,
-    hitlPendingCount: 0,
     unreadMessagesCount: 0,
   });
   const [ordersByStatus, setOrdersByStatus] = useState<OrderStatusCount[]>([]);
@@ -115,17 +111,9 @@ export default function AdminDashboard() {
           .eq("status", "paid"),
       ]);
 
-      // Fetch HITL pending count
-      const hitlPending = await supabase
-        .from("hitl_reviews")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "pending");
-
       // Calculate revenue sums
       const sumRevenue = (data: any[] | null) =>
         data?.reduce((sum, row) => sum + (row.total_amount || 0), 0) || 0;
-
-      const hitlPendingCount = hitlPending.count || 0;
 
       setStats({
         quotesToday: quotesToday.count || 0,
@@ -134,7 +122,6 @@ export default function AdminDashboard() {
         ordersThisWeek: ordersWeek.count || 0,
         revenueToday: sumRevenue(revenueToday.data),
         revenueThisWeek: sumRevenue(revenueWeek.data),
-        hitlPending: hitlPendingCount,
       });
 
       // --- Needs Attention ---
@@ -158,7 +145,6 @@ export default function AdminDashboard() {
 
       setNeedsAttention({
         paidOrdersCount: paidOrdersCount || 0,
-        hitlPendingCount,
         unreadMessagesCount,
       });
 
@@ -221,6 +207,7 @@ export default function AdminDashboard() {
         .from("quotes")
         .select("id, quote_number, status, created_at, customers(full_name)")
         .is("converted_to_order_id", null)
+        .not("status", "eq", "draft")
         .order("created_at", { ascending: false })
         .limit(5);
 
@@ -359,17 +346,6 @@ export default function AdminDashboard() {
                   </span>
                 </Link>
               )}
-              {needsAttention.hitlPendingCount > 0 && (
-                <Link
-                  to="/admin/quotes?filter=hitl"
-                  className="flex justify-between items-center text-sm"
-                >
-                  <span className="text-gray-700">HITL reviews pending</span>
-                  <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-medium">
-                    {needsAttention.hitlPendingCount}
-                  </span>
-                </Link>
-              )}
               {needsAttention.unreadMessagesCount > 0 && (
                 <Link
                   to="/admin/orders"
@@ -384,7 +360,6 @@ export default function AdminDashboard() {
                 </Link>
               )}
               {needsAttention.paidOrdersCount === 0 &&
-                needsAttention.hitlPendingCount === 0 &&
                 needsAttention.unreadMessagesCount === 0 && (
                   <p className="text-sm text-green-600 flex items-center gap-1">
                     <CheckCircle className="h-4 w-4" /> All caught up!
@@ -559,11 +534,6 @@ export default function AdminDashboard() {
                 to="/admin/reports"
                 icon={<BarChart3 className="w-5 h-5" />}
                 label="Reports"
-              />
-              <QuickActionLink
-                to="/admin/settings"
-                icon={<Settings className="w-5 h-5" />}
-                label="Settings"
               />
             </div>
           </div>
