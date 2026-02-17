@@ -209,3 +209,23 @@
     }
   }
 }
+
+/* ============================================
+   ADMIN PANEL — LIGHTER FONT WEIGHTS
+   Steps down each Tailwind font-weight utility
+   by one level within the admin panel scope.
+   Preserves visual hierarchy while reducing
+   overall heaviness. Does NOT affect customer-
+   facing pages.
+   ============================================ */
+.admin-panel .font-bold {
+  font-weight: 600;
+}
+
+.admin-panel .font-semibold {
+  font-weight: 500;
+}
+
+.admin-panel .font-medium {
+  font-weight: 400;
+}
