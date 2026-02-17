@@ -15,9 +15,11 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  Lock,
   Mail,
   MapPin,
   Minus,
+  Pencil,
   Phone,
   Plus,
   RefreshCw,
@@ -89,6 +91,13 @@ interface OrderDetail {
     quote_number: string;
     promised_delivery_date: string | null;
     country_of_issue: string | null;
+    turnaround_type: string | null;
+    is_rush: boolean | null;
+    physical_delivery_option_id: string | null;
+    digital_delivery_options: string[] | null;
+    selected_pickup_location_id: string | null;
+    shipping_address: Record<string, any> | null;
+    delivery_fee: number | null;
     source_language: { id: string; code: string; name: string } | null;
     target_language: { id: string; code: string; name: string } | null;
     intended_use?: {
@@ -235,6 +244,12 @@ export default function AdminOrderDetail() {
   const [deliveryOptions, setDeliveryOptions] = useState<any[]>([]);
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string>("");
   const [savingDelivery, setSavingDelivery] = useState(false);
+
+  // Delivery section read-only data & edit toggle
+  const [isDeliveryEditing, setIsDeliveryEditing] = useState(false);
+  const [physicalDelivery, setPhysicalDelivery] = useState<any>(null);
+  const [digitalDeliveries, setDigitalDeliveries] = useState<any[]>([]);
+  const [pickupLocation, setPickupLocation] = useState<any>(null);
 
   // Translation details
   const [documentAnalysis, setDocumentAnalysis] = useState<any[]>([]);
@@ -669,6 +684,13 @@ export default function AdminOrderDetail() {
             promised_delivery_date,
             country_of_issue,
             special_instructions,
+            turnaround_type,
+            is_rush,
+            physical_delivery_option_id,
+            digital_delivery_options,
+            selected_pickup_location_id,
+            shipping_address,
+            delivery_fee,
             source_language:languages!source_language_id(id, code, name),
             target_language:languages!target_language_id(id, code, name),
             intended_use:intended_uses!intended_use_id(
@@ -728,6 +750,45 @@ export default function AdminOrderDetail() {
         if (quoteData) {
           setSelectedTurnaroundId(quoteData.turnaround_option_id || "");
           setSelectedDeliveryId(quoteData.physical_delivery_option_id || "");
+        }
+      }
+
+      // Fetch related delivery data from quote for read-only display
+      const quote = orderData.quote;
+      if (quote) {
+        // Physical delivery option
+        if (quote.physical_delivery_option_id) {
+          const { data: physDel } = await supabase
+            .from("delivery_options")
+            .select("id, name, code, price, delivery_type")
+            .eq("id", quote.physical_delivery_option_id)
+            .single();
+          setPhysicalDelivery(physDel || null);
+        } else {
+          setPhysicalDelivery(null);
+        }
+
+        // Digital delivery options
+        if (quote.digital_delivery_options && quote.digital_delivery_options.length > 0) {
+          const { data: digDels } = await supabase
+            .from("delivery_options")
+            .select("id, name, code, price")
+            .in("id", quote.digital_delivery_options);
+          setDigitalDeliveries(digDels || []);
+        } else {
+          setDigitalDeliveries([]);
+        }
+
+        // Pickup location
+        if (quote.selected_pickup_location_id) {
+          const { data: pickupLoc } = await supabase
+            .from("pickup_locations")
+            .select("id, name, address_line1, city, state, postal_code, phone, hours")
+            .eq("id", quote.selected_pickup_location_id)
+            .single();
+          setPickupLocation(pickupLoc || null);
+        } else {
+          setPickupLocation(null);
         }
       }
 
@@ -2836,99 +2897,222 @@ export default function AdminOrderDetail() {
           </div>
 
           <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Truck className="w-5 h-5 text-gray-400" />
-              Delivery
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                <Truck className="h-5 w-5 text-gray-400" /> Delivery
+              </h2>
+              <button
+                onClick={() => setIsDeliveryEditing(!isDeliveryEditing)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                title={isDeliveryEditing ? "Lock" : "Edit"}
+              >
+                {isDeliveryEditing ? <Lock className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+              </button>
+            </div>
 
-            <div className="space-y-3">
-              {order.is_rush && (
-                <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-                  <Zap className="w-4 h-4" />
-                  <span className="font-medium">Rush Order</span>
-                </div>
-              )}
-
-              {/* Turnaround Speed Dropdown */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Turnaround Speed
-                </label>
-                <select
-                  value={selectedTurnaroundId}
-                  onChange={(e) => handleTurnaroundChange(e.target.value)}
-                  disabled={savingTurnaround}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">— Select —</option>
-                  {turnaroundOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.name} ({opt.multiplier}×)
-                      {opt.fee_value > 0
-                        ? ` — +${opt.fee_value}${opt.fee_type === "percentage" ? "%" : "$"}`
-                        : " — No fee"}
-                    </option>
-                  ))}
-                </select>
-                {savingTurnaround && (
-                  <p className="text-xs text-blue-600 mt-1">Updating...</p>
-                )}
-              </div>
-
-              {/* Delivery Method Dropdown */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Delivery Method
-                </label>
-                <select
-                  value={selectedDeliveryId}
-                  onChange={(e) => handleDeliveryChange(e.target.value)}
-                  disabled={savingDelivery}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">— Select —</option>
-                  {deliveryOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.name}
-                      {opt.price > 0 ? ` — $${Number(opt.price).toFixed(2)}` : " — Free"}
-                    </option>
-                  ))}
-                </select>
-                {savingDelivery && (
-                  <p className="text-xs text-blue-600 mt-1">Updating...</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Promised Delivery Date
-                </label>
-                <input
-                  type="date"
-                  value={promisedDeliveryDate}
-                  onChange={(e) => handleDeliveryDateChange(e.target.value)}
-                  disabled={savingDate}
-                  min={new Date().toISOString().split("T")[0]}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                {savingDate && (
-                  <p className="text-xs text-blue-600 mt-1">Updating...</p>
-                )}
-              </div>
-
-              {order.actual_delivery_date && (
+            {!isDeliveryEditing ? (
+              /* ── Read-only display ── */
+              <div className="space-y-3">
+                {/* Turnaround Speed */}
                 <div>
-                  <p className="text-sm text-gray-500">Actual Delivery</p>
-                  <p className="font-medium text-green-600 flex items-center gap-1">
-                    <CheckCircle className="w-4 h-4" />
-                    {format(
-                      new Date(order.actual_delivery_date),
-                      "MMMM d, yyyy",
+                  <p className="text-sm text-gray-500">Turnaround Speed</p>
+                  <p className="font-medium text-gray-900 flex items-center gap-2">
+                    {(() => {
+                      const tt = order.quote?.turnaround_type;
+                      const rush = order.quote?.is_rush ?? order.is_rush;
+                      if (tt === "same_day") return "Same-Day (2.0×)";
+                      if (tt === "rush" || rush) return "Rush (1.3×)";
+                      return "Standard";
+                    })()}
+                    {(order.quote?.turnaround_type === "rush" || order.quote?.turnaround_type === "same_day" || order.quote?.is_rush || order.is_rush) && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                        <Zap className="w-3 h-3" /> Rush
+                      </span>
                     )}
                   </p>
                 </div>
-              )}
-            </div>
+
+                {/* Physical Delivery */}
+                <div>
+                  <p className="text-sm text-gray-500">Physical Delivery</p>
+                  <p className="font-medium text-gray-900">{physicalDelivery?.name || "—"}</p>
+                </div>
+
+                {/* Digital Delivery */}
+                <div>
+                  <p className="text-sm text-gray-500">Digital Delivery</p>
+                  <p className="font-medium text-gray-900">
+                    {digitalDeliveries.length > 0
+                      ? digitalDeliveries.map((d: any) => d.name).join(", ")
+                      : "None selected"}
+                  </p>
+                </div>
+
+                {/* Pickup Location (if physical delivery is Pickup) */}
+                {(physicalDelivery?.code === "pickup" || physicalDelivery?.name?.toLowerCase() === "pickup") && pickupLocation && (
+                  <div>
+                    <p className="text-sm text-gray-500">Pickup Location</p>
+                    <div className="font-medium text-gray-900 space-y-0.5">
+                      <p>{pickupLocation.name}</p>
+                      <p className="text-sm text-gray-600">{pickupLocation.address_line1}</p>
+                      <p className="text-sm text-gray-600">
+                        {pickupLocation.city}, {pickupLocation.state} {pickupLocation.postal_code}
+                      </p>
+                      {pickupLocation.phone && (
+                        <p className="text-sm text-gray-600 flex items-center gap-1">
+                          <Phone className="w-3 h-3" /> {pickupLocation.phone}
+                        </p>
+                      )}
+                      {pickupLocation.hours && (
+                        <p className="text-sm text-gray-600 flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {pickupLocation.hours}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Shipping Address (JSONB) */}
+                {order.quote?.shipping_address && (
+                  <div>
+                    <p className="text-sm text-gray-500">Shipping Address</p>
+                    <div className="font-medium text-gray-900 space-y-0.5">
+                      {order.quote.shipping_address.line1 && (
+                        <p className="text-sm text-gray-600">{order.quote.shipping_address.line1}</p>
+                      )}
+                      {order.quote.shipping_address.line2 && (
+                        <p className="text-sm text-gray-600">{order.quote.shipping_address.line2}</p>
+                      )}
+                      <p className="text-sm text-gray-600">
+                        {[
+                          order.quote.shipping_address.city,
+                          order.quote.shipping_address.state,
+                          order.quote.shipping_address.postal_code,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Delivery Fee */}
+                <div>
+                  <p className="text-sm text-gray-500">Delivery Fee</p>
+                  <p className="font-medium text-gray-900">
+                    ${Number(order.quote?.delivery_fee ?? order.delivery_fee ?? 0).toFixed(2)}
+                  </p>
+                </div>
+
+                {/* Promised Delivery */}
+                <div>
+                  <p className="text-sm text-gray-500">Promised Delivery</p>
+                  <p className="font-medium text-gray-900">
+                    {promisedDeliveryDate
+                      ? format(new Date(promisedDeliveryDate + "T00:00:00"), "MMMM d, yyyy")
+                      : "—"}
+                  </p>
+                </div>
+
+                {/* Actual Delivery */}
+                <div>
+                  <p className="text-sm text-gray-500">Actual Delivery</p>
+                  {order.actual_delivery_date ? (
+                    <p className="font-medium text-green-600 flex items-center gap-1">
+                      <CheckCircle className="w-4 h-4" />
+                      {format(new Date(order.actual_delivery_date), "MMMM d, yyyy")}
+                    </p>
+                  ) : (
+                    <p className="font-medium text-gray-900">—</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* ── Edit mode ── */
+              <div className="space-y-3">
+                {/* Turnaround Speed Dropdown */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Turnaround Speed
+                  </label>
+                  <select
+                    value={selectedTurnaroundId}
+                    onChange={(e) => handleTurnaroundChange(e.target.value)}
+                    disabled={savingTurnaround}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">— Select —</option>
+                    {turnaroundOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name} ({opt.multiplier}×)
+                        {opt.fee_value > 0
+                          ? ` — +${opt.fee_value}${opt.fee_type === "percentage" ? "%" : "$"}`
+                          : " — No fee"}
+                      </option>
+                    ))}
+                  </select>
+                  {savingTurnaround && (
+                    <p className="text-xs text-blue-600 mt-1">Updating...</p>
+                  )}
+                </div>
+
+                {/* Promised Delivery Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Promised Delivery Date
+                  </label>
+                  <input
+                    type="date"
+                    value={promisedDeliveryDate}
+                    onChange={(e) => handleDeliveryDateChange(e.target.value)}
+                    disabled={savingDate}
+                    min={new Date().toISOString().split("T")[0]}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {savingDate && (
+                    <p className="text-xs text-blue-600 mt-1">Updating...</p>
+                  )}
+                </div>
+
+                {/* Actual Delivery Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Actual Delivery Date
+                  </label>
+                  <input
+                    type="date"
+                    value={order.actual_delivery_date || ""}
+                    disabled
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50"
+                  />
+                </div>
+
+                {/* Tracking Number */}
+                {order.tracking_number !== undefined && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Tracking Number
+                    </label>
+                    <input
+                      type="text"
+                      value={order.tracking_number || ""}
+                      disabled
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50"
+                    />
+                  </div>
+                )}
+
+                {/* Close edit mode button */}
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={() => setIsDeliveryEditing(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Activity */}
