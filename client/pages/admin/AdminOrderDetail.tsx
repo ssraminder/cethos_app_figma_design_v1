@@ -91,7 +91,16 @@ interface OrderDetail {
     country_of_issue: string | null;
     source_language: { id: string; code: string; name: string } | null;
     target_language: { id: string; code: string; name: string } | null;
-    intended_use?: { id: string; name: string } | null;
+    intended_use?: {
+      id: string;
+      name: string;
+      default_certification_type?: {
+        id: string;
+        code: string;
+        name: string;
+        price: number;
+      } | null;
+    } | null;
   };
   created_at: string;
   updated_at: string;
@@ -229,10 +238,6 @@ export default function AdminOrderDetail() {
 
   // Translation details
   const [documentAnalysis, setDocumentAnalysis] = useState<any[]>([]);
-
-  // Certification breakdown
-  const [docCertifications, setDocCertifications] = useState<any[]>([]);
-  const [quoteCertifications, setQuoteCertifications] = useState<any[]>([]);
 
   // Activity log
   const [activityLog, setActivityLog] = useState<any[]>([]);
@@ -666,7 +671,13 @@ export default function AdminOrderDetail() {
             special_instructions,
             source_language:languages!source_language_id(id, code, name),
             target_language:languages!target_language_id(id, code, name),
-            intended_use:intended_uses!intended_use_id(id, name)
+            intended_use:intended_uses!intended_use_id(
+              id,
+              name,
+              default_certification_type:certification_types!default_certification_type_id(
+                id, code, name, price
+              )
+            )
           )
         `,
         )
@@ -699,51 +710,6 @@ export default function AdminOrderDetail() {
           setDocumentAnalysis(analysisData);
         }
 
-        // Fetch certification breakdown for this quote
-        // Document-level: document_certifications doesn't have quote_id, so fetch via quote_file IDs
-        const { data: qfIds } = await supabase
-          .from("quote_files")
-          .select("id")
-          .eq("quote_id", orderData.quote_id)
-          .in("upload_status", ["uploaded", "completed"]);
-
-        const fileIds = (qfIds || []).map((f: any) => f.id);
-        if (fileIds.length > 0) {
-          const { data: docCertsData } = await supabase
-            .from("document_certifications")
-            .select(`
-              id,
-              quote_file_id,
-              certification_type_id,
-              price,
-              certification_types(id, code, name, price)
-            `)
-            .in("quote_file_id", fileIds);
-          setDocCertifications(docCertsData || []);
-        }
-
-        // Quote-level certifications
-        const { data: quoteCertsData } = await supabase
-          .from("quote_certifications")
-          .select(`
-            id,
-            certification_type_id,
-            price,
-            quantity,
-            certification_types(name, code)
-          `)
-          .eq("quote_id", orderData.quote_id);
-
-        setQuoteCertifications(
-          (quoteCertsData || []).map((qc: any) => ({
-            id: qc.id,
-            certification_type_id: qc.certification_type_id,
-            price: qc.price,
-            quantity: qc.quantity,
-            name: qc.certification_types?.name || "Unknown",
-            code: qc.certification_types?.code || "",
-          }))
-        );
       }
 
       // Set promised delivery date from quote, fallback to order's estimated date
@@ -1719,6 +1685,12 @@ export default function AdminOrderDetail() {
                 <p className="text-sm text-gray-500">Intended Use</p>
                 <p className="font-medium">{order.quote?.intended_use?.name || "—"}</p>
               </div>
+              <div>
+                <p className="text-sm text-gray-500">Certification Type</p>
+                <p className="font-medium">
+                  {order.quote?.intended_use?.default_certification_type?.name || "—"}
+                </p>
+              </div>
               {order.quote?.special_instructions && (
                 <div className="col-span-2">
                   <p className="text-sm text-gray-500 flex items-center gap-1.5">
@@ -1729,31 +1701,6 @@ export default function AdminOrderDetail() {
                 </div>
               )}
             </div>
-
-            {/* Certification Breakdown */}
-            {(docCertifications.length > 0 || quoteCertifications.length > 0) && (
-              <div className="mt-4 pt-4 border-t">
-                <p className="text-sm font-medium text-gray-700 mb-2">Certifications</p>
-                {quoteCertifications.map((cert: any) => (
-                  <div key={cert.id} className="flex justify-between text-sm py-1">
-                    <span className="font-medium">{cert.name}</span>
-                    <span className="text-gray-600">${Number(cert.price || 0).toFixed(2)}</span>
-                  </div>
-                ))}
-                {docCertifications.map((cert: any) => {
-                  const file = quoteFiles.find((f: any) => f.id === cert.quote_file_id);
-                  return (
-                    <div key={cert.id} className="flex justify-between text-sm py-1">
-                      <span>
-                        <span className="font-medium">{cert.certification_types?.name || "Unknown"}</span>
-                        {file && <span className="text-gray-400 ml-2">— {file.original_filename}</span>}
-                      </span>
-                      <span className="text-gray-600">${Number(cert.price || cert.certification_types?.price || 0).toFixed(2)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
 
             {/* Per-Document Analysis Summary */}
             {documentAnalysis.length > 0 && (
