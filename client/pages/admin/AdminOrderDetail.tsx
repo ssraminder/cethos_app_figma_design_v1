@@ -1538,7 +1538,7 @@ export default function AdminOrderDetail() {
   );
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="px-4 sm:px-6 py-6 max-w-6xl mx-auto">
       <div className="mb-6">
         <Link
           to="/admin/orders"
@@ -1548,13 +1548,13 @@ export default function AdminOrderDetail() {
           Back to Orders
         </Link>
 
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
               {order.order_number}
             </h1>
             {/* Status Dropdowns */}
-            <div className="flex gap-4 mt-2">
+            <div className="flex flex-wrap gap-3 sm:gap-4 mt-2">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Order Status</label>
                 <select
@@ -1596,14 +1596,15 @@ export default function AdminOrderDetail() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="grid grid-cols-2 md:flex md:items-center gap-2 md:gap-3">
             {order.quote_id && (
               <Link
                 to={`/admin/quotes/${order.quote_id}`}
-                className="inline-flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200"
+                className="col-span-2 inline-flex items-center justify-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 text-sm"
               >
-                View Quote ({order.quote?.quote_number})
-                <ExternalLink className="w-4 h-4" />
+                <span className="sm:hidden">View Quote</span>
+                <span className="hidden sm:inline">View Quote ({order.quote?.quote_number})</span>
+                <ExternalLink className="w-4 h-4 flex-shrink-0" />
               </Link>
             )}
 
@@ -1611,9 +1612,9 @@ export default function AdminOrderDetail() {
             {order.status !== "cancelled" && order.status !== "refunded" && (
               <button
                 onClick={() => setShowEditModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors"
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors text-sm whitespace-nowrap"
               >
-                <Edit2 className="w-4 h-4" />
+                <Edit2 className="w-4 h-4 flex-shrink-0" />
                 Edit Order
               </button>
             )}
@@ -1622,9 +1623,9 @@ export default function AdminOrderDetail() {
             {order.status !== "cancelled" && order.status !== "refunded" && (
               <button
                 onClick={() => setShowCancelModal(true)}
-                className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 text-sm font-medium"
+                className="flex items-center justify-center gap-2 px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 text-sm font-medium whitespace-nowrap"
               >
-                <XCircle className="w-4 h-4" />
+                <XCircle className="w-4 h-4 flex-shrink-0" />
                 Cancel Order
               </button>
             )}
