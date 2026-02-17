@@ -10,6 +10,7 @@ import {
   ArrowRight,
   RefreshCw,
   BarChart3,
+  Settings,
 } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 
@@ -558,6 +559,11 @@ export default function AdminDashboard() {
                 to="/admin/reports"
                 icon={<BarChart3 className="w-5 h-5" />}
                 label="Reports"
+              />
+              <QuickActionLink
+                to="/admin/settings"
+                icon={<Settings className="w-5 h-5" />}
+                label="Settings"
               />
             </div>
           </div>
