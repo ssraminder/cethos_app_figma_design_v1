@@ -1771,8 +1771,14 @@ export default function AdminOrderDetail() {
 
             {/* Source Documents */}
             {(() => {
-              const translateFiles = quoteFiles.filter((f: any) => f.file_category_id !== REFERENCE_CATEGORY_ID);
-              const referenceFiles = quoteFiles.filter((f: any) => f.file_category_id === REFERENCE_CATEGORY_ID);
+              const translateFiles = quoteFiles.filter((f: any) => {
+                const slug = (f.file_categories as any)?.slug;
+                return !f.is_staff_created && slug !== "reference" && slug !== "glossary" && slug !== "style_guide";
+              });
+              const referenceFiles = quoteFiles.filter((f: any) => {
+                const slug = (f.file_categories as any)?.slug;
+                return slug === "reference" || slug === "glossary" || slug === "style_guide";
+              });
 
               return (
                 <>
@@ -1921,7 +1927,7 @@ export default function AdminOrderDetail() {
               <div className="space-y-5">
                 {/* Draft Translations */}
                 {(() => {
-                  const drafts = orderFiles.filter(f => f.category_slug === "draft_translation");
+                  const drafts = orderFiles.filter(f => f.category_slug === "draft_translation" && f.is_staff_created);
                   if (drafts.length === 0) return null;
                   return (
                     <div>
@@ -2019,61 +2025,9 @@ export default function AdminOrderDetail() {
                   );
                 })()}
 
-                {/* Customer Documents */}
-                {(() => {
-                  const customerDocs = orderFiles.filter(
-                    f => !f.is_staff_created &&
-                      f.category_slug !== "draft_translation" &&
-                      f.category_slug !== "final_deliverable"
-                  );
-                  if (customerDocs.length === 0) return null;
-                  return (
-                    <div>
-                      <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
-                        Customer Documents ({customerDocs.length})
-                      </h4>
-                      <div className="space-y-1.5">
-                        {customerDocs.map((file: any) => (
-                          <div key={file.id} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">{file.original_filename}</p>
-                                <p className="text-xs text-gray-400">
-                                  {file.file_size ? `${(file.file_size / 1024).toFixed(1)} KB` : "—"} • {file.category_slug || "source"}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              {file.signed_url && (
-                                <a
-                                  href={file.signed_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                  title="Preview"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </a>
-                              )}
-                              <button
-                                onClick={() => handleDownloadFile(file)}
-                                className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                title="Download"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
                 {/* Final Deliverables */}
                 {(() => {
-                  const finals = orderFiles.filter(f => f.category_slug === "final_deliverable");
+                  const finals = orderFiles.filter(f => f.category_slug === "final_deliverable" && f.is_staff_created);
                   if (finals.length === 0) return null;
                   return (
                     <div>
@@ -2121,69 +2075,6 @@ export default function AdminOrderDetail() {
                                     deletingFileId === file.id
                                       ? "text-gray-300 cursor-not-allowed"
                                       : "text-gray-400 hover:text-red-500 hover:bg-red-50"
-                                  }`}
-                                  title="Delete file"
-                                >
-                                  {deletingFileId === file.id ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="w-4 h-4" />
-                                  )}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Reference Files */}
-                {(() => {
-                  const refFiles = orderFiles.filter(f => {
-                    const slug = f.category_slug;
-                    return slug === "reference" || slug === "glossary" || slug === "style_guide";
-                  });
-                  if (refFiles.length === 0) return null;
-                  return (
-                    <div>
-                      <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
-                        Reference Files ({refFiles.length})
-                      </h4>
-                      <div className="space-y-1.5">
-                        {refFiles.map((file: any) => (
-                          <div key={file.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
-                            <Paperclip className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                            <span className="truncate text-gray-600">{file.original_filename}</span>
-                            <span className="text-xs text-gray-400 flex-shrink-0">
-                              {file.category_slug || "reference"} {file.file_size ? `${(file.file_size / 1024).toFixed(1)} KB` : ""}
-                            </span>
-                            <div className="flex items-center gap-1 ml-auto flex-shrink-0">
-                              {file.signed_url && (
-                                <a
-                                  href={file.signed_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-blue-600 hover:underline"
-                                >
-                                  View
-                                </a>
-                              )}
-                              <button
-                                onClick={() => handleDownloadFile(file)}
-                                className="text-xs text-teal-600 hover:underline"
-                              >
-                                Download
-                              </button>
-                              {file.is_staff_created && (
-                                <button
-                                  onClick={() => handleDeleteFile(file.id, file.original_filename)}
-                                  disabled={deletingFileId === file.id}
-                                  className={`p-1 transition-colors ${
-                                    deletingFileId === file.id
-                                      ? "text-gray-300 cursor-not-allowed"
-                                      : "text-gray-400 hover:text-red-500"
                                   }`}
                                   title="Delete file"
                                 >
