@@ -52,12 +52,15 @@ serve(async (req) => {
 
     quoteNumber = quote.quote_number;
 
-    // Fetch uploaded files
+    // Fetch uploaded files (exclude reference files — they use a different bucket
+    // and should not be processed by the AI/OCR pipeline)
+    const REFERENCE_CATEGORY_ID = "f1aed462-a25f-4dd0-96c0-f952c3a72950";
     const { data: files, error: filesError } = await supabase
       .from("quote_files")
       .select("id, original_filename, storage_path, file_size, mime_type")
       .eq("quote_id", quoteId)
-      .eq("upload_status", "uploaded");
+      .eq("upload_status", "uploaded")
+      .or(`file_category_id.neq.${REFERENCE_CATEGORY_ID},file_category_id.is.null`);
 
     if (filesError) {
       throw new Error(`Failed to fetch files: ${filesError.message}`);
