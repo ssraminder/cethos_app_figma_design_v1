@@ -191,7 +191,7 @@ export default function AdminDashboard() {
           customer:customers!customer_id(first_name, last_name)
         `,
         )
-        .not("status", "in", '("cancelled","completed","delivered")')
+        .not("status", "in", "(cancelled,completed,delivered)")
         .not("estimated_delivery_date", "is", null)
         .lte(
           "estimated_delivery_date",
