@@ -673,167 +673,144 @@ export default function AdminOrderDetail() {
     setError("");
 
     try {
-      const { data: orderData, error: orderError } = await supabase
-        .from("orders")
-        .select(
-          `
-          *,
-          customer:customers(*),
-          quote:quotes(
-            quote_number,
-            promised_delivery_date,
-            country_of_issue,
-            special_instructions,
-            turnaround_type,
-            is_rush,
-            physical_delivery_option_id,
-            digital_delivery_options,
-            selected_pickup_location_id,
-            shipping_address,
-            delivery_fee,
-            source_language:languages!source_language_id(id, code, name),
-            target_language:languages!target_language_id(id, code, name),
-            intended_use:intended_uses!intended_use_id(
-              id,
-              name,
-              default_certification_type:certification_types!default_certification_type_id(
-                id, code, name, price
+      // ── Phase 1: Fire independent queries in parallel ──
+      // Order fetch, payments, and adjustments all only need the route param `id`
+      const [orderResult, paymentsResult, adjustmentsResult] = await Promise.all([
+        // 1. Main order with customer + quote joins
+        supabase
+          .from("orders")
+          .select(`
+            *,
+            customer:customers(*),
+            quote:quotes(
+              quote_number, promised_delivery_date, country_of_issue,
+              special_instructions, turnaround_type, is_rush,
+              physical_delivery_option_id, digital_delivery_options,
+              selected_pickup_location_id, shipping_address, delivery_fee,
+              source_language:languages!source_language_id(id, code, name),
+              target_language:languages!target_language_id(id, code, name),
+              intended_use:intended_uses!intended_use_id(
+                id, name,
+                default_certification_type:certification_types!default_certification_type_id(
+                  id, code, name, price
+                )
               )
             )
-          )
-        `,
-        )
-        .eq("id", id)
-        .single();
+          `)
+          .eq("id", id)
+          .single(),
+        // 2. Payments
+        supabase.from("payments").select("*").eq("order_id", id)
+          .order("created_at", { ascending: false }),
+        // 3. Adjustments
+        supabase.from("adjustments").select(`
+          *, created_by:staff_users!adjustments_created_by_fkey(full_name)
+        `).eq("order_id", id).order("created_at", { ascending: false }),
+      ]);
 
+      const { data: orderData, error: orderError } = orderResult;
       if (orderError) throw orderError;
       setOrder(orderData as OrderDetail);
 
-      // Fetch document analysis for translation details
-      if (orderData.quote_id) {
-        const { data: analysisData } = await supabase
-          .from("ai_analysis_results")
-          .select(`
-            id,
-            detected_language,
-            detected_document_type,
-            word_count,
-            page_count,
-            country_of_issue,
-            quote_file:quote_files!ai_analysis_results_quote_file_id_fkey(
-              original_filename
-            )
-          `)
-          .eq("quote_id", orderData.quote_id)
-          .is("deleted_at", null)
-          .order("created_at");
-
-        if (analysisData) {
-          setDocumentAnalysis(analysisData);
-        }
-
-      }
-
-      // Set promised delivery date from quote, fallback to order's estimated date
-      setPromisedDeliveryDate(
-        orderData.quote?.promised_delivery_date || orderData.estimated_delivery_date || ""
-      );
-
-      // Fetch quote details for turnaround and delivery options
-      if (orderData.quote_id) {
-        const { data: quoteData } = await supabase
-          .from("quotes")
-          .select("turnaround_option_id, physical_delivery_option_id")
-          .eq("id", orderData.quote_id)
-          .single();
-
-        if (quoteData) {
-          setSelectedTurnaroundId(quoteData.turnaround_option_id || "");
-          setSelectedDeliveryId(quoteData.physical_delivery_option_id || "");
-        }
-      }
-
-      // Fetch related delivery data from quote for read-only display
-      const quote = orderData.quote;
-      if (quote) {
-        // Physical delivery option
-        if (quote.physical_delivery_option_id) {
-          const { data: physDel } = await supabase
-            .from("delivery_options")
-            .select("id, name, code, price, delivery_type")
-            .eq("id", quote.physical_delivery_option_id)
-            .single();
-          setPhysicalDelivery(physDel || null);
-        } else {
-          setPhysicalDelivery(null);
-        }
-
-        // Digital delivery options
-        if (quote.digital_delivery_options && quote.digital_delivery_options.length > 0) {
-          const { data: digDels } = await supabase
-            .from("delivery_options")
-            .select("id, name, code, price")
-            .in("id", quote.digital_delivery_options);
-          setDigitalDeliveries(digDels || []);
-        } else {
-          setDigitalDeliveries([]);
-        }
-
-        // Pickup location
-        if (quote.selected_pickup_location_id) {
-          const { data: pickupLoc } = await supabase
-            .from("pickup_locations")
-            .select("id, name, address_line1, city, state, postal_code, phone, hours")
-            .eq("id", quote.selected_pickup_location_id)
-            .single();
-          setPickupLocation(pickupLoc || null);
-        } else {
-          setPickupLocation(null);
-        }
-      }
-
-      const { data: paymentsData } = await supabase
-        .from("payments")
-        .select("*")
-        .eq("order_id", id)
-        .order("created_at", { ascending: false });
-      setPayments(paymentsData || []);
-
-      const { data: adjustmentsData } = await supabase
-        .from("adjustments")
-        .select(
-          `
-          *,
-          created_by:staff_users!adjustments_created_by_fkey(full_name)
-        `,
-        )
-        .eq("order_id", id)
-        .order("created_at", { ascending: false });
+      setPayments(paymentsResult.data || []);
 
       setAdjustments(
-        (adjustmentsData || []).map((adjustment: any) => ({
+        (adjustmentsResult.data || []).map((adjustment: any) => ({
           ...adjustment,
           created_by_name: adjustment.created_by?.full_name || "System",
         })),
       );
 
-      // Fetch cancellation data if order is cancelled
-      if (orderData.status === 'cancelled') {
-        const { data: cancellationData } = await supabase
-          .from('order_cancellations')
-          .select('*')
-          .eq('order_id', id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+      // ── Phase 2: Queries that depend on orderData (run in parallel) ──
+      const quote = orderData.quote;
+      const phase2Promises: Promise<any>[] = [];
 
-        setCancellation(cancellationData);
-      } else {
-        setCancellation(null);
+      // 4. AI analysis results (needs quote_id)
+      phase2Promises.push(
+        orderData.quote_id
+          ? supabase.from("ai_analysis_results").select(`
+              id, detected_language, detected_document_type, word_count,
+              page_count, country_of_issue,
+              quote_file:quote_files!ai_analysis_results_quote_file_id_fkey(original_filename)
+            `).eq("quote_id", orderData.quote_id).is("deleted_at", null).order("created_at")
+          : Promise.resolve({ data: null })
+      );
+
+      // 5. Quote turnaround/delivery option IDs (needs quote_id)
+      phase2Promises.push(
+        orderData.quote_id
+          ? supabase.from("quotes").select("turnaround_option_id, physical_delivery_option_id")
+              .eq("id", orderData.quote_id).single()
+          : Promise.resolve({ data: null })
+      );
+
+      // 6. Physical delivery option (needs quote.physical_delivery_option_id)
+      phase2Promises.push(
+        quote?.physical_delivery_option_id
+          ? supabase.from("delivery_options").select("id, name, code, price, delivery_type")
+              .eq("id", quote.physical_delivery_option_id).single()
+          : Promise.resolve({ data: null })
+      );
+
+      // 7. Digital delivery options (needs quote.digital_delivery_options)
+      phase2Promises.push(
+        quote?.digital_delivery_options?.length > 0
+          ? supabase.from("delivery_options").select("id, name, code, price")
+              .in("id", quote.digital_delivery_options)
+          : Promise.resolve({ data: [] })
+      );
+
+      // 8. Pickup location (needs quote.selected_pickup_location_id)
+      phase2Promises.push(
+        quote?.selected_pickup_location_id
+          ? supabase.from("pickup_locations")
+              .select("id, name, address_line1, city, state, postal_code, phone, hours")
+              .eq("id", quote.selected_pickup_location_id).single()
+          : Promise.resolve({ data: null })
+      );
+
+      // 9. Cancellation data (conditional on status)
+      phase2Promises.push(
+        orderData.status === 'cancelled'
+          ? supabase.from('order_cancellations').select('*').eq('order_id', id)
+              .order('created_at', { ascending: false }).limit(1).maybeSingle()
+          : Promise.resolve({ data: null })
+      );
+
+      // 10. Activity log (needs order.id and order.quote_id)
+      phase2Promises.push(
+        fetchActivityLog(orderData.id, orderData.quote_id)
+      );
+
+      const [
+        analysisResult,
+        quoteOptionsResult,
+        physDelResult,
+        digDelsResult,
+        pickupResult,
+        cancellationResult,
+        // activityLog result handled by fetchActivityLog internally
+      ] = await Promise.all(phase2Promises);
+
+      // ── Unpack Phase 2 results ──
+      if (analysisResult.data) {
+        setDocumentAnalysis(analysisResult.data);
       }
 
-      // Fetch activity log
-      await fetchActivityLog(orderData.id, orderData.quote_id);
+      if (quoteOptionsResult.data) {
+        setSelectedTurnaroundId(quoteOptionsResult.data.turnaround_option_id || "");
+        setSelectedDeliveryId(quoteOptionsResult.data.physical_delivery_option_id || "");
+      }
+
+      setPhysicalDelivery(physDelResult.data || null);
+      setDigitalDeliveries(digDelsResult.data || []);
+      setPickupLocation(pickupResult.data || null);
+      setCancellation(cancellationResult.data || null);
+
+      // Set promised delivery date from quote, fallback to order's estimated date
+      setPromisedDeliveryDate(
+        orderData.quote?.promised_delivery_date || orderData.estimated_delivery_date || ""
+      );
     } catch (err: any) {
       console.error("Error fetching order:", err);
       setError(err.message || "Failed to load order");
@@ -1286,48 +1263,36 @@ export default function AdminOrderDetail() {
         message_attachments(id, filename, original_filename, file_size, storage_path, mime_type)
       `;
 
-      // Step 1: Fetch messages tagged to this order directly
-      let orderMessages: any[] = [];
-      if (orderId) {
-        const { data: om, error: omError } = await supabase
-          .from("conversation_messages")
-          .select(messageSelectFields)
-          .eq("order_id", orderId)
-          .order("created_at", { ascending: true });
-        if (!omError) orderMessages = om || [];
-      }
+      // Step 1: Fetch order messages, quote messages, and conversation ID in parallel
+      const [orderMsgResult, quoteMsgResult, convResult] = await Promise.all([
+        orderId
+          ? supabase.from("conversation_messages").select(messageSelectFields)
+              .eq("order_id", orderId).order("created_at", { ascending: true })
+          : Promise.resolve({ data: [], error: null }),
+        quoteId
+          ? supabase.from("conversation_messages").select(messageSelectFields)
+              .eq("quote_id", quoteId).order("created_at", { ascending: true })
+          : Promise.resolve({ data: [], error: null }),
+        customerId
+          ? supabase.from("customer_conversations").select("id")
+              .eq("customer_id", customerId).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
 
-      // Step 1b: Also fetch messages tagged to the original quote
-      let quoteMessages: any[] = [];
-      if (quoteId) {
-        const { data: qm, error: qmError } = await supabase
-          .from("conversation_messages")
-          .select(messageSelectFields)
-          .eq("quote_id", quoteId)
-          .order("created_at", { ascending: true });
-        if (!qmError) quoteMessages = qm || [];
-      }
+      const orderMessages = !orderMsgResult.error ? (orderMsgResult.data || []) : [];
+      const quoteMessages = !quoteMsgResult.error ? (quoteMsgResult.data || []) : [];
 
-      // Step 2: Fetch all messages from the customer's conversation
+      // Step 2: Fetch conversation messages if conversation was found
       let convMessages: any[] = [];
-      let resolvedConvId: string | null = null;
+      let resolvedConvId: string | null = convResult.data?.id || null;
 
-      if (customerId) {
-        const { data: conv } = await supabase
-          .from("customer_conversations")
-          .select("id")
-          .eq("customer_id", customerId)
-          .maybeSingle();
-
-        if (conv?.id) {
-          resolvedConvId = conv.id;
-          const { data: cm } = await supabase
-            .from("conversation_messages")
-            .select(messageSelectFields)
-            .eq("conversation_id", conv.id)
-            .order("created_at", { ascending: true });
-          convMessages = cm || [];
-        }
+      if (resolvedConvId) {
+        const { data: cm } = await supabase
+          .from("conversation_messages")
+          .select(messageSelectFields)
+          .eq("conversation_id", resolvedConvId)
+          .order("created_at", { ascending: true });
+        convMessages = cm || [];
       }
 
       // Fallback conversation_id from fetched messages
