@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
@@ -11,7 +11,9 @@ import {
   Loader2,
   Trash2,
   Eye,
-  Send
+  Send,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface QueuedFile {
@@ -34,34 +36,96 @@ interface BatchSummary {
   staff_name: string;
 }
 
+type DateFilter = 'today' | 'yesterday' | 'last_7_days' | 'last_30_days';
+
+const DATE_FILTER_OPTIONS: { value: DateFilter; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'last_7_days', label: 'Last 7 Days' },
+  { value: 'last_30_days', label: 'Last 30 Days' },
+];
+
+const PAGE_SIZE = 20;
+
+function getDateRange(filter: DateFilter): { from: string; to: string } {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  switch (filter) {
+    case 'today':
+      return {
+        from: startOfToday.toISOString(),
+        to: new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+    case 'yesterday': {
+      const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
+      return {
+        from: startOfYesterday.toISOString(),
+        to: startOfToday.toISOString(),
+      };
+    }
+    case 'last_7_days': {
+      const sevenDaysAgo = new Date(startOfToday.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return {
+        from: sevenDaysAgo.toISOString(),
+        to: new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+    }
+    case 'last_30_days': {
+      const thirtyDaysAgo = new Date(startOfToday.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return {
+        from: thirtyDaysAgo.toISOString(),
+        to: new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+    }
+  }
+}
+
 export default function OCRWordCountPage() {
   const navigate = useNavigate();
   const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(true);
+  const [dateFilter, setDateFilter] = useState<DateFilter>('today');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
-  // Fetch batch history
-  useEffect(() => {
-    fetchBatches();
-  }, []);
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
-  const fetchBatches = async () => {
+  // Fetch batch history when filter or page changes
+  const fetchBatches = useCallback(async (filter: DateFilter, page: number) => {
     setLoadingBatches(true);
     try {
-      const { data, error } = await supabase
+      const { from, to } = getDateRange(filter);
+      const rangeFrom = (page - 1) * PAGE_SIZE;
+      const rangeTo = rangeFrom + PAGE_SIZE - 1;
+
+      const { data, error, count } = await supabase
         .from('ocr_batches')
-        .select('*')
+        .select('*', { count: 'exact' })
+        .gte('created_at', from)
+        .lt('created_at', to)
         .order('created_at', { ascending: false })
-        .limit(20);
+        .range(rangeFrom, rangeTo);
 
       if (error) throw error;
       setBatches(data || []);
+      setTotalCount(count ?? 0);
     } catch (err) {
       console.error('Failed to fetch batches:', err);
     } finally {
       setLoadingBatches(false);
     }
+  }, []);
+
+  useEffect(() => {
+    fetchBatches(dateFilter, currentPage);
+  }, [dateFilter, currentPage, fetchBatches]);
+
+  const handleFilterChange = (filter: DateFilter) => {
+    setDateFilter(filter);
+    setCurrentPage(1);
   };
 
   // Handle file drop/select
@@ -164,7 +228,9 @@ export default function OCRWordCountPage() {
 
       // Clear queue and refresh history
       setQueuedFiles([]);
-      fetchBatches();
+      setDateFilter('today');
+      setCurrentPage(1);
+      fetchBatches('today', 1);
 
     } catch (err) {
       console.error('Submit error:', err);
@@ -307,61 +373,114 @@ export default function OCRWordCountPage() {
 
         {/* Batch History */}
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Batch History
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              Batch History
+            </h2>
+
+            {/* Date Filter Buttons */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              {DATE_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => handleFilterChange(option.value)}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    dateFilter === option.value
+                      ? 'bg-white text-blue-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {loadingBatches ? (
             <div className="text-center py-8">
               <Loader2 className="w-8 h-8 animate-spin text-gray-400 mx-auto" />
             </div>
           ) : batches.length === 0 ? (
-            <p className="text-center py-8 text-gray-500">No batches yet</p>
+            <p className="text-center py-8 text-gray-500">
+              No batches found for {DATE_FILTER_OPTIONS.find(o => o.value === dateFilter)?.label?.toLowerCase() || 'this period'}
+            </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-sm text-gray-500 border-b">
-                    <th className="pb-3 font-medium">Status</th>
-                    <th className="pb-3 font-medium">Files</th>
-                    <th className="pb-3 font-medium">Pages</th>
-                    <th className="pb-3 font-medium">Words</th>
-                    <th className="pb-3 font-medium">Created</th>
-                    <th className="pb-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {batches.map((batch) => (
-                    <tr key={batch.id} className="border-b last:border-0">
-                      <td className="py-3">
-                        <StatusBadge status={batch.status} />
-                        {batch.status === 'processing' && (
-                          <span className="ml-2 text-xs text-gray-500">
-                            {batch.completed_files}/{batch.total_files}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3">{batch.total_files}</td>
-                      <td className="py-3">{batch.total_pages}</td>
-                      <td className="py-3">{batch.total_words.toLocaleString()}</td>
-                      <td className="py-3 text-sm text-gray-500">
-                        {formatDate(batch.created_at)}
-                      </td>
-                      <td className="py-3">
-                        <button
-                          onClick={() => navigate(`/admin/ocr-word-count/${batch.id}`)}
-                          className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm"
-                        >
-                          <Eye className="w-4 h-4" />
-                          View
-                        </button>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left text-sm text-gray-500 border-b">
+                      <th className="pb-3 font-medium">Status</th>
+                      <th className="pb-3 font-medium">Files</th>
+                      <th className="pb-3 font-medium">Pages</th>
+                      <th className="pb-3 font-medium">Words</th>
+                      <th className="pb-3 font-medium">Created</th>
+                      <th className="pb-3 font-medium">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {batches.map((batch) => (
+                      <tr key={batch.id} className="border-b last:border-0">
+                        <td className="py-3">
+                          <StatusBadge status={batch.status} />
+                          {batch.status === 'processing' && (
+                            <span className="ml-2 text-xs text-gray-500">
+                              {batch.completed_files}/{batch.total_files}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3">{batch.total_files}</td>
+                        <td className="py-3">{batch.total_pages}</td>
+                        <td className="py-3">{batch.total_words.toLocaleString()}</td>
+                        <td className="py-3 text-sm text-gray-500">
+                          {formatDate(batch.created_at)}
+                        </td>
+                        <td className="py-3">
+                          <button
+                            onClick={() => navigate(`/admin/ocr-word-count/${batch.id}`)}
+                            className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm"
+                          >
+                            <Eye className="w-4 h-4" />
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                  <p className="text-sm text-gray-500">
+                    Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, totalCount)} of {totalCount} batches
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm border rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Previous
+                    </button>
+                    <span className="text-sm text-gray-600">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm border rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
