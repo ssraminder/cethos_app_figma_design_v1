@@ -18,6 +18,7 @@ import {
   FileSearch,
   Scissors,
   Handshake,
+  UserPlus,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -73,6 +74,12 @@ const NAV_ITEMS: NavItem[] = [
     path: "/admin/ai/knowledge",
     icon: BookOpen,
     section: "AI",
+  },
+  {
+    label: "Recruitment",
+    path: "/admin/recruitment",
+    icon: UserPlus,
+    section: "Vendors",
   },
   { label: "Staff", path: "/admin/staff", icon: Users, section: "Management" },
   {
