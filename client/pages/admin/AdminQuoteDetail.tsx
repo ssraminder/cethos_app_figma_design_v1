@@ -655,92 +655,92 @@ export default function AdminQuoteDetail() {
     setError("");
 
     try {
-      const { data: quoteData, error: quoteError } = await supabase
-        .from("quotes")
-        .select(QUOTE_SELECT)
-        .eq("id", id)
-        .single();
+      // ── Phase 1: Fire all independent queries in parallel ──
+      const [
+        quoteResult,
+        filesResult,
+        normalizedResult,
+        analysisResult,
+        hitlResult,
+        messagesResult,
+        unreadResult,
+        adjustmentsResult,
+        quoteCertsResult,
+        certTypesResult,
+        taxRatesResult,
+        turnaroundResult,
+        deliveryResult,
+      ] = await Promise.all([
+        // 1. Main quote with joined relations
+        supabase.from("quotes").select(QUOTE_SELECT).eq("id", id).single(),
+        // 2. Raw quote_files for certifications and analysis lookups
+        supabase.from("quote_files").select("*").eq("quote_id", id).order("sort_order"),
+        // 3. Normalized files from both sources for display/download
+        fetchQuoteFiles(id!),
+        // 4. AI analysis results
+        supabase.from("ai_analysis_results").select("*").eq("quote_id", id),
+        // 5. HITL reviews
+        supabase.from("hitl_reviews").select(`
+          *,
+          assigned_to:staff_users!hitl_reviews_assigned_to_fkey(id, full_name)
+        `).eq("quote_id", id).order("created_at", { ascending: false }),
+        // 6. Conversation messages
+        supabase.from("conversation_messages").select(`
+          id, conversation_id, quote_id, order_id, sender_type,
+          sender_customer_id, sender_staff_id, message_type, message_text,
+          read_by_customer_at, read_by_staff_at, source, created_at,
+          sender_staff:staff_users!conversation_messages_sender_staff_id_fkey(full_name),
+          sender_customer:customers!conversation_messages_sender_customer_id_fkey(full_name)
+        `).eq("quote_id", id).order("created_at", { ascending: true }),
+        // 7. Unread message count
+        supabase.from("conversation_messages").select("id", { count: "exact", head: true })
+          .eq("quote_id", id).eq("sender_type", "customer").is("read_by_staff_at", null),
+        // 8. Quote adjustments
+        supabase.from("quote_adjustments").select("*").eq("quote_id", id).order("created_at"),
+        // 9. Quote-level certifications
+        supabase.from("quote_certifications").select(`
+          id, certification_type_id, price, quantity,
+          certification_types (name, code)
+        `).eq("quote_id", id),
+        // 10. Certification types (reference data)
+        supabase.from("certification_types").select("id, code, name, price")
+          .eq("is_active", true).order("sort_order"),
+        // 11. Tax rates (reference data)
+        supabase.from("tax_rates").select("id, region_code, region_name, tax_name, rate")
+          .eq("is_active", true).order("region_name"),
+        // 12. Turnaround options (reference data)
+        supabase.from("turnaround_options")
+          .select("id, code, name, multiplier, fee_type, fee_value, estimated_days, is_default, sort_order")
+          .eq("is_active", true).order("sort_order"),
+        // 13. Delivery options (reference data)
+        supabase.from("delivery_options")
+          .select("id, code, name, price, delivery_group, requires_address, is_always_selected")
+          .eq("is_active", true).order("sort_order"),
+      ]);
 
+      // ── Unpack Phase 1 results ──
+      const { data: quoteData, error: quoteError } = quoteResult;
       if (quoteError) throw quoteError;
       setQuote(quoteData as QuoteDetail);
 
-      // Fetch partner info if this is a partner-referred quote
-      if ((quoteData as any)?.partner_id) {
-        const { data: partnerData } = await supabase
-          .from("partners")
-          .select("name, customer_rate")
-          .eq("id", (quoteData as any).partner_id)
-          .single();
-        if (partnerData) {
-          setPartner(partnerData);
-        }
-      } else {
-        setPartner(null);
-      }
+      const filesData = filesResult.data || [];
+      setFiles(filesData);
 
-      // Fetch raw quote_files for certifications and analysis lookups
-      const { data: filesData } = await supabase
-        .from("quote_files")
-        .select("*")
-        .eq("quote_id", id)
-        .order("sort_order");
-      setFiles(filesData || []);
-
-      // Fetch normalized files from both sources for display/download
-      const normalized = await fetchQuoteFiles(id!);
+      const normalized = normalizedResult;
       setNormalizedFiles(normalized);
 
-      const { data: analysisData } = await supabase
-        .from("ai_analysis_results")
-        .select("*")
-        .eq("quote_id", id);
-      setAnalysis(analysisData || []);
-
-      const { data: hitlData } = await supabase
-        .from("hitl_reviews")
-        .select(
-          `
-          *,
-          assigned_to:staff_users!hitl_reviews_assigned_to_fkey(id, full_name)
-        `,
-        )
-        .eq("quote_id", id)
-        .order("created_at", { ascending: false });
+      setAnalysis(analysisResult.data || []);
 
       setHitlReviews(
-        (hitlData || []).map((review: any) => ({
+        (hitlResult.data || []).map((review: any) => ({
           ...review,
           assigned_to_id: review.assigned_to?.id || null,
           assigned_to_name: review.assigned_to?.full_name || "Unassigned",
         })),
       );
 
-      const { data: messagesData } = await supabase
-        .from("conversation_messages")
-        .select(
-          `
-          id,
-          conversation_id,
-          quote_id,
-          order_id,
-          sender_type,
-          sender_customer_id,
-          sender_staff_id,
-          message_type,
-          message_text,
-          read_by_customer_at,
-          read_by_staff_at,
-          source,
-          created_at,
-          sender_staff:staff_users!conversation_messages_sender_staff_id_fkey(full_name),
-          sender_customer:customers!conversation_messages_sender_customer_id_fkey(full_name)
-        `,
-        )
-        .eq("quote_id", id)
-        .order("created_at", { ascending: true });
-
       setMessages(
-        (messagesData || []).map((message: any) => ({
+        (messagesResult.data || []).map((message: any) => ({
           ...message,
           sender_name:
             message.sender_type === "staff"
@@ -751,39 +751,75 @@ export default function AdminQuoteDetail() {
         })),
       );
 
-      // Count unread messages (customer messages not yet read by staff)
-      const { count: unread } = await supabase
-        .from("conversation_messages")
-        .select("id", { count: "exact", head: true })
-        .eq("quote_id", id)
-        .eq("sender_type", "customer")
-        .is("read_by_staff_at", null);
+      setUnreadStaffCount(unreadResult.count || 0);
 
-      setUnreadStaffCount(unread || 0);
+      setAdjustments(adjustmentsResult.data || []);
 
-      // Fetch document certifications by quote_file_id (document_certifications doesn't have quote_id column)
-      const fileIds = (filesData || []).map((f: any) => f.id);
-      let certificationsData: any[] = [];
-      if (fileIds.length > 0) {
-        const { data } = await supabase
-          .from("document_certifications")
-          .select(
-            `
-            id,
-            quote_file_id,
-            certification_type_id,
-            is_primary,
-            price,
+      setQuoteCertifications(
+        (quoteCertsResult.data || []).map((qc: any) => ({
+          id: qc.id,
+          certification_type_id: qc.certification_type_id,
+          price: qc.price,
+          quantity: qc.quantity,
+          name: qc.certification_types?.name || "Unknown",
+          code: qc.certification_types?.code || "",
+        }))
+      );
+
+      setCertTypes(certTypesResult.data || []);
+      setTaxRates(taxRatesResult.data || []);
+      setTurnaroundOptions(turnaroundResult.data || []);
+
+      const deliveryData = deliveryResult.data || [];
+      setDeliveryOptionsList(deliveryData);
+
+      // ── Phase 2: Queries that depend on Phase 1 results (run in parallel) ──
+      const phase2Promises: Promise<any>[] = [];
+
+      // Partner info (depends on quoteData.partner_id)
+      const partnerPromise = (quoteData as any)?.partner_id
+        ? supabase.from("partners").select("name, customer_rate")
+            .eq("id", (quoteData as any).partner_id).single()
+        : Promise.resolve({ data: null });
+      phase2Promises.push(partnerPromise);
+
+      // Document certifications (depends on file IDs from filesData)
+      const fileIds = filesData.map((f: any) => f.id);
+      const certsPromise = fileIds.length > 0
+        ? supabase.from("document_certifications").select(`
+            id, quote_file_id, certification_type_id, is_primary, price,
             certification_types(id, code, name, price)
-          `,
-          )
-          .in("quote_file_id", fileIds);
-        certificationsData = data || [];
-      }
-      setCertifications(certificationsData);
+          `).in("quote_file_id", fileIds)
+        : Promise.resolve({ data: [] });
+      phase2Promises.push(certsPromise);
 
-      // Addresses are stored as JSONB columns in quotes table, not in a separate table
-      // Parse billing_address and shipping_address from quote data using normalizeAddress
+      // Order ID lookup (depends on quoteData.status)
+      const orderPromise = quoteData?.status === "converted"
+        ? supabase.from("orders").select("id").eq("quote_id", id).single()
+        : Promise.resolve({ data: null });
+      phase2Promises.push(orderPromise);
+
+      // Signed URLs for files (depends on normalized files)
+      const signedUrlsPromise = Promise.all(
+        normalized.map(async (file) => {
+          const { data: signedUrl } = await supabase.storage
+            .from(file.bucket)
+            .createSignedUrl(file.bucketPath, 3600);
+          return { ...file, downloadUrl: signedUrl?.signedUrl || null };
+        })
+      );
+      phase2Promises.push(signedUrlsPromise);
+
+      const [partnerResult, certsResult, orderResult, urlFiles] = await Promise.all(phase2Promises);
+
+      // ── Unpack Phase 2 results ──
+      setPartner(partnerResult.data || null);
+      setCertifications(certsResult.data || []);
+      setOrderId(orderResult.data?.id || null);
+      setFilesWithUrls(urlFiles);
+
+      // ── Pure CPU work from Phase 1 data (no async needed) ──
+      // Parse addresses from quote JSONB columns
       const addressesFromQuote: QuoteAddress[] = [];
       if (quoteData?.billing_address) {
         const norm = normalizeAddress(quoteData.billing_address);
@@ -825,77 +861,14 @@ export default function AdminQuoteDetail() {
       }
       setAddresses(addressesFromQuote);
 
-      // Fetch quote adjustments
-      const { data: adjustmentsData } = await supabase
-        .from("quote_adjustments")
-        .select("*")
-        .eq("quote_id", id)
-        .order("created_at");
-      setAdjustments(adjustmentsData || []);
-
-      // Fetch quote-level certifications
-      const { data: quoteCertsData } = await supabase
-        .from("quote_certifications")
-        .select(`
-          id,
-          certification_type_id,
-          price,
-          quantity,
-          certification_types (name, code)
-        `)
-        .eq("quote_id", id);
-
-      setQuoteCertifications(
-        (quoteCertsData || []).map((qc: any) => ({
-          id: qc.id,
-          certification_type_id: qc.certification_type_id,
-          price: qc.price,
-          quantity: qc.quantity,
-          name: qc.certification_types?.name || "Unknown",
-          code: qc.certification_types?.code || "",
-        }))
-      );
-
-      // Fetch certification types for dropdown
-      const { data: certTypesData } = await supabase
-        .from("certification_types")
-        .select("id, code, name, price")
-        .eq("is_active", true)
-        .order("sort_order");
-      setCertTypes(certTypesData || []);
-
-      // Fetch active tax rates
-      const { data: taxRatesData } = await supabase
-        .from("tax_rates")
-        .select("id, region_code, region_name, tax_name, rate")
-        .eq("is_active", true)
-        .order("region_name");
-      setTaxRates(taxRatesData || []);
-
-      // Fetch turnaround options from turnaround_options table
-      const { data: turnaroundData } = await supabase
-        .from("turnaround_options")
-        .select("id, code, name, multiplier, fee_type, fee_value, estimated_days, is_default, sort_order")
-        .eq("is_active", true)
-        .order("sort_order");
-      setTurnaroundOptions(turnaroundData || []);
-
-      // Fetch all active delivery options (digital + physical) for display and resolution
-      const { data: deliveryData } = await supabase
-        .from("delivery_options")
-        .select("id, code, name, price, delivery_group, requires_address, is_always_selected")
-        .eq("is_active", true)
-        .order("sort_order");
-      setDeliveryOptionsList(deliveryData || []);
-
-      // Initialize promised delivery date — auto-populate from system estimate if not set
+      // Initialize promised delivery date
       setPromisedDeliveryDate(quoteData?.promised_delivery_date || quoteData?.estimated_delivery_date || "");
 
       // Initialize delivery option
       if (quoteData?.physical_delivery_option_id) {
         setSelectedDeliveryOptionId(quoteData.physical_delivery_option_id);
       } else {
-        const defaultDelivery = (deliveryData || []).find((d: any) => d.is_always_selected);
+        const defaultDelivery = deliveryData.find((d: any) => d.is_always_selected);
         setSelectedDeliveryOptionId(defaultDelivery?.id || "");
       }
 
@@ -913,26 +886,6 @@ export default function AdminQuoteDetail() {
           });
         }
       }
-
-      if (quoteData?.status === "converted") {
-        const { data: orderData } = await supabase
-          .from("orders")
-          .select("id")
-          .eq("quote_id", id)
-          .single();
-        setOrderId(orderData?.id || null);
-      }
-
-      // Generate signed URLs for files
-      const urlFiles = await Promise.all(
-        normalized.map(async (file) => {
-          const { data: signedUrl } = await supabase.storage
-            .from(file.bucket)
-            .createSignedUrl(file.bucketPath, 3600);
-          return { ...file, downloadUrl: signedUrl?.signedUrl || null };
-        })
-      );
-      setFilesWithUrls(urlFiles);
     } catch (err: any) {
       console.error("Error fetching quote:", err);
       setError(err.message || "Failed to load quote");
