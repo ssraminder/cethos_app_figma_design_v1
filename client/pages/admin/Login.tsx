@@ -13,6 +13,7 @@ export default function AdminLogin() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [authCheckTimedOut, setAuthCheckTimedOut] = useState(false);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -21,37 +22,59 @@ export default function AdminLogin() {
     };
   }, []);
 
+  // Safety timeout: never show "Checking authentication..." for more than 5 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAuthCheckTimedOut(true);
+      setCheckingAuth(false);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Check if already logged in
   useEffect(() => {
     let mounted = true;
 
     const checkExistingSession = async () => {
-      // If auth context is still loading, wait
+      // If auth context is still loading, wait (timeout useEffect will bail us out)
       if (authLoading) {
         return;
       }
 
-      // If already authenticated with valid staff user, redirect
-      if (session && staffUser) {
-        console.log(
-          "AdminLogin: Already authenticated as staff, redirecting...",
-        );
-        navigate("/admin/dashboard", { replace: true }); // DEPRECATED: was /admin/hitl
-        return;
-      }
+      try {
+        // If already authenticated with valid staff user, redirect
+        if (session && staffUser) {
+          console.log(
+            "AdminLogin: Already authenticated as staff, redirecting...",
+          );
+          navigate("/admin/dashboard", { replace: true }); // DEPRECATED: was /admin/hitl
+          return;
+        }
 
-      // If authenticated but not staff, sign out
-      if (session && !staffUser) {
-        console.log("AdminLogin: Authenticated but not staff, signing out...");
-        await supabase.auth.signOut();
-        if (!mounted) return;
-        setError(
-          "Access denied. Your account is not authorized for admin access.",
-        );
-      }
+        // If authenticated but not staff, sign out
+        if (session && !staffUser) {
+          console.log("AdminLogin: Authenticated but not staff, signing out...");
+          await supabase.auth.signOut();
+          if (!mounted) return;
+          localStorage.removeItem("staffSession");
+          setError(
+            "Access denied. Your account is not authorized for admin access.",
+          );
+        }
 
-      if (!mounted) return;
-      setCheckingAuth(false);
+        // No session — clear any stale staffSession from localStorage
+        if (!session) {
+          localStorage.removeItem("staffSession");
+        }
+      } catch (err) {
+        console.error("Auth check failed:", err);
+        // Clear potentially stale session data
+        localStorage.removeItem("staffSession");
+      } finally {
+        if (mounted) {
+          setCheckingAuth(false);
+        }
+      }
     };
 
     checkExistingSession();
@@ -193,8 +216,8 @@ export default function AdminLogin() {
     }
   };
 
-  // Show loading spinner while checking auth state
-  if (authLoading || checkingAuth) {
+  // Show loading spinner while checking auth state (timeout overrides both)
+  if ((authLoading || checkingAuth) && !authCheckTimedOut) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
