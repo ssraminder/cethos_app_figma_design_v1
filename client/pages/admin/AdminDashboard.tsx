@@ -37,7 +37,7 @@ interface UpcomingDelivery {
   id: string;
   order_number: string;
   estimated_delivery_date: string;
-  customer: { first_name: string; last_name: string } | null;
+  customer: { full_name: string } | null;
 }
 
 interface RecentActivity {
@@ -188,7 +188,7 @@ export default function AdminDashboard() {
         .select(
           `
           id, order_number, estimated_delivery_date,
-          customer:customers!customer_id(first_name, last_name)
+          customer:customers!customer_id(full_name)
         `,
         )
         .not("status", "in", "(cancelled,completed,delivered)")
@@ -413,7 +413,7 @@ export default function AdminDashboard() {
                         {order.order_number}
                       </span>
                       <span className="text-gray-500 ml-2">
-                        {order.customer?.first_name} {order.customer?.last_name}
+                        {order.customer?.full_name}
                       </span>
                     </div>
                     <span
