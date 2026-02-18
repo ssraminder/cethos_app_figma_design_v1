@@ -72,6 +72,8 @@ import OCRWordCountPage from "./pages/admin/OCRWordCountPage";
 import OCRBatchResultsPage from "./pages/admin/OCRBatchResultsPage";
 import PreprocessOCRPage from "./pages/admin/PreprocessOCRPage";
 import AdminPartners from "./pages/admin/AdminPartners";
+import RecruitmentList from "./pages/admin/RecruitmentList";
+import RecruitmentDetail from "./pages/admin/RecruitmentDetail";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
 
@@ -307,6 +309,8 @@ const App = () => (
                     <Route path="ocr-word-count" element={<OCRWordCountPage />} />
                     <Route path="ocr-word-count/:batchId" element={<OCRBatchResultsPage />} />
                     <Route path="preprocess-ocr" element={<PreprocessOCRPage />} />
+                    <Route path="recruitment" element={<RecruitmentList />} />
+                    <Route path="recruitment/:id" element={<RecruitmentDetail />} />
 
                     {/* Admin Settings screens */}
                     <Route
