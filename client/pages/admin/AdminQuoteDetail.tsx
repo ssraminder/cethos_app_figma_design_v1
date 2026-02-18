@@ -49,6 +49,7 @@ import { toast } from "sonner";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 
 import OcrAnalysisModal from "../../components/admin/OcrAnalysisModal";
+import QuoteActivityFeed from "../../components/admin/QuoteActivityFeed";
 import { logQuoteActivity } from "../../utils/quoteActivityLog";
 
 interface QuoteDetail {
@@ -4389,103 +4390,8 @@ export default function AdminQuoteDetail() {
             </div>
           )}
 
-          <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-gray-400" />
-              Timeline
-            </h2>
-
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Created</span>
-                <span>
-                  {format(new Date(quote.created_at), "MMM d, yyyy h:mm a")}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Last Updated</span>
-                <span>
-                  {format(new Date(quote.updated_at), "MMM d, yyyy h:mm a")}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500">Expires</span>
-                <div className="flex items-center gap-2">
-                  <span>
-                    {quote.expires_at
-                      ? format(new Date(quote.expires_at), "MMM d, yyyy")
-                      : "—"}
-                  </span>
-                  {getExpiryBadge(quote.expires_at)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ============ ACTIVITY LOG ACCORDION ============ */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* Accordion Header — always visible */}
-            <button
-              onClick={toggleActivityLog}
-              className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-indigo-600" />
-                <h3 className="text-base font-semibold text-gray-900">Activity Log</h3>
-                {activityLogLoaded && activityLog.length > 0 && (
-                  <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
-                    {activityLog.length}
-                  </span>
-                )}
-              </div>
-              {activityLogOpen ? (
-                <ChevronUp className="w-5 h-5 text-gray-400" />
-              ) : (
-                <ChevronDown className="w-5 h-5 text-gray-400" />
-              )}
-            </button>
-
-            {/* Accordion Body — only rendered when open */}
-            {activityLogOpen && (
-              <div className="px-6 pb-4 border-t border-gray-100">
-                {activityLogLoading ? (
-                  <div className="flex items-center justify-center py-6">
-                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-                    <span className="ml-2 text-sm text-gray-500">Loading activity...</span>
-                  </div>
-                ) : activityLog.length === 0 ? (
-                  <div className="text-center py-6">
-                    <p className="text-sm text-gray-400">No activity recorded yet</p>
-                    <p className="text-xs text-gray-400 mt-1">Actions on this quote will appear here</p>
-                  </div>
-                ) : (
-                  <div className="mt-3 space-y-0">
-                    {activityLog.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="flex gap-3 py-2.5 border-b border-gray-50 last:border-0"
-                      >
-                        {/* Icon */}
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${getActivityIconStyle(entry.action_type)}`}>
-                          {getActivityIcon(entry.action_type)}
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-800">
-                            {formatActivityDescription(entry)}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {entry.staff?.full_name || "System"} · {formatRelativeTime(entry.created_at)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {/* ============ UNIFIED ACTIVITY FEED ============ */}
+          <QuoteActivityFeed quoteId={id!} quote={quote} supabase={supabase} />
 
           {/* Payment Info — visible only when quote is paid */}
           {['paid', 'converted'].includes(quote.status) && (
