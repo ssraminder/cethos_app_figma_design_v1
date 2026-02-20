@@ -475,6 +475,43 @@ serve(async (req: Request) => {
         },
       });
 
+      // Fetch ALL final_deliverable files for this order
+      let deliveryFilesWithUrls: { name: string; size: number; url: string }[] = [];
+      try {
+        const { data: finalCat } = await supabase
+          .from("file_categories")
+          .select("id")
+          .eq("slug", "final_deliverable")
+          .single();
+
+        if (finalCat) {
+          const { data: finalFiles } = await supabase
+            .from("quote_files")
+            .select("id, original_filename, storage_path, file_size, file_category_id")
+            .eq("quote_id", order.quote_id)
+            .is("deleted_at", null)
+            .order("created_at", { ascending: true });
+
+          const deliverableFiles = (finalFiles || []).filter(
+            (f: any) => f.file_category_id === finalCat.id,
+          );
+
+          for (const df of deliverableFiles) {
+            const { data: signedData } = await supabase.storage
+              .from("quote-files")
+              .createSignedUrl(df.storage_path, 7 * 24 * 60 * 60); // 7 days
+
+            deliveryFilesWithUrls.push({
+              name: df.original_filename,
+              size: df.file_size || 0,
+              url: signedData?.signedUrl || "",
+            });
+          }
+        }
+      } catch (fileErr) {
+        console.error("Error fetching delivery files:", fileErr);
+      }
+
       // Notify customer of delivery
       if (BREVO_API_KEY) {
         await notifyCustomerDelivery(
@@ -485,6 +522,7 @@ serve(async (req: Request) => {
           order.id,
           order.order_number,
           invoice?.invoice_number,
+          deliveryFilesWithUrls,
         );
       }
 
@@ -752,6 +790,7 @@ async function notifyCustomerDelivery(
   orderId: string,
   orderNumber: string,
   invoiceNumber?: string,
+  filesWithUrls?: { name: string; size: number; url: string }[],
 ) {
   try {
     const { data: customer } = await supabase
@@ -763,6 +802,40 @@ async function notifyCustomerDelivery(
     if (!customer?.email) return;
 
     const orderUrl = `${siteUrl}/dashboard/orders/${orderId}`;
+
+    // Build file download list HTML if we have files with URLs
+    let fileListHtml = "";
+    if (filesWithUrls && filesWithUrls.length > 0) {
+      const fileRows = filesWithUrls.map(f => {
+        const sizeStr = f.size > 0
+          ? f.size > 1024 * 1024
+            ? `${(f.size / 1024 / 1024).toFixed(1)} MB`
+            : `${(f.size / 1024).toFixed(0)} KB`
+          : "";
+        const downloadBtn = f.url
+          ? `<a href="${f.url}" style="display:inline-block;padding:6px 14px;background-color:#1e40af;color:#ffffff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500;">Download</a>`
+          : "";
+        return `<tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">
+            <span style="font-size:14px;color:#374151;font-weight:500;">${f.name}</span>
+            ${sizeStr ? `<span style="font-size:12px;color:#9ca3af;margin-left:8px;">(${sizeStr})</span>` : ""}
+          </td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">
+            ${downloadBtn}
+          </td>
+        </tr>`;
+      }).join("");
+
+      fileListHtml = `
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+          <tr style="background-color:#f9fafb;">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">File</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Action</th>
+          </tr>
+          ${fileRows}
+        </table>
+        <p style="margin:0 0 8px;color:#9ca3af;font-size:12px;">Download links expire in 7 days.</p>`;
+    }
 
     await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -796,6 +869,7 @@ async function notifyCustomerDelivery(
           <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">
             Your final translation for order <strong>${orderNumber}</strong> has been delivered!
           </p>
+          ${fileListHtml}
           ${invoiceNumber ? `<p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">Invoice <strong>${invoiceNumber}</strong> has been generated and is available in your dashboard.</p>` : ""}
           <table cellpadding="0" cellspacing="0" style="margin:24px 0;">
             <tr><td style="background-color:#1e40af;border-radius:8px;">
