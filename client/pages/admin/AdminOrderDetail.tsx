@@ -262,10 +262,17 @@ export default function AdminOrderDetail() {
   const [filesLoading, setFilesLoading] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadType, setUploadType] = useState<"draft" | "final" | "other">("draft");
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<{ file: File; status: "pending" | "uploading" | "done" | "failed"; error?: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("reference");
+  const [uploadStaffNotes, setUploadStaffNotes] = useState("");
   const [reviewHistory, setReviewHistory] = useState<any[]>([]);
+
+  // Admin approve/request changes on behalf of customer
+  const [showApproveOnBehalfModal, setShowApproveOnBehalfModal] = useState<string | null>(null);
+  const [showChangesOnBehalfModal, setShowChangesOnBehalfModal] = useState<string | null>(null);
+  const [onBehalfComment, setOnBehalfComment] = useState("");
+  const [processingOnBehalf, setProcessingOnBehalf] = useState(false);
 
   // File delete state
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
@@ -342,7 +349,7 @@ export default function AdminOrderDetail() {
     try {
       const { data, error } = await supabase
         .from("quote_files")
-        .select("id, original_filename, file_size, mime_type, storage_path, file_category_id, is_staff_created, review_status, review_version, created_at, file_categories!file_category_id(id, name, slug)")
+        .select("id, original_filename, file_size, mime_type, storage_path, file_category_id, is_staff_created, review_status, review_version, staff_notes, created_at, file_categories!file_category_id(id, name, slug)")
         .eq("quote_id", quoteId)
         .in("upload_status", ["uploaded", "completed"])
         .order("created_at", { ascending: true });
@@ -367,6 +374,7 @@ export default function AdminOrderDetail() {
           id, quote_id, original_filename, storage_path, file_size, mime_type,
           upload_status, is_staff_created, created_at,
           file_category_id, review_status, review_comment, reviewed_at, review_version,
+          staff_notes,
           file_categories ( id, name, slug )
         `)
         .eq("quote_id", order.quote_id)
@@ -427,123 +435,211 @@ export default function AdminOrderDetail() {
   };
 
   const handleFileUpload = async () => {
-    if (!uploadFile || !order?.quote_id || !currentStaff?.staffId) return;
+    if (uploadFiles.length === 0 || !order?.quote_id || !currentStaff?.staffId) return;
     setUploading(true);
 
-    try {
-      // Determine file category slug
-      let categorySlug = "reference";
-      if (uploadType === "draft") categorySlug = "draft_translation";
-      else if (uploadType === "final") categorySlug = "final_deliverable";
-      else categorySlug = uploadCategory;
+    // Determine file category slug
+    let categorySlug = "reference";
+    if (uploadType === "draft") categorySlug = "draft_translation";
+    else if (uploadType === "final") categorySlug = "final_deliverable";
+    else categorySlug = uploadCategory;
 
-      // Look up category ID
-      const { data: category } = await supabase
-        .from("file_categories")
-        .select("id")
-        .eq("slug", categorySlug)
-        .single();
+    let successCount = 0;
+    let failCount = 0;
+    const uploadedFileIds: string[] = [];
 
-      if (!category) {
-        toast.error(`Category "${categorySlug}" not found. Run the migration first.`);
-        return;
-      }
+    for (let i = 0; i < uploadFiles.length; i++) {
+      const item = uploadFiles[i];
+      if (item.status !== "pending") continue;
 
-      // Upload via existing upload-staff-quote-file edge function
-      const formData = new FormData();
-      formData.append("file", uploadFile);
-      formData.append("quoteId", order.quote_id);
-      formData.append("staffId", currentStaff.staffId);
-      formData.append("processWithAI", "false");
-      formData.append("file_category", categorySlug);
+      // Mark as uploading
+      setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "uploading" } : f));
 
-      const uploadResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: formData,
+      try {
+        const formData = new FormData();
+        formData.append("file", item.file);
+        formData.append("quoteId", order.quote_id);
+        formData.append("staffId", currentStaff.staffId);
+        formData.append("processWithAI", "false");
+        formData.append("file_category", categorySlug);
+        if (uploadStaffNotes.trim()) {
+          formData.append("staffNotes", uploadStaffNotes.trim());
         }
-      );
 
-      const uploadData = await uploadResponse.json();
-
-      if (!uploadResponse.ok || !uploadData.success) {
-        throw new Error(uploadData.error || "Upload failed");
-      }
-
-      // Handle both old (camelCase) and new (snake_case) response shapes
-      const fileId = uploadData.file_id || uploadData.fileId;
-      const storagePath = uploadData.storage_path || uploadData.storagePath;
-      const filename = uploadData.filename;
-
-      if (!fileId) {
-        throw new Error("Upload succeeded but no file ID returned");
-      }
-
-      console.log("File uploaded:", { fileId, filename, storagePath });
-
-      // Update the file category and review fields
-      const updateFields: any = {
-        file_category_id: category.id,
-      };
-
-      if (uploadType === "draft") {
-        const existingDrafts = orderFiles.filter(
-          f => f.category_slug === "draft_translation"
-        );
-        updateFields.review_version = existingDrafts.length + 1;
-      }
-
-      await supabase
-        .from("quote_files")
-        .update(updateFields)
-        .eq("id", fileId);
-
-      // If draft, submit for customer review
-      if (uploadType === "draft") {
-        const reviewResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+        const uploadResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
           {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
               Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             },
-            body: JSON.stringify({
-              file_id: fileId,
-              action: "submit_for_review",
-              actor_type: "staff",
-              actor_id: currentStaff.staffId,
-            }),
+            body: formData,
           }
         );
 
-        const reviewData = await reviewResponse.json();
-        if (!reviewData.success) {
-          console.error("Review submission failed:", reviewData.error);
-        }
-      }
+        const uploadData = await uploadResponse.json();
 
-      // Reset and refresh
+        if (!uploadResponse.ok || !uploadData.success) {
+          throw new Error(uploadData.error || "Upload failed");
+        }
+
+        const fileId = uploadData.file_id || uploadData.fileId;
+        if (!fileId) throw new Error("Upload succeeded but no file ID returned");
+
+        // Update the file category and review fields
+        const updateFields: any = {};
+
+        if (uploadType === "draft") {
+          const existingDrafts = orderFiles.filter(
+            f => f.category_slug === "draft_translation"
+          );
+          updateFields.review_version = existingDrafts.length + successCount + 1;
+        }
+
+        if (Object.keys(updateFields).length > 0) {
+          await supabase
+            .from("quote_files")
+            .update(updateFields)
+            .eq("id", fileId);
+        }
+
+        uploadedFileIds.push(fileId);
+
+        // If draft, submit for customer review
+        if (uploadType === "draft") {
+          const reviewResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                file_id: fileId,
+                action: "submit_for_review",
+                actor_type: "staff",
+                actor_id: currentStaff.staffId,
+              }),
+            }
+          );
+
+          const reviewData = await reviewResponse.json();
+          if (!reviewData.success) {
+            console.error("Review submission failed:", reviewData.error);
+          }
+        }
+
+        setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "done" } : f));
+        successCount++;
+      } catch (err: any) {
+        console.error("Upload error:", err);
+        setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "failed", error: err.message } : f));
+        failCount++;
+      }
+    }
+
+    setUploading(false);
+
+    if (failCount === 0) {
+      // All succeeded
       setShowUploadModal(false);
-      setUploadFile(null);
+      setUploadFiles([]);
+      setUploadStaffNotes("");
       setUploadType("draft");
       toast.success(
-        uploadType === "draft"
-          ? "Draft uploaded and customer notified"
-          : uploadType === "final"
-          ? "Final deliverable uploaded"
-          : "File uploaded"
+        successCount === 1
+          ? uploadType === "draft"
+            ? "Draft uploaded and customer notified"
+            : uploadType === "final"
+            ? "Final deliverable uploaded"
+            : "File uploaded"
+          : `${successCount} files uploaded successfully`
       );
-      await fetchOrderFiles();
-    } catch (err: any) {
-      console.error("Upload error:", err);
-      toast.error(err.message || "Upload failed. Please try again.");
+    } else if (successCount > 0) {
+      toast.warning(`${successCount} of ${successCount + failCount} files uploaded successfully`);
+    } else {
+      toast.error("All uploads failed");
+    }
+
+    await fetchOrderFiles();
+  };
+
+  const handleApproveOnBehalf = async (fileId: string) => {
+    if (!currentStaff?.staffId) return;
+    setProcessingOnBehalf(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            file_id: fileId,
+            action: "approve",
+            actor_type: "staff",
+            actor_id: currentStaff.staffId,
+            actingAsStaff: true,
+            staffId: currentStaff.staffId,
+          }),
+        }
+      );
+      const data = await response.json();
+      if (data.success) {
+        toast.success("Draft approved on behalf of customer");
+        setShowApproveOnBehalfModal(null);
+        await fetchOrderFiles();
+      } else {
+        toast.error(data.error || "Failed to approve");
+      }
+    } catch (err) {
+      console.error("Approve on behalf error:", err);
+      toast.error("Failed to approve draft");
     } finally {
-      setUploading(false);
+      setProcessingOnBehalf(false);
+    }
+  };
+
+  const handleRequestChangesOnBehalf = async (fileId: string) => {
+    if (!currentStaff?.staffId || !onBehalfComment.trim()) return;
+    setProcessingOnBehalf(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            file_id: fileId,
+            action: "request_changes",
+            actor_type: "staff",
+            actor_id: currentStaff.staffId,
+            comment: onBehalfComment.trim(),
+            actingAsStaff: true,
+            staffId: currentStaff.staffId,
+          }),
+        }
+      );
+      const data = await response.json();
+      if (data.success) {
+        toast.success("Change request submitted on behalf of customer");
+        setShowChangesOnBehalfModal(null);
+        setOnBehalfComment("");
+        await fetchOrderFiles();
+      } else {
+        toast.error(data.error || "Failed to submit changes");
+      }
+    } catch (err) {
+      console.error("Request changes on behalf error:", err);
+      toast.error("Failed to submit change request");
+    } finally {
+      setProcessingOnBehalf(false);
     }
   };
 
@@ -2023,6 +2119,9 @@ export default function AdminOrderDetail() {
                                 {file.review_comment && (
                                   <p className="text-xs text-red-600 mt-1 italic">"{file.review_comment}"</p>
                                 )}
+                                {file.staff_notes && (
+                                  <p className="text-xs text-blue-600 mt-1">Staff note: {file.staff_notes}</p>
+                                )}
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -2045,14 +2144,32 @@ export default function AdminOrderDetail() {
                                 <Download className="w-4 h-4" />
                               </button>
                               {file.review_status === "pending_review" && (
-                                <button
-                                  onClick={() => handleRemindCustomer(file.id)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-700 bg-amber-100 rounded-md hover:bg-amber-200 transition-colors"
-                                  title="Resend review notification"
-                                >
-                                  <Send className="w-3 h-3" />
-                                  Remind
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => setShowApproveOnBehalfModal(file.id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-md hover:bg-green-200 transition-colors"
+                                    title="Approve on behalf of customer"
+                                  >
+                                    <CheckCircle className="w-3 h-3" />
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => setShowChangesOnBehalfModal(file.id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-700 bg-amber-100 rounded-md hover:bg-amber-200 transition-colors"
+                                    title="Request changes on behalf of customer"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                    Changes
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemindCustomer(file.id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                                    title="Resend review notification"
+                                  >
+                                    <Send className="w-3 h-3" />
+                                    Remind
+                                  </button>
+                                </>
                               )}
                               {file.is_staff_created && (
                                 <button
@@ -3412,7 +3529,7 @@ export default function AdminOrderDetail() {
         >
           <div
             onClick={e => e.stopPropagation()}
-            className="bg-white rounded-2xl shadow-2xl w-[480px] max-w-[90vw] p-6"
+            className="bg-white rounded-2xl shadow-2xl w-[520px] max-w-[90vw] p-6"
           >
             <h3 className="text-lg font-bold text-gray-900 mb-1">
               {uploadType === "draft" ? "Upload Draft Translation" :
@@ -3420,44 +3537,102 @@ export default function AdminOrderDetail() {
             </h3>
             <p className="text-sm text-gray-500 mb-4">
               {uploadType === "draft"
-                ? "Upload a draft for customer review. Customer will be notified via email."
+                ? "Upload drafts for customer review. Customer will be notified via email."
                 : uploadType === "final"
-                ? "Upload the certified final translation for customer download."
-                : "Upload a supporting file for this order."}
+                ? "Upload the certified final translations for customer download."
+                : "Upload supporting files for this order."}
             </p>
 
             {/* File drop zone */}
-            <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 cursor-pointer mb-4 transition-colors hover:border-blue-400"
-              style={{ background: uploadFile ? "rgba(79,140,255,0.04)" : "#f9fafb" }}
+            <label
+              className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-6 cursor-pointer mb-4 transition-colors hover:border-blue-400"
+              style={{ background: uploadFiles.length > 0 ? "rgba(79,140,255,0.04)" : "#f9fafb" }}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault();
+                const droppedFiles = Array.from(e.dataTransfer.files);
+                setUploadFiles(prev => [
+                  ...prev,
+                  ...droppedFiles.map(f => ({ file: f, status: "pending" as const })),
+                ]);
+              }}
             >
               <input
                 type="file"
                 className="hidden"
                 accept=".pdf,.docx,.doc,.jpg,.jpeg,.png"
-                onChange={e => setUploadFile(e.target.files?.[0] || null)}
+                multiple
+                onChange={e => {
+                  const selected = Array.from(e.target.files || []);
+                  setUploadFiles(prev => [
+                    ...prev,
+                    ...selected.map(f => ({ file: f, status: "pending" as const })),
+                  ]);
+                  e.target.value = "";
+                }}
               />
-              {uploadFile ? (
-                <>
-                  <FileText className="w-8 h-8 text-blue-500 mb-2" />
-                  <p className="text-sm font-semibold text-gray-900">{uploadFile.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {(uploadFile.size / 1024 / 1024).toFixed(1)} MB — Click to change
-                  </p>
-                </>
-              ) : (
-                <>
-                  <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                  <p className="text-sm font-semibold text-gray-900">Drop file here or click to browse</p>
-                  <p className="text-xs text-gray-500 mt-1">PDF, DOCX, JPG, PNG — Max 10 MB</p>
-                </>
-              )}
+              <Upload className="w-8 h-8 text-gray-400 mb-2" />
+              <p className="text-sm font-semibold text-gray-900">Drop files here or click to browse</p>
+              <p className="text-xs text-gray-500 mt-1">PDF, DOCX, JPG, PNG — Max 10 MB each</p>
             </label>
+
+            {/* Selected file list */}
+            {uploadFiles.length > 0 && (
+              <div className="mb-4 max-h-[180px] overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                {uploadFiles.map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between px-3 py-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {item.status === "uploading" ? (
+                        <Loader2 className="w-4 h-4 text-blue-500 animate-spin flex-shrink-0" />
+                      ) : item.status === "done" ? (
+                        <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                      ) : item.status === "failed" ? (
+                        <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      )}
+                      <span className="text-sm text-gray-900 truncate">{item.file.name}</span>
+                      <span className="text-xs text-gray-400 flex-shrink-0">
+                        {(item.file.size / 1024 / 1024).toFixed(1)} MB
+                      </span>
+                    </div>
+                    {item.status === "pending" && !uploading && (
+                      <button
+                        onClick={() => setUploadFiles(prev => prev.filter((_, i) => i !== idx))}
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {item.status === "failed" && (
+                      <span className="text-xs text-red-500 flex-shrink-0">Failed</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Draft notification callout */}
             {uploadType === "draft" && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 mb-4">
                 <Zap className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>This will set the file to <strong>Pending Review</strong> and send the customer a notification email asking them to review the draft.</span>
+                <span>This will set each file to <strong>Pending Review</strong> and send the customer a notification email asking them to review the draft.</span>
+              </div>
+            )}
+
+            {/* Notes for customer */}
+            {(uploadType === "draft" || uploadType === "final") && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes for customer (optional)
+                </label>
+                <textarea
+                  value={uploadStaffNotes}
+                  onChange={e => setUploadStaffNotes(e.target.value)}
+                  placeholder="e.g. Please review page 3 carefully — we interpreted a smudged section."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  rows={2}
+                />
               </div>
             )}
 
@@ -3494,7 +3669,7 @@ export default function AdminOrderDetail() {
             {/* Actions */}
             <div className="flex gap-2 justify-end">
               <button
-                onClick={() => { setShowUploadModal(false); setUploadFile(null); }}
+                onClick={() => { setShowUploadModal(false); setUploadFiles([]); setUploadStaffNotes(""); }}
                 disabled={uploading}
                 className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50"
               >
@@ -3502,14 +3677,82 @@ export default function AdminOrderDetail() {
               </button>
               <button
                 onClick={handleFileUpload}
-                disabled={uploading || !uploadFile}
+                disabled={uploading || uploadFiles.length === 0}
                 className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 {uploading
                   ? "Uploading..."
                   : uploadType === "draft"
-                  ? "Upload & Notify Customer"
-                  : "Upload"}
+                  ? `Upload & Notify Customer${uploadFiles.length > 1 ? ` (${uploadFiles.length})` : ""}`
+                  : `Upload${uploadFiles.length > 1 ? ` (${uploadFiles.length})` : ""}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approve on Behalf Modal */}
+      {showApproveOnBehalfModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
+          onClick={() => !processingOnBehalf && setShowApproveOnBehalfModal(null)}
+        >
+          <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-[440px] max-w-[90vw] p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Approve on Behalf of Customer</h3>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 mb-4">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>Confirm you have received customer approval via phone or email before proceeding.</span>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowApproveOnBehalfModal(null)}
+                disabled={processingOnBehalf}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleApproveOnBehalf(showApproveOnBehalfModal)}
+                disabled={processingOnBehalf}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                {processingOnBehalf ? "Processing..." : "Confirm Approval"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Request Changes on Behalf Modal */}
+      {showChangesOnBehalfModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
+          onClick={() => !processingOnBehalf && setShowChangesOnBehalfModal(null)}
+        >
+          <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-[480px] max-w-[90vw] p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Request Changes on Behalf of Customer</h3>
+            <p className="text-sm text-gray-500 mb-4">Enter the customer's feedback or change request below.</p>
+            <textarea
+              value={onBehalfComment}
+              onChange={e => setOnBehalfComment(e.target.value)}
+              placeholder="Describe the changes requested by the customer..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none mb-4"
+              rows={4}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setShowChangesOnBehalfModal(null); setOnBehalfComment(""); }}
+                disabled={processingOnBehalf}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleRequestChangesOnBehalf(showChangesOnBehalfModal)}
+                disabled={processingOnBehalf || !onBehalfComment.trim()}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 transition-colors disabled:opacity-50"
+              >
+                {processingOnBehalf ? "Processing..." : "Submit Change Request"}
               </button>
             </div>
           </div>
