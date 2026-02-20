@@ -266,10 +266,16 @@ export default function AdminOrderDetail() {
   const [uploadFiles, setUploadFiles] = useState<{ file: File; status: "pending" | "uploading" | "done" | "failed"; error?: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [isDelivering, setIsDelivering] = useState(false);
-  const [isSendingDeliveryEmail, setIsSendingDeliveryEmail] = useState(false);
-  const [deliveryNotes, setDeliveryNotes] = useState("");
   const [uploadCategory, setUploadCategory] = useState("reference");
   const [uploadStaffNotes, setUploadStaffNotes] = useState("");
+
+  // File selection & send modal state
+  const [selectedDraftFileIds, setSelectedDraftFileIds] = useState<string[]>([]);
+  const [selectedFinalFileIds, setSelectedFinalFileIds] = useState<string[]>([]);
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [sendModalType, setSendModalType] = useState<"draft" | "final" | null>(null);
+  const [sendModalNotes, setSendModalNotes] = useState("");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [reviewHistory, setReviewHistory] = useState<any[]>([]);
 
   // Admin approve/request changes on behalf of customer
@@ -551,7 +557,7 @@ export default function AdminOrderDetail() {
                 action: "submit_for_review",
                 actor_type: "staff",
                 actor_id: currentStaff.staffId,
-                skip_notification: false,
+                skip_notification: true,
                 staff_notes: uploadStaffNotes.trim() || null,
               }),
             }
@@ -601,7 +607,7 @@ export default function AdminOrderDetail() {
           ? "Files uploaded successfully. Click Send Files to Customer to notify the customer."
           : successCount === 1
           ? uploadType === "draft"
-            ? "Draft uploaded and customer notified"
+            ? "Draft uploaded. Use Send Selected to notify customer."
             : "File uploaded"
           : `${successCount} files uploaded successfully`
       );
@@ -813,45 +819,82 @@ export default function AdminOrderDetail() {
     if (data) setActivityLog(data);
   };
 
-  const handleSendDeliveryEmail = async () => {
-    if (isSendingDeliveryEmail || !order || !currentStaff?.staffId) return;
-    setIsSendingDeliveryEmail(true);
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            action: "send_delivery_email",
-            order_id: order.id,
-            actor_type: "staff",
-            actor_id: currentStaff.staffId,
-            staff_notes: deliveryNotes.trim() || null,
-          }),
-        }
-      );
-      const data = await response.json();
+  const handleConfirmSend = async () => {
+    if (isSendingEmail || !order || !currentStaff?.staffId) return;
+    setIsSendingEmail(true);
 
-      if (!response.ok || !data?.success) {
-        toast.error(data?.error || "Failed to send delivery email");
-        return;
+    try {
+      if (sendModalType === "draft") {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              action: "submit_for_review",
+              file_ids: selectedDraftFileIds,
+              actor_type: "staff",
+              actor_id: currentStaff.staffId,
+              staff_notes: sendModalNotes.trim() || null,
+              skip_notification: false,
+            }),
+          }
+        );
+        const data = await response.json();
+
+        if (!response.ok || !data?.success) {
+          toast.error(data?.error || "Failed to send draft review email");
+          return;
+        }
+
+        toast.success(`Draft review email sent with ${data.files_in_email} file(s)`);
+        setSelectedDraftFileIds([]);
+        await fetchOrderFiles();
+
+      } else if (sendModalType === "final") {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              action: "send_delivery_email",
+              order_id: order.id,
+              file_ids: selectedFinalFileIds.length > 0
+                ? selectedFinalFileIds
+                : undefined,
+              actor_type: "staff",
+              actor_id: currentStaff.staffId,
+              staff_notes: sendModalNotes.trim() || null,
+            }),
+          }
+        );
+        const data = await response.json();
+
+        if (!response.ok || !data?.success) {
+          toast.error(data?.error || "Failed to send delivery email");
+          return;
+        }
+
+        toast.success(`Delivery email sent with ${data.files_sent} file(s)`);
+        setSelectedFinalFileIds([]);
+        await fetchOrderDetails();
       }
 
-      toast.success(
-        `Delivery email sent to customer with ${data.files_sent} file(s)`
-      );
+      setSendModalOpen(false);
+      setSendModalNotes("");
 
-      // Refresh order to update delivery_email_sent_at in UI
-      await fetchOrderDetails();
     } catch (err: any) {
-      toast.error("Failed to send delivery email");
-      console.error("handleSendDeliveryEmail error:", err);
+      toast.error("Failed to send email");
+      console.error("handleConfirmSend error:", err);
     } finally {
-      setIsSendingDeliveryEmail(false);
+      setIsSendingEmail(false);
     }
   };
 
@@ -2180,6 +2223,20 @@ export default function AdminOrderDetail() {
                         {drafts.map((file: any) => (
                           <div key={file.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
                             <div className="flex items-center gap-3 min-w-0">
+                              {file.review_status === "pending_review" && (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedDraftFileIds.includes(file.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedDraftFileIds(prev => [...prev, file.id]);
+                                    } else {
+                                      setSelectedDraftFileIds(prev => prev.filter(id => id !== file.id));
+                                    }
+                                  }}
+                                  className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 flex-shrink-0"
+                                />
+                              )}
                               <div className="w-9 h-9 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
                                 <FileText className="w-4 h-4 text-amber-700" />
                               </div>
@@ -2288,6 +2345,30 @@ export default function AdminOrderDetail() {
                   );
                 })()}
 
+                {/* Send Selected Drafts to Customer Button */}
+                {orderFiles.some(f => f.category_slug === "draft_translation" && f.is_staff_created && f.review_status === "pending_review") && (
+                  <div className="pt-1">
+                    <button
+                      onClick={() => {
+                        setSendModalType("draft");
+                        setSendModalNotes("");
+                        setSendModalOpen(true);
+                      }}
+                      disabled={selectedDraftFileIds.length === 0}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        selectedDraftFileIds.length === 0
+                          ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                          : "bg-teal-600 text-white hover:bg-teal-700"
+                      }`}
+                    >
+                      <Send className="w-4 h-4" />
+                      {selectedDraftFileIds.length > 0
+                        ? `Send ${selectedDraftFileIds.length} Selected to Customer`
+                        : "Send Selected to Customer"}
+                    </button>
+                  </div>
+                )}
+
                 {/* Final Deliverables */}
                 {(() => {
                   const finals = orderFiles.filter(f => f.category_slug === "final_deliverable" && f.is_staff_created);
@@ -2301,6 +2382,18 @@ export default function AdminOrderDetail() {
                         {finals.map((file: any) => (
                           <div key={file.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
                             <div className="flex items-center gap-3 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={selectedFinalFileIds.includes(file.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedFinalFileIds(prev => [...prev, file.id]);
+                                  } else {
+                                    setSelectedFinalFileIds(prev => prev.filter(id => id !== file.id));
+                                  }
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 flex-shrink-0"
+                              />
                               <div className="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
                                 <CheckCircle className="w-4 h-4 text-green-700" />
                               </div>
@@ -2366,34 +2459,27 @@ export default function AdminOrderDetail() {
 
                   return (
                     <div className="pt-2">
-                      <textarea
-                        placeholder="Optional note to customer (appears in email)"
-                        value={deliveryNotes}
-                        onChange={(e) => setDeliveryNotes(e.target.value)}
-                        rows={2}
-                        style={{ width: "100%", marginBottom: "8px" }}
-                        className="border border-gray-300 rounded-lg p-2 text-sm"
-                      />
                       <button
-                        onClick={handleSendDeliveryEmail}
-                        disabled={isSendingDeliveryEmail}
+                        onClick={() => {
+                          setSendModalType("final");
+                          setSendModalNotes("");
+                          setSendModalOpen(true);
+                        }}
+                        disabled={isSendingEmail}
                         className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                           alreadySent
                             ? "border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                             : "bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
                         }`}
                       >
-                        {isSendingDeliveryEmail ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Sending...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="w-4 h-4" />
-                            {alreadySent ? "Resend Files to Customer" : "Send Files to Customer"}
-                          </>
-                        )}
+                        <Send className="w-4 h-4" />
+                        {alreadySent
+                          ? selectedFinalFileIds.length > 0
+                            ? `Resend ${selectedFinalFileIds.length} Selected File(s) to Customer`
+                            : "Resend All Files to Customer"
+                          : selectedFinalFileIds.length > 0
+                            ? `Send ${selectedFinalFileIds.length} Selected File(s) to Customer`
+                            : "Send All Files to Customer"}
                       </button>
                       {alreadySent && order.delivery_email_sent_at && (
                         <p className="text-xs text-gray-400 text-center mt-1.5">
@@ -3673,6 +3759,90 @@ export default function AdminOrderDetail() {
         </div>
       )}
 
+      {/* Send Confirmation Modal */}
+      {sendModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
+          onClick={() => !isSendingEmail && (setSendModalOpen(false), setSendModalNotes(""))}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl w-[480px] max-w-[90vw] p-6"
+          >
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              {sendModalType === "draft"
+                ? "Send Draft Files to Customer"
+                : "Send Certified Translation to Customer"}
+            </h3>
+
+            {/* Files to send */}
+            <div className="mb-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">Files to send:</p>
+              <div className="bg-gray-50 rounded-lg border border-gray-200 p-3 max-h-[160px] overflow-y-auto">
+                {sendModalType === "draft" ? (
+                  <ul className="space-y-1">
+                    {selectedDraftFileIds.map(fid => {
+                      const file = orderFiles.find(f => f.id === fid);
+                      return (
+                        <li key={fid} className="flex items-center gap-2 text-sm text-gray-700">
+                          <FileText className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                          <span className="truncate">{file?.original_filename || fid}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : selectedFinalFileIds.length > 0 ? (
+                  <ul className="space-y-1">
+                    {selectedFinalFileIds.map(fid => {
+                      const file = orderFiles.find(f => f.id === fid);
+                      return (
+                        <li key={fid} className="flex items-center gap-2 text-sm text-gray-700">
+                          <FileText className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                          <span className="truncate">{file?.original_filename || fid}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-gray-500 italic">All final delivery files</p>
+                )}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="mb-4">
+              <textarea
+                placeholder="Add a note to the customer (optional)"
+                value={sendModalNotes}
+                onChange={(e) => setSendModalNotes(e.target.value)}
+                rows={3}
+                style={{ width: "100%", resize: "vertical" }}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-400 mt-1">This note will appear in the email.</p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { if (!isSendingEmail) { setSendModalOpen(false); setSendModalNotes(""); } }}
+                disabled={isSendingEmail}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSend}
+                disabled={isSendingEmail}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-teal-600 text-white hover:bg-teal-700 transition-colors disabled:opacity-50"
+              >
+                {isSendingEmail ? "Sending..." : "Send Email"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* File Upload Modal */}
       {showUploadModal && (
         <div
@@ -3768,23 +3938,7 @@ export default function AdminOrderDetail() {
             {uploadType === "draft" && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 mb-4">
                 <Zap className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>This will set each file to <strong>Pending Review</strong> and send the customer a notification email asking them to review the draft.</span>
-              </div>
-            )}
-
-            {/* Notes for customer */}
-            {(uploadType === "draft" || uploadType === "final") && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Notes for customer (optional)
-                </label>
-                <textarea
-                  value={uploadStaffNotes}
-                  onChange={e => setUploadStaffNotes(e.target.value)}
-                  placeholder="e.g. Please review page 3 carefully — we interpreted a smudged section."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  rows={2}
-                />
+                <span>This will set each file to <strong>Pending Review</strong>. Use the "Send Selected to Customer" button to notify the customer via email.</span>
               </div>
             )}
 
@@ -3837,7 +3991,7 @@ export default function AdminOrderDetail() {
                   : uploading
                   ? "Uploading..."
                   : uploadType === "draft"
-                  ? `Upload & Notify Customer${uploadFiles.length > 1 ? ` (${uploadFiles.length})` : ""}`
+                  ? `Upload Draft${uploadFiles.length > 1 ? ` (${uploadFiles.length})` : ""}`
                   : `Upload${uploadFiles.length > 1 ? ` (${uploadFiles.length})` : ""}`}
               </button>
             </div>
