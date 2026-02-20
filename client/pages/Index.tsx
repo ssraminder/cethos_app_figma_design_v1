@@ -8,6 +8,44 @@ import Step3Contact from "@/components/quote/Step3Contact";
 import Step4ReviewCheckout from "@/components/quote/Step4ReviewCheckout";
 import { Loader2, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 
+async function validateQuoteToken(
+  quoteId: string,
+  token: string
+): Promise<boolean> {
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+
+  try {
+    // Legacy tokens (issued before quote-scoped tokens) have quote_id = NULL.
+    // Accept both: scoped tokens (quote_id matches) and legacy tokens (quote_id IS NULL).
+    // Legacy tokens will naturally expire within 30 days.
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/customer_magic_links` +
+      `?token=eq.${encodeURIComponent(token)}` +
+      `&purpose=eq.quote_access` +
+      `&is_valid=eq.true` +
+      `&expires_at=gt.${new Date().toISOString()}` +
+      `&or=(quote_id.eq.${encodeURIComponent(quoteId)},quote_id.is.null)` +
+      `&select=id` +
+      `&limit=1`,
+      {
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      }
+    );
+
+    if (!response.ok) return false;
+    const rows = await response.json();
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (_e) {
+    return false;
+  }
+}
+
 export default function QuoteFlow() {
   const { state, updateState, resetQuote } = useQuote();
 
@@ -17,6 +55,7 @@ export default function QuoteFlow() {
     return !!(params.get("id") || params.get("quote_id"));
   });
   const [hydrationError, setHydrationError] = useState<string | null>(null);
+  const [tokenInvalid, setTokenInvalid] = useState(false);
 
   // ── Partner ?ref= capture on mount ──────────────────────────────────────
   useEffect(() => {
@@ -112,6 +151,16 @@ export default function QuoteFlow() {
   ): Promise<void> {
     setIsHydrating(true);
     setHydrationError(null);
+
+    // Validate token when URL params are present
+    if (quoteId && token) {
+      const isValid = await validateQuoteToken(quoteId, token);
+      if (!isValid) {
+        setTokenInvalid(true);
+        setIsHydrating(false);
+        return;
+      }
+    }
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -364,6 +413,39 @@ export default function QuoteFlow() {
           >
             Start New Quote
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (tokenInvalid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="max-w-md w-full bg-white rounded-xl shadow-sm border
+                        border-gray-200 p-8 text-center">
+          <div className="w-14 h-14 bg-red-100 rounded-full flex items-center
+                          justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24"
+                 stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94
+                       a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            This link has expired
+          </h2>
+          <p className="text-gray-500 text-sm mb-6">
+            Quote links expire after 30 days for security reasons. Please contact
+            us to receive a new link.
+          </p>
+          <a
+            href="mailto:info@cethos.com"
+            className="inline-block px-5 py-2.5 bg-teal-600 text-white text-sm
+                       font-medium rounded-lg hover:bg-teal-700"
+          >
+            Contact Support
+          </a>
         </div>
       </div>
     );
