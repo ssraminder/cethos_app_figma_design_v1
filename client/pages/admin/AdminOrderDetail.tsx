@@ -582,8 +582,8 @@ export default function AdminOrderDetail() {
             action: "approve",
             actor_type: "staff",
             actor_id: currentStaff.staffId,
-            actingAsStaff: true,
-            staffId: currentStaff.staffId,
+            acting_on_behalf: true,
+staff_id: staffId,
           }),
         }
       );
