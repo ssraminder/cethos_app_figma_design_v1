@@ -267,6 +267,7 @@ export default function AdminOrderDetail() {
   const [uploading, setUploading] = useState(false);
   const [isDelivering, setIsDelivering] = useState(false);
   const [isSendingDeliveryEmail, setIsSendingDeliveryEmail] = useState(false);
+  const [deliveryNotes, setDeliveryNotes] = useState("");
   const [uploadCategory, setUploadCategory] = useState("reference");
   const [uploadStaffNotes, setUploadStaffNotes] = useState("");
   const [reviewHistory, setReviewHistory] = useState<any[]>([]);
@@ -829,7 +830,7 @@ export default function AdminOrderDetail() {
             order_id: order.id,
             actor_type: "staff",
             actor_id: currentStaff.staffId,
-            staff_notes: null,
+            staff_notes: deliveryNotes.trim() || null,
           }),
         }
       );
@@ -2365,6 +2366,14 @@ export default function AdminOrderDetail() {
 
                   return (
                     <div className="pt-2">
+                      <textarea
+                        placeholder="Optional note to customer (appears in email)"
+                        value={deliveryNotes}
+                        onChange={(e) => setDeliveryNotes(e.target.value)}
+                        rows={2}
+                        style={{ width: "100%", marginBottom: "8px" }}
+                        className="border border-gray-300 rounded-lg p-2 text-sm"
+                      />
                       <button
                         onClick={handleSendDeliveryEmail}
                         disabled={isSendingDeliveryEmail}
