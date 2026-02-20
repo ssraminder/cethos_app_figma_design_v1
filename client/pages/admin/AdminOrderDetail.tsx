@@ -128,6 +128,10 @@ interface InvoiceRecord {
   status: string;
   paid_at: string | null;
   created_at: string;
+  quotes: {
+    payment_method_id: string | null;
+    payment_methods: { name: string; code: string } | null;
+  } | null;
 }
 
 interface PaymentAllocation {
@@ -969,7 +973,14 @@ export default function AdminOrderDetail() {
       // Payment history: invoices → allocations → customer_payments, plus payment_requests
       const { data: invoiceData } = await supabase
         .from("customer_invoices")
-        .select("id, invoice_number, total_amount, amount_paid, balance_due, status, paid_at, created_at")
+        .select(`
+          id, invoice_number, total_amount, amount_paid,
+          balance_due, status, paid_at, created_at,
+          quotes (
+            payment_method_id,
+            payment_methods ( name, code )
+          )
+        `)
         .eq("order_id", orderData.id)
         .order("created_at", { ascending: false });
       setInvoices(invoiceData || []);
@@ -2685,6 +2696,11 @@ export default function AdminOrderDetail() {
                             <p>Total: ${inv.total_amount.toFixed(2)}</p>
                             <p>Paid: ${inv.amount_paid.toFixed(2)}</p>
                             {inv.balance_due > 0 && <p>Balance: ${inv.balance_due.toFixed(2)}</p>}
+                            <p>Payment method: {
+                              inv.quotes?.payment_methods?.name
+                              || (inv.quotes?.payment_methods?.code && /stripe|card/i.test(inv.quotes.payment_methods.code) ? "Stripe / Credit Card" : null)
+                              || "Online Payment"
+                            }</p>
                           </div>
                           <p className="text-xs text-gray-400 mt-1">
                             {format(new Date(inv.created_at), "MMM d, yyyy")}
