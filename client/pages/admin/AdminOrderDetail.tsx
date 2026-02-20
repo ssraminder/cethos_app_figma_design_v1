@@ -562,7 +562,6 @@ export default function AdminOrderDetail() {
               }),
             }
           );
-          console.log("Customer notification sent for final delivery");
         }
       } catch (err) {
         console.warn("Notification call failed (non-blocking)", err);
