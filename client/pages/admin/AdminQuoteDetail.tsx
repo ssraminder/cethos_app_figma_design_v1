@@ -112,6 +112,9 @@ interface QuoteDetail {
     phone?: string;
     hours?: string;
   } | null;
+  payment_link?: string | null;
+  payment_link_sent_at?: string | null;
+  payment_link_expires_at?: string | null;
   payment_method?: { id: string; name: string; code: string } | null;
   payment_confirmed_by?: { id: string; full_name: string } | null;
   payment_confirmed_at?: string | null;
@@ -551,6 +554,12 @@ export default function AdminQuoteDetail() {
   const [filesWithUrls, setFilesWithUrls] = useState<(NormalizedFile & { downloadUrl: string | null })[]>([]);
   const [partner, setPartner] = useState<{ name: string; customer_rate: number } | null>(null);
 
+  // Customer Links state
+  const [quoteReviewToken, setQuoteReviewToken] = useState<string | null>(null);
+  const [quoteReviewTokenExpiry, setQuoteReviewTokenExpiry] = useState<string | null>(null);
+  const [copiedQuoteLink, setCopiedQuoteLink] = useState(false);
+  const [copiedPaymentLink, setCopiedPaymentLink] = useState(false);
+
   const fetchQuoteFiles = async (quoteId: string): Promise<NormalizedFile[]> => {
     // Try quote_files first (customer upload route)
     const { data: quoteFiles, error: qfError } = await supabase
@@ -625,6 +634,31 @@ export default function AdminQuoteDetail() {
     };
     checkBatch();
   }, [id]);
+
+  // Fetch magic link token for customer quote access link
+  useEffect(() => {
+    if (!quote?.customer_id || !quote?.id) return;
+
+    const fetchQuoteToken = async () => {
+      const { data } = await supabase
+        .from('customer_magic_links')
+        .select('token, expires_at')
+        .eq('customer_id', quote.customer_id)
+        .eq('quote_id', quote.id)
+        .eq('purpose', 'quote_access')
+        .eq('is_valid', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (data) {
+        setQuoteReviewToken(data.token);
+        setQuoteReviewTokenExpiry(data.expires_at);
+      }
+    };
+
+    fetchQuoteToken();
+  }, [quote?.customer_id, quote?.id]);
 
   const QUOTE_SELECT = `
     *,
@@ -1058,6 +1092,23 @@ export default function AdminQuoteDetail() {
         Math.min(messageInputRef.current.scrollHeight, 120) + "px";
     }
   }, [newMessage]);
+
+  // Copy quote review link to clipboard
+  const handleCopyQuoteLink = () => {
+    if (!quoteReviewToken || !quote?.id) return;
+    const link = `https://portal.cethos.com/quote?quote_id=${quote.id}&token=${quoteReviewToken}`;
+    navigator.clipboard.writeText(link);
+    setCopiedQuoteLink(true);
+    setTimeout(() => setCopiedQuoteLink(false), 2000);
+  };
+
+  // Copy payment link to clipboard
+  const handleCopyPaymentLink = () => {
+    if (!quote?.payment_link) return;
+    navigator.clipboard.writeText(quote.payment_link);
+    setCopiedPaymentLink(true);
+    setTimeout(() => setCopiedPaymentLink(false), 2000);
+  };
 
   // Send message handler for inline chat (with attachment support)
   const handleSendMessage = async () => {
@@ -2717,6 +2768,96 @@ export default function AdminQuoteDetail() {
             ) : (
               <p className="text-gray-500">No customer information</p>
             )}
+          </div>
+
+          {/* Customer Links Card */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+              Customer Links
+            </h3>
+
+            {/* Quote Review Link */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500">Quote Review Link</span>
+                {quoteReviewTokenExpiry && (
+                  <span className="text-xs text-gray-400">
+                    Expires {new Date(quoteReviewTokenExpiry).toLocaleDateString('en-CA', {
+                      month: 'short', day: 'numeric', year: 'numeric'
+                    })}
+                  </span>
+                )}
+              </div>
+
+              {quoteReviewToken ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 overflow-hidden">
+                    <p className="text-xs text-gray-600 truncate font-mono">
+                      {`https://portal.cethos.com/quote?quote_id=${quote?.id}&token=${quoteReviewToken}`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCopyQuoteLink}
+                    className={`flex-shrink-0 px-3 py-2 rounded text-xs font-medium transition-colors ${
+                      copiedQuoteLink
+                        ? 'bg-green-100 text-green-700 border border-green-200'
+                        : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    {copiedQuoteLink ? 'Copied \u2713' : 'Copy'}
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                  <p className="text-xs text-gray-400 italic">
+                    No link sent yet — use "Send Quote Link" to generate one
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-gray-100" />
+
+            {/* Payment Link */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500">Payment Link (Stripe)</span>
+                {quote?.payment_link_sent_at && (
+                  <span className="text-xs text-gray-400">
+                    Sent {new Date(quote.payment_link_sent_at).toLocaleDateString('en-CA', {
+                      month: 'short', day: 'numeric', year: 'numeric'
+                    })}
+                  </span>
+                )}
+              </div>
+
+              {quote?.payment_link ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 overflow-hidden">
+                    <p className="text-xs text-gray-600 truncate font-mono">
+                      {quote.payment_link}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCopyPaymentLink}
+                    className={`flex-shrink-0 px-3 py-2 rounded text-xs font-medium transition-colors ${
+                      copiedPaymentLink
+                        ? 'bg-green-100 text-green-700 border border-green-200'
+                        : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    {copiedPaymentLink ? 'Copied \u2713' : 'Copy'}
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                  <p className="text-xs text-gray-400 italic">
+                    No payment link yet
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="bg-white rounded-lg border p-6">
