@@ -3441,29 +3441,98 @@ export default function AdminOrderDetail() {
                 });
 
                 // Activity log entries
+                const activityLabelMap: Record<string, string> = {
+                  deliver_final: "Final files uploaded",
+                  send_delivery_email: "Delivery email sent to customer",
+                  send_message: "Message sent to customer",
+                  payment_recorded: "Payment recorded",
+                  send_quote_link_email: "Quote link sent to customer",
+                  send_payment_email: "Payment link sent to customer",
+                  submit_for_review: "Draft sent for customer review",
+                  draft_approved_on_behalf: "Draft approved by customer",
+                  changes_requested_on_behalf: "Changes requested by customer",
+                  order_status_changed: "Order status changed",
+                  order_work_status_changed: "Work status changed",
+                  order_payment_recorded: "Payment recorded",
+                  delivery_date_updated: "Delivery date updated",
+                  file_uploaded: "File uploaded",
+                };
+
                 activityLog.forEach((entry) => {
-                  let label = (entry.activity_type || "unknown")
-                    .replace(/_/g, " ")
-                    .replace(/\b\w/g, (c: string) => c.toUpperCase());
+                  const actionType = entry.activity_type || entry.action_type || "";
+                  const label = activityLabelMap[actionType]
+                    || actionType.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+                    || "Activity";
 
-                  let detailsStr = entry.details
-                    ? JSON.stringify(entry.details, null, 2).substring(0, 200)
-                    : undefined;
+                  let detailsStr: string | undefined;
+                  const d = entry.details || {};
 
-                  if (entry.activity_type === "send_delivery_email") {
-                    label = "Delivery email sent to customer";
-                    const d = entry.details || {};
-                    const parts: string[] = [];
-                    if (d.files_sent) parts.push(`Files sent: ${d.files_sent}`);
-                    if (d.customer_email) parts.push(`Sent to: ${d.customer_email}`);
-                    detailsStr = parts.length > 0 ? parts.join("\n") : detailsStr;
+                  switch (actionType) {
+                    case "deliver_final": {
+                      const parts: string[] = [];
+                      if (d.order_number) parts.push(`Order: ${d.order_number}`);
+                      if (d.invoice_number) parts.push(`Invoice: ${d.invoice_number}`);
+                      detailsStr = parts.length > 0 ? parts.join("\n") : undefined;
+                      break;
+                    }
+                    case "send_delivery_email": {
+                      const parts: string[] = [];
+                      if (d.files_sent) parts.push(`Files sent: ${d.files_sent}`);
+                      if (d.customer_email) parts.push(`Sent to: ${d.customer_email}`);
+                      detailsStr = parts.length > 0 ? parts.join("\n") : undefined;
+                      break;
+                    }
+                    case "send_message": {
+                      if (d.message_preview) {
+                        const preview = String(d.message_preview);
+                        detailsStr = preview.length > 80 ? preview.substring(0, 80) + "..." : preview;
+                      }
+                      break;
+                    }
+                    case "payment_recorded": {
+                      const parts: string[] = [];
+                      if (d.order_number) parts.push(`Order: ${d.order_number}`);
+                      if (d.amount_paid != null) parts.push(`Amount paid: $${d.amount_paid}`);
+                      if (d.balance_due != null) parts.push(`Balance due: $${d.balance_due}`);
+                      detailsStr = parts.length > 0 ? parts.join("\n") : undefined;
+                      break;
+                    }
+                    case "send_quote_link_email":
+                    case "send_payment_email": {
+                      const parts: string[] = [];
+                      if (d.quote_number) parts.push(`Quote: ${d.quote_number}`);
+                      if (d.customer_email) parts.push(`Sent to: ${d.customer_email}`);
+                      detailsStr = parts.length > 0 ? parts.join("\n") : undefined;
+                      break;
+                    }
+                    case "submit_for_review": {
+                      if (d.files_in_email) {
+                        detailsStr = `Files in email: ${d.files_in_email}`;
+                      }
+                      break;
+                    }
+                    case "draft_approved_on_behalf":
+                    case "changes_requested_on_behalf":
+                      break;
+                    default: {
+                      if (entry.details && typeof entry.details === "object") {
+                        const parts: string[] = [];
+                        for (const [key, val] of Object.entries(entry.details)) {
+                          if (key.endsWith("_id") || key.endsWith("_ids")) continue;
+                          if (val == null || typeof val === "boolean" || val === "") continue;
+                          parts.push(`${key.replace(/_/g, " ")}: ${val}`);
+                        }
+                        detailsStr = parts.length > 0 ? parts.join("\n") : undefined;
+                      }
+                      break;
+                    }
                   }
 
                   entries.push({
                     id: `activity-${entry.id}`,
                     date: new Date(entry.created_at),
                     label,
-                    detail: entry.staff_users?.full_name || "System",
+                    detail: entry.staff_users?.full_name || "Staff",
                     detailsJson: detailsStr,
                     type: "activity",
                   });
