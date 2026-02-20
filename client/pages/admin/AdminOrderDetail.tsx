@@ -465,6 +465,9 @@ export default function AdminOrderDetail() {
         if (uploadStaffNotes.trim()) {
           formData.append("staffNotes", uploadStaffNotes.trim());
         }
+        // skipNotification: uploads should not trigger individual emails;
+        // one consolidated notification is sent after all uploads complete
+        formData.append("skipNotification", "true");
 
         const uploadResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`,
@@ -505,9 +508,22 @@ export default function AdminOrderDetail() {
 
         uploadedFileIds.push(fileId);
 
-        // If draft, submit for customer review
+        setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "done" } : f));
+        successCount++;
+      } catch (err: any) {
+        console.error("Upload error:", err);
+        setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "failed", error: err.message } : f));
+        failCount++;
+      }
+    }
+
+    // Send ONE consolidated notification after all uploads complete
+    if (uploadedFileIds.length > 0) {
+      const lastFileId = uploadedFileIds[uploadedFileIds.length - 1];
+      try {
         if (uploadType === "draft") {
-          const reviewResponse = await fetch(
+          // Draft: submit for review using the last uploaded file_id
+          await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
             {
               method: "POST",
@@ -516,26 +532,40 @@ export default function AdminOrderDetail() {
                 Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
               },
               body: JSON.stringify({
-                file_id: fileId,
+                file_id: lastFileId,
                 action: "submit_for_review",
                 actor_type: "staff",
                 actor_id: currentStaff.staffId,
+                skip_notification: false,
+                staff_notes: uploadStaffNotes.trim() || null,
               }),
             }
           );
-
-          const reviewData = await reviewResponse.json();
-          if (!reviewData.success) {
-            console.error("Review submission failed:", reviewData.error);
-          }
+          console.log("Customer notification sent for all draft files");
+        } else if (uploadType === "final") {
+          // Final delivery: notify using the order_id
+          await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                order_id: order.id,
+                action: "deliver_final",
+                actor_type: "staff",
+                actor_id: currentStaff.staffId,
+                skip_notification: false,
+                staff_notes: uploadStaffNotes.trim() || null,
+              }),
+            }
+          );
+          console.log("Customer notification sent for final delivery");
         }
-
-        setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "done" } : f));
-        successCount++;
-      } catch (err: any) {
-        console.error("Upload error:", err);
-        setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "failed", error: err.message } : f));
-        failCount++;
+      } catch (err) {
+        console.warn("Notification call failed (non-blocking)", err);
       }
     }
 
