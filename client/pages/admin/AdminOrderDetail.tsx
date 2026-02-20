@@ -613,7 +613,7 @@ export default function AdminOrderDetail() {
             actor_type: "staff",
             actor_id: currentStaff.staffId,
             acting_on_behalf: true,
-staff_id: staffId,
+            staff_id: currentStaff.staffId,
           }),
         }
       );
@@ -651,8 +651,8 @@ staff_id: staffId,
             actor_type: "staff",
             actor_id: currentStaff.staffId,
             comment: onBehalfComment.trim(),
-            actingAsStaff: true,
-            staffId: currentStaff.staffId,
+            acting_on_behalf: true,
+            staff_id: currentStaff.staffId,
           }),
         }
       );
