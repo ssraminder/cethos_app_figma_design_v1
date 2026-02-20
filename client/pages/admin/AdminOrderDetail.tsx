@@ -116,6 +116,7 @@ interface OrderDetail {
   cancelled_at?: string;
   balance_payment_link?: string;
   balance_payment_requested_at?: string;
+  delivery_email_sent_at?: string;
 }
 
 interface Payment {
@@ -265,6 +266,7 @@ export default function AdminOrderDetail() {
   const [uploadFiles, setUploadFiles] = useState<{ file: File; status: "pending" | "uploading" | "done" | "failed"; error?: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [isDelivering, setIsDelivering] = useState(false);
+  const [isSendingDeliveryEmail, setIsSendingDeliveryEmail] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("reference");
   const [uploadStaffNotes, setUploadStaffNotes] = useState("");
   const [reviewHistory, setReviewHistory] = useState<any[]>([]);
@@ -571,7 +573,7 @@ export default function AdminOrderDetail() {
                   action: "deliver_final",
                   actor_type: "staff",
                   actor_id: currentStaff.staffId,
-                  skip_notification: false,
+                  skip_notification: true,
                   staff_notes: uploadStaffNotes.trim() || null,
                 }),
               }
@@ -594,11 +596,11 @@ export default function AdminOrderDetail() {
       setUploadStaffNotes("");
       setUploadType("draft");
       toast.success(
-        successCount === 1
+        uploadType === "final"
+          ? "Files uploaded successfully. Click Send Files to Customer to notify the customer."
+          : successCount === 1
           ? uploadType === "draft"
             ? "Draft uploaded and customer notified"
-            : uploadType === "final"
-            ? "Final deliverable uploaded"
             : "File uploaded"
           : `${successCount} files uploaded successfully`
       );
@@ -808,6 +810,48 @@ export default function AdminOrderDetail() {
       .limit(50);
 
     if (data) setActivityLog(data);
+  };
+
+  const handleSendDeliveryEmail = async () => {
+    if (isSendingDeliveryEmail || !order || !currentStaff?.staffId) return;
+    setIsSendingDeliveryEmail(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            action: "send_delivery_email",
+            order_id: order.id,
+            actor_type: "staff",
+            actor_id: currentStaff.staffId,
+            staff_notes: null,
+          }),
+        }
+      );
+      const data = await response.json();
+
+      if (!response.ok || !data?.success) {
+        toast.error(data?.error || "Failed to send delivery email");
+        return;
+      }
+
+      toast.success(
+        `Delivery email sent to customer with ${data.files_sent} file(s)`
+      );
+
+      // Refresh order to update delivery_email_sent_at in UI
+      await fetchOrderDetails();
+    } catch (err: any) {
+      toast.error("Failed to send delivery email");
+      console.error("handleSendDeliveryEmail error:", err);
+    } finally {
+      setIsSendingDeliveryEmail(false);
+    }
   };
 
   const fetchOrderDetails = async () => {
@@ -2311,6 +2355,46 @@ export default function AdminOrderDetail() {
                   );
                 })()}
 
+                {/* Send Files to Customer Button */}
+                {(() => {
+                  const hasFinals = orderFiles.some(f => f.category_slug === "final_deliverable");
+                  const showSendButton = hasFinals && ["delivered", "invoiced", "completed"].includes(order.status);
+                  if (!showSendButton) return null;
+
+                  const alreadySent = !!order.delivery_email_sent_at;
+
+                  return (
+                    <div className="pt-2">
+                      <button
+                        onClick={handleSendDeliveryEmail}
+                        disabled={isSendingDeliveryEmail}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                          alreadySent
+                            ? "border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            : "bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+                        }`}
+                      >
+                        {isSendingDeliveryEmail ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4" />
+                            {alreadySent ? "Resend Files to Customer" : "Send Files to Customer"}
+                          </>
+                        )}
+                      </button>
+                      {alreadySent && order.delivery_email_sent_at && (
+                        <p className="text-xs text-gray-400 text-center mt-1.5">
+                          Last sent: {format(new Date(order.delivery_email_sent_at), "MMM d, yyyy h:mm a")}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Staff Files (other) */}
                 {(() => {
                   const staffFiles = orderFiles.filter(
@@ -3282,16 +3366,29 @@ export default function AdminOrderDetail() {
 
                 // Activity log entries
                 activityLog.forEach((entry) => {
+                  let label = (entry.activity_type || "unknown")
+                    .replace(/_/g, " ")
+                    .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+                  let detailsStr = entry.details
+                    ? JSON.stringify(entry.details, null, 2).substring(0, 200)
+                    : undefined;
+
+                  if (entry.activity_type === "send_delivery_email") {
+                    label = "Delivery email sent to customer";
+                    const d = entry.details || {};
+                    const parts: string[] = [];
+                    if (d.files_sent) parts.push(`Files sent: ${d.files_sent}`);
+                    if (d.customer_email) parts.push(`Sent to: ${d.customer_email}`);
+                    detailsStr = parts.length > 0 ? parts.join("\n") : detailsStr;
+                  }
+
                   entries.push({
                     id: `activity-${entry.id}`,
                     date: new Date(entry.created_at),
-                    label: (entry.activity_type || "unknown")
-                      .replace(/_/g, " ")
-                      .replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                    label,
                     detail: entry.staff_users?.full_name || "System",
-                    detailsJson: entry.details
-                      ? JSON.stringify(entry.details, null, 2).substring(0, 200)
-                      : undefined,
+                    detailsJson: detailsStr,
                     type: "activity",
                   });
                 });
