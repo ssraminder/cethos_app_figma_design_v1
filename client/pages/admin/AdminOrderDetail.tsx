@@ -2445,47 +2445,28 @@ export default function AdminOrderDetail() {
                           </div>
                         ))}
                       </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Send Files to Customer Button */}
-                {(() => {
-                  const hasFinals = orderFiles.some(f => f.category_slug === "final_deliverable");
-                  const showSendButton = hasFinals && ["delivered", "invoiced", "completed"].includes(order.status);
-                  if (!showSendButton) return null;
-
-                  const alreadySent = !!order.delivery_email_sent_at;
-
-                  return (
-                    <div className="pt-2">
-                      <button
-                        onClick={() => {
-                          setSendModalType("final");
-                          setSendModalNotes("");
-                          setSendModalOpen(true);
-                        }}
-                        disabled={isSendingEmail}
-                        className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          alreadySent
-                            ? "border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                            : "bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
-                        }`}
-                      >
-                        <Send className="w-4 h-4" />
-                        {alreadySent
-                          ? selectedFinalFileIds.length > 0
-                            ? `Resend ${selectedFinalFileIds.length} Selected File(s) to Customer`
-                            : "Resend All Files to Customer"
-                          : selectedFinalFileIds.length > 0
+                      {/* Send Files to Customer Button */}
+                      <div style={{ marginTop: "12px" }}>
+                        <button
+                          onClick={() => {
+                            setSendModalType("final");
+                            setSendModalNotes("");
+                            setSendModalOpen(true);
+                          }}
+                          disabled={isSendingEmail}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+                        >
+                          <Send className="w-4 h-4" />
+                          {selectedFinalFileIds.length > 0
                             ? `Send ${selectedFinalFileIds.length} Selected File(s) to Customer`
                             : "Send All Files to Customer"}
-                      </button>
-                      {alreadySent && order.delivery_email_sent_at && (
-                        <p className="text-xs text-gray-400 text-center mt-1.5">
-                          Last sent: {format(new Date(order.delivery_email_sent_at), "MMM d, yyyy h:mm a")}
-                        </p>
-                      )}
+                        </button>
+                        {order.delivery_email_sent_at && (
+                          <p className="text-xs text-gray-400 text-center mt-1.5">
+                            Last sent: {format(new Date(order.delivery_email_sent_at), "MMM d, yyyy h:mm a")}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}
