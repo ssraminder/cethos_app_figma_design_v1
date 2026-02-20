@@ -264,6 +264,7 @@ export default function AdminOrderDetail() {
   const [uploadType, setUploadType] = useState<"draft" | "final" | "other">("draft");
   const [uploadFiles, setUploadFiles] = useState<{ file: File; status: "pending" | "uploading" | "done" | "failed"; error?: string }[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [isDelivering, setIsDelivering] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("reference");
   const [uploadStaffNotes, setUploadStaffNotes] = useState("");
   const [reviewHistory, setReviewHistory] = useState<any[]>([]);
@@ -446,6 +447,7 @@ export default function AdminOrderDetail() {
 
   const handleFileUpload = async () => {
     if (uploadFiles.length === 0 || !order?.quote_id || !currentStaff?.staffId) return;
+    if (uploadType === "final" && isDelivering) return;
     setUploading(true);
 
     // Determine file category slug
@@ -554,24 +556,29 @@ export default function AdminOrderDetail() {
           console.log("Customer notification sent for all draft files");
         } else if (uploadType === "final") {
           // Final delivery: notify using the order_id
-          await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              },
-              body: JSON.stringify({
-                order_id: order.id,
-                action: "deliver_final",
-                actor_type: "staff",
-                actor_id: currentStaff.staffId,
-                skip_notification: false,
-                staff_notes: uploadStaffNotes.trim() || null,
-              }),
-            }
-          );
+          setIsDelivering(true);
+          try {
+            await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({
+                  order_id: order.id,
+                  action: "deliver_final",
+                  actor_type: "staff",
+                  actor_id: currentStaff.staffId,
+                  skip_notification: false,
+                  staff_notes: uploadStaffNotes.trim() || null,
+                }),
+              }
+            );
+          } finally {
+            setIsDelivering(false);
+          }
         }
       } catch (err) {
         console.warn("Notification call failed (non-blocking)", err);
@@ -3564,7 +3571,7 @@ export default function AdminOrderDetail() {
       {showUploadModal && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
-          onClick={() => !uploading && setShowUploadModal(false)}
+          onClick={() => !uploading && !isDelivering && setShowUploadModal(false)}
         >
           <div
             onClick={e => e.stopPropagation()}
@@ -3709,17 +3716,19 @@ export default function AdminOrderDetail() {
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => { setShowUploadModal(false); setUploadFiles([]); setUploadStaffNotes(""); }}
-                disabled={uploading}
+                disabled={uploading || isDelivering}
                 className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleFileUpload}
-                disabled={uploading || uploadFiles.length === 0}
+                disabled={uploading || isDelivering || uploadFiles.length === 0}
                 className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
-                {uploading
+                {isDelivering
+                  ? "Delivering..."
+                  : uploading
                   ? "Uploading..."
                   : uploadType === "draft"
                   ? `Upload & Notify Customer${uploadFiles.length > 1 ? ` (${uploadFiles.length})` : ""}`
