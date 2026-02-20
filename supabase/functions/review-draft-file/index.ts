@@ -47,7 +47,7 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const body = await req.json();
-    const { file_id, order_id, action, actor_type, actor_id, comment } = body;
+    const { file_id, order_id, action, actor_type, actor_id, comment, actingAsStaff, staffId } = body;
 
     console.log("review-draft-file v2 called:", {
       file_id,
@@ -127,8 +127,34 @@ serve(async (req: Request) => {
             .update({ status: "draft_review" })
             .eq("id", orderData.id);
 
-          // Send email notification to customer
+          // Send email notification to customer with download links
           if (BREVO_API_KEY) {
+            // Fetch all pending_review draft files for this quote
+            const { data: draftFiles } = await supabase
+              .from("quote_files")
+              .select("id, original_filename, file_size, storage_path, staff_notes")
+              .eq("quote_id", file.quote_id)
+              .eq("review_status", "pending_review")
+              .is("deleted_at", null);
+
+            // Generate signed URLs (7 days) for each draft file
+            const filesWithUrls: { name: string; size: number; url: string; staffNotes: string | null }[] = [];
+            for (const df of draftFiles || []) {
+              const { data: signedData } = await supabase.storage
+                .from("quote-files")
+                .createSignedUrl(df.storage_path, 7 * 24 * 60 * 60); // 7 days
+
+              filesWithUrls.push({
+                name: df.original_filename,
+                size: df.file_size || 0,
+                url: signedData?.signedUrl || "",
+                staffNotes: df.staff_notes || null,
+              });
+            }
+
+            // Collect staff_notes from any file (same note applies to batch)
+            const staffNotes = filesWithUrls.find(f => f.staffNotes)?.staffNotes || null;
+
             await notifyCustomerDraftReady(
               supabase,
               BREVO_API_KEY,
@@ -136,6 +162,8 @@ serve(async (req: Request) => {
               orderData.customer_id,
               orderData.id,
               file.file_name,
+              filesWithUrls,
+              staffNotes,
             );
           }
         }
@@ -186,7 +214,7 @@ serve(async (req: Request) => {
       await supabase.from("file_review_history").insert({
         file_id,
         action: "approve",
-        actor_type,
+        actor_type: actingAsStaff ? "staff" : actor_type,
         actor_id,
         comment: comment || null,
         review_version: file.review_version,
@@ -215,8 +243,23 @@ serve(async (req: Request) => {
             .eq("id", orderData.id);
         }
 
-        // Notify staff that customer approved
-        if (BREVO_API_KEY) {
+        // Log to staff_activity_log when acting on behalf
+        if (actingAsStaff && staffId) {
+          await supabase.from("staff_activity_log").insert({
+            staff_id: staffId,
+            activity_type: "draft_approved_on_behalf",
+            entity_type: "quote_file",
+            entity_id: file_id,
+            details: {
+              order_id: orderData?.id,
+              file_id,
+              action: "approve",
+            },
+          });
+        }
+
+        // Skip notifications when staff is acting on behalf
+        if (!actingAsStaff && BREVO_API_KEY) {
           await notifyStaffDraftApproved(
             supabase,
             BREVO_API_KEY,
@@ -229,7 +272,7 @@ serve(async (req: Request) => {
 
       return jsonResponse({
         success: true,
-        message: "Draft approved by customer",
+        message: actingAsStaff ? "Draft approved on behalf of customer" : "Draft approved by customer",
         review_status: "approved",
       });
     }
@@ -272,7 +315,7 @@ serve(async (req: Request) => {
       await supabase.from("file_review_history").insert({
         file_id,
         action: "request_changes",
-        actor_type,
+        actor_type: actingAsStaff ? "staff" : actor_type,
         actor_id,
         comment: comment || null,
         review_version: file.review_version,
@@ -301,8 +344,24 @@ serve(async (req: Request) => {
             .eq("id", orderData.id);
         }
 
-        // Notify staff about change request
-        if (BREVO_API_KEY) {
+        // Log to staff_activity_log when acting on behalf
+        if (actingAsStaff && staffId) {
+          await supabase.from("staff_activity_log").insert({
+            staff_id: staffId,
+            activity_type: "changes_requested_on_behalf",
+            entity_type: "quote_file",
+            entity_id: file_id,
+            details: {
+              order_id: orderData?.id,
+              file_id,
+              action: "request_changes",
+              comment: comment || null,
+            },
+          });
+        }
+
+        // Skip notifications when staff is acting on behalf
+        if (!actingAsStaff && BREVO_API_KEY) {
           await notifyStaffChangesRequested(
             supabase,
             BREVO_API_KEY,
@@ -316,7 +375,7 @@ serve(async (req: Request) => {
 
       return jsonResponse({
         success: true,
-        message: "Change request submitted",
+        message: actingAsStaff ? "Change request submitted on behalf of customer" : "Change request submitted",
         review_status: "changes_requested",
       });
     }
@@ -457,6 +516,8 @@ async function notifyCustomerDraftReady(
   customerId: string,
   orderId: string,
   fileName: string,
+  filesWithUrls?: { name: string; size: number; url: string; staffNotes: string | null }[],
+  staffNotes?: string | null,
 ) {
   try {
     const { data: customer } = await supabase
@@ -468,6 +529,55 @@ async function notifyCustomerDraftReady(
     if (!customer?.email) return;
 
     const reviewUrl = `${siteUrl}/dashboard/orders/${orderId}`;
+
+    // Build file list HTML if we have files with URLs
+    let fileListHtml = "";
+    if (filesWithUrls && filesWithUrls.length > 0) {
+      const fileRows = filesWithUrls.map(f => {
+        const sizeStr = f.size > 0
+          ? f.size > 1024 * 1024
+            ? `${(f.size / 1024 / 1024).toFixed(1)} MB`
+            : `${(f.size / 1024).toFixed(0)} KB`
+          : "";
+        const downloadBtn = f.url
+          ? `<a href="${f.url}" style="display:inline-block;padding:6px 14px;background-color:#1e40af;color:#ffffff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500;">Download</a>`
+          : "";
+        return `<tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">
+            <span style="font-size:14px;color:#374151;font-weight:500;">${f.name}</span>
+            ${sizeStr ? `<span style="font-size:12px;color:#9ca3af;margin-left:8px;">(${sizeStr})</span>` : ""}
+          </td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">
+            ${downloadBtn}
+          </td>
+        </tr>`;
+      }).join("");
+
+      fileListHtml = `
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+          <tr style="background-color:#f9fafb;">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">File</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Action</th>
+          </tr>
+          ${fileRows}
+        </table>
+        <p style="margin:0 0 8px;color:#9ca3af;font-size:12px;">Download links expire in 7 days.</p>`;
+    }
+
+    // Build staff notes section
+    let staffNotesHtml = "";
+    if (staffNotes) {
+      staffNotesHtml = `
+        <div style="margin:20px 0;padding:16px;background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;">
+          <p style="margin:0 0 6px;color:#1e40af;font-size:13px;font-weight:600;">Note from our team:</p>
+          <p style="margin:0;color:#374151;font-size:14px;line-height:1.5;">${staffNotes}</p>
+        </div>`;
+    }
+
+    const fileCount = filesWithUrls?.length || 1;
+    const introText = fileCount > 1
+      ? `Your draft translations (${fileCount} files) are ready for review. Please review the drafts and either approve them or request changes.`
+      : `Your draft translation <strong>${fileName || filesWithUrls?.[0]?.name || "file"}</strong> is ready for review. Please review the draft and either approve it or request changes.`;
 
     await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -482,7 +592,9 @@ async function notifyCustomerDraftReady(
           name: "CETHOS Translation Services",
           email: "donotreply@cethos.com",
         },
-        subject: "Your draft translation is ready for review",
+        subject: fileCount > 1
+          ? `Your draft translations (${fileCount} files) are ready for review`
+          : "Your draft translation is ready for review",
         htmlContent: `
 <!DOCTYPE html>
 <html>
@@ -499,12 +611,14 @@ async function notifyCustomerDraftReady(
             Hi ${customer.full_name || "there"},
           </p>
           <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">
-            Your draft translation <strong>${fileName}</strong> is ready for review. Please review the draft and either approve it or request changes.
+            ${introText}
           </p>
+          ${fileListHtml}
+          ${staffNotesHtml}
           <table cellpadding="0" cellspacing="0" style="margin:24px 0;">
             <tr><td style="background-color:#1e40af;border-radius:8px;">
               <a href="${reviewUrl}" style="display:inline-block;padding:14px 28px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;">
-                Review Draft
+                Review Draft${fileCount > 1 ? "s" : ""}
               </a>
             </td></tr>
           </table>
