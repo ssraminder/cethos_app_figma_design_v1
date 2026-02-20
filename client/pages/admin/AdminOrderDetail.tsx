@@ -119,13 +119,38 @@ interface OrderDetail {
   delivery_email_sent_at?: string;
 }
 
-interface Payment {
+interface InvoiceRecord {
+  id: string;
+  invoice_number: string;
+  total_amount: number;
+  amount_paid: number;
+  balance_due: number;
+  status: string;
+  paid_at: string | null;
+  created_at: string;
+}
+
+interface PaymentAllocation {
+  allocated_amount: number;
+  created_at: string;
+  customer_payments: {
+    id: string;
+    amount: number;
+    payment_method_name: string | null;
+    payment_date: string | null;
+    reference_number: string | null;
+    status: string;
+    notes: string | null;
+  } | null;
+}
+
+interface PaymentRequest {
   id: string;
   amount: number;
   status: string;
-  payment_method: string;
-  stripe_payment_intent_id: string;
+  paid_at: string | null;
   created_at: string;
+  stripe_payment_link_url: string | null;
 }
 
 interface Adjustment {
@@ -187,7 +212,9 @@ export default function AdminOrderDetail() {
   const { session: currentStaff } = useAdminAuthContext();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
+  const [paymentAllocations, setPaymentAllocations] = useState<PaymentAllocation[]>([]);
+  const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [cancellation, setCancellation] = useState<Cancellation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -904,8 +931,8 @@ export default function AdminOrderDetail() {
 
     try {
       // ── Phase 1: Fire independent queries in parallel ──
-      // Order fetch, payments, and adjustments all only need the route param `id`
-      const [orderResult, paymentsResult, adjustmentsResult] = await Promise.all([
+      // Order fetch and adjustments only need the route param `id`
+      const [orderResult, adjustmentsResult] = await Promise.all([
         // 1. Main order with customer + quote joins
         supabase
           .from("orders")
@@ -929,10 +956,7 @@ export default function AdminOrderDetail() {
           `)
           .eq("id", id)
           .single(),
-        // 2. Payments
-        supabase.from("payments").select("*").eq("order_id", id)
-          .order("created_at", { ascending: false }),
-        // 3. Adjustments
+        // 2. Adjustments
         supabase.from("adjustments").select(`
           *, created_by:staff_users!adjustments_created_by_fkey(full_name)
         `).eq("order_id", id).order("created_at", { ascending: false }),
@@ -942,7 +966,43 @@ export default function AdminOrderDetail() {
       if (orderError) throw orderError;
       setOrder(orderData as OrderDetail);
 
-      setPayments(paymentsResult.data || []);
+      // Payment history: invoices → allocations → customer_payments, plus payment_requests
+      const { data: invoiceData } = await supabase
+        .from("customer_invoices")
+        .select("id, invoice_number, total_amount, amount_paid, balance_due, status, paid_at, created_at")
+        .eq("order_id", orderData.id)
+        .order("created_at", { ascending: false });
+      setInvoices(invoiceData || []);
+
+      let allocationsData: PaymentAllocation[] = [];
+      if (invoiceData && invoiceData.length > 0) {
+        const invoiceIds = invoiceData.map((i: any) => i.id);
+        const { data: allocs } = await supabase
+          .from("customer_payment_allocations")
+          .select(`
+            allocated_amount,
+            created_at,
+            customer_payments (
+              id,
+              amount,
+              payment_method_name,
+              payment_date,
+              reference_number,
+              status,
+              notes
+            )
+          `)
+          .in("invoice_id", invoiceIds);
+        allocationsData = allocs || [];
+      }
+      setPaymentAllocations(allocationsData);
+
+      const { data: prData } = await supabase
+        .from("payment_requests")
+        .select("id, amount, status, paid_at, created_at, stripe_payment_link_url")
+        .eq("order_id", orderData.id)
+        .order("created_at", { ascending: false });
+      setPaymentRequests(prData || []);
 
       setAdjustments(
         (adjustmentsResult.data || []).map((adjustment: any) => ({
@@ -2598,50 +2658,120 @@ export default function AdminOrderDetail() {
               Payment History
             </h2>
 
-            {payments.length > 0 ? (
-              <div className="space-y-3">
-                {payments.map((payment) => (
-                  <div
-                    key={payment.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">
-                          ${payment.amount.toFixed(2)}
-                        </span>
-                        <span
-                          className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-                            payment.status === "succeeded"
-                              ? "bg-green-100 text-green-700"
-                              : payment.status === "pending"
-                                ? "bg-yellow-100 text-yellow-700"
-                                : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {payment.status}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-500 mt-1">
-                        {payment.payment_method || "Card"} •{" "}
-                        {format(
-                          new Date(payment.created_at),
-                          "MMM d, yyyy h:mm a",
-                        )}
-                      </p>
+            {invoices.length > 0 || paymentAllocations.length > 0 || paymentRequests.some(pr => pr.status === "paid") ? (
+              <div className="space-y-5">
+                {/* Invoices */}
+                {invoices.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Invoices</h3>
+                    <div className="space-y-2">
+                      {invoices.map((inv) => (
+                        <div key={inv.id} className="p-3 bg-gray-50 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-sm">{inv.invoice_number}</span>
+                            <span
+                              className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
+                                inv.status === "paid"
+                                  ? "bg-green-100 text-green-700"
+                                  : inv.status === "partial"
+                                    ? "bg-yellow-100 text-yellow-700"
+                                    : "bg-blue-100 text-blue-700"
+                              }`}
+                            >
+                              {inv.status}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-sm text-gray-600 space-y-0.5">
+                            <p>Total: ${inv.total_amount.toFixed(2)}</p>
+                            <p>Paid: ${inv.amount_paid.toFixed(2)}</p>
+                            {inv.balance_due > 0 && <p>Balance: ${inv.balance_due.toFixed(2)}</p>}
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {format(new Date(inv.created_at), "MMM d, yyyy")}
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                    {payment.stripe_payment_intent_id && (
-                      <a
-                        href={`https://dashboard.stripe.com/payments/${payment.stripe_payment_intent_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-teal-600 hover:text-teal-700"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    )}
                   </div>
-                ))}
+                )}
+
+                {/* Payments via allocations */}
+                {paymentAllocations.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Payments</h3>
+                    <div className="space-y-2">
+                      {paymentAllocations.map((alloc, idx) => (
+                        <div key={alloc.customer_payments?.id || idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">
+                                ${alloc.allocated_amount.toFixed(2)}
+                              </span>
+                              <span
+                                className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
+                                  alloc.customer_payments?.status === "completed"
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-yellow-100 text-yellow-700"
+                                }`}
+                              >
+                                {alloc.customer_payments?.status || "recorded"}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-500 mt-1">
+                              {alloc.customer_payments?.payment_method_name || "Online Payment"}
+                              {alloc.customer_payments?.payment_date && (
+                                <> • {format(new Date(alloc.customer_payments.payment_date), "MMM d, yyyy")}</>
+                              )}
+                            </p>
+                            {alloc.customer_payments?.reference_number && (
+                              <p className="text-xs text-gray-400">Ref: {alloc.customer_payments.reference_number}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Stripe payment requests */}
+                {paymentRequests.some(pr => pr.status === "paid") && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Stripe Payments</h3>
+                    <div className="space-y-2">
+                      {paymentRequests.filter(pr => pr.status === "paid").map((pr) => (
+                        <div key={pr.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">
+                                ${pr.amount.toFixed(2)}
+                              </span>
+                              <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">
+                                paid
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-500 mt-1">
+                              Stripe / Credit Card
+                              {pr.paid_at && (
+                                <> • {format(new Date(pr.paid_at), "MMM d, yyyy h:mm a")}</>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : order && order.amount_paid > 0 ? (
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">${order.amount_paid.toFixed(2)}</span>
+                  <span className="text-sm text-gray-500">paid</span>
+                </div>
+                {order.balance_due > 0 && (
+                  <p className="text-sm text-gray-600 mt-1">Balance due: ${order.balance_due.toFixed(2)}</p>
+                )}
+                <p className="text-xs text-gray-400 italic mt-1">Payment details not yet available</p>
               </div>
             ) : (
               <p className="text-gray-500">No payments recorded</p>
