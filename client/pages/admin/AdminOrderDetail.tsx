@@ -2221,8 +2221,8 @@ export default function AdminOrderDetail() {
                       </h4>
                       <div className="space-y-2">
                         {drafts.map((file: any) => (
-                          <div key={file.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
-                            <div className="flex items-center gap-3 min-w-0">
+                          <div key={file.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200 overflow-hidden">
+                            <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto overflow-hidden">
                               {file.review_status === "pending_review" && (
                                 <input
                                   type="checkbox"
@@ -2240,13 +2240,13 @@ export default function AdminOrderDetail() {
                               <div className="w-9 h-9 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
                                 <FileText className="w-4 h-4 text-amber-700" />
                               </div>
-                              <div className="min-w-0">
+                              <div className="min-w-0 overflow-hidden">
                                 <p className="text-sm font-medium text-gray-900 truncate">{file.original_filename}</p>
-                                <div className="flex items-center gap-2 mt-0.5">
+                                <div className="flex items-center gap-2 mt-0.5 flex-wrap min-w-0">
                                   {file.review_version && (
                                     <span className="text-xs text-gray-500">v{file.review_version}</span>
                                   )}
-                                  <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${
+                                  <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full whitespace-nowrap flex-shrink-0 ${
                                     file.review_status === "approved"
                                       ? "bg-green-100 text-green-700"
                                       : file.review_status === "changes_requested"
@@ -2260,19 +2260,19 @@ export default function AdminOrderDetail() {
                                      file.review_status === "pending_review" ? "Pending Review" :
                                      file.review_status || "Draft"}
                                   </span>
-                                  <span className="text-xs text-gray-400">
+                                  <span className="text-xs text-gray-400 whitespace-nowrap">
                                     {format(new Date(file.created_at), "MMM d, h:mm a")}
                                   </span>
                                 </div>
                                 {file.review_comment && (
-                                  <p className="text-xs text-red-600 mt-1 italic">"{file.review_comment}"</p>
+                                  <p className="text-xs text-red-600 mt-1 italic break-words w-full">"{file.review_comment}"</p>
                                 )}
                                 {file.staff_notes && (
-                                  <p className="text-xs text-blue-600 mt-1">Staff note: {file.staff_notes}</p>
+                                  <p className="text-xs text-blue-600 mt-1 break-words w-full">Staff note: {file.staff_notes}</p>
                                 )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                               {file.signed_url && (
                                 <a
                                   href={file.signed_url}
