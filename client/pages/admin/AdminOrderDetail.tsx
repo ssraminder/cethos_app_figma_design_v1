@@ -384,30 +384,40 @@ export default function AdminOrderDetail() {
 
       if (error) throw error;
 
-      const filesWithUrls = await Promise.all(
-        (files || []).map(async (file: any) => {
-          const categorySlug = file.file_categories?.slug;
+      // Build a signed URL map via the server-side edge function
+      const fileIds = (files || []).map((f: any) => f.id);
+      let signedUrlMap: Record<string, string | null> = {};
 
-          let signedUrl = null;
-          const tryPaths = [
-            file.storage_path,
-            `uploads/${file.original_filename}`,
-            `${order.quote_id}/${file.storage_path}`,
-          ];
-
-          for (const path of tryPaths) {
-            const { data } = await supabase.storage
-              .from("quote-files")
-              .createSignedUrl(path, 600);
-            if (data?.signedUrl) {
-              signedUrl = data.signedUrl;
-              break;
+      if (fileIds.length > 0) {
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-signed-urls`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({ file_ids: fileIds }),
             }
+          );
+          if (response.ok) {
+            const result = await response.json();
+            for (const entry of result.files || []) {
+              signedUrlMap[entry.id] = entry.signed_url;
+            }
+          } else {
+            console.error("get-signed-urls failed:", response.status);
           }
+        } catch (err) {
+          console.error("get-signed-urls network error:", err);
+        }
+      }
 
-          return { ...file, signed_url: signedUrl, category_slug: categorySlug };
-        })
-      );
+      const filesWithUrls = (files || []).map((file: any) => {
+        const categorySlug = file.file_categories?.slug;
+        return { ...file, signed_url: signedUrlMap[file.id] || null, category_slug: categorySlug };
+      });
 
       setOrderFiles(filesWithUrls);
 
