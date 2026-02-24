@@ -26,7 +26,6 @@ interface PaymentRequest {
   email_sent_at: string | null;
   reminder_sent_at: string | null;
   paid_at: string | null;
-  expires_at: string | null;
   created_at: string;
   customers: {
     full_name: string | null;
@@ -178,7 +177,6 @@ export default function AdminPaymentHistory() {
         email_sent_at,
         reminder_sent_at,
         paid_at,
-        expires_at,
         created_at,
         customers (
           full_name,
@@ -788,9 +786,6 @@ export default function AdminPaymentHistory() {
                   Paid At
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Expires
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -798,14 +793,14 @@ export default function AdminPaymentHistory() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center">
+                  <td colSpan={7} className="px-6 py-12 text-center">
                     <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     <p className="text-gray-500 mt-2">Loading...</p>
                   </td>
                 </tr>
               ) : displayRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-16 text-center">
+                  <td colSpan={7} className="px-6 py-16 text-center">
                     <Receipt className="w-10 h-10 text-gray-300 mx-auto mb-3" />
                     <p className="text-sm font-medium text-gray-700">
                       No deposit payment links found
@@ -858,11 +853,6 @@ export default function AdminPaymentHistory() {
                     <td className="px-4 py-3">
                       <p className="text-sm text-gray-700">
                         {formatDateTime(record.paid_at)}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm text-gray-700">
-                        {formatDate(record.expires_at)}
                       </p>
                     </td>
                     <td className="px-4 py-3">{renderActions(record)}</td>
