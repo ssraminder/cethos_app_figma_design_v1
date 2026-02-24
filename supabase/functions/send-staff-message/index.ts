@@ -37,6 +37,7 @@ serve(async (req: Request) => {
     const {
       customer_id,
       quote_id,
+      order_id,
       staff_id,
       message_text,
       attachments,
@@ -166,6 +167,10 @@ serve(async (req: Request) => {
         (messagePayload.metadata as Record<string, unknown>).quote_number =
           quoteNumber;
       }
+    }
+
+    if (order_id) {
+      messagePayload.order_id = order_id;
     }
 
     const { data: insertedMessage, error: insertError } = await supabase
