@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import {
@@ -12,6 +12,7 @@ import {
   Loader2,
   Pencil,
   XCircle,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -101,7 +102,6 @@ function CopyButton({ url }: { url: string }) {
 
 export default function AdminPaymentHistory() {
   const { session, loading: authLoading } = useAdminAuthContext();
-  const navigate = useNavigate();
   const [records, setRecords] = useState<PaymentRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +112,18 @@ export default function AdminPaymentHistory() {
   const [cancelStates, setCancelStates] = useState<
     Record<string, "idle" | "loading" | "success" | "error">
   >({});
+
+  // Edit modal state
+  const [editingRecord, setEditingRecord] = useState<PaymentRequest | null>(
+    null,
+  );
+  const [editForm, setEditForm] = useState({
+    email: "",
+    full_name: "",
+    amount: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -250,6 +262,71 @@ export default function AdminPaymentHistory() {
       setTimeout(() => {
         setCancelStates((prev) => ({ ...prev, [rowId]: "idle" }));
       }, 5000);
+    }
+  };
+
+  const openEditModal = (record: PaymentRequest) => {
+    setEditingRecord(record);
+    setEditForm({
+      email: record.email_sent_to || "",
+      full_name: record.customers?.full_name || "",
+      amount: String(record.amount),
+    });
+    setEditError(null);
+    setEditSaving(false);
+  };
+
+  const handleEditSave = async () => {
+    if (!editingRecord) return;
+
+    const parsedAmount = parseFloat(editForm.amount);
+    if (!editForm.email.trim() || !editForm.full_name.trim()) {
+      setEditError("Email and full name are required.");
+      return;
+    }
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setEditError("Amount must be greater than 0.");
+      return;
+    }
+
+    setEditSaving(true);
+    setEditError(null);
+
+    try {
+      const { error: updateError } = await supabase
+        .from("payment_requests")
+        .update({
+          amount: parsedAmount,
+          email_sent_to: editForm.email.trim(),
+        })
+        .eq("id", editingRecord.id);
+
+      if (updateError) {
+        setEditError("Failed to save changes. Please try again.");
+        setEditSaving(false);
+        return;
+      }
+
+      // Update local state
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.id === editingRecord.id
+            ? {
+                ...r,
+                amount: parsedAmount,
+                email_sent_to: editForm.email.trim(),
+                customers: r.customers
+                  ? { ...r.customers, full_name: editForm.full_name.trim() }
+                  : { full_name: editForm.full_name.trim(), email: editForm.email.trim() },
+              }
+            : r,
+        ),
+      );
+      setEditingRecord(null);
+    } catch {
+      setEditError("Something went wrong. Please try again.");
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -424,11 +501,7 @@ export default function AdminPaymentHistory() {
                         <div className="flex items-center gap-1.5">
                           {/* Edit */}
                           <button
-                            onClick={() =>
-                              navigate(
-                                `/admin/quick-payment?edit=${record.id}`,
-                              )
-                            }
+                            onClick={() => openEditModal(record)}
                             className="p-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
                             title="Edit payment"
                           >
@@ -506,6 +579,109 @@ export default function AdminPaymentHistory() {
           </table>
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {editingRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setEditingRecord(null)}
+          />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Edit Payment Request
+              </h2>
+              <button
+                onClick={() => setEditingRecord(null)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Email */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Customer Email
+                </label>
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, email: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                />
+              </div>
+
+              {/* Full Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={editForm.full_name}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      full_name: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                />
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Amount (CAD)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={editForm.amount}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      amount: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                />
+              </div>
+
+              {/* Error */}
+              {editError && (
+                <p className="text-sm text-red-600">{editError}</p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button
+                onClick={() => setEditingRecord(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={editSaving}
+                className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {editSaving && (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                )}
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
