@@ -34,6 +34,7 @@ import UploadPage from "./pages/upload/UploadPage";
 import UploadConfirmationPage from "./pages/upload/UploadConfirmationPage";
 import ETransferConfirmation from "./pages/ETransferConfirmation";
 import ETransferSuccess from "./pages/ETransferSuccess";
+import DepositSuccess from "./pages/DepositSuccess";
 
 // Customer Dashboard pages
 import ProtectedCustomerRoute from "./components/customer/ProtectedCustomerRoute";
@@ -167,6 +168,12 @@ const App = () => (
                     <Route
                       path="/etransfer/success"
                       element={<ETransferSuccess />}
+                    />
+
+                    {/* Deposit Payment Success */}
+                    <Route
+                      path="/deposit-success"
+                      element={<DepositSuccess />}
                     />
 
                     {/* Upload Form Routes */}
