@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { supabase } from "@/lib/supabase";
-import { Loader2, CheckCircle2, Copy, Info, AlertTriangle, Bell, RefreshCw, X } from "lucide-react";
-import { toast } from "sonner";
+import { Loader2, CheckCircle2, Copy, Info, AlertTriangle } from "lucide-react";
 
 interface CustomerLookup {
   status: "idle" | "loading" | "found" | "not_found";
@@ -16,26 +15,6 @@ interface PaymentResult {
   customer_email: string;
   customer_created: boolean;
   amount: number;
-}
-
-interface DepositRequest {
-  id: string;
-  amount: number;
-  status: string;
-  stripe_payment_link_url: string | null;
-  email_sent_to: string | null;
-  email_sent_at: string | null;
-  reminder_sent_at: string | null;
-  paid_at: string | null;
-  created_at: string;
-  document_type: string | null;
-  notes: string | null;
-  customers: {
-    full_name: string;
-    email: string;
-  };
-  source_lang: { name: string } | null;
-  target_lang: { name: string } | null;
 }
 
 export default function AdminQuickPayment() {
@@ -64,10 +43,6 @@ export default function AdminQuickPayment() {
   const [targetLanguageId, setTargetLanguageId] = useState<string>("");
   const [documentType, setDocumentType] = useState<string>("");
 
-  // Payment link management
-  const [depositRequests, setDepositRequests] = useState<DepositRequest[]>([]);
-  const [loadingRequests, setLoadingRequests] = useState(true);
-
   // Load languages on mount
   useEffect(() => {
     const loadLanguages = async () => {
@@ -79,39 +54,6 @@ export default function AdminQuickPayment() {
       if (data) setLanguages(data);
     };
     loadLanguages();
-  }, []);
-
-  // Load deposit requests
-  const loadDepositRequests = async () => {
-    setLoadingRequests(true);
-    const { data, error } = await supabase
-      .from("payment_requests")
-      .select(`
-        id,
-        amount,
-        status,
-        stripe_payment_link_url,
-        email_sent_to,
-        email_sent_at,
-        reminder_sent_at,
-        paid_at,
-        created_at,
-        document_type,
-        notes,
-        customers (full_name, email),
-        source_lang:source_language_id (name),
-        target_lang:target_language_id (name)
-      `)
-      .eq("reason", "deposit")
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (!error && data) setDepositRequests(data as any);
-    setLoadingRequests(false);
-  };
-
-  useEffect(() => {
-    loadDepositRequests();
   }, []);
 
   const handleEmailBlur = async () => {
@@ -196,7 +138,6 @@ export default function AdminQuickPayment() {
         throw new Error(data.error || "Failed to generate payment link");
 
       setResult(data);
-      loadDepositRequests();
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Something went wrong. Please try again.";
@@ -235,85 +176,6 @@ export default function AdminQuickPayment() {
     setSourceLanguageId("");
     setTargetLanguageId("");
     setDocumentType("");
-  };
-
-  // --- Payment link management helpers ---
-
-  const statusBadge = (status: string) => {
-    const map: Record<string, { label: string; className: string }> = {
-      pending: { label: "Pending", className: "bg-yellow-100 text-yellow-800" },
-      paid: { label: "Paid", className: "bg-green-100 text-green-800" },
-      expired: { label: "Expired", className: "bg-gray-100 text-gray-600" },
-      cancelled: { label: "Cancelled", className: "bg-red-100 text-red-700" },
-    };
-    const s = map[status] ?? { label: status, className: "bg-gray-100 text-gray-600" };
-    return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${s.className}`}>
-        {s.label}
-      </span>
-    );
-  };
-
-  const handleCopyLink = (url: string) => {
-    navigator.clipboard.writeText(url);
-    toast.success("Payment link copied to clipboard");
-  };
-
-  const handleSendReminder = async (id: string) => {
-    try {
-      const sessionData = await supabase.auth.getSession();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-deposit-reminder`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${sessionData.data.session?.access_token}`,
-          },
-          body: JSON.stringify({ payment_request_id: id, staff_id: session?.staffId }),
-        },
-      );
-      const resultData = await response.json();
-      if (resultData.success) {
-        toast.success("Reminder email sent");
-        loadDepositRequests();
-      } else {
-        toast.error(resultData.error || "Failed to send reminder");
-      }
-    } catch {
-      toast.error("Failed to send reminder");
-    }
-  };
-
-  const handleCancelRequest = async (id: string) => {
-    if (!confirm("Cancel this payment request? The customer will no longer be able to pay using this link.")) return;
-    const { error: cancelError } = await supabase
-      .from("payment_requests")
-      .update({ status: "cancelled" })
-      .eq("id", id);
-
-    if (cancelError) {
-      toast.error("Failed to cancel payment request");
-    } else {
-      toast.success("Payment request cancelled");
-      loadDepositRequests();
-    }
-  };
-
-  const handleResend = async (pr: DepositRequest) => {
-    // Pre-fill the form with data from the existing request and scroll up
-    setFormData((prev) => ({
-      ...prev,
-      email: pr.customers?.email ?? "",
-      full_name: pr.customers?.full_name ?? "",
-      notes: pr.notes ?? "",
-    }));
-    setDocumentType(pr.document_type ?? "");
-    // Mark old request as cancelled
-    await supabase.from("payment_requests").update({ status: "cancelled" }).eq("id", pr.id);
-    loadDepositRequests();
-    toast.success("Form pre-filled with previous request details. Update the amount and submit to send a new link.");
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const formatCurrency = (value: number) =>
@@ -427,6 +289,13 @@ export default function AdminQuickPayment() {
           >
             Send Another Payment Link
           </button>
+
+          <Link
+            to="/admin/quick-payment/history"
+            className="inline-block mt-3 text-sm text-gray-500 underline hover:text-gray-700 transition-colors"
+          >
+            View all sent payment links &rarr;
+          </Link>
         </div>
       ) : (
         /* Form */
@@ -609,160 +478,6 @@ export default function AdminQuickPayment() {
           </form>
         </div>
       )}
-
-      {/* Payment Links Sent Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mt-6">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Payment Links Sent</h2>
-          <button
-            onClick={loadDepositRequests}
-            className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Refresh
-          </button>
-        </div>
-
-        {loadingRequests ? (
-          <div className="px-6 py-8 text-center text-gray-500 text-sm">Loading...</div>
-        ) : depositRequests.length === 0 ? (
-          <div className="px-6 py-8 text-center text-gray-400 text-sm">No deposit payment links sent yet.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sent</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {depositRequests.map((pr) => {
-                  const langPair =
-                    pr.source_lang?.name || pr.target_lang?.name
-                      ? `${pr.source_lang?.name ?? "?"} → ${pr.target_lang?.name ?? "?"}`
-                      : null;
-                  const isPending = pr.status === "pending";
-
-                  return (
-                    <tr key={pr.id} className="hover:bg-gray-50">
-                      {/* Customer */}
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-gray-900">{pr.customers?.full_name}</div>
-                        <div className="text-gray-500 text-xs">{pr.customers?.email}</div>
-                      </td>
-
-                      {/* Details */}
-                      <td className="px-4 py-3">
-                        {langPair && (
-                          <div className="text-gray-700 text-xs mb-0.5">{langPair}</div>
-                        )}
-                        {pr.document_type && (
-                          <div className="text-gray-500 text-xs">{pr.document_type}</div>
-                        )}
-                        {pr.notes && (
-                          <div className="text-gray-400 text-xs italic truncate max-w-[180px]" title={pr.notes}>
-                            {pr.notes}
-                          </div>
-                        )}
-                        {!langPair && !pr.document_type && !pr.notes && (
-                          <span className="text-gray-300 text-xs">&mdash;</span>
-                        )}
-                      </td>
-
-                      {/* Amount */}
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                        ${Number(pr.amount).toFixed(2)}
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3">
-                        {statusBadge(pr.status)}
-                        {pr.reminder_sent_at && (
-                          <div className="text-gray-400 text-xs mt-1">
-                            Reminded {new Date(pr.reminder_sent_at).toLocaleDateString("en-CA")}
-                          </div>
-                        )}
-                        {pr.paid_at && (
-                          <div className="text-green-600 text-xs mt-1">
-                            Paid {new Date(pr.paid_at).toLocaleDateString("en-CA")}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Sent */}
-                      <td className="px-4 py-3 text-gray-500 text-xs">
-                        {pr.email_sent_at
-                          ? new Date(pr.email_sent_at).toLocaleDateString("en-CA", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })
-                          : "\u2014"}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {/* Copy Link */}
-                          {pr.stripe_payment_link_url && (
-                            <button
-                              onClick={() => handleCopyLink(pr.stripe_payment_link_url!)}
-                              className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                              title="Copy payment link"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                              Copy
-                            </button>
-                          )}
-
-                          {/* Send Reminder */}
-                          {isPending && (
-                            <button
-                              onClick={() => handleSendReminder(pr.id)}
-                              className="text-xs text-amber-600 hover:text-amber-800 flex items-center gap-1"
-                              title="Send reminder email"
-                            >
-                              <Bell className="w-3.5 h-3.5" />
-                              Remind
-                            </button>
-                          )}
-
-                          {/* Resend */}
-                          <button
-                            onClick={() => handleResend(pr)}
-                            className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
-                            title="Pre-fill form to create a new link"
-                          >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            Resend
-                          </button>
-
-                          {/* Cancel */}
-                          {isPending && (
-                            <button
-                              onClick={() => handleCancelRequest(pr.id)}
-                              className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
-                              title="Cancel this payment request"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                              Cancel
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
