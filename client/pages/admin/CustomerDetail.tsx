@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import {
   ArrowLeft,
   RefreshCw,
@@ -22,6 +23,8 @@ import {
   XCircle,
   ArrowUpRight,
   TrendingUp,
+  Zap,
+  Loader2,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -90,6 +93,7 @@ type Tab = (typeof TABS)[number];
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { session } = useAdminAuthContext();
 
   const [activeTab, setActiveTab] = useState<Tab>("profile");
   const [loading, setLoading] = useState(true);
@@ -97,6 +101,16 @@ export default function CustomerDetail() {
   const [editing, setEditing] = useState(false);
 
   const [customer, setCustomer] = useState<Customer | null>(null);
+
+  // Deposit modal state
+  const [depositModalOpen, setDepositModalOpen] = useState(false);
+  const [depositForm, setDepositForm] = useState({ amount: '', notes: '' });
+  const [depositSubmitting, setDepositSubmitting] = useState(false);
+  const [depositError, setDepositError] = useState<string | null>(null);
+  const [depositResult, setDepositResult] = useState<{
+    payment_url: string;
+    amount: number;
+  } | null>(null);
   const [formData, setFormData] = useState<Partial<Customer>>({});
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -330,6 +344,18 @@ export default function CustomerDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setDepositModalOpen(true);
+              setDepositForm({ amount: '', notes: '' });
+              setDepositError(null);
+              setDepositResult(null);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+          >
+            <Zap className="w-4 h-4" />
+            Request Deposit
+          </button>
           {!editing ? (
             <button
               onClick={() => setEditing(true)}
@@ -951,6 +977,175 @@ export default function CustomerDetail() {
           )}
         </div>
       </div>
+
+      {/* Deposit Modal */}
+      {depositModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Request Deposit</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{customer?.full_name} · {customer?.email}</p>
+              </div>
+              <button
+                onClick={() => setDepositModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              {depositResult ? (
+                /* Success state */
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="w-6 h-6 text-green-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900 mb-1">Payment Link Sent!</h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    A deposit link for ${depositResult.amount.toFixed(2)} CAD has been sent to {customer?.email}
+                  </p>
+                  <div className="bg-gray-50 rounded-lg p-3 mb-4 text-left">
+                    <p className="text-xs text-gray-500 mb-1">Payment URL</p>
+                    <p className="text-xs text-blue-600 break-all font-mono">{depositResult.payment_url}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setDepositModalOpen(false);
+                      setDepositResult(null);
+                      fetchCustomer();
+                    }}
+                    className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                /* Form state */
+                <div className="space-y-4">
+                  {/* Customer info (read-only) */}
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-0.5">Sending to</p>
+                    <p className="text-sm font-medium text-gray-900">{customer?.full_name}</p>
+                    <p className="text-sm text-gray-500">{customer?.email}</p>
+                  </div>
+
+                  {/* Amount */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Amount (CAD) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={depositForm.amount}
+                      onChange={(e) => {
+                        setDepositForm(f => ({ ...f, amount: e.target.value }));
+                        setDepositError(null);
+                      }}
+                      placeholder="150.00"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    {depositForm.amount && parseFloat(depositForm.amount) > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        ${parseFloat(depositForm.amount).toFixed(2)} CAD
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Notes / Description <span className="text-gray-400 font-normal">(optional)</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={depositForm.notes}
+                      onChange={(e) => setDepositForm(f => ({ ...f, notes: e.target.value }))}
+                      placeholder="e.g. 2 birth certificates, Spanish to English — IRCC spousal sponsorship"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Shown in the customer's email</p>
+                  </div>
+
+                  {/* Error */}
+                  {depositError && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                      <p className="text-sm text-red-700">{depositError}</p>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setDepositModalOpen(false)}
+                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!depositForm.amount || parseFloat(depositForm.amount) <= 0) {
+                          setDepositError('Please enter a valid amount');
+                          return;
+                        }
+                        setDepositSubmitting(true);
+                        setDepositError(null);
+                        try {
+                          const response = await fetch(
+                            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-deposit-payment-link`,
+                            {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                              },
+                              body: JSON.stringify({
+                                email: customer?.email,
+                                full_name: customer?.full_name,
+                                phone: customer?.phone || null,
+                                amount: parseFloat(depositForm.amount),
+                                notes: depositForm.notes?.trim() || null,
+                                staff_id: session?.staffId,
+                              }),
+                            }
+                          );
+                          const data = await response.json();
+                          if (!data.success) throw new Error(data.error || 'Failed to generate link');
+                          setDepositResult({ payment_url: data.payment_url, amount: data.amount });
+                        } catch (err: any) {
+                          setDepositError(err.message || 'Something went wrong');
+                        } finally {
+                          setDepositSubmitting(false);
+                        }
+                      }}
+                      disabled={depositSubmitting || !depositForm.amount || parseFloat(depositForm.amount) <= 0}
+                      className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {depositSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-4 h-4" />
+                          Send Link
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
