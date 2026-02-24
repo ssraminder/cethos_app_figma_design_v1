@@ -560,6 +560,19 @@ export default function AdminQuoteDetail() {
   const [copiedQuoteLink, setCopiedQuoteLink] = useState(false);
   const [copiedPaymentLink, setCopiedPaymentLink] = useState(false);
 
+  // Image conversion state
+  const [imageConvertStatus, setImageConvertStatus] = useState<
+    'idle' | 'checking' | 'needs_conversion' | 'converting' | 'uploading' | 'processing' | 'done' | 'error'
+  >('idle')
+  const [imageConvertError, setImageConvertError] = useState<string | null>(null)
+  const [imageFiles, setImageFiles] = useState<Array<{
+    id: string
+    original_filename: string
+    mime_type: string
+    storage_path: string
+    file_size: number
+  }>>([])
+
   const fetchQuoteFiles = async (quoteId: string): Promise<NormalizedFile[]> => {
     // Try quote_files first (customer upload route)
     const { data: quoteFiles, error: qfError } = await supabase
@@ -634,6 +647,40 @@ export default function AdminQuoteDetail() {
     };
     checkBatch();
   }, [id]);
+
+  // Check if any uploaded files are images that need client-side conversion
+  useEffect(() => {
+    if (!quote) return
+    if (quote.processing_status !== 'pending') return
+
+    const checkImageFiles = async () => {
+      setImageConvertStatus('checking')
+
+      const { data: files, error } = await supabase
+        .from('quote_files')
+        .select('id, original_filename, mime_type, storage_path, file_size')
+        .eq('quote_id', quote.id)
+        .in('upload_status', ['uploaded', 'completed'])
+
+      if (error || !files) {
+        setImageConvertStatus('idle')
+        return
+      }
+
+      const images = files.filter(f =>
+        f.mime_type?.startsWith('image/')
+      )
+
+      if (images.length > 0) {
+        setImageFiles(images)
+        setImageConvertStatus('needs_conversion')
+      } else {
+        setImageConvertStatus('idle')
+      }
+    }
+
+    checkImageFiles()
+  }, [quote?.id, quote?.processing_status])
 
   // Fetch magic link token for customer quote access link
   useEffect(() => {
@@ -1092,6 +1139,138 @@ export default function AdminQuoteDetail() {
         Math.min(messageInputRef.current.scrollHeight, 120) + "px";
     }
   }, [newMessage]);
+
+  // Convert image files to PDF client-side and trigger processing
+  const handleConvertAndProcess = async () => {
+    if (imageFiles.length === 0 || !quote) return
+
+    setImageConvertStatus('converting')
+    setImageConvertError(null)
+
+    try {
+      const { PDFDocument } = await import('pdf-lib')
+
+      for (const imageFile of imageFiles) {
+        setImageConvertStatus('converting')
+
+        // Get signed URL for the image — try multiple path patterns
+        let signedUrl: string | null = null
+        const pathsToTry = [
+          imageFile.storage_path,
+          `uploads/${imageFile.original_filename}`,
+          `uploads/${imageFile.storage_path}`,
+        ]
+
+        for (const path of pathsToTry) {
+          const { data } = await supabase.storage
+            .from('quote-files')
+            .createSignedUrl(path, 300)
+          if (data?.signedUrl) {
+            signedUrl = data.signedUrl
+            break
+          }
+        }
+
+        if (!signedUrl) {
+          throw new Error(`Could not generate download URL for ${imageFile.original_filename}`)
+        }
+
+        // Fetch the image bytes
+        const imageResponse = await fetch(signedUrl)
+        if (!imageResponse.ok) {
+          throw new Error(`Failed to download ${imageFile.original_filename}: ${imageResponse.status}`)
+        }
+        const imageBytes = new Uint8Array(await imageResponse.arrayBuffer())
+
+        // Embed image into a PDF page (client-side, no CPU limit)
+        const pdfDoc = await PDFDocument.create()
+        let embeddedImage
+
+        if (imageFile.mime_type === 'image/png') {
+          embeddedImage = await pdfDoc.embedPng(imageBytes)
+        } else {
+          embeddedImage = await pdfDoc.embedJpg(imageBytes)
+        }
+
+        const page = pdfDoc.addPage([embeddedImage.width, embeddedImage.height])
+        page.drawImage(embeddedImage, {
+          x: 0,
+          y: 0,
+          width: embeddedImage.width,
+          height: embeddedImage.height,
+        })
+
+        const pdfBytes = await pdfDoc.save()
+        const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' })
+
+        // Upload the new PDF to quote-files bucket
+        setImageConvertStatus('uploading')
+
+        const timestamp = Date.now()
+        const random = Math.random().toString(36).substring(7)
+        const baseName = imageFile.original_filename.replace(/\.[^/.]+$/, '')
+        const newStoragePath = `${quote.id}/${timestamp}-${random}-${baseName}.pdf`
+        const newFilename = `${baseName}.pdf`
+
+        const { error: uploadError } = await supabase.storage
+          .from('quote-files')
+          .upload(newStoragePath, pdfBlob, { contentType: 'application/pdf' })
+
+        if (uploadError) {
+          throw new Error(`Upload failed for ${imageFile.original_filename}: ${uploadError.message}`)
+        }
+
+        // Update quote_files record to point to the new PDF
+        const { error: updateError } = await supabase
+          .from('quote_files')
+          .update({
+            mime_type: 'application/pdf',
+            storage_path: newStoragePath,
+            original_filename: newFilename,
+            file_size: pdfBytes.length,
+            ai_processing_status: 'pending',
+          })
+          .eq('id', imageFile.id)
+
+        if (updateError) {
+          throw new Error(`Failed to update file record: ${updateError.message}`)
+        }
+
+        console.log(`✅ Converted and uploaded: ${newFilename}`)
+      }
+
+      // Trigger process-quote-documents
+      setImageConvertStatus('processing')
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-quote-documents`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ quoteId: quote.id }),
+        }
+      )
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || `Processing failed with status ${response.status}`)
+      }
+
+      setImageConvertStatus('done')
+
+      setTimeout(() => {
+        window.location.reload()
+      }, 3000)
+
+    } catch (err: any) {
+      console.error('Convert & Process error:', err)
+      setImageConvertError(err.message || 'Conversion failed')
+      setImageConvertStatus('error')
+    }
+  }
 
   // Copy quote review link to clipboard
   const handleCopyQuoteLink = () => {
@@ -2924,6 +3103,114 @@ export default function AdminQuoteDetail() {
 
             return (
               <>
+                {/* ── Image Conversion Banner ── */}
+                {(imageConvertStatus === 'needs_conversion' ||
+                  imageConvertStatus === 'converting' ||
+                  imageConvertStatus === 'uploading' ||
+                  imageConvertStatus === 'processing' ||
+                  imageConvertStatus === 'done' ||
+                  imageConvertStatus === 'error') && (
+
+                  <div className={`rounded-lg border p-4 mb-4 ${
+                    imageConvertStatus === 'done'
+                      ? 'bg-green-50 border-green-200'
+                      : imageConvertStatus === 'error'
+                      ? 'bg-red-50 border-red-200'
+                      : 'bg-amber-50 border-amber-200'
+                  }`}>
+                    <div className="flex items-start gap-3">
+
+                      {/* Icon */}
+                      <div className="flex-shrink-0 mt-0.5">
+                        {imageConvertStatus === 'done' ? (
+                          <CheckCircle className="w-5 h-5 text-green-600" />
+                        ) : imageConvertStatus === 'error' ? (
+                          <AlertCircle className="w-5 h-5 text-red-600" />
+                        ) : imageConvertStatus === 'needs_conversion' ? (
+                          <AlertTriangle className="w-5 h-5 text-amber-600" />
+                        ) : (
+                          <Loader2 className="w-5 h-5 text-amber-600 animate-spin" />
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        {imageConvertStatus === 'needs_conversion' && (
+                          <>
+                            <p className="text-sm font-medium text-amber-800">
+                              Image file requires manual processing
+                            </p>
+                            <p className="text-sm text-amber-700 mt-0.5">
+                              {imageFiles.length} image file{imageFiles.length > 1 ? 's were' : ' was'} uploaded
+                              but could not be automatically processed due to file size.
+                              Click below to convert {imageFiles.length > 1 ? 'them' : 'it'} to PDF
+                              and trigger processing.
+                            </p>
+                            <button
+                              onClick={handleConvertAndProcess}
+                              className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-amber-600
+                                         text-white text-sm font-medium rounded-lg hover:bg-amber-700
+                                         transition-colors"
+                            >
+                              <RefreshCw className="w-4 h-4" />
+                              Convert & Process
+                            </button>
+                          </>
+                        )}
+
+                        {imageConvertStatus === 'converting' && (
+                          <p className="text-sm font-medium text-amber-800">
+                            Converting image to PDF in browser...
+                          </p>
+                        )}
+
+                        {imageConvertStatus === 'uploading' && (
+                          <p className="text-sm font-medium text-amber-800">
+                            Uploading converted PDF...
+                          </p>
+                        )}
+
+                        {imageConvertStatus === 'processing' && (
+                          <p className="text-sm font-medium text-amber-800">
+                            Triggering OCR and AI analysis...
+                          </p>
+                        )}
+
+                        {imageConvertStatus === 'done' && (
+                          <>
+                            <p className="text-sm font-medium text-green-800">
+                              Processing started successfully
+                            </p>
+                            <p className="text-sm text-green-700 mt-0.5">
+                              The quote is now being analysed. This page will refresh in a moment.
+                            </p>
+                          </>
+                        )}
+
+                        {imageConvertStatus === 'error' && (
+                          <>
+                            <p className="text-sm font-medium text-red-800">
+                              Conversion failed
+                            </p>
+                            <p className="text-sm text-red-700 mt-0.5">
+                              {imageConvertError}
+                            </p>
+                            <button
+                              onClick={handleConvertAndProcess}
+                              className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-red-600
+                                         text-white text-sm font-medium rounded-lg hover:bg-red-700
+                                         transition-colors"
+                            >
+                              <RefreshCw className="w-4 h-4" />
+                              Retry
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white rounded-lg border p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
