@@ -1681,6 +1681,7 @@ export default function AdminOrderDetail() {
           body: JSON.stringify({
             customer_id: order?.customer_id,
             quote_id: order?.quote_id,
+            order_id: id,
             staff_id: currentStaff?.staffId,
             message_text: newMessage.trim() || (attachmentFile ? `Sent a file: ${attachmentFile.name}` : ""),
             attachments: attachmentPaths,
