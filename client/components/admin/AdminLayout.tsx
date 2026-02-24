@@ -20,6 +20,7 @@ import {
   Handshake,
   UserPlus,
   Zap,
+  Receipt,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -30,6 +31,7 @@ interface NavItem {
   path: string;
   icon: ElementType;
   section?: string;
+  isChild?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -102,6 +104,13 @@ const NAV_ITEMS: NavItem[] = [
     section: "Management",
   },
   {
+    label: "Payment History",
+    path: "/admin/quick-payment/history",
+    icon: Receipt,
+    section: "Management",
+    isChild: true,
+  },
+  {
     label: "Reports",
     path: "/admin/reports",
     icon: BarChart3,
@@ -162,6 +171,7 @@ export default function AdminLayout() {
       const sectionHeader =
         item.section &&
         item.section !== currentSection &&
+        !item.isChild &&
         (sidebarOpen || isMobile)
           ? (() => {
               currentSection = item.section || "";
@@ -185,13 +195,19 @@ export default function AdminLayout() {
               active
                 ? "bg-teal-50 text-teal-700 font-medium"
                 : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            } ${!sidebarOpen && !isMobile ? "justify-center" : ""}`}
+            } ${!sidebarOpen && !isMobile ? "justify-center" : ""} ${
+              item.isChild && (sidebarOpen || isMobile) ? "ml-6" : ""
+            }`}
             title={!sidebarOpen && !isMobile ? item.label : undefined}
           >
             <Icon
-              className={`w-5 h-5 flex-shrink-0 ${active ? "text-teal-600" : ""}`}
+              className={`flex-shrink-0 ${active ? "text-teal-600" : ""} ${
+                item.isChild ? "w-4 h-4" : "w-5 h-5"
+              }`}
             />
-            {(sidebarOpen || isMobile) && <span>{item.label}</span>}
+            {(sidebarOpen || isMobile) && (
+              <span className={item.isChild ? "text-sm" : ""}>{item.label}</span>
+            )}
           </NavLink>
         </div>
       );
