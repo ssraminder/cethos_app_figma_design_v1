@@ -19,6 +19,7 @@ import {
   Scissors,
   Handshake,
   UserPlus,
+  Zap,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -92,6 +93,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Accounts Receivable",
     path: "/admin/ar",
     icon: DollarSign,
+    section: "Management",
+  },
+  {
+    label: "Quick Payment",
+    path: "/admin/quick-payment",
+    icon: Zap,
     section: "Management",
   },
   {
