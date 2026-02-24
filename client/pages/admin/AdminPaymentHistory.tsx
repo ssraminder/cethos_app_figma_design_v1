@@ -26,7 +26,6 @@ interface PaymentRequest {
   paid_at: string | null;
   expires_at: string | null;
   created_at: string;
-  notes: string | null;
   customers: {
     full_name: string | null;
     email: string | null;
@@ -162,7 +161,6 @@ export default function AdminPaymentHistory() {
         paid_at,
         expires_at,
         created_at,
-        notes,
         customers (
           full_name,
           email
@@ -260,7 +258,7 @@ export default function AdminPaymentHistory() {
   const openEditModal = (record: PaymentRequest) => {
     setEditingRecord(record);
     setEditAmount(String(record.amount));
-    setEditNotes(record.notes || "");
+    setEditNotes("");
     setEditError(null);
   };
 
