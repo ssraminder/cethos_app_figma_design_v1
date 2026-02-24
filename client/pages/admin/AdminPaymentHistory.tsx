@@ -8,6 +8,8 @@ import {
   Receipt,
   Copy,
   Check,
+  Send,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -101,6 +103,9 @@ export default function AdminPaymentHistory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
+  const [rowStates, setRowStates] = useState<
+    Record<string, "idle" | "loading" | "success" | "error">
+  >({});
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -163,6 +168,48 @@ export default function AdminPaymentHistory() {
 
   const formatAmount = (amount: number) => {
     return `$${amount.toFixed(2)} CAD`;
+  };
+
+  const handleSendReminder = async (rowId: string) => {
+    setRowStates((prev) => ({ ...prev, [rowId]: "loading" }));
+
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke(
+        "send-deposit-reminder",
+        {
+          body: {
+            payment_request_id: rowId,
+            staff_id: session!.staffId,
+          },
+        },
+      );
+
+      if (fnError || !data?.success) {
+        setRowStates((prev) => ({ ...prev, [rowId]: "error" }));
+        setTimeout(() => {
+          setRowStates((prev) => ({ ...prev, [rowId]: "idle" }));
+        }, 5000);
+        return;
+      }
+
+      // Update reminder_sent_at in local state
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.id === rowId
+            ? { ...r, reminder_sent_at: data.reminder_sent_at }
+            : r,
+        ),
+      );
+      setRowStates((prev) => ({ ...prev, [rowId]: "success" }));
+      setTimeout(() => {
+        setRowStates((prev) => ({ ...prev, [rowId]: "idle" }));
+      }, 3000);
+    } catch {
+      setRowStates((prev) => ({ ...prev, [rowId]: "error" }));
+      setTimeout(() => {
+        setRowStates((prev) => ({ ...prev, [rowId]: "idle" }));
+      }, 5000);
+    }
   };
 
   if (authLoading || !session) {
@@ -258,19 +305,22 @@ export default function AdminPaymentHistory() {
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
                   Payment URL
                 </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center">
+                  <td colSpan={9} className="px-6 py-12 text-center">
                     <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     <p className="text-gray-500 mt-2">Loading...</p>
                   </td>
                 </tr>
               ) : filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-16 text-center">
+                  <td colSpan={9} className="px-6 py-16 text-center">
                     <Receipt className="w-10 h-10 text-gray-300 mx-auto mb-3" />
                     <p className="text-sm font-medium text-gray-700">
                       No deposit payment links found
@@ -324,6 +374,40 @@ export default function AdminPaymentHistory() {
                     <td className="px-4 py-3 text-center">
                       {record.stripe_payment_link_url ? (
                         <CopyButton url={record.stripe_payment_link_url} />
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {record.status === "pending" ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleSendReminder(record.id)}
+                            disabled={
+                              (rowStates[record.id] || "idle") === "loading"
+                            }
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {(rowStates[record.id] || "idle") === "loading" ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5" />
+                            )}
+                            {record.reminder_sent_at
+                              ? "Remind Again"
+                              : "Send Reminder"}
+                          </button>
+                          {(rowStates[record.id] || "idle") === "success" && (
+                            <span className="text-xs text-green-600 font-medium">
+                              ✓ Sent
+                            </span>
+                          )}
+                          {(rowStates[record.id] || "idle") === "error" && (
+                            <span className="text-xs text-red-600 font-medium">
+                              Failed — try again
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
                       )}
