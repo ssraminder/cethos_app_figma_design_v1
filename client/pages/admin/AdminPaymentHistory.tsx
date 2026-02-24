@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import {
@@ -10,6 +10,8 @@ import {
   Check,
   Send,
   Loader2,
+  Pencil,
+  XCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -99,11 +101,15 @@ function CopyButton({ url }: { url: string }) {
 
 export default function AdminPaymentHistory() {
   const { session, loading: authLoading } = useAdminAuthContext();
+  const navigate = useNavigate();
   const [records, setRecords] = useState<PaymentRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [rowStates, setRowStates] = useState<
+    Record<string, "idle" | "loading" | "success" | "error">
+  >({});
+  const [cancelStates, setCancelStates] = useState<
     Record<string, "idle" | "loading" | "success" | "error">
   >({});
 
@@ -208,6 +214,41 @@ export default function AdminPaymentHistory() {
       setRowStates((prev) => ({ ...prev, [rowId]: "error" }));
       setTimeout(() => {
         setRowStates((prev) => ({ ...prev, [rowId]: "idle" }));
+      }, 5000);
+    }
+  };
+
+  const handleCancelPayment = async (rowId: string) => {
+    setCancelStates((prev) => ({ ...prev, [rowId]: "loading" }));
+
+    try {
+      const { error: updateError } = await supabase
+        .from("payment_requests")
+        .update({ status: "cancelled" })
+        .eq("id", rowId);
+
+      if (updateError) {
+        setCancelStates((prev) => ({ ...prev, [rowId]: "error" }));
+        setTimeout(() => {
+          setCancelStates((prev) => ({ ...prev, [rowId]: "idle" }));
+        }, 5000);
+        return;
+      }
+
+      // Update status in local state
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.id === rowId ? { ...r, status: "cancelled" } : r,
+        ),
+      );
+      setCancelStates((prev) => ({ ...prev, [rowId]: "success" }));
+      setTimeout(() => {
+        setCancelStates((prev) => ({ ...prev, [rowId]: "idle" }));
+      }, 3000);
+    } catch {
+      setCancelStates((prev) => ({ ...prev, [rowId]: "error" }));
+      setTimeout(() => {
+        setCancelStates((prev) => ({ ...prev, [rowId]: "idle" }));
       }, 5000);
     }
   };
@@ -380,31 +421,77 @@ export default function AdminPaymentHistory() {
                     </td>
                     <td className="px-4 py-3">
                       {record.status === "pending" ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          {/* Edit */}
+                          <button
+                            onClick={() =>
+                              navigate(
+                                `/admin/quick-payment?edit=${record.id}`,
+                              )
+                            }
+                            className="p-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                            title="Edit payment"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Send Reminder / Resend */}
                           <button
                             onClick={() => handleSendReminder(record.id)}
                             disabled={
                               (rowStates[record.id] || "idle") === "loading"
                             }
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={
+                              record.reminder_sent_at
+                                ? "Remind Again"
+                                : "Send Reminder"
+                            }
                           >
                             {(rowStates[record.id] || "idle") === "loading" ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             ) : (
                               <Send className="w-3.5 h-3.5" />
                             )}
-                            {record.reminder_sent_at
-                              ? "Remind Again"
-                              : "Send Reminder"}
                           </button>
+
+                          {/* Cancel */}
+                          <button
+                            onClick={() => handleCancelPayment(record.id)}
+                            disabled={
+                              (cancelStates[record.id] || "idle") === "loading"
+                            }
+                            className="p-1.5 border border-red-200 rounded-lg text-red-500 hover:bg-red-50 hover:text-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Cancel payment"
+                          >
+                            {(cancelStates[record.id] || "idle") ===
+                            "loading" ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <XCircle className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          {/* Inline status messages */}
                           {(rowStates[record.id] || "idle") === "success" && (
-                            <span className="text-xs text-green-600 font-medium">
+                            <span className="text-xs text-green-600 font-medium ml-1">
                               ✓ Sent
                             </span>
                           )}
                           {(rowStates[record.id] || "idle") === "error" && (
-                            <span className="text-xs text-red-600 font-medium">
-                              Failed — try again
+                            <span className="text-xs text-red-600 font-medium ml-1">
+                              Failed
+                            </span>
+                          )}
+                          {(cancelStates[record.id] || "idle") ===
+                            "success" && (
+                            <span className="text-xs text-green-600 font-medium ml-1">
+                              ✓ Cancelled
+                            </span>
+                          )}
+                          {(cancelStates[record.id] || "idle") === "error" && (
+                            <span className="text-xs text-red-600 font-medium ml-1">
+                              Cancel failed
                             </span>
                           )}
                         </div>
