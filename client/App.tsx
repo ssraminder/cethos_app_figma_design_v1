@@ -74,6 +74,7 @@ import PreprocessOCRPage from "./pages/admin/PreprocessOCRPage";
 import AdminPartners from "./pages/admin/AdminPartners";
 import RecruitmentList from "./pages/admin/RecruitmentList";
 import RecruitmentDetail from "./pages/admin/RecruitmentDetail";
+import AdminQuickPayment from "./pages/admin/AdminQuickPayment";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
 
@@ -311,6 +312,7 @@ const App = () => (
                     <Route path="preprocess-ocr" element={<PreprocessOCRPage />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
+                    <Route path="quick-payment" element={<AdminQuickPayment />} />
 
                     {/* Admin Settings screens */}
                     <Route
