@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -12,8 +12,10 @@ import {
   Loader2,
   Pencil,
   X,
+  Trash2,
+  Search,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 
 interface PaymentRequest {
   id: string;
@@ -32,20 +34,28 @@ interface PaymentRequest {
   } | null;
 }
 
-type FilterTab = "all" | "pending" | "paid" | "expired";
+type FilterTab = "all" | "pending" | "paid" | "cancelled";
 
-type RowActionState = "idle" | "reminding" | "cancelling" | "editing";
+type RowActionState = "idle" | "reminding" | "cancelling" | "copying";
 type RowFeedback = { type: "success" | "error"; message: string } | null;
 
 const TABS: { key: FilterTab; label: string }[] = [
   { key: "all", label: "All" },
   { key: "pending", label: "Pending" },
   { key: "paid", label: "Paid" },
-  { key: "expired", label: "Expired" },
+  { key: "cancelled", label: "Cancelled" },
 ];
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+function getDefaultFromDate(): string {
+  return format(subDays(new Date(), 7), "yyyy-MM-dd");
+}
+
+function getDefaultToDate(): string {
+  return format(new Date(), "yyyy-MM-dd");
+}
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -71,36 +81,28 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function CopyButton({ url }: { url: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      const textarea = document.createElement("textarea");
-      textarea.value = url;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
+/** Icon-only action button with tooltip */
+function ActionIconButton({
+  onClick,
+  disabled,
+  title,
+  className,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  title: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
     <button
-      onClick={handleCopy}
-      className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-      aria-label="Copy payment URL"
-      title="Copy payment URL"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={`relative flex items-center justify-center w-8 h-8 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className ?? "hover:bg-gray-100 text-gray-500"}`}
     >
-      {copied ? (
-        <Check className="w-4 h-4 text-green-600" />
-      ) : (
-        <Copy className="w-4 h-4 text-gray-500" />
-      )}
+      {children}
     </button>
   );
 }
@@ -114,6 +116,13 @@ export default function AdminPaymentHistory() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
 
+  // Date range filters
+  const [fromDate, setFromDate] = useState(getDefaultFromDate);
+  const [toDate, setToDate] = useState(getDefaultToDate);
+
+  // Search filter
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Per-row action state
   const [rowActionStates, setRowActionStates] = useState<
     Record<string, RowActionState>
@@ -122,10 +131,19 @@ export default function AdminPaymentHistory() {
     Record<string, RowFeedback>
   >({});
 
+  // Reminder counts
+  const [rowReminderCounts, setRowReminderCounts] = useState<
+    Record<string, number>
+  >({});
+
+  // Dismissed rows
+  const [dismissedRows, setDismissedRows] = useState<Set<string>>(new Set());
+
   // Inline cancel confirmation state
-  const [cancelConfirm, setCancelConfirm] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [cancelConfirmRow, setCancelConfirmRow] = useState<string | null>(null);
+
+  // Copy feedback per row
+  const [copiedRow, setCopiedRow] = useState<string | null>(null);
 
   // Edit & Resend modal state
   const [editingRecord, setEditingRecord] = useState<PaymentRequest | null>(
@@ -143,14 +161,15 @@ export default function AdminPaymentHistory() {
     setTimeout(() => setRowFeedback((prev) => ({ ...prev, [id]: null })), ms);
   };
 
-  const fetchPaymentRequests = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchPaymentRequests = useCallback(
+    async (from: string, to: string) => {
+      setLoading(true);
+      setError(null);
 
-    const { data, error: fetchError } = await supabase
-      .from("payment_requests")
-      .select(
-        `
+      const { data, error: fetchError } = await supabase
+        .from("payment_requests")
+        .select(
+          `
         id,
         amount,
         status,
@@ -166,31 +185,55 @@ export default function AdminPaymentHistory() {
           email
         )
       `,
-      )
-      .eq("reason", "deposit")
-      .order("created_at", { ascending: false })
-      .limit(100);
+        )
+        .eq("reason", "deposit")
+        .gte("created_at", from)
+        .lte("created_at", to + "T23:59:59")
+        .order("created_at", { ascending: false })
+        .limit(200);
 
-    if (fetchError) {
-      setError("Failed to load payment links. Please try again.");
-      setRecords([]);
-    } else {
-      setRecords((data as PaymentRequest[]) || []);
-    }
+      if (fetchError) {
+        setError("Failed to load payment links. Please try again.");
+        setRecords([]);
+      } else {
+        setRecords((data as PaymentRequest[]) || []);
+      }
 
-    setLoading(false);
-  }, []);
+      setLoading(false);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (session) {
-      fetchPaymentRequests();
+      fetchPaymentRequests(fromDate, toDate);
     }
-  }, [session, fetchPaymentRequests]);
+  }, [session, fromDate, toDate, fetchPaymentRequests]);
 
-  const filteredRecords =
-    activeTab === "all"
-      ? records
-      : records.filter((r) => r.status === activeTab);
+  // Client-side filtering: tab + search + dismissed
+  const displayRows = useMemo(() => {
+    let rows = records;
+
+    // Tab filter
+    if (activeTab !== "all") {
+      rows = rows.filter((r) => r.status === activeTab);
+    }
+
+    // Search filter (client-side on name and email)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      rows = rows.filter((r) => {
+        const name = r.customers?.full_name?.toLowerCase() ?? "";
+        const email = (r.email_sent_to ?? "").toLowerCase();
+        return name.includes(q) || email.includes(q);
+      });
+    }
+
+    // Dismissed rows filter
+    rows = rows.filter((r) => !dismissedRows.has(r.id));
+
+    return rows;
+  }, [records, activeTab, searchQuery, dismissedRows]);
 
   const formatDateTime = (value: string | null) => {
     if (!value) return "—";
@@ -206,10 +249,38 @@ export default function AdminPaymentHistory() {
     return `$${amount.toFixed(2)} CAD`;
   };
 
-  // --- Button 1: Remind ---
+  const handleClearFilters = () => {
+    setFromDate(getDefaultFromDate());
+    setToDate(getDefaultToDate());
+    setSearchQuery("");
+  };
+
+  // --- Copy URL ---
+  const handleCopyUrl = async (row: PaymentRequest) => {
+    if (!row.stripe_payment_link_url) return;
+
+    try {
+      await navigator.clipboard.writeText(row.stripe_payment_link_url);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = row.stripe_payment_link_url;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+    setCopiedRow(row.id);
+    setTimeout(() => setCopiedRow(null), 2000);
+  };
+
+  // --- Remind ---
   const handleSendReminder = async (row: PaymentRequest) => {
     if (!currentStaffId) {
-      showFeedback(row.id, { type: "error", message: "Session error — please refresh the page" }, 5000);
+      showFeedback(
+        row.id,
+        { type: "error", message: "Session error — please refresh the page" },
+        5000,
+      );
       return;
     }
 
@@ -239,10 +310,17 @@ export default function AdminPaymentHistory() {
       // Update reminder_sent_at in local state
       setRecords((prev) =>
         prev.map((r) =>
-          r.id === row.id ? { ...r, reminder_sent_at: data.reminder_sent_at } : r,
+          r.id === row.id
+            ? { ...r, reminder_sent_at: data.reminder_sent_at }
+            : r,
         ),
       );
-      showFeedback(row.id, { type: "success", message: "✓ Reminder sent" }, 3000);
+      // Increment reminder count
+      setRowReminderCounts((prev) => ({
+        ...prev,
+        [row.id]: (prev[row.id] ?? 0) + 1,
+      }));
+      showFeedback(row.id, { type: "success", message: "Reminder sent" }, 3000);
     } catch (err: any) {
       showFeedback(
         row.id,
@@ -254,7 +332,7 @@ export default function AdminPaymentHistory() {
     }
   };
 
-  // --- Button 2: Edit & Resend ---
+  // --- Edit & Resend ---
   const openEditModal = (record: PaymentRequest) => {
     setEditingRecord(record);
     setEditAmount(String(record.amount));
@@ -273,7 +351,11 @@ export default function AdminPaymentHistory() {
     if (!editingRecord) return;
 
     if (!currentStaffId) {
-      showFeedback(editingRecord.id, { type: "error", message: "Session error — please refresh the page" }, 5000);
+      showFeedback(
+        editingRecord.id,
+        { type: "error", message: "Session error — please refresh the page" },
+        5000,
+      );
       closeEditModal();
       return;
     }
@@ -284,7 +366,7 @@ export default function AdminPaymentHistory() {
       return;
     }
 
-    setRowState(editingRecord.id, "editing");
+    setRowState(editingRecord.id, "cancelling");
 
     try {
       // Step 1: Cancel the old payment_request row
@@ -318,11 +400,15 @@ export default function AdminPaymentHistory() {
         throw new Error(data.error || "Failed to create new payment link");
       }
 
-      showFeedback(editingRecord.id, { type: "success", message: "✓ New link sent" }, 3000);
+      showFeedback(
+        editingRecord.id,
+        { type: "success", message: "New link sent" },
+        3000,
+      );
       closeEditModal();
 
-      // Refresh the list so the old cancelled row and new pending row both appear
-      fetchPaymentRequests();
+      // Refresh the list
+      fetchPaymentRequests(fromDate, toDate);
     } catch (err: any) {
       showFeedback(
         editingRecord.id,
@@ -334,10 +420,14 @@ export default function AdminPaymentHistory() {
     }
   };
 
-  // --- Button 3: Cancel ---
+  // --- Cancel ---
   const handleCancelPayment = async (row: PaymentRequest) => {
     if (!currentStaffId) {
-      showFeedback(row.id, { type: "error", message: "Session error — please refresh the page" }, 5000);
+      showFeedback(
+        row.id,
+        { type: "error", message: "Session error — please refresh the page" },
+        5000,
+      );
       return;
     }
 
@@ -357,7 +447,7 @@ export default function AdminPaymentHistory() {
           r.id === row.id ? { ...r, status: "cancelled" } : r,
         ),
       );
-      showFeedback(row.id, { type: "success", message: "✓ Link cancelled" }, 3000);
+      showFeedback(row.id, { type: "success", message: "Link cancelled" }, 3000);
     } catch (err: any) {
       showFeedback(
         row.id,
@@ -366,8 +456,194 @@ export default function AdminPaymentHistory() {
       );
     } finally {
       setRowState(row.id, "idle");
-      setCancelConfirm((prev) => ({ ...prev, [row.id]: false }));
+      setCancelConfirmRow(null);
     }
+  };
+
+  // --- Dismiss ---
+  const handleDismiss = (rowId: string) => {
+    setDismissedRows((prev) => new Set(prev).add(rowId));
+  };
+
+  // --- Render action icons per row ---
+  const renderActions = (record: PaymentRequest) => {
+    const rowState = rowActionStates[record.id] || "idle";
+    const feedback = rowFeedback[record.id];
+    const isRowBusy = rowState !== "idle";
+    const isCopied = copiedRow === record.id;
+    const reminderCount = rowReminderCounts[record.id] ?? 0;
+    const hasUrl = !!record.stripe_payment_link_url;
+
+    // Copy URL icon (shared across statuses)
+    const copyIcon = (
+      <ActionIconButton
+        onClick={() => handleCopyUrl(record)}
+        disabled={isRowBusy || !hasUrl}
+        title="Copy Payment URL"
+        className={
+          !hasUrl
+            ? "text-gray-300 cursor-not-allowed"
+            : "hover:bg-gray-100 text-gray-500"
+        }
+      >
+        {isCopied ? (
+          <Check className="w-4 h-4 text-green-600" />
+        ) : (
+          <Copy className="w-4 h-4" />
+        )}
+      </ActionIconButton>
+    );
+
+    if (record.status === "pending") {
+      // Inline cancel confirmation
+      if (cancelConfirmRow === record.id) {
+        return (
+          <div className="flex items-center gap-1" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+            <span className="text-xs text-gray-600 mr-1">Sure?</span>
+            <ActionIconButton
+              onClick={() => handleCancelPayment(record)}
+              disabled={isRowBusy}
+              title="Confirm Cancel"
+              className="hover:bg-green-100 text-green-600"
+            >
+              {rowState === "cancelling" ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+            </ActionIconButton>
+            <ActionIconButton
+              onClick={() => setCancelConfirmRow(null)}
+              disabled={isRowBusy}
+              title="Dismiss"
+              className="hover:bg-gray-100 text-gray-500"
+            >
+              <X className="w-4 h-4" />
+            </ActionIconButton>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+            {/* Bell — Remind */}
+            <ActionIconButton
+              onClick={() => handleSendReminder(record)}
+              disabled={isRowBusy}
+              title="Send Reminder"
+              className="hover:bg-gray-100 text-gray-500"
+            >
+              {rowState === "reminding" ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <div className="relative">
+                  <Bell className="w-4 h-4" />
+                  {record.reminder_sent_at && reminderCount > 0 && (
+                    <span
+                      className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-white"
+                      style={{
+                        width: 14,
+                        height: 14,
+                        fontSize: 9,
+                        backgroundColor: "#0891b2",
+                        lineHeight: 1,
+                      }}
+                    >
+                      {reminderCount}
+                    </span>
+                  )}
+                </div>
+              )}
+            </ActionIconButton>
+
+            {/* Pencil — Edit & Resend */}
+            <ActionIconButton
+              onClick={() => openEditModal(record)}
+              disabled={isRowBusy}
+              title="Edit & Resend"
+              className="hover:bg-gray-100 text-gray-500"
+            >
+              <Pencil className="w-4 h-4" />
+            </ActionIconButton>
+
+            {/* Trash — Cancel */}
+            <ActionIconButton
+              onClick={() => setCancelConfirmRow(record.id)}
+              disabled={isRowBusy}
+              title="Cancel Link"
+              className="hover:bg-gray-100 text-gray-500"
+            >
+              <Trash2 className="w-4 h-4" />
+            </ActionIconButton>
+
+            {/* Copy — Copy URL */}
+            {copyIcon}
+          </div>
+
+          {/* Row feedback message */}
+          {feedback && (
+            <span
+              className={`text-xs font-medium ${
+                feedback.type === "success" ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {feedback.message}
+            </span>
+          )}
+        </div>
+      );
+    }
+
+    if (record.status === "paid") {
+      return (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+            {copyIcon}
+          </div>
+          {feedback && (
+            <span
+              className={`text-xs font-medium ${
+                feedback.type === "success" ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {feedback.message}
+            </span>
+          )}
+        </div>
+      );
+    }
+
+    if (record.status === "cancelled") {
+      return (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+            {copyIcon}
+            {/* X — Dismiss */}
+            <ActionIconButton
+              onClick={() => handleDismiss(record.id)}
+              disabled={isRowBusy}
+              title="Dismiss"
+              className="hover:bg-gray-100 text-gray-400"
+            >
+              <X className="w-4 h-4" />
+            </ActionIconButton>
+          </div>
+          {feedback && (
+            <span
+              className={`text-xs font-medium ${
+                feedback.type === "success" ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {feedback.message}
+            </span>
+          )}
+        </div>
+      );
+    }
+
+    // Fallback for any other status (e.g. expired)
+    return <span className="text-sm text-gray-400">—</span>;
   };
 
   if (authLoading || !session) {
@@ -398,7 +674,7 @@ export default function AdminPaymentHistory() {
           </p>
         </div>
         <button
-          onClick={fetchPaymentRequests}
+          onClick={() => fetchPaymentRequests(fromDate, toDate)}
           disabled={loading}
           className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
         >
@@ -417,7 +693,7 @@ export default function AdminPaymentHistory() {
       )}
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-4">
         {TABS.map((tab) => (
           <button
             key={tab.key}
@@ -433,10 +709,64 @@ export default function AdminPaymentHistory() {
         ))}
       </div>
 
+      {/* Filters Bar */}
+      <div className="flex flex-wrap items-end gap-4 mb-6">
+        {/* From date */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            From
+          </label>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+          />
+        </div>
+
+        {/* To date */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            To
+          </label>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+          />
+        </div>
+
+        {/* Search */}
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            &nbsp;
+          </label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name or email…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+            />
+          </div>
+        </div>
+
+        {/* Clear filters */}
+        <button
+          onClick={handleClearFilters}
+          className="text-sm text-gray-400 hover:text-gray-600 transition-colors pb-2"
+        >
+          Clear filters
+        </button>
+      </div>
+
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1050px]">
+          <table className="w-full min-w-[900px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -460,9 +790,6 @@ export default function AdminPaymentHistory() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Expires
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
-                  Payment URL
-                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -471,14 +798,14 @@ export default function AdminPaymentHistory() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center">
+                  <td colSpan={8} className="px-6 py-12 text-center">
                     <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     <p className="text-gray-500 mt-2">Loading...</p>
                   </td>
                 </tr>
-              ) : filteredRecords.length === 0 ? (
+              ) : displayRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-16 text-center">
+                  <td colSpan={8} className="px-6 py-16 text-center">
                     <Receipt className="w-10 h-10 text-gray-300 mx-auto mb-3" />
                     <p className="text-sm font-medium text-gray-700">
                       No deposit payment links found
@@ -489,168 +816,58 @@ export default function AdminPaymentHistory() {
                   </td>
                 </tr>
               ) : (
-                filteredRecords.map((record) => {
-                  const rowState = rowActionStates[record.id] || "idle";
-                  const feedback = rowFeedback[record.id];
-                  const isRowBusy = rowState !== "idle";
-                  const showingCancelConfirm = cancelConfirm[record.id] || false;
-
-                  return (
-                    <tr
-                      key={record.id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-gray-900">
-                          {record.customers?.full_name ||
-                            record.email_sent_to ||
-                            "—"}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-500">
-                          {record.email_sent_to || "—"}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <p className="text-sm font-semibold text-gray-900 tabular-nums">
-                          {formatAmount(record.amount)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={record.status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-700">
-                          {formatDateTime(record.email_sent_at)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-700">
-                          {formatDateTime(record.paid_at)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-700">
-                          {formatDate(record.expires_at)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {record.stripe_payment_link_url ? (
-                          <CopyButton url={record.stripe_payment_link_url} />
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {record.status === "pending" ? (
-                          <div className="flex flex-col gap-1">
-                            {showingCancelConfirm ? (
-                              /* Inline cancel confirmation */
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-600">
-                                  Are you sure?
-                                </span>
-                                <button
-                                  onClick={() => handleCancelPayment(record)}
-                                  disabled={isRowBusy}
-                                  className="px-2 py-1 text-xs font-medium border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                                >
-                                  {rowState === "cancelling" && (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  )}
-                                  Yes, Cancel Link
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    setCancelConfirm((prev) => ({
-                                      ...prev,
-                                      [record.id]: false,
-                                    }))
-                                  }
-                                  disabled={isRowBusy}
-                                  className="px-2 py-1 text-xs font-medium border border-gray-300 text-gray-600 rounded hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  No, Keep
-                                </button>
-                              </div>
-                            ) : (
-                              /* Normal three-button row */
-                              <div className="flex items-center gap-1.5">
-                                {/* Remind */}
-                                <button
-                                  onClick={() => handleSendReminder(record)}
-                                  disabled={isRowBusy}
-                                  className="px-2 py-1 text-xs font-medium border border-gray-300 text-gray-600 rounded hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                                  title={
-                                    record.reminder_sent_at
-                                      ? "Remind Again"
-                                      : "Send Reminder"
-                                  }
-                                >
-                                  {rowState === "reminding" ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    <Bell className="w-3 h-3" />
-                                  )}
-                                  {record.reminder_sent_at
-                                    ? "Remind Again"
-                                    : "Remind"}
-                                </button>
-
-                                {/* Edit & Resend */}
-                                <button
-                                  onClick={() => openEditModal(record)}
-                                  disabled={isRowBusy}
-                                  className="px-2 py-1 text-xs font-medium border border-gray-300 text-gray-600 rounded hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                                  title="Edit & Resend"
-                                >
-                                  {rowState === "editing" ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    <Pencil className="w-3 h-3" />
-                                  )}
-                                  Edit & Resend
-                                </button>
-
-                                {/* Cancel */}
-                                <button
-                                  onClick={() =>
-                                    setCancelConfirm((prev) => ({
-                                      ...prev,
-                                      [record.id]: true,
-                                    }))
-                                  }
-                                  disabled={isRowBusy}
-                                  className="px-2 py-1 text-xs font-medium border border-red-200 text-red-500 rounded hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                                  title="Cancel payment link"
-                                >
-                                  <X className="w-3 h-3" />
-                                  Cancel
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Row feedback message */}
-                            {feedback && (
-                              <span
-                                className={`text-xs font-medium ${
-                                  feedback.type === "success"
-                                    ? "text-green-600"
-                                    : "text-red-600"
-                                }`}
-                              >
-                                {feedback.message}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
+                displayRows.map((record) => (
+                  <tr
+                    key={record.id}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+                    <td className="px-4 py-3">
+                      <p className="text-sm font-medium text-gray-900">
+                        {record.customers?.full_name ||
+                          record.email_sent_to ||
+                          "—"}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p
+                        className="text-sm text-gray-500"
+                        style={{
+                          maxWidth: 160,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={record.email_sent_to || undefined}
+                      >
+                        {record.email_sent_to || "—"}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <p className="text-sm font-semibold text-gray-900 tabular-nums">
+                        {formatAmount(record.amount)}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={record.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-sm text-gray-700">
+                        {formatDateTime(record.email_sent_at)}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-sm text-gray-700">
+                        {formatDateTime(record.paid_at)}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-sm text-gray-700">
+                        {formatDate(record.expires_at)}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">{renderActions(record)}</td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -745,12 +962,11 @@ export default function AdminPaymentHistory() {
               <button
                 onClick={handleEditConfirm}
                 disabled={
-                  (rowActionStates[editingRecord.id] || "idle") === "editing"
+                  (rowActionStates[editingRecord.id] || "idle") !== "idle"
                 }
                 className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                {(rowActionStates[editingRecord.id] || "idle") ===
-                  "editing" && (
+                {(rowActionStates[editingRecord.id] || "idle") !== "idle" && (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 )}
                 Confirm & Resend
