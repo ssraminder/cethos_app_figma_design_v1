@@ -70,12 +70,17 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
             });
 
             // Also get the Supabase session for completeness
-            const {
-              data: { session },
-            } = await supabase.auth.getSession();
-            if (!isMounted) return;
-            setSession(session);
-            setUser(session?.user ?? null);
+            try {
+              const {
+                data: { session },
+              } = await supabase.auth.getSession();
+              if (!isMounted) return;
+              setSession(session);
+              setUser(session?.user ?? null);
+            } catch (err) {
+              console.warn("StaffAuthContext: Failed to fetch Supabase session (network issue?), using localStorage only:", err);
+              if (!isMounted) return;
+            }
 
             setLoading(false);
             return;
@@ -90,9 +95,20 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // No localStorage session - check Supabase auth
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      let session: Session | null = null;
+      try {
+        const { data } = await supabase.auth.getSession();
+        session = data.session;
+      } catch (err) {
+        console.warn("StaffAuthContext: Failed to get session (network issue?):", err);
+        // If network is down, gracefully fall through with no session
+        if (!isMounted) return;
+        setStaffUser(null);
+        setUser(null);
+        setSession(null);
+        setLoading(false);
+        return;
+      }
       if (!isMounted) return;
       if (!session) {
         console.log("StaffAuthContext: No session found");
