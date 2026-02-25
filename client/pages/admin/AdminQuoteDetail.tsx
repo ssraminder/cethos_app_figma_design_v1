@@ -51,6 +51,7 @@ import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import OcrAnalysisModal from "../../components/admin/OcrAnalysisModal";
 import QuoteActivityFeed from "../../components/admin/QuoteActivityFeed";
 import { logQuoteActivity } from "../../utils/quoteActivityLog";
+import { formatEntryPoint, entryPointBadgeColor } from "../../utils/quoteUtils";
 
 interface QuoteDetail {
   id: string;
@@ -60,6 +61,7 @@ interface QuoteDetail {
   updated_at: string;
   expires_at: string;
   customer_id: string;
+  entry_point: string | null;
   customer?: {
     id: string;
     email: string;
@@ -2935,14 +2937,12 @@ export default function AdminQuoteDetail() {
                     </p>
                   </div>
                 )}
-                {quote.quote_source && (
-                  <div className="col-span-2">
-                    <p className="text-sm text-gray-500">Contact Method</p>
-                    <p className="font-medium">
-                      {quote.quote_source.name}
-                    </p>
-                  </div>
-                )}
+                <div className="col-span-2">
+                  <p className="text-sm text-gray-500">Source</p>
+                  <span className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${entryPointBadgeColor(quote.entry_point)}`}>
+                    {formatEntryPoint(quote.entry_point)}
+                  </span>
+                </div>
               </div>
             ) : (
               <p className="text-gray-500">No customer information</p>
