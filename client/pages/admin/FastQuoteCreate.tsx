@@ -99,6 +99,7 @@ interface DocumentRow {
   wordCount: string;
   complexity: "easy" | "medium" | "hard";
   certificationTypeId: string;
+  perPageRateOverride: string; // empty = auto-calculated, set = manual override
   expanded: boolean;
   files: FileAttachment[];
 }
@@ -210,6 +211,7 @@ export default function FastQuoteCreate() {
       wordCount: "",
       complexity: "easy",
       certificationTypeId: "",
+      perPageRateOverride: "",
       expanded: true,
       files: [],
     },
@@ -304,8 +306,8 @@ export default function FastQuoteCreate() {
             .order("sort_order"),
           supabase
             .from("app_settings")
-            .select("key,value")
-            .in("key", ["base_rate", "words_per_page"]),
+            .select("setting_key,setting_value")
+            .in("setting_key", ["base_rate", "words_per_page"]),
         ]);
 
         if (langRes.error) throw new Error("Failed to load languages");
@@ -333,11 +335,11 @@ export default function FastQuoteCreate() {
         // Parse app settings
         if (settingsRes.data) {
           for (const setting of settingsRes.data) {
-            if (setting.key === "base_rate") {
-              setBaseRate(parseFloat(setting.value) || 65.0);
+            if (setting.setting_key === "base_rate") {
+              setBaseRate(parseFloat(setting.setting_value) || 65.0);
             }
-            if (setting.key === "words_per_page") {
-              setWordsPerPage(parseInt(setting.value) || 225);
+            if (setting.setting_key === "words_per_page") {
+              setWordsPerPage(parseInt(setting.setting_value) || 225);
             }
           }
         }
@@ -438,6 +440,7 @@ export default function FastQuoteCreate() {
           wordCount: "",
           complexity: "easy",
           certificationTypeId: lastDoc?.certificationTypeId || "",
+          perPageRateOverride: "",
           expanded: true,
           files: [],
         },
@@ -550,14 +553,18 @@ export default function FastQuoteCreate() {
         (c) => c.id === doc.certificationTypeId,
       );
       const certFee = cert?.price || 0;
-      const translationCost = billablePages * perPageRate;
+      // Use per-document override if set, otherwise use calculated rate
+      const effectiveRate = doc.perPageRateOverride
+        ? parseFloat(doc.perPageRateOverride) || perPageRate
+        : perPageRate;
+      const translationCost = billablePages * effectiveRate;
       const lineTotal = translationCost + certFee;
 
       return {
         docId: doc.id,
         label: doc.label,
         billablePages,
-        perPageRate,
+        perPageRate: effectiveRate,
         translationCost,
         certFee,
         lineTotal,
@@ -792,23 +799,18 @@ export default function FastQuoteCreate() {
         },
       };
 
-      // Call edge function
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-fast-quote`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify(requestBody),
-        },
+      // Call edge function via supabase client (handles CORS + auth)
+      const { data: result, error: fnError } = await supabase.functions.invoke(
+        "create-fast-quote",
+        { body: requestBody },
       );
 
-      const result = await response.json();
+      if (fnError) {
+        throw new Error(fnError.message || "Failed to create quote");
+      }
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to create quote");
+      if (!result?.success) {
+        throw new Error(result?.error || "Failed to create quote");
       }
 
       const { quoteId, quoteNumber } = result;
@@ -850,9 +852,6 @@ export default function FastQuoteCreate() {
               file_size: fileItem.file.size,
               mime_type: fileItem.file.type,
               upload_status: "uploaded",
-              ai_processing_status: "skipped",
-              is_staff_created: true,
-              created_by_staff_id: session.staffId,
             });
           } catch (err) {
             console.error("File upload error:", err);
@@ -1417,9 +1416,31 @@ export default function FastQuoteCreate() {
                                 <label className="block text-xs font-medium text-gray-500 mb-1">
                                   Per-Page Rate
                                 </label>
-                                <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-700 tabular-nums">
-                                  ${pricing?.perPageRate.toFixed(2)} / page
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={doc.perPageRateOverride || ""}
+                                    onChange={(e) =>
+                                      updateDocument(doc.id, {
+                                        perPageRateOverride: e.target.value,
+                                      })
+                                    }
+                                    placeholder={perPageRate.toFixed(2)}
+                                    className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 tabular-nums"
+                                  />
                                 </div>
+                                {doc.perPageRateOverride ? (
+                                  <p className="text-xs text-amber-600 mt-0.5">
+                                    Override (auto: ${perPageRate.toFixed(2)})
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-gray-400 mt-0.5">
+                                    ${pricing?.perPageRate.toFixed(2)} / page
+                                  </p>
+                                )}
                               </div>
                             </div>
 
