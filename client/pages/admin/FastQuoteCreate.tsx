@@ -101,6 +101,8 @@ interface DocumentRow {
   certificationTypeId: string;
   expanded: boolean;
   files: FileAttachment[];
+  billablePagesOverride: number | null;
+  perPageRateOverride: number | null;
 }
 
 interface ValidationErrors {
@@ -212,6 +214,8 @@ export default function FastQuoteCreate() {
       certificationTypeId: "",
       expanded: true,
       files: [],
+      billablePagesOverride: null,
+      perPageRateOverride: null,
     },
   ]);
 
@@ -269,7 +273,8 @@ export default function FastQuoteCreate() {
           supabase
             .from("intended_uses")
             .select("id,name,description,default_certification_type_id")
-            .eq("is_active", true),
+            .eq("is_active", true)
+            .order("name"),
           supabase
             .from("countries")
             .select("id,code,name,is_common")
@@ -440,6 +445,8 @@ export default function FastQuoteCreate() {
           certificationTypeId: lastDoc?.certificationTypeId || "",
           expanded: true,
           files: [],
+          billablePagesOverride: null,
+          perPageRateOverride: null,
         },
       ];
     });
@@ -538,26 +545,31 @@ export default function FastQuoteCreate() {
       const wc = parseInt(doc.wordCount) || 0;
       const pc = doc.pageCount || 1;
 
-      let billablePages: number;
+      let autoBillablePages: number;
       if (wc > 0) {
         const raw = (wc / wordsPerPage) * complexityMult;
-        billablePages = Math.ceil(raw * 10) / 10;
+        autoBillablePages = Math.ceil(raw * 10) / 10;
       } else {
-        billablePages = Math.ceil(pc * complexityMult * 10) / 10;
+        autoBillablePages = Math.ceil(pc * complexityMult * 10) / 10;
       }
+
+      const billablePages = doc.billablePagesOverride ?? autoBillablePages;
+      const docPerPageRate = doc.perPageRateOverride ?? perPageRate;
 
       const cert = certificationTypes.find(
         (c) => c.id === doc.certificationTypeId,
       );
       const certFee = cert?.price || 0;
-      const translationCost = billablePages * perPageRate;
+      const translationCost = billablePages * docPerPageRate;
       const lineTotal = translationCost + certFee;
 
       return {
         docId: doc.id,
         label: doc.label,
+        autoBillablePages,
         billablePages,
-        perPageRate,
+        autoPerPageRate: perPageRate,
+        perPageRate: docPerPageRate,
         translationCost,
         certFee,
         lineTotal,
@@ -946,6 +958,11 @@ export default function FastQuoteCreate() {
     label: `${t.region_name} — ${t.tax_name} (${(t.rate * 100).toFixed(0)}%)`,
   }));
 
+  const intendedUseOptions = intendedUses.map((u) => ({
+    value: u.id,
+    label: u.name,
+  }));
+
   // ═══════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════
@@ -1134,22 +1151,15 @@ export default function FastQuoteCreate() {
               </div>
 
               <div data-field="intendedUseId">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Intended Use <span className="text-red-500">*</span>
-                </label>
-                <select
+                <SearchableSelect
+                  label="Intended Use"
+                  required
+                  options={intendedUseOptions}
                   value={intendedUseId}
-                  onChange={(e) => handleIntendedUseChange(e.target.value)}
-                  className={inputClass("intendedUseId")}
-                >
-                  <option value="">Select intended use...</option>
-                  {intendedUses.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-                {fieldError("intendedUseId")}
+                  onChange={handleIntendedUseChange}
+                  placeholder="Search intended use..."
+                  error={errors.intendedUseId}
+                />
               </div>
 
               <div>
@@ -1405,8 +1415,27 @@ export default function FastQuoteCreate() {
                                 <label className="block text-xs font-medium text-gray-500 mb-1">
                                   Per-Page Rate
                                 </label>
-                                <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-700 tabular-nums">
-                                  ${pricing?.perPageRate.toFixed(2)} / page
+                                <div className="relative flex items-center">
+                                  <span className="absolute left-3 text-sm text-gray-500 pointer-events-none">$</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={2.5}
+                                    value={doc.perPageRateOverride ?? pricing?.autoPerPageRate ?? ""}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      updateDocument(doc.id, {
+                                        perPageRateOverride: val === "" ? null : parseFloat(val),
+                                      });
+                                    }}
+                                    onBlur={(e) => {
+                                      if (e.target.value === "") {
+                                        updateDocument(doc.id, { perPageRateOverride: null });
+                                      }
+                                    }}
+                                    className="w-full pl-7 pr-14 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 tabular-nums"
+                                  />
+                                  <span className="absolute right-3 text-sm text-gray-500 pointer-events-none">/ page</span>
                                 </div>
                               </div>
                             </div>
@@ -1416,9 +1445,24 @@ export default function FastQuoteCreate() {
                                 <label className="block text-xs font-medium text-gray-500 mb-1">
                                   Billable Pages
                                 </label>
-                                <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-700 tabular-nums">
-                                  {pricing?.billablePages.toFixed(1)}
-                                </div>
+                                <input
+                                  type="number"
+                                  min={0.1}
+                                  step={0.1}
+                                  value={doc.billablePagesOverride ?? pricing?.autoBillablePages ?? ""}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    updateDocument(doc.id, {
+                                      billablePagesOverride: val === "" ? null : parseFloat(val),
+                                    });
+                                  }}
+                                  onBlur={(e) => {
+                                    if (e.target.value === "") {
+                                      updateDocument(doc.id, { billablePagesOverride: null });
+                                    }
+                                  }}
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 tabular-nums"
+                                />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1">
