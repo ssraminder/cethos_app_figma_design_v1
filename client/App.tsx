@@ -77,6 +77,7 @@ import RecruitmentList from "./pages/admin/RecruitmentList";
 import RecruitmentDetail from "./pages/admin/RecruitmentDetail";
 import AdminQuickPayment from "./pages/admin/AdminQuickPayment";
 import AdminPaymentHistory from "./pages/admin/AdminPaymentHistory";
+import FastQuoteCreate from "./pages/admin/FastQuoteCreate";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
 
@@ -294,6 +295,7 @@ const App = () => (
                     <Route index element={<AdminDashboard />} />
                     <Route path="dashboard" element={<AdminDashboard />} />
                     <Route path="quotes" element={<AdminQuotesList />} />
+                    <Route path="quotes/fast-create" element={<FastQuoteCreate />} />
                     <Route path="quotes/:id" element={<AdminQuoteDetail />} />
                     <Route path="orders" element={<AdminOrdersList />} />
                     <Route path="orders/:id" element={<AdminOrderDetail />} />

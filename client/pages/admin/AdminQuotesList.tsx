@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Loader2,
   CheckCircle2,
+  Zap,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -394,6 +395,13 @@ export default function AdminQuotesList() {
             <Download className="w-4 h-4" />
             Export
           </button>
+          <Link
+            to="/admin/quotes/fast-create"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-lg transition-colors"
+          >
+            <Zap className="w-4 h-4" />
+            Fast Quote
+          </Link>
           <Link
             to="/admin/quotes/create"
             className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
