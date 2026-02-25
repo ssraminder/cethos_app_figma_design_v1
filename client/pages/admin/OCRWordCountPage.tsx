@@ -130,10 +130,10 @@ export default function OCRWordCountPage() {
 
   // Handle file drop/select
   const handleFiles = (files: FileList | File[]) => {
-    const pdfFiles = Array.from(files).filter(f => f.type === 'application/pdf');
+    const pdfFiles = Array.from(files).filter(f => ['application/pdf', 'image/jpeg', 'image/png'].includes(f.type));
 
     if (pdfFiles.length !== files.length) {
-      toast.warning('Only PDF files are accepted');
+      toast.warning('Only PDF, JPG, and PNG files are accepted');
     }
 
     const oversized = pdfFiles.filter(f => f.size > 100 * 1024 * 1024);
@@ -299,15 +299,15 @@ export default function OCRWordCountPage() {
           >
             <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600 mb-2">
-              Drag & drop PDF files here, or click to select
+              Drag & drop PDF or image files here, or click to select
             </p>
             <p className="text-sm text-gray-500">
-              Maximum 100MB per file - PDF only
+              Maximum 100MB per file — PDF, JPG, PNG
             </p>
             <input
               id="file-input"
               type="file"
-              accept="application/pdf"
+              accept="application/pdf,image/jpeg,image/png"
               multiple
               className="hidden"
               onChange={(e) => e.target.files && handleFiles(e.target.files)}

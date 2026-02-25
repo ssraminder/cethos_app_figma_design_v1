@@ -636,13 +636,13 @@ export default function PreprocessOCRPage() {
         return;
       }
 
-      // Filter to PDFs only (the processing pipeline only handles PDFs)
+      // Filter to supported types (PDF + images)
       const pdfRecords = fileRecords.filter(f =>
-        f.mimeType === 'application/pdf' || f.displayName.toLowerCase().endsWith('.pdf')
+        ['application/pdf', 'image/jpeg', 'image/png'].includes(f.mimeType) || /\.(pdf|jpe?g|png)$/i.test(f.displayName)
       );
 
       if (pdfRecords.length === 0) {
-        toast.warning('No PDF files found for this quote. Only PDFs can be OCR-processed.');
+        toast.warning('No supported files found for this quote. Accepted: PDF, JPG, PNG.');
         setLoadingQuoteFiles(false);
         return;
       }
@@ -809,10 +809,10 @@ export default function PreprocessOCRPage() {
   };
 
   const addFiles = async (fileList: FileList) => {
-    const pdfFiles = Array.from(fileList).filter(f => f.type === 'application/pdf');
+    const pdfFiles = Array.from(fileList).filter(f => ['application/pdf', 'image/jpeg', 'image/png'].includes(f.type));
 
     if (pdfFiles.length !== fileList.length) {
-      toast.warning('Only PDF files are accepted. Non-PDF files were skipped.');
+      toast.warning('Only PDF, JPG, and PNG files are accepted. Unsupported files were skipped.');
     }
 
     const oversized = pdfFiles.filter(f => f.size > MAX_FILE_SIZE_BYTES);
@@ -1434,15 +1434,15 @@ export default function PreprocessOCRPage() {
             >
               <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600 mb-2">
-                Drag & drop PDF files here, or click to select
+                Drag & drop PDF or image files here, or click to select
               </p>
               <p className="text-sm text-gray-500">
-                Maximum 100MB per file • PDF only • Files &gt;10 pages will be split automatically
+                Maximum 100MB per file • PDF, JPG, PNG • PDF files &gt;10 pages will be split automatically
               </p>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="application/pdf"
+                accept="application/pdf,image/jpeg,image/png"
                 multiple
                 className="hidden"
                 onChange={handleFileSelect}
