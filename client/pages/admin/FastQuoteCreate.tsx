@@ -813,47 +813,35 @@ export default function FastQuoteCreate() {
 
       const { quoteId, quoteNumber } = result;
 
-      // Upload files if any
+      // Upload files via edge function (service role bypasses RLS)
       const allFiles = documents.flatMap((doc, docIdx) =>
         doc.files.map((f) => ({ ...f, docIdx })),
       );
 
       if (allFiles.length > 0) {
+        const uploadUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-staff-quote-file`;
         for (let i = 0; i < allFiles.length; i++) {
           setUploadProgress(`Uploading files ${i + 1}/${allFiles.length}...`);
           const fileItem = allFiles[i];
           try {
-            const timestamp = Date.now();
-            const rand = Math.random().toString(36).substring(2, 8);
-            const sanitizedName = fileItem.file.name.replace(
-              /[^a-zA-Z0-9._-]/g,
-              "_",
-            );
-            const storagePath = `${quoteId}/${timestamp}-${rand}-${sanitizedName}`;
+            const formData = new FormData();
+            formData.append("file", fileItem.file);
+            formData.append("quoteId", quoteId);
+            formData.append("staffId", session.staffId);
 
-            const { error: uploadError } = await supabase.storage
-              .from("quote-files")
-              .upload(storagePath, fileItem.file, {
-                contentType: fileItem.file.type,
-                upsert: false,
-              });
-
-            if (uploadError) {
-              console.error("File upload error:", uploadError);
-              continue;
-            }
-
-            await supabase.from("quote_files").insert({
-              quote_id: quoteId,
-              original_filename: fileItem.file.name,
-              storage_path: storagePath,
-              file_size: fileItem.file.size,
-              mime_type: fileItem.file.type,
-              upload_status: "uploaded",
-              ai_processing_status: "skipped",
-              is_staff_created: true,
-              created_by_staff_id: session.staffId,
+            const uploadResp = await fetch(uploadUrl, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: formData,
             });
+
+            const uploadResult = await uploadResp.json();
+            if (!uploadResp.ok || !uploadResult.success) {
+              console.error("File upload error:", uploadResult.error);
+              toast.error(`Failed to upload "${fileItem.file.name}": ${uploadResult.error}`);
+            }
           } catch (err) {
             console.error("File upload error:", err);
           }
