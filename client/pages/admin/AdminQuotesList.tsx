@@ -22,6 +22,7 @@ import {
   Zap,
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatEntryPoint, entryPointBadgeColor } from "../../utils/quoteUtils";
 
 interface Quote {
   id: string;
@@ -39,7 +40,7 @@ interface Quote {
   target_language_name: string;
   file_count: number;
   converted_to_order_id?: string | null;
-  quote_source_name?: string;
+  entry_point: string | null;
 }
 
 const BUSINESS_STATUS_OPTIONS = [
@@ -151,8 +152,8 @@ export default function AdminQuotesList() {
           created_at,
           expires_at,
           converted_to_order_id,
+          entry_point,
           customer:customers(id, full_name, email),
-          quote_source:quote_sources(id, code, name),
           source_language:languages!source_language_id(id, name, code),
           target_language:languages!target_language_id(id, name, code),
           quote_files(count)
@@ -222,7 +223,7 @@ export default function AdminQuotesList() {
           source_language_name: quote.source_language?.name || "",
           target_language_name: quote.target_language?.name || "",
           file_count: quote.quote_files?.[0]?.count ?? 0,
-          quote_source_name: quote.quote_source?.name || "",
+          entry_point: quote.entry_point ?? null,
         })) || [];
 
       setQuotes(transformedQuotes);
@@ -401,13 +402,6 @@ export default function AdminQuotesList() {
           >
             <Zap className="w-4 h-4" />
             Fast Quote
-          </Link>
-          <Link
-            to="/admin/quotes/create"
-            className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
-          >
-            <FileText className="w-4 h-4" />
-            Create Manual Quote
           </Link>
         </div>
       </div>
@@ -760,9 +754,9 @@ export default function AdminQuotesList() {
                       </td>
                       {/* Source Column */}
                       <td className="px-4 py-3">
-                        <p className="text-sm text-gray-700">
-                          {quote.quote_source_name || "—"}
-                        </p>
+                        <span className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${entryPointBadgeColor(quote.entry_point)}`}>
+                          {formatEntryPoint(quote.entry_point)}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
