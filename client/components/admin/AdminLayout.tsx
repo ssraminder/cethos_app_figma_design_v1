@@ -43,6 +43,13 @@ const NAV_ITEMS: NavItem[] = [
   },
   { label: "Quotes", path: "/admin/quotes", icon: FileText, section: "Main" },
   {
+    label: "Fast Quote",
+    path: "/admin/quotes/fast-create",
+    icon: Zap,
+    section: "Main",
+    isChild: true,
+  },
+  {
     label: "Orders",
     path: "/admin/orders",
     icon: ShoppingCart,
