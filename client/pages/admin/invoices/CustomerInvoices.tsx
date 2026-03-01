@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Search,
@@ -22,6 +22,7 @@ interface CustomerInvoice {
   id: number;
   invoice_number: string | null;
   customer_id: number | null;
+  customer_name: string | null;
   currency_id: number | null;
   total_gross: number | null;
   total_netto: number | null;
@@ -34,6 +35,7 @@ interface CustomerInvoice {
   final_date: string | null;
   invoice_date: string | null;
   payment_due_date: string | null;
+  last_payment_date: string | null;
   payments: any[] | null;
   branch: string | null;
   synced_at: string | null;
@@ -47,12 +49,14 @@ interface PaymentMethod {
 // ── Column definitions ─────────────────────────────────────────────
 const COLUMNS: ColumnDef[] = [
   { key: "invoice_number", label: "Invoice No.", defaultVisible: true },
+  { key: "customer_name", label: "Customer Name", defaultVisible: true },
   { key: "branch", label: "Branch", defaultVisible: true },
   { key: "status", label: "Status", defaultVisible: true },
   { key: "payment_status", label: "Payment", defaultVisible: true },
   { key: "payment_method_id", label: "Pay Method", defaultVisible: true },
   { key: "final_date", label: "Final Date", defaultVisible: true },
   { key: "payment_due_date", label: "Due Date", defaultVisible: true },
+  { key: "last_payment_date", label: "Last Payment", defaultVisible: true },
   { key: "total_gross", label: "Gross (CAD)", defaultVisible: true },
   { key: "total_netto", label: "Net (CAD)", defaultVisible: true },
   { key: "tax_cad", label: "Tax (CAD)", defaultVisible: true },
@@ -71,6 +75,7 @@ const DATE_FIELD_OPTIONS = [
   { value: "invoice_date", label: "Invoice Date" },
   { value: "draft_date", label: "Draft Date" },
   { value: "payment_due_date", label: "Payment Due Date" },
+  { value: "last_payment_date", label: "Last Payment Date" },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -212,7 +217,9 @@ export default function CustomerInvoices() {
       if (amountMin) query = query.gte("total_gross", parseFloat(amountMin));
       if (amountMax) query = query.lte("total_gross", parseFloat(amountMax));
       if (search) {
-        query = query.ilike("invoice_number", `%${search}%`);
+        query = query.or(
+          `invoice_number.ilike.%${search}%,customer_name.ilike.%${search}%`,
+        );
       }
       return query;
     },
@@ -447,6 +454,7 @@ export default function CustomerInvoices() {
       case "draft_date":
       case "payment_due_date":
       case "invoice_date":
+      case "last_payment_date":
         return <span>{fmtDate(val)}</span>;
       default:
         return <span>{val != null ? String(val) : "\u2014"}</span>;
@@ -507,7 +515,7 @@ export default function CustomerInvoices() {
                 type="text"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search invoice number..."
+                placeholder="Search invoices, customers..."
                 className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm"
               />
             </div>
@@ -807,9 +815,8 @@ export default function CustomerInvoices() {
                 </tr>
               ) : (
                 invoices.map((inv) => (
-                  <>
+                  <Fragment key={inv.id}>
                     <tr
-                      key={inv.id}
                       onClick={() =>
                         setExpandedId(expandedId === inv.id ? null : inv.id)
                       }
@@ -835,7 +842,7 @@ export default function CustomerInvoices() {
                       )}
                     </tr>
                     {expandedId === inv.id && (
-                      <tr key={`exp-${inv.id}`}>
+                      <tr>
                         <td
                           colSpan={
                             COLUMNS.filter((c) => visibleColumns.has(c.key))
@@ -850,7 +857,7 @@ export default function CustomerInvoices() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))
               )}
             </tbody>

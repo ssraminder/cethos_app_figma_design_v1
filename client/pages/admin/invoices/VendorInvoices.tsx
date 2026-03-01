@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Search,
@@ -17,6 +17,14 @@ import InvoiceDateFilter from "./components/InvoiceDateFilter";
 import ColumnToggle, { type ColumnDef } from "./components/ColumnToggle";
 import SummaryPanel, { type SummaryData } from "./components/SummaryPanel";
 
+// ── Currency Map ────────────────────────────────────────────────────
+const CURRENCY_MAP: Record<number, string> = {
+  1: 'EUR',
+  3: 'GBP',
+  30: 'CAD',
+  67: 'USD',
+};
+
 // ── Types ──────────────────────────────────────────────────────────
 interface VendorInvoice {
   id: number;
@@ -24,6 +32,8 @@ interface VendorInvoice {
   internal_number: string | null;
   draft_number: string | null;
   provider_id: number | null;
+  vendor_name: string | null;
+  customer_name: string | null;
   currency_id: number | null;
   total_gross: number | null;
   total_netto: number | null;
@@ -36,6 +46,7 @@ interface VendorInvoice {
   final_date: string | null;
   payment_due_date: string | null;
   invoice_uploaded_date: string | null;
+  last_payment_date: string | null;
   notes_from_provider: string | null;
   payments: any[] | null;
   branch: string | null;
@@ -46,11 +57,14 @@ interface VendorInvoice {
 const COLUMNS: ColumnDef[] = [
   { key: "internal_number", label: "Internal No.", defaultVisible: true },
   { key: "final_number", label: "Invoice No.", defaultVisible: true },
+  { key: "vendor_name", label: "Vendor Name", defaultVisible: true },
+  { key: "customer_name", label: "Customer Name", defaultVisible: true },
   { key: "branch", label: "Branch", defaultVisible: true },
   { key: "status", label: "Status", defaultVisible: true },
   { key: "payment_status", label: "Payment", defaultVisible: true },
   { key: "final_date", label: "Final Date", defaultVisible: true },
   { key: "payment_due_date", label: "Due Date", defaultVisible: true },
+  { key: "last_payment_date", label: "Last Payment", defaultVisible: true },
   { key: "gross_cad", label: "Gross (CAD)", defaultVisible: true },
   { key: "netto_cad", label: "Net (CAD)", defaultVisible: true },
   { key: "tax_cad", label: "Tax (CAD)", defaultVisible: true },
@@ -75,6 +89,7 @@ const DATE_FIELD_OPTIONS = [
   { value: "draft_date", label: "Draft Date" },
   { value: "payment_due_date", label: "Payment Due Date" },
   { value: "invoice_uploaded_date", label: "Invoice Uploaded Date" },
+  { value: "last_payment_date", label: "Last Payment Date" },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -207,7 +222,7 @@ export default function VendorInvoices() {
       if (amountMax) query = query.lte("gross_cad", parseFloat(amountMax));
       if (search) {
         query = query.or(
-          `final_number.ilike.%${search}%,internal_number.ilike.%${search}%,draft_number.ilike.%${search}%`,
+          `final_number.ilike.%${search}%,internal_number.ilike.%${search}%,draft_number.ilike.%${search}%,vendor_name.ilike.%${search}%,customer_name.ilike.%${search}%`,
         );
       }
       return query;
@@ -363,7 +378,10 @@ export default function VendorInvoices() {
       const csvRows = rows.map((row: any) =>
         visCols
           .map((c) => {
-            const val = row[c.key];
+            let val = row[c.key];
+            if (c.key === "currency_id" && val != null) {
+              val = CURRENCY_MAP[val as number] ?? `ID:${val}`;
+            }
             if (val == null) return "";
             const str = String(val);
             return str.includes(",") || str.includes('"') || str.includes("\n")
@@ -430,6 +448,8 @@ export default function VendorInvoices() {
         return (
           <span className="tabular-nums">{fmtCurrency(val as number)}</span>
         );
+      case "currency_id":
+        return <span>{val != null ? (CURRENCY_MAP[val as number] ?? `ID:${val}`) : "\u2014"}</span>;
       case "payment_status":
         return <PaymentBadge status={val} />;
       case "status":
@@ -440,6 +460,7 @@ export default function VendorInvoices() {
       case "draft_date":
       case "payment_due_date":
       case "invoice_uploaded_date":
+      case "last_payment_date":
         return <span>{fmtDate(val)}</span>;
       case "notes_from_provider":
         return (
@@ -506,7 +527,7 @@ export default function VendorInvoices() {
                 type="text"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search invoice numbers..."
+                placeholder="Search invoices, vendors, customers..."
                 className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm"
               />
             </div>
@@ -704,7 +725,7 @@ export default function VendorInvoices() {
                         : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
                     }`}
                   >
-                    {cid}
+                    {CURRENCY_MAP[cid] ?? `ID:${cid}`}
                   </button>
                 ))}
               </div>
@@ -809,9 +830,8 @@ export default function VendorInvoices() {
                 </tr>
               ) : (
                 invoices.map((inv) => (
-                  <>
+                  <Fragment key={inv.id}>
                     <tr
-                      key={inv.id}
                       onClick={() =>
                         setExpandedId(expandedId === inv.id ? null : inv.id)
                       }
@@ -839,7 +859,7 @@ export default function VendorInvoices() {
                       )}
                     </tr>
                     {expandedId === inv.id && (
-                      <tr key={`exp-${inv.id}`}>
+                      <tr>
                         <td
                           colSpan={
                             COLUMNS.filter((c) => visibleColumns.has(c.key))
@@ -851,7 +871,7 @@ export default function VendorInvoices() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))
               )}
             </tbody>

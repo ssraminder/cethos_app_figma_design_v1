@@ -21,41 +21,126 @@ interface InvoiceDateFilterProps {
   onCustomToChange: (val: string) => void;
 }
 
+function fmt(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
+function getMondayOfWeek(d: Date): Date {
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(d.getFullYear(), d.getMonth(), diff);
+}
+
+function getQuarterRange(
+  year: number,
+  quarter: number,
+): { from: Date; to: Date } {
+  const startMonth = (quarter - 1) * 3;
+  return {
+    from: new Date(year, startMonth, 1),
+    to: new Date(year, startMonth + 3, 0),
+  };
+}
+
+function getCurrentQuarter(d: Date): number {
+  return Math.floor(d.getMonth() / 3) + 1;
+}
+
 function generateDateRangeOptions(): DateRangeOption[] {
   const today = new Date();
   const options: DateRangeOption[] = [];
 
-  // Quick ranges
+  // ── Quick ranges ──────────────────────────────────────────────────
+  options.push({
+    label: "Today",
+    value: "today",
+    from: fmt(today),
+    to: fmt(today),
+  });
+
+  const monday = getMondayOfWeek(today);
+  options.push({
+    label: "This Week",
+    value: "this_week",
+    from: fmt(monday),
+    to: fmt(today),
+  });
+
+  const d7 = new Date(today);
+  d7.setDate(d7.getDate() - 7);
+  options.push({
+    label: "Last 7 Days",
+    value: "last_7",
+    from: fmt(d7),
+    to: fmt(today),
+  });
+
   const d30 = new Date(today);
   d30.setDate(d30.getDate() - 30);
   options.push({
-    label: "Last 30 days",
+    label: "Last 30 Days",
     value: "last_30",
     from: fmt(d30),
     to: fmt(today),
   });
 
-  const d90 = new Date(today);
-  d90.setDate(d90.getDate() - 90);
+  const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   options.push({
-    label: "Last 90 days",
-    value: "last_90",
-    from: fmt(d90),
+    label: "This Month",
+    value: "this_month",
+    from: fmt(thisMonthStart),
     to: fmt(today),
   });
 
-  const d12m = new Date(today);
-  d12m.setMonth(d12m.getMonth() - 12);
+  const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
   options.push({
-    label: "Last 12 months",
-    value: "last_12m",
-    from: fmt(d12m),
+    label: "Last Month",
+    value: "last_month",
+    from: fmt(lastMonthStart),
+    to: fmt(lastMonthEnd),
+  });
+
+  const currentQ = getCurrentQuarter(today);
+  const thisQ = getQuarterRange(today.getFullYear(), currentQ);
+  options.push({
+    label: "This Quarter",
+    value: "this_quarter",
+    from: fmt(thisQ.from),
+    to: fmt(thisQ.to),
+  });
+
+  const prevQYear = currentQ === 1 ? today.getFullYear() - 1 : today.getFullYear();
+  const prevQNum = currentQ === 1 ? 4 : currentQ - 1;
+  const lastQ = getQuarterRange(prevQYear, prevQNum);
+  options.push({
+    label: "Last Quarter",
+    value: "last_quarter",
+    from: fmt(lastQ.from),
+    to: fmt(lastQ.to),
+  });
+
+  const thisYearStart = new Date(today.getFullYear(), 0, 1);
+  options.push({
+    label: "This Year",
+    value: "this_year",
+    from: fmt(thisYearStart),
     to: fmt(today),
   });
 
+  const lastYearStart = new Date(today.getFullYear() - 1, 0, 1);
+  const lastYearEnd = new Date(today.getFullYear() - 1, 11, 31);
+  options.push({
+    label: "Last Year",
+    value: "last_year",
+    from: fmt(lastYearStart),
+    to: fmt(lastYearEnd),
+  });
+
+  // ── Separator ─────────────────────────────────────────────────────
   options.push({ label: "", value: "sep1", isSeparator: true });
 
-  // Monthly options from Jan 2023 to current month
+  // ── Monthly options from Jan 2023 to current month ────────────────
   const startYear = 2023;
   const startMonth = 0;
   const endYear = today.getFullYear();
@@ -77,9 +162,10 @@ function generateDateRangeOptions(): DateRangeOption[] {
     }
   }
 
+  // ── Separator ─────────────────────────────────────────────────────
   options.push({ label: "", value: "sep2", isSeparator: true });
 
-  // Yearly options
+  // ── Yearly options ────────────────────────────────────────────────
   for (let y = endYear; y >= startYear; y--) {
     const yearStart = new Date(y, 0, 1);
     const yearEnd = new Date(y, 11, 31);
@@ -91,14 +177,13 @@ function generateDateRangeOptions(): DateRangeOption[] {
     });
   }
 
+  // ── Separator ─────────────────────────────────────────────────────
   options.push({ label: "", value: "sep3", isSeparator: true });
+
+  // ── Custom ────────────────────────────────────────────────────────
   options.push({ label: "Custom", value: "custom" });
 
   return options;
-}
-
-function fmt(d: Date): string {
-  return d.toISOString().split("T")[0];
 }
 
 const ALL_OPTIONS = generateDateRangeOptions();
@@ -148,7 +233,7 @@ export default function InvoiceDateFilter({
   }, [searchTerm]);
 
   const selectedLabel =
-    ALL_OPTIONS.find((o) => o.value === selectedRange)?.label || "Last 30 days";
+    ALL_OPTIONS.find((o) => o.value === selectedRange)?.label || "Last 30 Days";
 
   return (
     <div className="flex flex-col gap-2">
