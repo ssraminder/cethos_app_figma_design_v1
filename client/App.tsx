@@ -78,6 +78,8 @@ import RecruitmentDetail from "./pages/admin/RecruitmentDetail";
 import AdminQuickPayment from "./pages/admin/AdminQuickPayment";
 import AdminPaymentHistory from "./pages/admin/AdminPaymentHistory";
 import FastQuoteCreate from "./pages/admin/FastQuoteCreate";
+import VendorInvoices from "./pages/admin/invoices/VendorInvoices";
+import CustomerInvoices from "./pages/admin/invoices/CustomerInvoices";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
 
@@ -324,6 +326,8 @@ const App = () => (
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
                     <Route path="quick-payment" element={<AdminQuickPayment />} />
                     <Route path="quick-payment/history" element={<AdminPaymentHistory />} />
+                    <Route path="invoices/vendor" element={<VendorInvoices />} />
+                    <Route path="invoices/customer" element={<CustomerInvoices />} />
 
                     {/* Admin Settings screens */}
                     <Route

@@ -21,6 +21,7 @@ import {
   UserPlus,
   Zap,
   Receipt,
+  FileSpreadsheet,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -103,6 +104,19 @@ const NAV_ITEMS: NavItem[] = [
     path: "/admin/ar",
     icon: DollarSign,
     section: "Management",
+  },
+  {
+    label: "Vendor Invoices",
+    path: "/admin/invoices/vendor",
+    icon: FileSpreadsheet,
+    section: "Management",
+  },
+  {
+    label: "Customer Invoices",
+    path: "/admin/invoices/customer",
+    icon: FileSpreadsheet,
+    section: "Management",
+    isChild: true,
   },
   {
     label: "Quick Payment",
