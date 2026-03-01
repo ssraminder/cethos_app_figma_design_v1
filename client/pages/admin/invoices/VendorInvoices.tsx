@@ -48,6 +48,7 @@ interface VendorInvoice {
   invoice_uploaded_date: string | null;
   last_payment_date: string | null;
   notes_from_provider: string | null;
+  project_numbers: string[] | null;
   payments: any[] | null;
   branch: string | null;
   synced_at: string | null;
@@ -59,6 +60,7 @@ const COLUMNS: ColumnDef[] = [
   { key: "final_number", label: "Invoice No.", defaultVisible: true },
   { key: "vendor_name", label: "Vendor Name", defaultVisible: true },
   { key: "customer_name", label: "Customer Name", defaultVisible: true },
+  { key: "project_numbers", label: "Project(s)", defaultVisible: true },
   { key: "branch", label: "Branch", defaultVisible: true },
   { key: "status", label: "Status", defaultVisible: true },
   { key: "payment_status", label: "Payment", defaultVisible: true },
@@ -222,7 +224,7 @@ export default function VendorInvoices() {
       if (amountMax) query = query.lte("gross_cad", parseFloat(amountMax));
       if (search) {
         query = query.or(
-          `final_number.ilike.%${search}%,internal_number.ilike.%${search}%,draft_number.ilike.%${search}%,vendor_name.ilike.%${search}%,customer_name.ilike.%${search}%`,
+          `final_number.ilike.%${search}%,internal_number.ilike.%${search}%,draft_number.ilike.%${search}%,vendor_name.ilike.%${search}%,customer_name.ilike.%${search}%,project_numbers.cs.{"${search}"}`,
         );
       }
       return query;
@@ -379,6 +381,9 @@ export default function VendorInvoices() {
         visCols
           .map((c) => {
             let val = row[c.key];
+            if (c.key === "project_numbers") {
+              return (val ?? []).join('; ');
+            }
             if (c.key === "currency_id" && val != null) {
               val = CURRENCY_MAP[val as number] ?? `ID:${val}`;
             }
@@ -462,6 +467,18 @@ export default function VendorInvoices() {
       case "invoice_uploaded_date":
       case "last_payment_date":
         return <span>{fmtDate(val)}</span>;
+      case "project_numbers": {
+        const arr = val as string[] | null;
+        if (!arr || arr.length === 0) return <span className="text-gray-400">{"\u2014"}</span>;
+        if (arr.length <= 3) {
+          return <span className="text-xs font-mono text-gray-700">{arr.join(', ')}</span>;
+        }
+        return (
+          <span className="text-xs font-mono text-gray-700">
+            {arr.slice(0, 3).join(', ')} <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[10px] font-sans">+{arr.length - 3}</span>
+          </span>
+        );
+      }
       case "notes_from_provider":
         return (
           <span className="truncate max-w-[200px] block" title={val || ""}>
