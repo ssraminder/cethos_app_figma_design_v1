@@ -322,9 +322,18 @@ export default function AccountsReceivable() {
         .is("deleted_at", null);
 
       if (search) {
-        query = query.or(
-          `quote_number.ilike.%${search}%,customers.email.ilike.%${search}%,customers.full_name.ilike.%${search}%`
-        );
+        const { data: matchingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+        const customerIds = matchingCustomers?.map((c) => c.id) || [];
+        if (customerIds.length > 0) {
+          query = query.or(
+            `quote_number.ilike.%${search}%,customer_id.in.(${customerIds.join(",")})`
+          );
+        } else {
+          query = query.ilike("quote_number", `%${search}%`);
+        }
       }
       if (dateFrom) {
         query = query.gte("created_at", dateFrom);
@@ -382,9 +391,18 @@ export default function AccountsReceivable() {
         .eq("status", "balance_due");
 
       if (search) {
-        query = query.or(
-          `order_number.ilike.%${search}%,customers.email.ilike.%${search}%,customers.full_name.ilike.%${search}%`
-        );
+        const { data: matchingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+        const customerIds = matchingCustomers?.map((c) => c.id) || [];
+        if (customerIds.length > 0) {
+          query = query.or(
+            `order_number.ilike.%${search}%,customer_id.in.(${customerIds.join(",")})`
+          );
+        } else {
+          query = query.ilike("order_number", `%${search}%`);
+        }
       }
 
       query = query.order("created_at", { ascending: false }).range(from, to);
@@ -447,9 +465,29 @@ export default function AccountsReceivable() {
         );
 
       if (search) {
-        query = query.or(
-          `orders.order_number.ilike.%${search}%,orders.customers.email.ilike.%${search}%`
-        );
+        // Find matching customers, then matching orders, then filter payments
+        const { data: matchingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+        const customerIds = matchingCustomers?.map((c) => c.id) || [];
+
+        let orderQuery = supabase.from("orders").select("id");
+        if (customerIds.length > 0) {
+          orderQuery = orderQuery.or(
+            `order_number.ilike.%${search}%,customer_id.in.(${customerIds.join(",")})`
+          );
+        } else {
+          orderQuery = orderQuery.ilike("order_number", `%${search}%`);
+        }
+        const { data: matchingOrders } = await orderQuery;
+        const orderIds = matchingOrders?.map((o) => o.id) || [];
+
+        if (orderIds.length > 0) {
+          query = query.in("order_id", orderIds);
+        } else {
+          query = query.eq("order_id", "00000000-0000-0000-0000-000000000000");
+        }
       }
       if (dateFrom) {
         query = query.gte("created_at", dateFrom);
@@ -518,9 +556,18 @@ export default function AccountsReceivable() {
         .is("deleted_at", null);
 
       if (search) {
-        query = query.or(
-          `quote_number.ilike.%${search}%,customers.email.ilike.%${search}%,customers.full_name.ilike.%${search}%`
-        );
+        const { data: matchingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+        const customerIds = matchingCustomers?.map((c) => c.id) || [];
+        if (customerIds.length > 0) {
+          query = query.or(
+            `quote_number.ilike.%${search}%,customer_id.in.(${customerIds.join(",")})`
+          );
+        } else {
+          query = query.ilike("quote_number", `%${search}%`);
+        }
       }
 
       query = query.order("expires_at", { ascending: true }).range(from, to);
@@ -577,9 +624,31 @@ export default function AccountsReceivable() {
         .in("status", ["pending", "partial", "unpaid"]);
 
       if (search) {
-        query = query.or(
-          `orders.order_number.ilike.%${search}%,customers.email.ilike.%${search}%,customers.full_name.ilike.%${search}%`
-        );
+        const { data: matchingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+        const customerIds = matchingCustomers?.map((c) => c.id) || [];
+
+        const { data: matchingOrders } = await supabase
+          .from("orders")
+          .select("id")
+          .ilike("order_number", `%${search}%`);
+        const orderIds = matchingOrders?.map((o) => o.id) || [];
+
+        const conditions: string[] = [];
+        if (customerIds.length > 0) {
+          conditions.push(`customer_id.in.(${customerIds.join(",")})`);
+        }
+        if (orderIds.length > 0) {
+          conditions.push(`order_id.in.(${orderIds.join(",")})`);
+        }
+
+        if (conditions.length > 0) {
+          query = query.or(conditions.join(","));
+        } else {
+          query = query.eq("customer_id", "00000000-0000-0000-0000-000000000000");
+        }
       }
       if (dateFrom) {
         query = query.gte("created_at", dateFrom);

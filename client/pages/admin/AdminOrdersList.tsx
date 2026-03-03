@@ -98,9 +98,21 @@ export default function AdminOrdersList() {
 
       // Apply filters
       if (search) {
-        query = query.or(
-          `order_number.ilike.%${search}%,customers.email.ilike.%${search}%,customers.full_name.ilike.%${search}%`,
-        );
+        // PostgREST doesn't support foreign table refs in .or(), so find matching customers first
+        const { data: matchingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+
+        const customerIds = matchingCustomers?.map((c) => c.id) || [];
+
+        if (customerIds.length > 0) {
+          query = query.or(
+            `order_number.ilike.%${search}%,customer_id.in.(${customerIds.join(",")})`,
+          );
+        } else {
+          query = query.ilike("order_number", `%${search}%`);
+        }
       }
       if (status) {
         query = query.eq("status", status);
@@ -164,7 +176,9 @@ export default function AdminOrdersList() {
     } else {
       params.delete(key);
     }
-    params.set("page", "1");
+    if (key !== "page") {
+      params.set("page", "1");
+    }
     setSearchParams(params);
   };
 
