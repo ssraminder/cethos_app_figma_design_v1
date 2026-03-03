@@ -1,17 +1,18 @@
 // =============================================================================
 // create-deposit-payment-link/index.ts
-// VERSION: v6
+// VERSION: v7
 // DATE: March 3, 2026
 // CHANGES FROM v5:
+//   - Updated Stripe SDK from @13.3.0 to @14.21.0 (matches create-checkout-session)
+//   - Removed httpClient: Stripe.createFetchHttpClient() — incompatible with Deno v2
 //   - Updated deno.land/std import from @0.168.0 to @0.208.0
-//     (fixes Deno v2.x runtime crash — same fix applied to send-deposit-reminder)
 //   - Pinned @supabase/supabase-js to @2.39.3 (matches other edge functions)
 //   - Stripe Payment Links → no expiry, same logic as v5
 // =============================================================================
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import Stripe from "https://esm.sh/stripe@13.3.0?target=deno";
+import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -132,7 +133,6 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, {
       apiVersion: "2023-10-16",
-      httpClient: Stripe.createFetchHttpClient(),
     });
 
     const frontendUrl = Deno.env.get("FRONTEND_URL") || "https://portal.cethos.com";
