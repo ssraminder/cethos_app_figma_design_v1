@@ -1,13 +1,16 @@
 // =============================================================================
 // create-deposit-payment-link/index.ts
-// VERSION: v7
+// VERSION: v14
 // DATE: March 3, 2026
-// CHANGES FROM v5:
+// CHANGES FROM v12:
+//   - FIXED: Removed product_data.description from stripe.prices.create()
+//     Stripe prices.create with inline product_data only accepts "name", not "description"
+//     Error was: "Received unknown parameter: product_data[description]"
+//   - Moved description text into product_data.name instead
 //   - Updated Stripe SDK from @13.3.0 to @14.21.0 (matches create-checkout-session)
 //   - Removed httpClient: Stripe.createFetchHttpClient() — incompatible with Deno v2
 //   - Updated deno.land/std import from @0.168.0 to @0.208.0
 //   - Pinned @supabase/supabase-js to @2.39.3 (matches other edge functions)
-//   - Stripe Payment Links → no expiry, same logic as v5
 // =============================================================================
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
@@ -139,12 +142,14 @@ serve(async (req) => {
     const productDescription = notes?.trim() || "Deposit for translation services";
 
     // Step 1: Create a Price object for this specific amount
+    // Note: product_data on prices.create only supports "name" (not "description")
     const price = await stripe.prices.create({
       currency: "cad",
       unit_amount: Math.round(amount * 100), // cents
       product_data: {
-        name: "Translation Services Deposit",
-        description: productDescription,
+        name: productDescription.length > 250
+          ? productDescription.substring(0, 250)
+          : productDescription || "Translation Services Deposit",
       },
     });
 
