@@ -44,6 +44,8 @@ import {
   FileEdit,
   Loader2,
 } from "lucide-react";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -561,6 +563,10 @@ export default function AdminQuoteDetail() {
   const [quoteReviewTokenExpiry, setQuoteReviewTokenExpiry] = useState<string | null>(null);
   const [copiedQuoteLink, setCopiedQuoteLink] = useState(false);
   const [copiedPaymentLink, setCopiedPaymentLink] = useState(false);
+
+  // ZIP download state
+  const [isZipping, setIsZipping] = useState(false);
+  const [zipProgress, setZipProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Image conversion state
   const [imageConvertStatus, setImageConvertStatus] = useState<
@@ -1452,6 +1458,53 @@ export default function AdminQuoteDetail() {
     const url = await getSignedUrl(file);
     setPreviewUrl(url);
     setPreviewLoading(false);
+  };
+
+  const handleDownloadAll = async () => {
+    if (!translateFiles || translateFiles.length === 0) return;
+
+    setIsZipping(true);
+    setZipProgress({ current: 0, total: translateFiles.length });
+
+    const zip = new JSZip();
+    const skipped: string[] = [];
+
+    for (let i = 0; i < translateFiles.length; i++) {
+      const file = translateFiles[i];
+      setZipProgress({ current: i + 1, total: translateFiles.length });
+
+      const signedUrl = await getSignedUrl(file);
+
+      if (!signedUrl) {
+        skipped.push(file.displayName || `file-${i + 1}`);
+        continue;
+      }
+
+      try {
+        const response = await fetch(signedUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        const filename = file.displayName || `file-${i + 1}`;
+        zip.file(filename, blob);
+      } catch {
+        skipped.push(file.displayName || `file-${i + 1}`);
+      }
+    }
+
+    try {
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const zipName = `quote-files-${id}.zip`;
+      saveAs(zipBlob, zipName);
+    } catch {
+      console.error("ZIP generation failed");
+    }
+
+    if (skipped.length > 0) {
+      console.warn("The following files were skipped during ZIP:", skipped);
+    }
+
+    setIsZipping(false);
+    setZipProgress(null);
   };
 
   const hitlReview = hitlReviews[0] || null;
@@ -3217,15 +3270,42 @@ export default function AdminQuoteDetail() {
                       <FileText className="w-5 h-5 text-gray-400" />
                       Uploaded Files ({translateFiles.length})
                     </h2>
-                    {hasBatch && (
-                      <button
-                        onClick={() => setShowOcrModal(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        <FileSearch className="w-4 h-4" />
-                        OCR & Analysis
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {isZipping && zipProgress && (
+                        <span className="text-xs text-gray-500">
+                          Zipping {zipProgress.current} of {zipProgress.total}...
+                        </span>
+                      )}
+                      {translateFiles.length >= 2 && (
+                        <button
+                          onClick={handleDownloadAll}
+                          disabled={isZipping}
+                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 border border-blue-200 rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          title="Download all files as ZIP"
+                        >
+                          {isZipping ? (
+                            <>
+                              <span className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin" />
+                              Zipping...
+                            </>
+                          ) : (
+                            <>
+                              <Download className="w-3 h-3" />
+                              Download All
+                            </>
+                          )}
+                        </button>
+                      )}
+                      {hasBatch && (
+                        <button
+                          onClick={() => setShowOcrModal(true)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                          <FileSearch className="w-4 h-4" />
+                          OCR & Analysis
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {translateFiles.length > 0 ? (
