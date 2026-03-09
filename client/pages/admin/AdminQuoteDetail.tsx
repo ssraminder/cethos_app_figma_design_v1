@@ -186,6 +186,8 @@ interface AIAnalysis {
   line_total: number | null;
   translation_cost: number | null;
   certification_cost: number | null;
+  certification_price: number | null;
+  is_excluded: boolean | null;
 }
 
 interface HITLReview {
@@ -2724,6 +2726,13 @@ export default function AdminQuoteDetail() {
     );
   }
 
+  // Derive pricing summary totals from ai_analysis_results (excluding excluded items)
+  const activeAnalysis = analysis.filter(ar => !ar.is_excluded);
+  const translationTotal = activeAnalysis.reduce((sum, ar) => sum + Number(ar.line_total || 0), 0);
+  const docCertificationTotal = activeAnalysis.reduce((sum, ar) => sum + Number(ar.certification_price || 0), 0);
+  const quoteCertificationTotal = Number(quote.calculated_totals?.quote_certification_total || 0);
+  const displaySubtotal = translationTotal + docCertificationTotal + quoteCertificationTotal;
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
@@ -4460,18 +4469,18 @@ export default function AdminQuoteDetail() {
                     {analysis.length > 1 && (
                       <div className="flex justify-between text-sm text-gray-500 pt-1.5 mt-1.5 border-t border-dashed border-gray-200">
                         <span>Translation Total</span>
-                        <span>${analysis.reduce((sum, ar) => sum + Number(ar.line_total || 0), 0).toFixed(2)}</span>
+                        <span>${translationTotal.toFixed(2)}</span>
                       </div>
                     )}
                   </div>
                 )}
 
                 {/* Certification totals — only show if > 0 */}
-                {(quote.calculated_totals?.doc_certification_total ?? 0) > 0 && (
+                {docCertificationTotal > 0 && (
                   <div className="flex justify-between text-sm text-gray-500 mt-1">
                     <span>Document Certifications</span>
                     <span>
-                      ${Number(quote.calculated_totals?.doc_certification_total || 0).toFixed(2)}
+                      ${docCertificationTotal.toFixed(2)}
                     </span>
                   </div>
                 )}
@@ -4489,7 +4498,7 @@ export default function AdminQuoteDetail() {
                 <div className="flex justify-between text-sm font-medium text-gray-700 pt-2 mt-2 border-t border-gray-200">
                   <span>Subtotal</span>
                   <span>
-                    ${((quote.subtotal || 0) + (quote.certification_total || 0)).toFixed(2)}
+                    ${displaySubtotal.toFixed(2)}
                   </span>
                 </div>
 
