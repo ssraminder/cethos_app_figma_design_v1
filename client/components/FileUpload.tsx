@@ -1,9 +1,10 @@
 import { useState, useRef, useContext } from "react";
-import { X, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { X, Loader2, CheckCircle, XCircle, Info } from "lucide-react";
 import { useQuote } from "@/context/QuoteContext";
 import { useUpload } from "@/context/UploadContext";
 import { useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { PDFDocument } from "pdf-lib";
 
 interface UploadingFile {
   file: File;
@@ -12,9 +13,68 @@ interface UploadingFile {
   error?: string;
 }
 
+/**
+ * Consolidates image files into a single PDF using pdf-lib.
+ * PNG files use embedPng; all other image types use embedJpg.
+ * Returns the consolidated file list: non-image files + one combined PDF.
+ */
+async function consolidateImagesToPdf(
+  files: File[],
+): Promise<{ files: File[]; consolidatedCount: number }> {
+  const imageFiles: File[] = [];
+  const otherFiles: File[] = [];
+
+  for (const file of files) {
+    if (file.type.startsWith("image/")) {
+      imageFiles.push(file);
+    } else {
+      otherFiles.push(file);
+    }
+  }
+
+  if (imageFiles.length === 0) {
+    return { files: otherFiles, consolidatedCount: 0 };
+  }
+
+  const pdfDoc = await PDFDocument.create();
+
+  for (const imageFile of imageFiles) {
+    const bytes = await imageFile.arrayBuffer();
+    const uint8 = new Uint8Array(bytes);
+
+    let img;
+    if (imageFile.type === "image/png") {
+      img = await pdfDoc.embedPng(uint8);
+    } else {
+      img = await pdfDoc.embedJpg(uint8);
+    }
+
+    const page = pdfDoc.addPage([img.width, img.height]);
+    page.drawImage(img, {
+      x: 0,
+      y: 0,
+      width: img.width,
+      height: img.height,
+    });
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  const combinedFile = new File([pdfBytes], "combined_images.pdf", {
+    type: "application/pdf",
+  });
+
+  return {
+    files: [...otherFiles, combinedFile],
+    consolidatedCount: imageFiles.length,
+  };
+}
+
 export default function FileUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const [consolidationNotice, setConsolidationNotice] = useState<string | null>(
+    null,
+  );
   const location = useLocation();
 
   // Use UploadContext for /upload route, QuoteContext for /quote route
@@ -39,14 +99,25 @@ export default function FileUpload() {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
 
     const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length === 0) return;
+
+    // Consolidate image files into a single PDF before uploading
+    const { files: filesToUpload, consolidatedCount } =
+      await consolidateImagesToPdf(droppedFiles);
+
+    if (consolidatedCount > 0) {
+      setConsolidationNotice(
+        `Your ${consolidatedCount} image file${consolidatedCount > 1 ? "s have" : " has"} been combined into a single PDF for processing.`,
+      );
+    }
 
     // Add files to uploading state
-    const newUploadingFiles: UploadingFile[] = droppedFiles.map((file) => ({
+    const newUploadingFiles: UploadingFile[] = filesToUpload.map((file) => ({
       file,
       progress: 0,
       status: "uploading" as const,
@@ -55,18 +126,28 @@ export default function FileUpload() {
     setUploadingFiles((prev) => [...prev, ...newUploadingFiles]);
 
     // Start uploading each file
-    droppedFiles.forEach((file, index) => {
+    filesToUpload.forEach((file, index) => {
       const uploadIndex = uploadingFiles.length + index;
       handleFileUpload(file, uploadIndex);
     });
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const selectedFiles = Array.from(e.target.files);
 
+      // Consolidate image files into a single PDF before uploading
+      const { files: filesToUpload, consolidatedCount } =
+        await consolidateImagesToPdf(selectedFiles);
+
+      if (consolidatedCount > 0) {
+        setConsolidationNotice(
+          `Your ${consolidatedCount} image file${consolidatedCount > 1 ? "s have" : " has"} been combined into a single PDF for processing.`,
+        );
+      }
+
       // Add files to uploading state
-      const newUploadingFiles: UploadingFile[] = selectedFiles.map((file) => ({
+      const newUploadingFiles: UploadingFile[] = filesToUpload.map((file) => ({
         file,
         progress: 0,
         status: "uploading" as const,
@@ -75,7 +156,7 @@ export default function FileUpload() {
       setUploadingFiles((prev) => [...prev, ...newUploadingFiles]);
 
       // Start uploading each file
-      selectedFiles.forEach((file, index) => {
+      filesToUpload.forEach((file, index) => {
         const uploadIndex = uploadingFiles.length + index;
         handleFileUpload(file, uploadIndex);
       });
@@ -267,6 +348,20 @@ export default function FileUpload() {
           </p>
         </div>
       </div>
+
+      {/* Image Consolidation Notice */}
+      {consolidationNotice && (
+        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+          <Info className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-500" />
+          <span>{consolidationNotice}</span>
+          <button
+            onClick={() => setConsolidationNotice(null)}
+            className="ml-auto p-0.5 hover:bg-blue-100 rounded flex-shrink-0"
+          >
+            <X className="w-3.5 h-3.5 text-blue-500" />
+          </button>
+        </div>
+      )}
 
       {/* Uploading Files List - ✅ FIXED: Only show actively uploading or errored files */}
       {activelyUploading.length > 0 && (
