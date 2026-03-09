@@ -4714,7 +4714,7 @@ export default function AdminQuoteDetail() {
                 <div className="flex justify-between text-sm font-medium text-gray-700 pt-2 border-t border-gray-100">
                   <span>Pre-tax Total</span>
                   <span>
-                    ${((quote.total || 0) - (quote.tax_amount || 0)).toFixed(2)}
+                    ${quote.subtotal?.toFixed(2) || "0.00"}
                   </span>
                 </div>
 
