@@ -461,6 +461,8 @@ export default function AdminQuoteDetail() {
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
   const [files, setFiles] = useState<QuoteFile[]>([]);
   const [normalizedFiles, setNormalizedFiles] = useState<NormalizedFile[]>([]);
+  const translateFiles = normalizedFiles.filter(f => f.categoryId !== REFERENCE_CATEGORY_ID);
+  const referenceFiles = normalizedFiles.filter(f => f.categoryId === REFERENCE_CATEGORY_ID);
   const [analysis, setAnalysis] = useState<AIAnalysis[]>([]);
   const [hitlReviews, setHitlReviews] = useState<HITLReview[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -3177,9 +3179,6 @@ export default function AdminQuoteDetail() {
           )}
 
           {(() => {
-            const translateFiles = normalizedFiles.filter(f => f.categoryId !== REFERENCE_CATEGORY_ID);
-            const referenceFiles = normalizedFiles.filter(f => f.categoryId === REFERENCE_CATEGORY_ID);
-
             return (
               <>
                 {/* ── Image Conversion Banner ── */}
