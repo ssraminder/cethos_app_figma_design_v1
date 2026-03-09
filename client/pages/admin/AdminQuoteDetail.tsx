@@ -4897,11 +4897,11 @@ export default function AdminQuoteDetail() {
                   </div>
                 )}
 
-                {/* Pre-tax Total */}
+                {/* Pre-tax Total — authoritative stored value from quote */}
                 <div className="flex justify-between text-sm font-medium text-gray-700 pt-2 border-t border-gray-100">
                   <span>Pre-tax Total</span>
                   <span>
-                    ${(displaySubtotal + adjustments.reduce((s, a) => s + (a.adjustment_type === 'surcharge' ? Math.abs(a.calculated_amount) : -Math.abs(a.calculated_amount)), 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0)).toFixed(2)}
+                    ${(quote.subtotal || 0).toFixed(2)}
                   </span>
                 </div>
 
