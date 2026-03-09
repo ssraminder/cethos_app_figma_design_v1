@@ -1532,8 +1532,8 @@ export default function AdminQuoteDetail() {
     setIsSavingTax(true);
 
     try {
-      // Tax is applied to subtotal + rush_fee + delivery_fee (not certification_total)
-      const baseForTax = (quote.subtotal || 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0);
+      // Tax is applied to subtotal + certification_total + rush_fee + delivery_fee
+      const baseForTax = (quote.subtotal || 0) + (quote.certification_total || 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0);
       const newTaxAmount = parseFloat((baseForTax * selectedRate.rate).toFixed(2));
       const newTotal = parseFloat(
         ((quote.subtotal || 0) + (quote.certification_total || 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0) + newTaxAmount).toFixed(2)
@@ -4460,7 +4460,7 @@ export default function AdminQuoteDetail() {
                     {analysis.length > 1 && (
                       <div className="flex justify-between text-sm text-gray-500 pt-1.5 mt-1.5 border-t border-dashed border-gray-200">
                         <span>Translation Total</span>
-                        <span>${quote.subtotal?.toFixed(2) || "0.00"}</span>
+                        <span>${analysis.reduce((sum, ar) => sum + Number(ar.line_total || 0), 0).toFixed(2)}</span>
                       </div>
                     )}
                   </div>
@@ -4714,7 +4714,7 @@ export default function AdminQuoteDetail() {
                 <div className="flex justify-between text-sm font-medium text-gray-700 pt-2 border-t border-gray-100">
                   <span>Pre-tax Total</span>
                   <span>
-                    ${quote.subtotal?.toFixed(2) || "0.00"}
+                    ${((quote.subtotal || 0) + (quote.certification_total || 0) + adjustments.reduce((s, a) => s + (a.adjustment_type === 'surcharge' ? Math.abs(a.calculated_amount) : -Math.abs(a.calculated_amount)), 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0)).toFixed(2)}
                   </span>
                 </div>
 
