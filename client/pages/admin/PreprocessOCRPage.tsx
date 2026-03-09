@@ -21,12 +21,21 @@ import {
   Plus,
   X,
   RefreshCw,
-  Download
+  Download,
+  Image as ImageIcon
 } from 'lucide-react';
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
+
+const IMAGE_MIME_TYPES = new Set([
+  'image/jpeg', 'image/jpg', 'image/png',
+  'image/gif', 'image/webp', 'image/tiff'
+]);
+
+const isPdf = (file: File) => file.type === 'application/pdf';
+const isImage = (file: File) => IMAGE_MIME_TYPES.has(file.type);
 
 const MAX_PAGES_PER_CHUNK = 10;
 const MAX_FILE_SIZE_MB = 100; // Upload limit
@@ -46,6 +55,7 @@ interface UploadedFile {
   status: 'pending' | 'analyzing' | 'ready' | 'error';
   error?: string;
   chunks: ChunkInfo[];
+  isImageFile: boolean; // true if this is an image (will be merged with other images)
 }
 
 interface ChunkInfo {
@@ -760,6 +770,7 @@ export default function PreprocessOCRPage() {
             pageCount,
             status: 'ready' as const,
             chunks,
+            isImageFile: false,
           });
 
         } catch (err: unknown) {
@@ -774,6 +785,7 @@ export default function PreprocessOCRPage() {
             status: 'error' as const,
             error: errorMessage,
             chunks: [],
+            isImageFile: false,
           });
         }
       }
@@ -809,35 +821,53 @@ export default function PreprocessOCRPage() {
   };
 
   const addFiles = async (fileList: FileList) => {
-    const pdfFiles = Array.from(fileList).filter(f => ['application/pdf', 'image/jpeg', 'image/png'].includes(f.type));
+    const acceptedFiles = Array.from(fileList).filter(f => isPdf(f) || isImage(f));
 
-    if (pdfFiles.length !== fileList.length) {
-      toast.warning('Only PDF, JPG, and PNG files are accepted. Unsupported files were skipped.');
+    if (acceptedFiles.length !== fileList.length) {
+      toast.warning('Only PDF and image files (JPG, PNG, GIF, WebP, TIFF) are accepted. Unsupported files were skipped.');
     }
 
-    const oversized = pdfFiles.filter(f => f.size > MAX_FILE_SIZE_BYTES);
+    const oversized = acceptedFiles.filter(f => f.size > MAX_FILE_SIZE_BYTES);
     if (oversized.length > 0) {
       toast.error(`${oversized.length} file(s) exceed ${MAX_FILE_SIZE_MB}MB limit and were skipped.`);
     }
 
-    const validFiles = pdfFiles.filter(f => f.size <= MAX_FILE_SIZE_BYTES);
+    const validFiles = acceptedFiles.filter(f => f.size <= MAX_FILE_SIZE_BYTES);
 
-    // Create file entries
-    const newFiles: UploadedFile[] = validFiles.map(file => ({
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      file,
-      name: file.name,
-      size: file.size,
-      pageCount: null,
-      status: 'pending',
-      chunks: [],
-    }));
+    // Create file entries — images get immediate 'ready' status, PDFs need analysis
+    const newFiles: UploadedFile[] = validFiles.map(file => {
+      const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      if (isImage(file)) {
+        return {
+          id,
+          file,
+          name: file.name,
+          size: file.size,
+          pageCount: 1,
+          status: 'ready' as const,
+          chunks: [{ id: `${id}-chunk-1`, name: file.name, pageStart: 1, pageEnd: 1, pageCount: 1, blob: null, size: file.size, status: 'ready' as const }],
+          isImageFile: true,
+        };
+      }
+      return {
+        id,
+        file,
+        name: file.name,
+        size: file.size,
+        pageCount: null,
+        status: 'pending' as const,
+        chunks: [],
+        isImageFile: false,
+      };
+    });
 
     setFiles(prev => [...prev, ...newFiles]);
 
-    // Analyze each file to get page count and plan chunks
+    // Analyze PDF files to get page count and plan chunks (skip images)
     for (const f of newFiles) {
-      await analyzeFile(f.id, f.file);
+      if (!f.isImageFile) {
+        await analyzeFile(f.id, f.file);
+      }
     }
   };
 
@@ -926,8 +956,89 @@ export default function PreprocessOCRPage() {
       return;
     }
 
+    // === Image Consolidation Step ===
+    const imageFiles = readyFiles.filter(f => f.isImageFile);
+    const pdfFiles = readyFiles.filter(f => !f.isImageFile);
+
+    let allFilesToProcess: UploadedFile[] = [...pdfFiles];
+
+    if (imageFiles.length > 0) {
+      setProgress({
+        phase: 'splitting',
+        currentFile: '',
+        currentChunk: 0,
+        totalChunks: 0,
+        uploadedChunks: 0,
+        totalUploadChunks: 1,
+        message: `Combining ${imageFiles.length} image(s) into PDF...`,
+      });
+
+      try {
+        const combinedPdf = await PDFDocument.create();
+
+        for (const imgFile of imageFiles) {
+          const arrayBuffer = await imgFile.file.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+
+          let embeddedImage;
+          if (imgFile.file.type === 'image/png') {
+            embeddedImage = await combinedPdf.embedPng(bytes);
+          } else {
+            embeddedImage = await combinedPdf.embedJpg(bytes);
+          }
+
+          const page = combinedPdf.addPage([embeddedImage.width, embeddedImage.height]);
+          page.drawImage(embeddedImage, {
+            x: 0, y: 0,
+            width: embeddedImage.width,
+            height: embeddedImage.height,
+          });
+        }
+
+        const combinedBytes = await combinedPdf.save();
+        const combinedBlob = new Blob([combinedBytes], { type: 'application/pdf' });
+        const combinedFile = new File([combinedBlob], 'combined_images.pdf', { type: 'application/pdf' });
+
+        const combinedEntry: UploadedFile = {
+          id: 'combined-images',
+          name: 'combined_images.pdf',
+          size: combinedBytes.byteLength,
+          file: combinedFile,
+          status: 'ready',
+          pageCount: combinedPdf.getPageCount(),
+          chunks: [{
+            id: 'combined-chunk-1',
+            name: 'combined_images.pdf',
+            pageStart: 1,
+            pageEnd: combinedPdf.getPageCount(),
+            pageCount: combinedPdf.getPageCount(),
+            blob: null,
+            size: combinedBytes.byteLength,
+            status: 'ready',
+          }],
+          error: undefined,
+          isImageFile: false,
+        };
+
+        allFilesToProcess = [combinedEntry, ...pdfFiles];
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setProgress({
+          phase: 'error',
+          currentFile: '',
+          currentChunk: 0,
+          totalChunks: 0,
+          uploadedChunks: 0,
+          totalUploadChunks: 0,
+          message: `Image consolidation failed: ${errorMessage}`,
+        });
+        return;
+      }
+    }
+    // === END Image Consolidation ===
+
     // Count total chunks to upload
-    const totalChunks = readyFiles.reduce((sum, f) => sum + f.chunks.length, 0);
+    const totalChunks = allFilesToProcess.reduce((sum, f) => sum + f.chunks.length, 0);
     let uploadedCount = 0;
 
     setProgress({
@@ -950,7 +1061,7 @@ export default function PreprocessOCRPage() {
         chunkIndex: number | null;
       }[] = [];
 
-      for (const uploadFile of readyFiles) {
+      for (const uploadFile of allFilesToProcess) {
         // Generate a group UUID for files that were split into multiple chunks
         // Files with only 1 chunk (not split) get null
         const wasSplit = uploadFile.chunks.length > 1;
@@ -1081,7 +1192,7 @@ export default function PreprocessOCRPage() {
           },
           body: JSON.stringify({
             files: uploadedFiles,
-            notes: `Preprocessed batch. Original files: ${readyFiles.map(f => `${f.name} (${f.pageCount} pages)`).join(', ')}`,
+            notes: `Preprocessed batch. Original files: ${allFilesToProcess.map(f => `${f.name} (${f.pageCount} pages)`).join(', ')}`,
             quoteId: mode === 'existing' && selectedQuote ? selectedQuote.id : null,
           }),
         }
@@ -1187,8 +1298,8 @@ export default function PreprocessOCRPage() {
             )}
           </h1>
           <p className="text-gray-600 mt-2">
-            Upload large PDFs — they'll be automatically split into smaller chunks (≤10 pages each)
-            before OCR processing. Handles files of any size.
+            Upload PDFs or images — PDFs are automatically split into smaller chunks (≤10 pages each),
+            and images are combined into a single PDF before OCR processing.
           </p>
         </div>
 
@@ -1198,8 +1309,8 @@ export default function PreprocessOCRPage() {
           <div className="text-sm text-blue-800">
             <p className="font-medium mb-1">How it works:</p>
             <ol className="list-decimal list-inside space-y-1">
-              <li>Upload PDF files (up to 100MB each)</li>
-              <li>Files with more than 10 pages are automatically split into chunks</li>
+              <li>Upload PDF or image files (up to 100MB each)</li>
+              <li>Images are combined into a single PDF; PDFs with more than 10 pages are split into chunks</li>
               <li>All chunks are submitted for OCR word counting</li>
               <li>Processing takes ~2 minutes per chunk</li>
               <li>You'll receive an email when results are ready</li>
@@ -1437,12 +1548,12 @@ export default function PreprocessOCRPage() {
                 Drag & drop PDF or image files here, or click to select
               </p>
               <p className="text-sm text-gray-500">
-                Maximum 100MB per file • PDF, JPG, PNG • PDF files &gt;10 pages will be split automatically
+                Maximum 100MB per file • PDF, JPG, PNG, GIF, WebP, TIFF • Images are combined into one PDF
               </p>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="application/pdf,image/jpeg,image/png"
+                accept="application/pdf,image/jpeg,image/jpg,image/png,image/gif,image/webp,image/tiff"
                 multiple
                 className="hidden"
                 onChange={handleFileSelect}
@@ -1468,6 +1579,21 @@ export default function PreprocessOCRPage() {
               Files ({files.length})
             </h2>
 
+            {/* Image Consolidation Banner */}
+            {files.some(f => f.isImageFile) && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 flex items-start gap-3">
+                <ImageIcon className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-blue-900">
+                    {files.filter(f => f.isImageFile).length} image file(s) will be combined
+                  </p>
+                  <p className="text-sm text-blue-700">
+                    All images will be merged into a single <code>combined_images.pdf</code> before processing. PDFs are processed individually.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-3">
               {files.map((f) => (
                 <div key={f.id} className="border rounded-lg p-4">
@@ -1479,10 +1605,17 @@ export default function PreprocessOCRPage() {
                       {f.status === 'pending' && <Clock className="w-5 h-5 text-gray-400" />}
 
                       <div>
-                        <p className="font-medium text-gray-900">{f.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900">{f.name}</p>
+                          {f.isImageFile && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                              Image
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-500">
                           {formatSize(f.size)}
-                          {f.pageCount !== null && ` • ${f.pageCount} pages`}
+                          {f.pageCount !== null && !f.isImageFile && ` • ${f.pageCount} pages`}
                           {f.status === 'analyzing' && ' • Analyzing...'}
                           {f.error && ` • Error: ${f.error}`}
                         </p>
@@ -1497,8 +1630,17 @@ export default function PreprocessOCRPage() {
                     </button>
                   </div>
 
-                  {/* Chunk Preview */}
-                  {f.chunks.length > 1 && (
+                  {/* Image consolidation note */}
+                  {f.isImageFile && (
+                    <div className="mt-2 ml-8">
+                      <p className="text-sm text-blue-600">
+                        Will be combined with other images into a single PDF
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Chunk Preview (PDFs only) */}
+                  {!f.isImageFile && f.chunks.length > 1 && (
                     <div className="mt-3 ml-8">
                       <p className="text-sm text-amber-600 flex items-center gap-1 mb-2">
                         <Scissors className="w-4 h-4" />
@@ -1514,7 +1656,7 @@ export default function PreprocessOCRPage() {
                     </div>
                   )}
 
-                  {f.chunks.length === 1 && f.status === 'ready' && (
+                  {!f.isImageFile && f.chunks.length === 1 && f.status === 'ready' && (
                     <div className="mt-2 ml-8">
                       <p className="text-sm text-green-600">
                         No splitting needed ({f.pageCount} pages)
@@ -1568,7 +1710,8 @@ export default function PreprocessOCRPage() {
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">
               {progress.phase === 'done' ? 'Batch Submitted!' :
-               progress.phase === 'error' ? 'Error' : 'Processing...'}
+               progress.phase === 'error' ? 'Error' :
+               progress.phase === 'splitting' ? 'Preparing files...' : 'Processing...'}
             </h2>
 
             {/* Progress Bar */}
