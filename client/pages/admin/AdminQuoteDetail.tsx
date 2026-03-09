@@ -43,7 +43,9 @@ import {
   HelpCircle,
   FileEdit,
   Loader2,
+  Cpu,
 } from "lucide-react";
+import { PDFDocument } from "pdf-lib";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { format } from "date-fns";
@@ -154,6 +156,7 @@ interface QuoteFile {
   mime_type: string;
   upload_status: string;
   created_at: string;
+  ai_processing_status?: string;
 }
 
 interface NormalizedFile {
@@ -577,6 +580,15 @@ export default function AdminQuoteDetail() {
     'idle' | 'checking' | 'needs_conversion' | 'converting' | 'uploading' | 'processing' | 'done' | 'error'
   >('idle')
   const [imageConvertError, setImageConvertError] = useState<string | null>(null)
+
+  // Preprocess & OCR state (per-file, keyed by quote_file id)
+  const [ocrRunState, setOcrRunState] = useState<Record<string, {
+    status: 'idle' | 'downloading' | 'splitting' | 'uploading' | 'submitting' | 'done' | 'error';
+    message?: string;
+    batchId?: string;
+    chunkCount?: number;
+    error?: string;
+  }>>({});
   const [imageFiles, setImageFiles] = useState<Array<{
     id: string
     original_filename: string
@@ -1411,6 +1423,116 @@ export default function AdminQuoteDetail() {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleRunPreprocessOcr = async (quoteFile: QuoteFile) => {
+    const fileId = quoteFile.id;
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+
+    const updateState = (patch: Partial<typeof ocrRunState[string]>) =>
+      setOcrRunState(prev => ({ ...prev, [fileId]: { ...prev[fileId], ...patch } }));
+
+    try {
+      // Step 1 - Get signed download URL
+      updateState({ status: 'downloading', message: 'Downloading file...' });
+
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        .from('quote-files')
+        .createSignedUrl(quoteFile.storage_path, 300);
+
+      if (signedUrlError || !signedUrlData?.signedUrl) {
+        throw new Error(`Could not generate download URL for ${quoteFile.original_filename}`);
+      }
+
+      // Step 2 - Download PDF into memory
+      const pdfResponse = await fetch(signedUrlData.signedUrl);
+      if (!pdfResponse.ok) throw new Error(`Failed to download file: HTTP ${pdfResponse.status}`);
+      const pdfArrayBuffer = await pdfResponse.arrayBuffer();
+
+      // Step 3 - Split into <= 10 page chunks
+      updateState({ status: 'splitting', message: 'Splitting into chunks...' });
+
+      const srcDoc = await PDFDocument.load(pdfArrayBuffer);
+      const totalPages = srcDoc.getPageCount();
+      const CHUNK_SIZE = 10;
+      const chunks: { doc: PDFDocument; startPage: number; endPage: number }[] = [];
+
+      for (let start = 0; start < totalPages; start += CHUNK_SIZE) {
+        const end = Math.min(start + CHUNK_SIZE, totalPages);
+        const chunkDoc = await PDFDocument.create();
+        const pages = await chunkDoc.copyPages(srcDoc, Array.from({ length: end - start }, (_, i) => start + i));
+        pages.forEach(p => chunkDoc.addPage(p));
+        chunks.push({ doc: chunkDoc, startPage: start + 1, endPage: end });
+      }
+
+      // Step 4 - Upload each chunk to ocr-uploads bucket
+      const baseName = quoteFile.original_filename.replace('.pdf', '');
+      const timestamp = Date.now();
+      const uploadedFiles = [];
+
+      for (let i = 0; i < chunks.length; i++) {
+        updateState({ status: 'uploading', message: `Uploading chunk ${i + 1} of ${chunks.length}...` });
+
+        const chunk = chunks[i];
+        const chunkBytes = await chunk.doc.save();
+        const chunkBlob = new Blob([chunkBytes], { type: 'application/pdf' });
+
+        const chunkFilename = chunks.length === 1
+          ? `${baseName}_${timestamp}.pdf`
+          : `${baseName}_p${chunk.startPage}-${chunk.endPage}_${timestamp}.pdf`;
+
+        const storagePath = `quote-reprocess/${id}/${chunkFilename}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('ocr-uploads')
+          .upload(storagePath, chunkBlob, { contentType: 'application/pdf', upsert: true });
+
+        if (uploadError) throw new Error(`Upload failed for chunk ${i + 1}: ${uploadError.message}`);
+
+        uploadedFiles.push({
+          filename: chunkFilename,
+          originalFilename: quoteFile.original_filename,
+          storagePath,
+          fileSize: chunkBytes.byteLength,
+          chunkIndex: i,
+          fileGroupId: chunks.length > 1 ? `quote-${id}-${timestamp}` : null,
+        });
+      }
+
+      // Step 5 - Call ocr-batch-create
+      updateState({ status: 'submitting', message: 'Submitting to OCR queue...' });
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+
+      const batchRes = await fetch(`${SUPABASE_URL}/functions/v1/ocr-batch-create`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          files: uploadedFiles,
+          quoteId: id,
+          notes: `Re-processed from AdminQuoteDetail for quote ${quote?.quote_number}`,
+        }),
+      });
+
+      const batchResult = await batchRes.json();
+      if (!batchResult.success) throw new Error(batchResult.error || 'Batch creation failed');
+
+      updateState({
+        status: 'done',
+        message: `OCR batch queued - ${chunks.length} chunk(s) submitted.`,
+        batchId: batchResult.batchId,
+        chunkCount: chunks.length,
+      });
+      toast.success(`OCR batch queued for ${quoteFile.original_filename}`);
+    } catch (err: any) {
+      console.error('Preprocess & OCR error:', err);
+      updateState({ status: 'error', error: err.message || 'Unknown error' });
+      toast.error(`OCR failed: ${err.message}`);
+    }
   };
 
   const getSignedUrl = async (file: NormalizedFile): Promise<string | null> => {
@@ -3326,53 +3448,109 @@ export default function AdminQuoteDetail() {
 
                   {translateFiles.length > 0 ? (
                     <div className="space-y-2">
-                      {translateFiles.map((file) => (
-                        <div
-                          key={file.id}
-                          className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg ${
-                            file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')
-                              ? 'cursor-pointer hover:bg-gray-100 transition-colors'
-                              : ''
-                          }`}
-                          onClick={() => {
-                            if (file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) {
-                              handlePreview(file);
-                            }
-                          }}
-                        >
-                          <div className="flex items-center gap-3">
-                            <FileText className="w-5 h-5 text-gray-400" />
-                            <div>
-                              <p className="font-medium text-sm">{file.displayName}</p>
-                              <p className="text-xs text-gray-500">
-                                {file.fileSize > 0 ? formatFileSize(file.fileSize) : ''}
-                                {file.fileSize > 0 && ' • '}{file.mimeType}
-                                {file.source === 'ocr' && (
-                                  <span className="ml-2 text-purple-600">via OCR</span>
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                            {(file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) && (
-                              <button
-                                onClick={() => handlePreview(file)}
-                                className="text-blue-600 hover:text-blue-700"
-                                title="Preview"
-                              >
-                                <Eye className="w-5 h-5" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleDownload(file)}
-                              className="text-teal-600 hover:text-teal-700"
-                              title="Download"
+                      {translateFiles.map((file) => {
+                        const rawFile = files.find(f => f.id === file.id);
+                        const aiStatus = rawFile?.ai_processing_status;
+                        const canRunOcr = aiStatus === 'pending' || aiStatus === 'failed';
+                        const ocrState = ocrRunState[file.id];
+                        const ocrBusy = ocrState && !['idle', 'done', 'error'].includes(ocrState.status);
+
+                        return (
+                          <div key={file.id}>
+                            <div
+                              className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg ${
+                                file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')
+                                  ? 'cursor-pointer hover:bg-gray-100 transition-colors'
+                                  : ''
+                              }`}
+                              onClick={() => {
+                                if (file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) {
+                                  handlePreview(file);
+                                }
+                              }}
                             >
-                              <Download className="w-5 h-5" />
-                            </button>
+                              <div className="flex items-center gap-3">
+                                <FileText className="w-5 h-5 text-gray-400" />
+                                <div>
+                                  <p className="font-medium text-sm">{file.displayName}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {file.fileSize > 0 ? formatFileSize(file.fileSize) : ''}
+                                    {file.fileSize > 0 && ' • '}{file.mimeType}
+                                    {file.source === 'ocr' && (
+                                      <span className="ml-2 text-purple-600">via OCR</span>
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                {canRunOcr && !ocrBusy && ocrState?.status !== 'done' && (
+                                  <button
+                                    onClick={() => {
+                                      if (rawFile) handleRunPreprocessOcr(rawFile);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-700 border border-orange-300 rounded hover:bg-orange-50 transition-colors"
+                                    title="Run Preprocess & OCR"
+                                  >
+                                    <Cpu className="w-3.5 h-3.5" />
+                                    Run Preprocess & OCR
+                                  </button>
+                                )}
+                                {ocrBusy && (
+                                  <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    {ocrState.message}
+                                  </span>
+                                )}
+                                {ocrState?.status === 'error' && (
+                                  <span className="inline-flex items-center gap-1 text-xs text-red-600">
+                                    <X className="w-3.5 h-3.5" />
+                                    {ocrState.error}
+                                    <button
+                                      onClick={() => {
+                                        if (rawFile) handleRunPreprocessOcr(rawFile);
+                                      }}
+                                      className="ml-1 underline hover:text-red-800"
+                                    >
+                                      Retry
+                                    </button>
+                                  </span>
+                                )}
+                                {(file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) && (
+                                  <button
+                                    onClick={() => handlePreview(file)}
+                                    className="text-blue-600 hover:text-blue-700"
+                                    title="Preview"
+                                  >
+                                    <Eye className="w-5 h-5" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleDownload(file)}
+                                  className="text-teal-600 hover:text-teal-700"
+                                  title="Download"
+                                >
+                                  <Download className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </div>
+                            {ocrState?.status === 'done' && ocrState.batchId && (
+                              <div className="ml-8 mt-1 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-800">
+                                <CheckCircle className="w-3.5 h-3.5 inline mr-1" />
+                                OCR batch queued &mdash; {ocrState.chunkCount} chunk(s) submitted.
+                                {' ~'}{(ocrState.chunkCount || 1) * 2} minutes to complete.{' '}
+                                <a
+                                  href={`/admin/ocr-word-count/${ocrState.batchId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="underline text-green-700 hover:text-green-900 font-medium"
+                                >
+                                  View progress &rarr;
+                                </a>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-gray-500 italic">No files uploaded</p>
