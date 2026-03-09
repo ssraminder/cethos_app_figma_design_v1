@@ -2688,6 +2688,11 @@ export default function AdminQuoteDetail() {
   // Check if quote has been converted to an order (hide send buttons)
   const isConvertedToOrder = quote && ['paid', 'converted'].includes(quote.status);
 
+  // Computed flags for the always-visible Convert & Process button
+  const hasImageFiles = (imageFiles || []).length > 0;
+  const isConvertInProgress = ['converting', 'uploading', 'processing'].includes(imageConvertStatus ?? '');
+  const canConvertAndProcess = hasImageFiles && !isConvertInProgress;
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -2799,6 +2804,27 @@ export default function AdminQuoteDetail() {
             >
               <DollarSign className="w-3.5 h-3.5" />
               Receive Payment
+            </button>
+          )}
+
+          {/* Convert & Process — always visible when image files exist */}
+          {hasImageFiles && (
+            <button
+              onClick={handleConvertAndProcess}
+              disabled={!canConvertAndProcess}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                canConvertAndProcess
+                  ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
+                  : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-50'
+              }`}
+            >
+              {isConvertInProgress && <Loader2 className="w-4 h-4 animate-spin" />}
+              {imageConvertStatus === 'converting' && 'Converting\u2026'}
+              {imageConvertStatus === 'uploading' && 'Uploading\u2026'}
+              {imageConvertStatus === 'processing' && 'Processing\u2026'}
+              {imageConvertStatus === 'done' && '\u2713 Converted'}
+              {imageConvertStatus === 'error' && 'Retry Convert'}
+              {(!imageConvertStatus || imageConvertStatus === 'needs_conversion') && 'Convert & Process'}
             </button>
           )}
 
@@ -3196,18 +3222,9 @@ export default function AdminQuoteDetail() {
                             <p className="text-sm text-amber-700 mt-0.5">
                               {imageFiles.length} image file{imageFiles.length > 1 ? 's were' : ' was'} uploaded
                               but could not be automatically processed due to file size.
-                              Click below to convert {imageFiles.length > 1 ? 'them' : 'it'} to PDF
+                              Use the Convert &amp; Process button above to convert {imageFiles.length > 1 ? 'them' : 'it'} to PDF
                               and trigger processing.
                             </p>
-                            <button
-                              onClick={handleConvertAndProcess}
-                              className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-amber-600
-                                         text-white text-sm font-medium rounded-lg hover:bg-amber-700
-                                         transition-colors"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                              Convert & Process
-                            </button>
                           </>
                         )}
 
@@ -3248,15 +3265,6 @@ export default function AdminQuoteDetail() {
                             <p className="text-sm text-red-700 mt-0.5">
                               {imageConvertError}
                             </p>
-                            <button
-                              onClick={handleConvertAndProcess}
-                              className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-red-600
-                                         text-white text-sm font-medium rounded-lg hover:bg-red-700
-                                         transition-colors"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                              Retry
-                            </button>
                           </>
                         )}
                       </div>
