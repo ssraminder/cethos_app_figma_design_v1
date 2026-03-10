@@ -44,6 +44,7 @@ import {
   FileEdit,
   Loader2,
   Cpu,
+  Layers,
 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import JSZip from "jszip";
@@ -53,6 +54,7 @@ import { toast } from "sonner";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 
 import OcrAnalysisModal from "../../components/admin/OcrAnalysisModal";
+import OriginalsModal from "../../components/admin/OriginalsModal";
 import QuoteActivityFeed from "../../components/admin/QuoteActivityFeed";
 import { logQuoteActivity } from "../../utils/quoteActivityLog";
 import { formatEntryPoint, entryPointBadgeColor } from "../../utils/quoteUtils";
@@ -169,6 +171,8 @@ interface NormalizedFile {
   mimeType: string;
   source: 'quote' | 'ocr';
   categoryId?: string | null;
+  isCombined?: boolean;
+  combinedFromCount?: number;
 }
 
 interface AIAnalysis {
@@ -501,6 +505,8 @@ export default function AdminQuoteDetail() {
   const [previewFile, setPreviewFile] = useState<NormalizedFile | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [sourceFileMap, setSourceFileMap] = useState<Record<string, any[]>>({});
+  const [originalsModalFile, setOriginalsModalFile] = useState<NormalizedFile | null>(null);
   const [resendCustomMessage, setResendCustomMessage] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [isSendingLink, setIsSendingLink] = useState(false);
@@ -601,11 +607,35 @@ export default function AdminQuoteDetail() {
     // Try quote_files first (customer upload route)
     const { data: quoteFiles, error: qfError } = await supabase
       .from('quote_files')
-      .select('id, original_filename, storage_path, file_size, mime_type, file_category_id')
-      .eq('quote_id', quoteId);
+      .select('id, original_filename, storage_path, file_size, mime_type, file_category_id, is_combined, source_file_ids, combined_from_count')
+      .eq('quote_id', quoteId)
+      .is('deleted_at', null);
 
     if (!qfError && quoteFiles && quoteFiles.length > 0) {
-      return quoteFiles.map(f => ({
+      // Fetch soft-deleted source files for combined files
+      const sourceIds = quoteFiles
+        .filter((f: any) => f.is_combined && f.source_file_ids?.length)
+        .flatMap((f: any) => f.source_file_ids as string[]);
+
+      let sourceFiles: any[] = [];
+      if (sourceIds.length > 0) {
+        const { data } = await supabase
+          .from('quote_files')
+          .select('id, original_filename, storage_path, file_size, mime_type, created_at')
+          .in('id', sourceIds);
+        sourceFiles = data || [];
+      }
+
+      // Build source file map
+      const sfMap: Record<string, any[]> = {};
+      for (const combined of quoteFiles.filter((f: any) => f.is_combined)) {
+        sfMap[combined.id] = ((combined as any).source_file_ids || [])
+          .map((sid: string) => sourceFiles.find((sf: any) => sf.id === sid))
+          .filter(Boolean);
+      }
+      setSourceFileMap(sfMap);
+
+      return quoteFiles.map((f: any) => ({
         id: f.id,
         displayName: f.original_filename || f.storage_path,
         storagePath: f.storage_path,
@@ -615,6 +645,8 @@ export default function AdminQuoteDetail() {
         mimeType: f.mime_type || 'application/pdf',
         source: 'quote' as const,
         categoryId: f.file_category_id,
+        isCombined: f.is_combined || false,
+        combinedFromCount: f.combined_from_count || 0,
       }));
     }
 
@@ -3515,6 +3547,16 @@ export default function AdminQuoteDetail() {
                                     </button>
                                   </span>
                                 )}
+                                {file.isCombined && sourceFileMap[file.id]?.length > 0 && (
+                                  <button
+                                    onClick={() => setOriginalsModalFile(file)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 border border-purple-300 rounded hover:bg-purple-50 transition-colors"
+                                    title="View original source files"
+                                  >
+                                    <Layers className="w-3.5 h-3.5" />
+                                    View {file.combinedFromCount || sourceFileMap[file.id].length} originals
+                                  </button>
+                                )}
                                 {(file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) && (
                                   <button
                                     onClick={() => handlePreview(file)}
@@ -5511,6 +5553,17 @@ export default function AdminQuoteDetail() {
           onClose={() => setShowOcrModal(false)}
           quoteId={id}
           quoteNumber={quote?.quote_number}
+        />
+      )}
+
+      {/* Originals Modal for combined files */}
+      {originalsModalFile && id && (
+        <OriginalsModal
+          isOpen={!!originalsModalFile}
+          onClose={() => setOriginalsModalFile(null)}
+          combinedFileName={originalsModalFile.displayName}
+          sourceFiles={sourceFileMap[originalsModalFile.id] || []}
+          quoteId={id}
         />
       )}
     </div>
