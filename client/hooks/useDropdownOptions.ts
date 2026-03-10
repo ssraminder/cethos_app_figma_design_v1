@@ -104,38 +104,26 @@ export function useDropdownOptions() {
             .order("sort_order"),
         ]);
 
-        if (sourceLangResult.error) {
-          console.error(
-            "Error fetching source languages:",
-            sourceLangResult.error,
-          );
-          setError("Failed to load source languages");
-        }
+        const results = [
+          { name: "source languages", result: sourceLangResult },
+          { name: "target languages", result: targetLangResult },
+          { name: "intended uses", result: usesResult },
+          { name: "countries", result: countriesResult },
+          { name: "certification types", result: certTypesResult },
+        ];
 
-        if (targetLangResult.error) {
-          console.error(
-            "Error fetching target languages:",
-            targetLangResult.error,
-          );
-          setError("Failed to load target languages");
-        }
-
-        if (usesResult.error) {
-          console.error("Error fetching intended uses:", usesResult.error);
-          setError("Failed to load intended uses");
-        }
-
-        if (countriesResult.error) {
-          console.error("Error fetching countries:", countriesResult.error);
-          setError("Failed to load countries");
-        }
-
-        if (certTypesResult.error) {
-          console.error(
-            "Error fetching certification types:",
-            certTypesResult.error,
-          );
-          setError("Failed to load certification types");
+        for (const { name, result } of results) {
+          if (result.error) {
+            console.error(
+              `Error fetching ${name}:`,
+              `code=${result.error.code}`,
+              `message=${result.error.message}`,
+              `details=${result.error.details}`,
+              `hint=${result.error.hint}`,
+              `status=${result.status}`,
+            );
+            setError(`Failed to load ${name}`);
+          }
         }
 
         setSourceLanguages(sourceLangResult.data || []);
