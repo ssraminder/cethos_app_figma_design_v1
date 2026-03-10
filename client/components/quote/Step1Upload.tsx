@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import StartOverLink from "@/components/quote/StartOverLink";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { ChevronRight, X, Loader2, CheckCircle, XCircle, Paperclip } from "lucide-react";
+import { compressPdfIfNeeded, needsCompression } from "@/utils/compressPdf";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -88,6 +89,7 @@ export default function Step1Upload() {
   // UI state
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOptimising, setIsOptimising] = useState(false);
 
   // ── Fetch languages on mount ────────────────────────────────────────────
 
@@ -178,7 +180,18 @@ export default function Step1Upload() {
     return null;
   };
 
-  const processFiles = (files: File[]) => {
+  const processFiles = async (rawFiles: File[]) => {
+    // Compress large PDFs before processing
+    const hasBig = rawFiles.some(needsCompression);
+    if (hasBig) setIsOptimising(true);
+
+    let files: File[];
+    try {
+      files = await Promise.all(rawFiles.map(compressPdfIfNeeded));
+    } finally {
+      setIsOptimising(false);
+    }
+
     const newFiles: LocalFile[] = [];
     const fileErrors: string[] = [];
 
@@ -320,7 +333,18 @@ export default function Step1Upload() {
 
   // ── Reference file handlers ─────────────────────────────────────────────
 
-  const processRefFiles = (files: File[]) => {
+  const processRefFiles = async (rawFiles: File[]) => {
+    // Compress large PDFs before processing
+    const hasBig = rawFiles.some(needsCompression);
+    if (hasBig) setIsOptimising(true);
+
+    let files: File[];
+    try {
+      files = await Promise.all(rawFiles.map(compressPdfIfNeeded));
+    } finally {
+      setIsOptimising(false);
+    }
+
     const newFiles: LocalFile[] = [];
     const fileErrors: string[] = [];
 
@@ -746,6 +770,13 @@ export default function Step1Upload() {
         />
       </div>
 
+      {/* Optimising indicator */}
+      {isOptimising && (
+        <p className="text-sm text-blue-600 mt-2 flex items-center gap-1">
+          <span className="animate-spin">⏳</span> Optimising files for upload...
+        </p>
+      )}
+
       {/* File-level validation error */}
       {errors.files && (
         <p className="text-sm text-red-600 mt-2">{errors.files}</p>
@@ -991,14 +1022,19 @@ export default function Step1Upload() {
         <button
           type="button"
           onClick={handleContinue}
-          disabled={!canContinue || isSubmitting}
+          disabled={!canContinue || isSubmitting || isOptimising}
           className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-base text-white transition-all ${
-            canContinue && !isSubmitting
+            canContinue && !isSubmitting && !isOptimising
               ? "bg-cethos-teal hover:bg-cethos-teal-light"
               : "bg-gray-300 cursor-not-allowed"
           }`}
         >
-          {isSubmitting ? (
+          {isOptimising ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>Optimising&hellip;</span>
+            </>
+          ) : isSubmitting ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
               <span>Processing&hellip;</span>
