@@ -2889,6 +2889,11 @@ export default function AdminQuoteDetail() {
   const quoteCertificationTotal = Number(quote.calculated_totals?.quote_certification_total || 0);
   const displaySubtotal = translationTotal + docCertificationTotal + quoteCertificationTotal;
 
+  // Adjustments total: prefer calculated_totals JSONB, fall back to computing from adjustments array
+  const adjustmentsTotal = quote.calculated_totals?.adjustments_total
+    ?? adjustments.reduce((sum, a) => sum + (a.adjustment_type === 'surcharge' ? a.calculated_amount : -a.calculated_amount), 0);
+  const preTaxTotal = (quote.subtotal || 0) + adjustmentsTotal + (quote.rush_fee || 0) + (quote.delivery_fee || 0);
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
@@ -4956,7 +4961,7 @@ export default function AdminQuoteDetail() {
                 <div className="flex justify-between text-sm font-medium text-gray-700 pt-2 border-t border-gray-100">
                   <span>Pre-tax Total</span>
                   <span>
-                    ${((quote.subtotal || 0) + (quote.calculated_totals?.adjustments_total || 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0)).toFixed(2)}
+                    ${preTaxTotal.toFixed(2)}
                   </span>
                 </div>
 
