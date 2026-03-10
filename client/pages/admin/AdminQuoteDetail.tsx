@@ -1486,7 +1486,7 @@ export default function AdminQuoteDetail() {
 
       const srcDoc = await PDFDocument.load(pdfArrayBuffer);
       const totalPages = srcDoc.getPageCount();
-      const CHUNK_SIZE = 5;
+      const CHUNK_SIZE = 3;
       const chunks: { doc: PDFDocument; startPage: number; endPage: number }[] = [];
 
       for (let start = 0; start < totalPages; start += CHUNK_SIZE) {
