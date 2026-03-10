@@ -1449,12 +1449,12 @@ export default function AdminQuoteDetail() {
       if (!pdfResponse.ok) throw new Error(`Failed to download file: HTTP ${pdfResponse.status}`);
       const pdfArrayBuffer = await pdfResponse.arrayBuffer();
 
-      // Step 3 - Split into <= 10 page chunks
+      // Step 3 - Split into <= 5 page chunks
       updateState({ status: 'splitting', message: 'Splitting into chunks...' });
 
       const srcDoc = await PDFDocument.load(pdfArrayBuffer);
       const totalPages = srcDoc.getPageCount();
-      const CHUNK_SIZE = 10;
+      const CHUNK_SIZE = 5;
       const chunks: { doc: PDFDocument; startPage: number; endPage: number }[] = [];
 
       for (let start = 0; start < totalPages; start += CHUNK_SIZE) {
