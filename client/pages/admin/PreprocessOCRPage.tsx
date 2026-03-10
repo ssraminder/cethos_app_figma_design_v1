@@ -38,7 +38,7 @@ const IMAGE_MIME_TYPES = new Set([
 const isPdf = (file: File) => file.type === 'application/pdf';
 const isImage = (file: File) => IMAGE_MIME_TYPES.has(file.type);
 
-const MAX_PAGES_PER_CHUNK = 3;
+const MAX_PAGES_PER_CHUNK = 1;
 const MAX_FILE_SIZE_MB = 100; // Upload limit
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const WARN_CHUNK_SIZE_MB = 15; // Warn if chunk exceeds this
@@ -1324,7 +1324,7 @@ export default function PreprocessOCRPage() {
             )}
           </h1>
           <p className="text-gray-600 mt-2">
-            Upload PDFs or images — PDFs are automatically split into smaller chunks (≤3 pages each),
+            Upload PDFs or images — PDFs are automatically split into 1-page chunks,
             and images are combined into a single PDF before OCR processing.
           </p>
         </div>
@@ -1336,7 +1336,7 @@ export default function PreprocessOCRPage() {
             <p className="font-medium mb-1">How it works:</p>
             <ol className="list-decimal list-inside space-y-1">
               <li>Upload PDF or image files (up to 100MB each)</li>
-              <li>Images are combined into a single PDF; PDFs with more than 3 pages are split into chunks</li>
+              <li>Images are combined into a single PDF; multi-page PDFs are split into 1-page chunks</li>
               <li>All chunks are submitted for OCR word counting</li>
               <li>Processing takes ~2 minutes per chunk</li>
               <li>You'll receive an email when results are ready</li>
