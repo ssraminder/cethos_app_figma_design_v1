@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
@@ -13,7 +13,14 @@ import {
   Eye,
   Send,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  RefreshCw,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
+  Ban,
+  ExternalLink
 } from 'lucide-react';
 
 interface QueuedFile {
@@ -34,6 +41,31 @@ interface BatchSummary {
   created_at: string;
   completed_at: string | null;
   staff_name: string;
+}
+
+interface BatchFileStatus {
+  filename: string;
+  status: string;
+  chunk_index: number | null;
+  word_count: number | null;
+  page_count: number | null;
+  error_message: string | null;
+  started_at: string | null;
+  elapsed_seconds: number | null;
+}
+
+interface ProcessingBatch {
+  batch_id: string;
+  batch_status: string;
+  total_files: number;
+  completed_files: number;
+  failed_files: number;
+  total_words: number;
+  created_at: string;
+  quote_id: string | null;
+  quote_number: string | null;
+  customer_name: string | null;
+  files: BatchFileStatus[];
 }
 
 type DateFilter = 'today' | 'yesterday' | 'last_7_days' | 'last_30_days';
@@ -91,6 +123,14 @@ export default function OCRWordCountPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
+  // Processing Status state
+  const [processingBatches, setProcessingBatches] = useState<ProcessingBatch[]>([]);
+  const [statusCollapsed, setStatusCollapsed] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [secondsAgo, setSecondsAgo] = useState(0);
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   // Fetch batch history when filter or page changes
@@ -122,6 +162,225 @@ export default function OCRWordCountPage() {
   useEffect(() => {
     fetchBatches(dateFilter, currentPage);
   }, [dateFilter, currentPage, fetchBatches]);
+
+  // Fetch processing status batches
+  const fetchProcessingStatus = useCallback(async () => {
+    try {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      // Fetch non-completed batches + recently completed with failures
+      const { data: batchRows, error: batchError } = await supabase
+        .from('ocr_batches')
+        .select(`
+          id,
+          status,
+          total_files,
+          completed_files,
+          failed_files,
+          total_words,
+          created_at,
+          quote_id
+        `)
+        .or(`status.neq.completed,and(status.eq.completed,failed_files.gt.0,created_at.gte.${twentyFourHoursAgo})`)
+        .order('created_at', { ascending: false });
+
+      if (batchError) throw batchError;
+      if (!batchRows || batchRows.length === 0) {
+        setProcessingBatches([]);
+        setLastRefreshed(new Date());
+        setSecondsAgo(0);
+        return;
+      }
+
+      const batchIds = batchRows.map(b => b.id);
+
+      // Fetch files for these batches
+      const { data: fileRows, error: fileError } = await supabase
+        .from('ocr_batch_files')
+        .select('batch_id, filename, status, chunk_index, word_count, page_count, error_message, started_at')
+        .in('batch_id', batchIds);
+
+      if (fileError) throw fileError;
+
+      // Fetch quote info for batches with quote_id
+      const quoteIds = batchRows.filter(b => b.quote_id).map(b => b.quote_id!);
+      let quoteMap: Record<string, { quote_number: string; customer_name: string | null }> = {};
+
+      if (quoteIds.length > 0) {
+        const { data: quoteRows } = await supabase
+          .from('quotes')
+          .select('id, quote_number, customer_id, customers(full_name)')
+          .in('id', quoteIds);
+
+        if (quoteRows) {
+          for (const q of quoteRows) {
+            const customerData = q.customers as unknown as { full_name: string } | null;
+            quoteMap[q.id] = {
+              quote_number: q.quote_number,
+              customer_name: customerData?.full_name || null,
+            };
+          }
+        }
+      }
+
+      // Build processing batches
+      const now = Date.now();
+      const result: ProcessingBatch[] = batchRows.map(b => {
+        const batchFiles = (fileRows || [])
+          .filter(f => f.batch_id === b.id)
+          .sort((a, f2) => (a.chunk_index ?? 999) - (f2.chunk_index ?? 999))
+          .map(f => ({
+            filename: f.filename,
+            status: f.status,
+            chunk_index: f.chunk_index,
+            word_count: f.word_count,
+            page_count: f.page_count,
+            error_message: f.error_message,
+            started_at: f.started_at,
+            elapsed_seconds: f.started_at && f.status === 'processing'
+              ? Math.floor((now - new Date(f.started_at).getTime()) / 1000)
+              : null,
+          }));
+
+        const quoteInfo = b.quote_id ? quoteMap[b.quote_id] : null;
+
+        return {
+          batch_id: b.id,
+          batch_status: b.status,
+          total_files: b.total_files,
+          completed_files: b.completed_files,
+          failed_files: b.failed_files,
+          total_words: b.total_words,
+          created_at: b.created_at,
+          quote_id: b.quote_id,
+          quote_number: quoteInfo?.quote_number || null,
+          customer_name: quoteInfo?.customer_name || null,
+          files: batchFiles,
+        };
+      });
+
+      setProcessingBatches(result);
+      setLastRefreshed(new Date());
+      setSecondsAgo(0);
+    } catch (err) {
+      console.error('Failed to fetch processing status:', err);
+    }
+  }, []);
+
+  // Auto-refresh processing status every 15 seconds
+  useEffect(() => {
+    fetchProcessingStatus();
+    refreshTimerRef.current = setInterval(fetchProcessingStatus, 15000);
+    return () => {
+      if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
+    };
+  }, [fetchProcessingStatus]);
+
+  // Tick the "last updated X seconds ago" counter
+  useEffect(() => {
+    tickTimerRef.current = setInterval(() => {
+      setSecondsAgo(Math.floor((Date.now() - lastRefreshed.getTime()) / 1000));
+    }, 1000);
+    return () => {
+      if (tickTimerRef.current) clearInterval(tickTimerRef.current);
+    };
+  }, [lastRefreshed]);
+
+  // Categorize batches
+  const activeBatches = processingBatches.filter(b =>
+    b.files.some(f => f.status === 'processing')
+  );
+  const pendingBatches = processingBatches.filter(b =>
+    b.files.every(f => f.status === 'pending')
+  );
+  const failedBatches = processingBatches.filter(b =>
+    b.failed_files > 0
+  );
+
+  const allClear = activeBatches.length === 0 && pendingBatches.length === 0 && failedBatches.length === 0;
+
+  // Auto-collapse when queue is clear
+  useEffect(() => {
+    if (allClear) setStatusCollapsed(true);
+    else setStatusCollapsed(false);
+  }, [allClear]);
+
+  // Actions
+  const handleResetStuck = async (batchId: string) => {
+    if (!confirm('Reset files that have been processing for >90 seconds back to pending?')) return;
+    try {
+      const { error } = await supabase
+        .from('ocr_batch_files')
+        .update({ status: 'pending', started_at: null, error_message: 'Manually reset by staff' })
+        .eq('batch_id', batchId)
+        .eq('status', 'processing')
+        .lt('started_at', new Date(Date.now() - 90000).toISOString());
+      if (error) throw error;
+      toast.success('Stuck files reset to pending');
+      fetchProcessingStatus();
+    } catch (err) {
+      toast.error('Failed to reset stuck files');
+      console.error(err);
+    }
+  };
+
+  const handleCancelPending = async (batchId: string) => {
+    if (!confirm('Cancel all pending files in this batch?')) return;
+    try {
+      const { error } = await supabase
+        .from('ocr_batch_files')
+        .update({ status: 'failed', error_message: 'Cancelled by staff' })
+        .eq('batch_id', batchId)
+        .eq('status', 'pending');
+      if (error) throw error;
+      toast.success('Pending files cancelled');
+      fetchProcessingStatus();
+    } catch (err) {
+      toast.error('Failed to cancel pending files');
+      console.error(err);
+    }
+  };
+
+  const handleRetryFailed = async (batchId: string) => {
+    if (!confirm('Retry all failed files in this batch?')) return;
+    try {
+      const { error } = await supabase
+        .from('ocr_batch_files')
+        .update({ status: 'pending', error_message: null })
+        .eq('batch_id', batchId)
+        .eq('status', 'failed');
+      if (error) throw error;
+      toast.success('Failed files queued for retry');
+      fetchProcessingStatus();
+    } catch (err) {
+      toast.error('Failed to retry files');
+      console.error(err);
+    }
+  };
+
+  // Helper: time ago string
+  const timeAgo = (dateStr: string) => {
+    const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+    return `${Math.floor(diff / 3600)}h ago`;
+  };
+
+  // File status dot
+  const FileStatusDot = ({ status }: { status: string }) => {
+    switch (status) {
+      case 'processing':
+        return <span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" title="Processing" />;
+      case 'pending':
+        return <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-gray-400" title="Pending" />;
+      case 'completed':
+        return <CheckCircle className="w-3.5 h-3.5 text-green-500" />;
+      case 'failed':
+        return <XCircle className="w-3.5 h-3.5 text-red-500" />;
+      default:
+        return <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-300" />;
+    }
+  };
 
   const handleFilterChange = (filter: DateFilter) => {
     setDateFilter(filter);
@@ -277,6 +536,259 @@ export default function OCRWordCountPage() {
             Upload PDF files to extract text and count words per page using Google Document AI.
             Files are processed one at a time (every 2 minutes). You'll receive an email when complete.
           </p>
+        </div>
+
+        {/* Processing Status Section */}
+        <div className="bg-white rounded-lg shadow-md mb-8">
+          {/* Header */}
+          <button
+            onClick={() => setStatusCollapsed(!statusCollapsed)}
+            className="w-full flex items-center justify-between p-6 pb-4 text-left"
+          >
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-semibold">Processing Status</h2>
+              <div className="flex items-center gap-2">
+                {activeBatches.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    Active ({activeBatches.length})
+                  </span>
+                )}
+                {pendingBatches.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                    Pending ({pendingBatches.length})
+                  </span>
+                )}
+                {failedBatches.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                    Failed ({failedBatches.length})
+                  </span>
+                )}
+                {allClear && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                    Queue clear
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-400">
+                Updated {secondsAgo}s ago
+              </span>
+              {statusCollapsed ? (
+                <ChevronDown className="w-5 h-5 text-gray-400" />
+              ) : (
+                <ChevronUp className="w-5 h-5 text-gray-400" />
+              )}
+            </div>
+          </button>
+
+          {!statusCollapsed && (
+            <div className="px-6 pb-6 space-y-6">
+
+              {/* Active (processing) */}
+              {activeBatches.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-blue-700 mb-3 flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Active ({activeBatches.length})
+                  </h3>
+                  <div className="space-y-3">
+                    {activeBatches.map(batch => (
+                      <div
+                        key={batch.batch_id}
+                        className="border-l-4 border-blue-500 bg-blue-50/50 rounded-r-lg p-4"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                            <span className="font-medium text-gray-900">Processing</span>
+                            {batch.quote_number && (
+                              <>
+                                <span className="text-gray-400">-</span>
+                                <span className="text-gray-700">{batch.quote_number}</span>
+                              </>
+                            )}
+                            {batch.customer_name && (
+                              <>
+                                <span className="text-gray-400">&middot;</span>
+                                <span className="text-gray-600">{batch.customer_name}</span>
+                              </>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-500">
+                            {batch.completed_files}/{batch.total_files} files done
+                          </span>
+                        </div>
+                        <div className="space-y-1 ml-6">
+                          {batch.files.map((f, i) => (
+                            <div key={i} className="flex items-center gap-2 text-sm">
+                              <FileStatusDot status={f.status} />
+                              <span className={f.status === 'failed' ? 'text-red-600' : 'text-gray-700'}>
+                                {f.filename}
+                              </span>
+                              {f.status === 'processing' && f.elapsed_seconds != null && (
+                                <span className="text-xs text-blue-600 font-medium">
+                                  {f.elapsed_seconds}s elapsed
+                                </span>
+                              )}
+                              {f.status === 'failed' && f.error_message && (
+                                <span className="text-xs text-red-500">
+                                  &mdash; &ldquo;{f.error_message}&rdquo;
+                                </span>
+                              )}
+                              {f.status === 'completed' && f.word_count != null && (
+                                <span className="text-xs text-gray-400">
+                                  {f.word_count.toLocaleString()} words
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-3 mt-3 ml-6">
+                          {batch.quote_id && (
+                            <button
+                              onClick={() => navigate(`/admin/quotes/${batch.quote_id}`)}
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                            >
+                              View Quote <ExternalLink className="w-3 h-3" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleResetStuck(batch.batch_id)}
+                            className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            Reset Stuck Files
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pending (queued) */}
+              {pendingBatches.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-yellow-700 mb-3 flex items-center gap-2">
+                    <Clock className="w-4 h-4" />
+                    Pending ({pendingBatches.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {pendingBatches.map(batch => (
+                      <div
+                        key={batch.batch_id}
+                        className="border-l-4 border-yellow-400 bg-yellow-50/50 rounded-r-lg p-3 flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <span className="font-medium text-gray-900">
+                              {batch.quote_number || 'No quote'}
+                            </span>
+                            {batch.customer_name && (
+                              <span className="text-gray-500 ml-1">&middot; {batch.customer_name}</span>
+                            )}
+                          </div>
+                          <span className="text-sm text-gray-500">{batch.total_files} files</span>
+                          <span className="text-xs text-gray-400">queued {timeAgo(batch.created_at)}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {batch.quote_id && (
+                            <button
+                              onClick={() => navigate(`/admin/quotes/${batch.quote_id}`)}
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                            >
+                              View Quote <ExternalLink className="w-3 h-3" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleCancelPending(batch.batch_id)}
+                            className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800"
+                          >
+                            <Ban className="w-3 h-3" />
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Failed (last 24h) */}
+              {failedBatches.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-red-700 mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    Failed ({failedBatches.length})
+                  </h3>
+                  <div className="space-y-3">
+                    {failedBatches.map(batch => (
+                      <div
+                        key={batch.batch_id}
+                        className="border-l-4 border-red-500 bg-red-50/50 rounded-r-lg p-4"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900">
+                              {batch.quote_number || 'No quote'}
+                            </span>
+                            {batch.customer_name && (
+                              <>
+                                <span className="text-gray-400">&middot;</span>
+                                <span className="text-gray-600">{batch.customer_name}</span>
+                              </>
+                            )}
+                          </div>
+                          <span className="text-xs text-red-600 font-medium">
+                            {batch.failed_files}/{batch.total_files} files failed
+                          </span>
+                        </div>
+                        <div className="space-y-1 ml-4">
+                          {batch.files.map((f, i) => (
+                            <div key={i} className="flex items-center gap-2 text-sm">
+                              <FileStatusDot status={f.status} />
+                              <span className={f.status === 'failed' ? 'text-red-600' : 'text-gray-700'}>
+                                {f.filename}
+                              </span>
+                              {f.status === 'failed' && f.error_message && (
+                                <span className="text-xs text-red-500">
+                                  &mdash; &ldquo;{f.error_message}&rdquo;
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-3 mt-3 ml-4">
+                          {batch.quote_id && (
+                            <button
+                              onClick={() => navigate(`/admin/quotes/${batch.quote_id}`)}
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                            >
+                              View Quote <ExternalLink className="w-3 h-3" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleRetryFailed(batch.batch_id)}
+                            className="flex items-center gap-1 text-xs text-green-600 hover:text-green-800"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            Retry Failed Files
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {allClear && (
+                <p className="text-center text-sm text-gray-500 py-2">
+                  No active, pending, or recently failed batches.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Upload Section */}
