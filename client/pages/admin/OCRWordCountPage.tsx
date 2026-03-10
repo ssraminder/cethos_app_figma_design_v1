@@ -136,7 +136,7 @@ export default function OCRWordCountPage() {
 
   // Inline confirmation state: tracks which file/batch action is pending confirm
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'force_fail' | 'cancel_batch' | 'retry_file' | 'delete_file';
+    type: 'force_fail' | 'cancel_batch' | 'retry_file' | 'delete_file' | 'delete_batch';
     fileId?: string;
     batchId: string;
   } | null>(null);
@@ -417,42 +417,57 @@ export default function OCRWordCountPage() {
     }
   };
 
-  // Delete a single failed file permanently
+  // Delete a single file permanently (storage + DB record)
   const handleDeleteFile = async (file: BatchFileStatus, batchId: string) => {
     try {
-      // Remove from storage (ignore errors — file may already be gone)
+      // Step 1: Delete from ocr-uploads storage
       if (file.storage_path) {
-        await supabase.storage
+        const { error: storageError } = await supabase.storage
           .from('ocr-uploads')
-          .remove([file.storage_path])
-          .catch(() => {});
+          .remove([file.storage_path]);
+
+        if (storageError) {
+          console.warn('Storage delete warning:', storageError.message);
+        }
       }
 
-      // Hard delete the DB record
-      await supabase
+      // Step 2: Hard delete the DB record
+      const { error: dbError } = await supabase
         .from('ocr_batch_files')
         .delete()
         .eq('id', file.id);
 
-      // Recount remaining files and update batch
+      if (dbError) {
+        toast.error('Failed to delete file record: ' + dbError.message);
+        return;
+      }
+
+      // Step 3: Check remaining files in this batch
       const { data: remaining } = await supabase
         .from('ocr_batch_files')
-        .select('status, page_count, word_count')
+        .select('id, status, page_count, word_count')
         .eq('batch_id', batchId);
 
       if (!remaining || remaining.length === 0) {
+        // No files left — delete the batch record itself
         await supabase.from('ocr_batches').delete().eq('id', batchId);
       } else {
+        // Recount and update batch counters
         const completed = remaining.filter(f => f.status === 'completed').length;
         const failed = remaining.filter(f => f.status === 'failed').length;
-        const allDone = completed + failed === remaining.length;
+        const totalWords = remaining.reduce((s, f) => s + (f.word_count || 0), 0);
+        const totalPages = remaining.reduce((s, f) => s + (f.page_count || 0), 0);
+        const allDone = (completed + failed) === remaining.length;
+
         await supabase
           .from('ocr_batches')
           .update({
             total_files: remaining.length,
             completed_files: completed,
             failed_files: failed,
-            ...(allDone ? { status: 'completed' } : {}),
+            total_words: totalWords,
+            total_pages: totalPages,
+            ...(allDone ? { status: 'completed', completed_at: new Date().toISOString() } : {}),
           })
           .eq('id', batchId);
       }
@@ -463,6 +478,57 @@ export default function OCRWordCountPage() {
       fetchBatches(dateFilter, currentPage);
     } catch (err) {
       toast.error('Failed to delete file');
+      console.error(err);
+    }
+  };
+
+  // Delete an entire batch (all storage files + all DB records + batch record)
+  const handleDeleteBatch = async (batch: ProcessingBatch) => {
+    const batchId = batch.batch_id;
+    try {
+      // Step 1: Collect all storage paths from this batch's files
+      const { data: files } = await supabase
+        .from('ocr_batch_files')
+        .select('id, storage_path')
+        .eq('batch_id', batchId);
+
+      // Step 2: Delete all storage files in one call
+      if (files && files.length > 0) {
+        const paths = files.map(f => f.storage_path).filter(Boolean) as string[];
+        if (paths.length > 0) {
+          const { error: storageError } = await supabase.storage
+            .from('ocr-uploads')
+            .remove(paths);
+
+          if (storageError) {
+            console.warn('Batch storage delete warning:', storageError.message);
+          }
+        }
+      }
+
+      // Step 3: Delete all file records for this batch
+      await supabase
+        .from('ocr_batch_files')
+        .delete()
+        .eq('batch_id', batchId);
+
+      // Step 4: Delete the batch record itself
+      const { error: batchError } = await supabase
+        .from('ocr_batches')
+        .delete()
+        .eq('id', batchId);
+
+      if (batchError) {
+        toast.error('Failed to delete batch: ' + batchError.message);
+        return;
+      }
+
+      setConfirmAction(null);
+      toast.success('Batch deleted permanently');
+      fetchProcessingStatus();
+      fetchBatches(dateFilter, currentPage);
+    } catch (err) {
+      toast.error('Failed to delete batch');
       console.error(err);
     }
   };
@@ -743,10 +809,36 @@ export default function OCRWordCountPage() {
                               </>
                             )}
                           </div>
-                          <span className="text-xs text-gray-500">
-                            {batch.completed_files}/{batch.total_files} files done
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">
+                              {batch.completed_files}/{batch.total_files} files done
+                            </span>
+                            <button
+                              onClick={() => setConfirmAction({ type: 'delete_batch', batchId: batch.batch_id })}
+                              className="text-red-600 border border-red-300 rounded px-2 py-1 text-xs hover:bg-red-50"
+                            >
+                              <span className="flex items-center gap-1"><Trash2 className="w-3 h-3" /> Delete Batch</span>
+                            </button>
+                          </div>
                         </div>
+                        {/* Inline confirm for Delete Batch */}
+                        {confirmAction?.type === 'delete_batch' && confirmAction.batchId === batch.batch_id && (
+                          <div className="mt-2 flex items-center gap-2 text-xs">
+                            <span className="text-gray-600">Permanently delete this entire batch? All {batch.total_files} file records and their storage files will be removed. This cannot be undone.</span>
+                            <button
+                              onClick={() => handleDeleteBatch(batch)}
+                              className="px-2 py-0.5 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                            >
+                              Delete Batch
+                            </button>
+                            <button
+                              onClick={() => setConfirmAction(null)}
+                              className="px-2 py-0.5 border border-gray-300 text-gray-600 rounded text-xs hover:bg-gray-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
                         <div className="space-y-1 ml-6">
                           {batch.files.map((f, i) => (
                             <div key={f.id || i}>
@@ -867,8 +959,32 @@ export default function OCRWordCountPage() {
                               <Ban className="w-3 h-3" />
                               Cancel Batch
                             </button>
+                            <button
+                              onClick={() => setConfirmAction({ type: 'delete_batch', batchId: batch.batch_id })}
+                              className="text-red-600 border border-red-300 rounded px-2 py-1 text-xs hover:bg-red-50"
+                            >
+                              <span className="flex items-center gap-1"><Trash2 className="w-3 h-3" /> Delete Batch</span>
+                            </button>
                           </div>
                         </div>
+                        {/* Inline confirm for Delete Batch */}
+                        {confirmAction?.type === 'delete_batch' && confirmAction.batchId === batch.batch_id && (
+                          <div className="mt-2 flex items-center gap-2 text-xs">
+                            <span className="text-gray-600">Permanently delete this entire batch? All {batch.total_files} file records and their storage files will be removed. This cannot be undone.</span>
+                            <button
+                              onClick={() => handleDeleteBatch(batch)}
+                              className="px-2 py-0.5 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                            >
+                              Delete Batch
+                            </button>
+                            <button
+                              onClick={() => setConfirmAction(null)}
+                              className="px-2 py-0.5 border border-gray-300 text-gray-600 rounded text-xs hover:bg-gray-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
                         {/* Inline confirm for Cancel Batch */}
                         {confirmAction?.type === 'cancel_batch' && confirmAction.batchId === batch.batch_id && (
                           <div className="mt-2 flex items-center gap-2 text-xs">
@@ -918,10 +1034,36 @@ export default function OCRWordCountPage() {
                               </>
                             )}
                           </div>
-                          <span className="text-xs text-red-600 font-medium">
-                            {batch.failed_files}/{batch.total_files} files failed
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-red-600 font-medium">
+                              {batch.failed_files}/{batch.total_files} files failed
+                            </span>
+                            <button
+                              onClick={() => setConfirmAction({ type: 'delete_batch', batchId: batch.batch_id })}
+                              className="text-red-600 border border-red-300 rounded px-2 py-1 text-xs hover:bg-red-50"
+                            >
+                              <span className="flex items-center gap-1"><Trash2 className="w-3 h-3" /> Delete Batch</span>
+                            </button>
+                          </div>
                         </div>
+                        {/* Inline confirm for Delete Batch */}
+                        {confirmAction?.type === 'delete_batch' && confirmAction.batchId === batch.batch_id && (
+                          <div className="mt-2 mb-2 flex items-center gap-2 text-xs">
+                            <span className="text-gray-600">Permanently delete this entire batch? All {batch.total_files} file records and their storage files will be removed. This cannot be undone.</span>
+                            <button
+                              onClick={() => handleDeleteBatch(batch)}
+                              className="px-2 py-0.5 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                            >
+                              Delete Batch
+                            </button>
+                            <button
+                              onClick={() => setConfirmAction(null)}
+                              className="px-2 py-0.5 border border-gray-300 text-gray-600 rounded text-xs hover:bg-gray-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
                         <div className="space-y-2 ml-4">
                           {batch.files.map((f, i) => (
                             <div key={f.id || i}>
@@ -980,7 +1122,7 @@ export default function OCRWordCountPage() {
                                   {/* Inline confirm for Delete */}
                                   {confirmAction?.type === 'delete_file' && confirmAction.fileId === f.id && (
                                     <div className="mt-1 flex items-center gap-2 text-xs">
-                                      <span className="text-gray-600">Permanently delete this file record? This cannot be undone.</span>
+                                      <span className="text-gray-600">Permanently delete this file? The storage file and database record will both be removed.</span>
                                       <button
                                         onClick={() => handleDeleteFile(f, batch.batch_id)}
                                         className="px-2 py-0.5 bg-red-600 text-white rounded text-xs hover:bg-red-700"
