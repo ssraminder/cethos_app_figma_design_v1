@@ -569,20 +569,31 @@ export default function PreprocessOCRPage() {
     // 1. Query quote_files (customer upload route)
     const { data: quoteFiles, error: qfError } = await supabase
       .from('quote_files')
-      .select('id, original_filename, storage_path, file_size, mime_type')
+      .select('id, original_filename, storage_path, file_size, mime_type, is_combined, source_file_ids')
       .eq('quote_id', quoteId)
-.in('upload_status', ['completed', 'uploaded']);
+      .is('deleted_at', null)
+      .in('upload_status', ['completed', 'uploaded']);
+
+    // Build set of source IDs to hide (originals that were combined)
+    const hiddenIds = new Set<string>(
+      (quoteFiles || [])
+        .filter((f: any) => f.is_combined)
+        .flatMap((f: any) => f.source_file_ids || [])
+    );
+
     if (!qfError && quoteFiles && quoteFiles.length > 0) {
-      allFiles.push(...quoteFiles.map(f => ({
-        id: f.id,
-        displayName: f.original_filename || f.storage_path || 'Unknown file',
-        storagePath: f.storage_path,
-        bucket: 'quote-files' as const,
-        bucketPath: f.storage_path,
-        fileSize: f.file_size || 0,
-        mimeType: f.mime_type || 'application/pdf',
-        source: 'quote' as const,
-      })));
+      allFiles.push(...quoteFiles
+        .filter(f => !hiddenIds.has(f.id))
+        .map(f => ({
+          id: f.id,
+          displayName: f.original_filename || f.storage_path || 'Unknown file',
+          storagePath: f.storage_path,
+          bucket: 'quote-files' as const,
+          bucketPath: f.storage_path,
+          fileSize: f.file_size || 0,
+          mimeType: f.mime_type || 'application/pdf',
+          source: 'quote' as const,
+        })));
     }
 
     // 2. Also query ocr_batch_files via ocr_batches

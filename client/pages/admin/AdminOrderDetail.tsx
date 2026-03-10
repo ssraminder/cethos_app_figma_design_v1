@@ -32,6 +32,7 @@ import {
   Upload,
   Send,
   Trash2,
+  Layers,
   Loader2,
   X,
 } from "lucide-react";
@@ -42,6 +43,7 @@ import EditOrderModal from "@/components/admin/EditOrderModal";
 import BalanceResolutionModal from "@/components/admin/BalanceResolutionModal";
 import OcrResultsModal from "@/components/shared/analysis/OcrResultsModal";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
+import OriginalsModal from "@/components/admin/OriginalsModal";
 import { syncOrderFromQuote } from "../../utils/syncOrderFromQuote";
 
 interface OrderDetail {
@@ -238,6 +240,8 @@ export default function AdminOrderDetail() {
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [showOcrModal, setShowOcrModal] = useState(false);
   const [selectedFileForOcr, setSelectedFileForOcr] = useState<any>(null);
+  const [sourceFileMap, setSourceFileMap] = useState<Record<string, any[]>>({});
+  const [originalsModalFile, setOriginalsModalFile] = useState<any>(null);
 
   // Payment recording
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -390,12 +394,34 @@ export default function AdminOrderDetail() {
     try {
       const { data, error } = await supabase
         .from("quote_files")
-        .select("id, original_filename, file_size, mime_type, storage_path, file_category_id, is_staff_created, review_status, review_version, staff_notes, created_at, file_categories!file_category_id(id, name, slug)")
+        .select("id, original_filename, file_size, mime_type, storage_path, file_category_id, is_staff_created, review_status, review_version, staff_notes, created_at, is_combined, source_file_ids, combined_from_count, file_categories!file_category_id(id, name, slug)")
         .eq("quote_id", quoteId)
+        .is("deleted_at", null)
         .in("upload_status", ["uploaded", "completed"])
         .order("created_at", { ascending: true });
 
       if (!error && data) {
+        // Fetch soft-deleted source files for combined files
+        const sourceIds = data
+          .filter((f: any) => f.is_combined && f.source_file_ids?.length)
+          .flatMap((f: any) => f.source_file_ids as string[]);
+
+        let sourceFiles: any[] = [];
+        if (sourceIds.length > 0) {
+          const { data: sfData } = await supabase
+            .from("quote_files")
+            .select("id, original_filename, storage_path, file_size, mime_type, created_at")
+            .in("id", sourceIds);
+          sourceFiles = sfData || [];
+        }
+
+        const sfMap: Record<string, any[]> = {};
+        for (const combined of data.filter((f: any) => f.is_combined)) {
+          sfMap[combined.id] = (combined.source_file_ids || [])
+            .map((sid: string) => sourceFiles.find((sf: any) => sf.id === sid))
+            .filter(Boolean);
+        }
+        setSourceFileMap(sfMap);
         setQuoteFiles(data);
       }
     } catch (err) {
@@ -2174,6 +2200,16 @@ export default function AdminOrderDetail() {
                           </div>
 
                           <div className="flex items-center gap-2 flex-shrink-0">
+                            {file.is_combined && sourceFileMap[file.id]?.length > 0 && (
+                              <button
+                                onClick={() => setOriginalsModalFile(file)}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 border border-purple-300 rounded hover:bg-purple-50 transition-colors"
+                                title="View original source files"
+                              >
+                                <Layers className="w-3.5 h-3.5" />
+                                View {file.combined_from_count || sourceFileMap[file.id].length} originals
+                              </button>
+                            )}
                             <button
                               onClick={() => handlePreviewFile(file)}
                               className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -4264,6 +4300,16 @@ export default function AdminOrderDetail() {
         </div>
       )}
 
+      {/* Originals Modal for combined files */}
+      {originalsModalFile && order?.quote_id && (
+        <OriginalsModal
+          isOpen={!!originalsModalFile}
+          onClose={() => setOriginalsModalFile(null)}
+          combinedFileName={originalsModalFile.original_filename}
+          sourceFiles={sourceFileMap[originalsModalFile.id] || []}
+          quoteId={order.quote_id}
+        />
+      )}
     </div>
   );
 }
