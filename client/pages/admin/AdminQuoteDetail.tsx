@@ -57,6 +57,7 @@ import OcrAnalysisModal from "../../components/admin/OcrAnalysisModal";
 import OriginalsModal from "../../components/admin/OriginalsModal";
 import QuoteActivityFeed from "../../components/admin/QuoteActivityFeed";
 import { logQuoteActivity } from "../../utils/quoteActivityLog";
+import { compressPdfIfNeeded, needsCompression } from "@/utils/compressPdf";
 import { formatEntryPoint, entryPointBadgeColor } from "../../utils/quoteUtils";
 
 interface QuoteDetail {
@@ -495,6 +496,7 @@ export default function AdminQuoteDetail() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [isOptimising, setIsOptimising] = useState(false);
   const messagesBottomRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -4356,6 +4358,10 @@ export default function AdminQuoteDetail() {
 
             {/* ── Composer ── */}
             <div className="px-4 py-3 border-t border-gray-100 bg-white">
+              {/* Optimising indicator */}
+              {isOptimising && (
+                <p className="text-sm text-blue-600 mb-1">⏳ Optimising PDF...</p>
+              )}
               {/* Attachment preview */}
               {attachmentFile && (
                 <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-blue-50 rounded-lg text-sm">
@@ -4392,14 +4398,21 @@ export default function AdminQuoteDetail() {
                   type="file"
                   className="hidden"
                   accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (file) {
                       if (file.size > 10 * 1024 * 1024) {
                         toast.error("File must be under 10MB");
                         return;
                       }
-                      setAttachmentFile(file);
+                      if (needsCompression(file)) {
+                        setIsOptimising(true);
+                        const compressed = await compressPdfIfNeeded(file);
+                        setIsOptimising(false);
+                        setAttachmentFile(compressed);
+                      } else {
+                        setAttachmentFile(file);
+                      }
                     }
                   }}
                 />
@@ -4424,7 +4437,7 @@ export default function AdminQuoteDetail() {
                 {/* Send button */}
                 <button
                   onClick={handleSendMessage}
-                  disabled={(!newMessage.trim() && !attachmentFile) || sendingMessage}
+                  disabled={(!newMessage.trim() && !attachmentFile) || sendingMessage || isOptimising}
                   className="flex-shrink-0 p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
                   title="Send (Enter)"
                 >

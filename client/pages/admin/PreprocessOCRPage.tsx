@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PDFDocument } from 'pdf-lib';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { compressPdfIfNeeded, needsCompression } from '@/utils/compressPdf';
 import {
   Upload,
   FileText,
@@ -300,6 +301,9 @@ export default function PreprocessOCRPage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
   const [filterCounts, setFilterCounts] = useState<Record<string, number>>({});
+
+  // PDF optimisation
+  const [isOptimising, setIsOptimising] = useState(false);
 
   // Quote file loading
   const [loadingQuoteFiles, setLoadingQuoteFiles] = useState(false);
@@ -843,7 +847,18 @@ export default function PreprocessOCRPage() {
       toast.error(`${oversized.length} file(s) exceed ${MAX_FILE_SIZE_MB}MB limit and were skipped.`);
     }
 
-    const validFiles = acceptedFiles.filter(f => f.size <= MAX_FILE_SIZE_BYTES);
+    const preCompressFiles = acceptedFiles.filter(f => f.size <= MAX_FILE_SIZE_BYTES);
+
+    // Compress large PDFs before processing
+    const hasBig = preCompressFiles.some(needsCompression);
+    if (hasBig) setIsOptimising(true);
+
+    let validFiles: File[];
+    try {
+      validFiles = await Promise.all(preCompressFiles.map(compressPdfIfNeeded));
+    } finally {
+      setIsOptimising(false);
+    }
 
     // Create file entries — images get immediate 'ready' status, PDFs need analysis
     const newFiles: UploadedFile[] = validFiles.map(file => {
@@ -1571,6 +1586,11 @@ export default function PreprocessOCRPage() {
                 disabled={loadingQuoteFiles}
               />
             </div>
+
+            {/* Optimising indicator */}
+            {isOptimising && (
+              <p className="text-sm text-blue-600 mt-2">⏳ Optimising PDF before chunking...</p>
+            )}
           </div>
         )}
 
@@ -1700,15 +1720,15 @@ export default function PreprocessOCRPage() {
 
                   <button
                     onClick={submitBatch}
-                    disabled={loadingQuoteFiles}
+                    disabled={loadingQuoteFiles || isOptimising}
                     className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium ${
-                      loadingQuoteFiles
+                      loadingQuoteFiles || isOptimising
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         : 'bg-blue-600 text-white hover:bg-blue-700'
                     }`}
                   >
                     <Send className="w-4 h-4" />
-                    Process {totalChunks} Chunk(s)
+                    {isOptimising ? 'Optimising...' : `Process ${totalChunks} Chunk(s)`}
                   </button>
                 </div>
               </div>
