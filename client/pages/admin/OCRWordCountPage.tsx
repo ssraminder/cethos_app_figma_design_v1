@@ -44,6 +44,7 @@ interface BatchSummary {
 }
 
 interface BatchFileStatus {
+  id: string;
   filename: string;
   status: string;
   chunk_index: number | null;
@@ -51,7 +52,9 @@ interface BatchFileStatus {
   page_count: number | null;
   error_message: string | null;
   started_at: string | null;
+  completed_at: string | null;
   elapsed_seconds: number | null;
+  storage_path: string | null;
 }
 
 interface ProcessingBatch {
@@ -131,6 +134,13 @@ export default function OCRWordCountPage() {
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Inline confirmation state: tracks which file/batch action is pending confirm
+  const [confirmAction, setConfirmAction] = useState<{
+    type: 'force_fail' | 'cancel_batch' | 'retry_file' | 'delete_file';
+    fileId?: string;
+    batchId: string;
+  } | null>(null);
+
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   // Fetch batch history when filter or page changes
@@ -197,7 +207,7 @@ export default function OCRWordCountPage() {
       // Fetch files for these batches
       const { data: fileRows, error: fileError } = await supabase
         .from('ocr_batch_files')
-        .select('batch_id, filename, status, chunk_index, word_count, page_count, error_message, started_at')
+        .select('id, batch_id, filename, status, chunk_index, word_count, page_count, error_message, started_at, completed_at, storage_path')
         .in('batch_id', batchIds);
 
       if (fileError) throw fileError;
@@ -230,6 +240,7 @@ export default function OCRWordCountPage() {
           .filter(f => f.batch_id === b.id)
           .sort((a, f2) => (a.chunk_index ?? 999) - (f2.chunk_index ?? 999))
           .map(f => ({
+            id: f.id,
             filename: f.filename,
             status: f.status,
             chunk_index: f.chunk_index,
@@ -237,9 +248,11 @@ export default function OCRWordCountPage() {
             page_count: f.page_count,
             error_message: f.error_message,
             started_at: f.started_at,
+            completed_at: f.completed_at,
             elapsed_seconds: f.started_at && f.status === 'processing'
               ? Math.floor((now - new Date(f.started_at).getTime()) / 1000)
               : null,
+            storage_path: f.storage_path,
           }));
 
         const quoteInfo = b.quote_id ? quoteMap[b.quote_id] : null;
@@ -305,7 +318,156 @@ export default function OCRWordCountPage() {
     else setStatusCollapsed(false);
   }, [allClear]);
 
-  // Actions
+  // Actions — per-file Force Fail
+  const handleForceFailFile = async (fileId: string, batchId: string) => {
+    try {
+      await supabase
+        .from('ocr_batch_files')
+        .update({
+          status: 'failed',
+          error_message: 'Force-failed by staff',
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', fileId);
+
+      // Recount and update batch
+      const { data: files } = await supabase
+        .from('ocr_batch_files')
+        .select('status, page_count, word_count')
+        .eq('batch_id', batchId);
+
+      if (files) {
+        const completed = files.filter(f => f.status === 'completed').length;
+        const failed = files.filter(f => f.status === 'failed').length;
+        const allDone = completed + failed === files.length;
+
+        await supabase
+          .from('ocr_batches')
+          .update({
+            failed_files: failed,
+            completed_files: completed,
+            ...(allDone ? { status: 'completed', completed_at: new Date().toISOString() } : {}),
+          })
+          .eq('id', batchId);
+      }
+
+      setConfirmAction(null);
+      toast.success('File force-failed');
+      fetchProcessingStatus();
+      fetchBatches(dateFilter, currentPage);
+    } catch (err) {
+      toast.error('Failed to force-fail file');
+      console.error(err);
+    }
+  };
+
+  // Cancel entire pending batch
+  const handleCancelBatch = async (batchId: string, totalFiles: number) => {
+    try {
+      await supabase
+        .from('ocr_batch_files')
+        .update({ status: 'failed', error_message: 'Cancelled by staff' })
+        .eq('batch_id', batchId)
+        .eq('status', 'pending');
+
+      await supabase
+        .from('ocr_batches')
+        .update({ status: 'completed', failed_files: totalFiles })
+        .eq('id', batchId);
+
+      setConfirmAction(null);
+      toast.success('Batch cancelled');
+      fetchProcessingStatus();
+      fetchBatches(dateFilter, currentPage);
+    } catch (err) {
+      toast.error('Failed to cancel batch');
+      console.error(err);
+    }
+  };
+
+  // Retry a single failed file
+  const handleRetryFile = async (fileId: string, batchId: string) => {
+    try {
+      await supabase
+        .from('ocr_batch_files')
+        .update({ status: 'pending', error_message: null, started_at: null, completed_at: null })
+        .eq('id', fileId);
+
+      // Recount batch
+      const { data: files } = await supabase
+        .from('ocr_batch_files')
+        .select('status')
+        .eq('batch_id', batchId);
+
+      if (files) {
+        const failed = files.filter(f => f.status === 'failed').length;
+        await supabase
+          .from('ocr_batches')
+          .update({ status: 'pending', failed_files: failed })
+          .eq('id', batchId);
+      }
+
+      setConfirmAction(null);
+      toast.success('File queued for retry');
+      fetchProcessingStatus();
+      fetchBatches(dateFilter, currentPage);
+    } catch (err) {
+      toast.error('Failed to retry file');
+      console.error(err);
+    }
+  };
+
+  // Delete a single failed file permanently
+  const handleDeleteFile = async (file: BatchFileStatus, batchId: string) => {
+    try {
+      // Remove from storage (ignore errors — file may already be gone)
+      if (file.storage_path) {
+        await supabase.storage
+          .from('ocr-uploads')
+          .remove([file.storage_path])
+          .catch(() => {});
+      }
+
+      // Hard delete the DB record
+      await supabase
+        .from('ocr_batch_files')
+        .delete()
+        .eq('id', file.id);
+
+      // Recount remaining files and update batch
+      const { data: remaining } = await supabase
+        .from('ocr_batch_files')
+        .select('status, page_count, word_count')
+        .eq('batch_id', batchId);
+
+      if (!remaining || remaining.length === 0) {
+        await supabase.from('ocr_batches').delete().eq('id', batchId);
+      } else {
+        const completed = remaining.filter(f => f.status === 'completed').length;
+        const failed = remaining.filter(f => f.status === 'failed').length;
+        const allDone = completed + failed === remaining.length;
+        await supabase
+          .from('ocr_batches')
+          .update({
+            total_files: remaining.length,
+            completed_files: completed,
+            failed_files: failed,
+            ...(allDone ? { status: 'completed' } : {}),
+          })
+          .eq('id', batchId);
+      }
+
+      setConfirmAction(null);
+      toast.success('File deleted permanently');
+      fetchProcessingStatus();
+      fetchBatches(dateFilter, currentPage);
+    } catch (err) {
+      toast.error('Failed to delete file');
+      console.error(err);
+    }
+  };
+
+  // Legacy batch-level reset stuck (kept for active batches)
   const handleResetStuck = async (batchId: string) => {
     if (!confirm('Reset files that have been processing for >90 seconds back to pending?')) return;
     try {
@@ -320,40 +482,6 @@ export default function OCRWordCountPage() {
       fetchProcessingStatus();
     } catch (err) {
       toast.error('Failed to reset stuck files');
-      console.error(err);
-    }
-  };
-
-  const handleCancelPending = async (batchId: string) => {
-    if (!confirm('Cancel all pending files in this batch?')) return;
-    try {
-      const { error } = await supabase
-        .from('ocr_batch_files')
-        .update({ status: 'failed', error_message: 'Cancelled by staff' })
-        .eq('batch_id', batchId)
-        .eq('status', 'pending');
-      if (error) throw error;
-      toast.success('Pending files cancelled');
-      fetchProcessingStatus();
-    } catch (err) {
-      toast.error('Failed to cancel pending files');
-      console.error(err);
-    }
-  };
-
-  const handleRetryFailed = async (batchId: string) => {
-    if (!confirm('Retry all failed files in this batch?')) return;
-    try {
-      const { error } = await supabase
-        .from('ocr_batch_files')
-        .update({ status: 'pending', error_message: null })
-        .eq('batch_id', batchId)
-        .eq('status', 'failed');
-      if (error) throw error;
-      toast.success('Failed files queued for retry');
-      fetchProcessingStatus();
-    } catch (err) {
-      toast.error('Failed to retry files');
       console.error(err);
     }
   };
@@ -621,25 +749,55 @@ export default function OCRWordCountPage() {
                         </div>
                         <div className="space-y-1 ml-6">
                           {batch.files.map((f, i) => (
-                            <div key={i} className="flex items-center gap-2 text-sm">
-                              <FileStatusDot status={f.status} />
-                              <span className={f.status === 'failed' ? 'text-red-600' : 'text-gray-700'}>
-                                {f.filename}
-                              </span>
-                              {f.status === 'processing' && f.elapsed_seconds != null && (
-                                <span className="text-xs text-blue-600 font-medium">
-                                  {f.elapsed_seconds}s elapsed
+                            <div key={f.id || i}>
+                              <div className="flex items-center gap-2 text-sm">
+                                <FileStatusDot status={f.status} />
+                                <span className={`font-mono text-xs ${f.status === 'failed' ? 'text-red-600' : 'text-gray-700'}`}>
+                                  {f.filename}
                                 </span>
-                              )}
-                              {f.status === 'failed' && f.error_message && (
-                                <span className="text-xs text-red-500">
-                                  &mdash; &ldquo;{f.error_message}&rdquo;
-                                </span>
-                              )}
-                              {f.status === 'completed' && f.word_count != null && (
-                                <span className="text-xs text-gray-400">
-                                  {f.word_count.toLocaleString()} words
-                                </span>
+                                {f.status === 'processing' && f.elapsed_seconds != null && (
+                                  <span className="text-xs text-blue-600 font-medium">
+                                    {f.elapsed_seconds}s
+                                  </span>
+                                )}
+                                {f.status === 'completed' && (
+                                  <span className="text-xs text-gray-400">
+                                    {f.page_count != null && `${f.page_count} ${f.page_count === 1 ? 'page' : 'pages'}`}
+                                    {f.page_count != null && f.word_count != null && ', '}
+                                    {f.word_count != null && `${f.word_count.toLocaleString()} words`}
+                                  </span>
+                                )}
+                                {f.status === 'failed' && f.error_message && (
+                                  <span className="text-xs text-red-500">
+                                    &mdash; &ldquo;{f.error_message}&rdquo;
+                                  </span>
+                                )}
+                                {f.status === 'processing' && (
+                                  <button
+                                    onClick={() => setConfirmAction({ type: 'force_fail', fileId: f.id, batchId: batch.batch_id })}
+                                    className="ml-2 px-2 py-0.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50"
+                                  >
+                                    Force Fail
+                                  </button>
+                                )}
+                              </div>
+                              {/* Inline confirm for Force Fail */}
+                              {confirmAction?.type === 'force_fail' && confirmAction.fileId === f.id && (
+                                <div className="ml-6 mt-1 mb-1 flex items-center gap-2 text-xs">
+                                  <span className="text-gray-600">Force fail this file? The queue will move on.</span>
+                                  <button
+                                    onClick={() => handleForceFailFile(f.id, batch.batch_id)}
+                                    className="px-2 py-0.5 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                                  >
+                                    Confirm
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmAction(null)}
+                                    className="px-2 py-0.5 border border-gray-300 text-gray-600 rounded text-xs hover:bg-gray-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
                               )}
                             </div>
                           ))}
@@ -678,37 +836,57 @@ export default function OCRWordCountPage() {
                     {pendingBatches.map(batch => (
                       <div
                         key={batch.batch_id}
-                        className="border-l-4 border-yellow-400 bg-yellow-50/50 rounded-r-lg p-3 flex items-center justify-between"
+                        className="border-l-4 border-yellow-400 bg-yellow-50/50 rounded-r-lg p-3"
                       >
-                        <div className="flex items-center gap-3">
-                          <div>
-                            <span className="font-medium text-gray-900">
-                              {batch.quote_number || 'No quote'}
-                            </span>
-                            {batch.customer_name && (
-                              <span className="text-gray-500 ml-1">&middot; {batch.customer_name}</span>
-                            )}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div>
+                              <span className="font-medium text-gray-900">
+                                {batch.quote_number || 'No quote'}
+                              </span>
+                              {batch.customer_name && (
+                                <span className="text-gray-500 ml-1">&middot; {batch.customer_name}</span>
+                              )}
+                            </div>
+                            <span className="text-sm text-gray-500">{batch.total_files} files</span>
+                            <span className="text-xs text-gray-400">queued {timeAgo(batch.created_at)}</span>
                           </div>
-                          <span className="text-sm text-gray-500">{batch.total_files} files</span>
-                          <span className="text-xs text-gray-400">queued {timeAgo(batch.created_at)}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {batch.quote_id && (
+                          <div className="flex items-center gap-3">
+                            {batch.quote_id && (
+                              <button
+                                onClick={() => navigate(`/admin/quotes/${batch.quote_id}`)}
+                                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                              >
+                                View Quote <ExternalLink className="w-3 h-3" />
+                              </button>
+                            )}
                             <button
-                              onClick={() => navigate(`/admin/quotes/${batch.quote_id}`)}
-                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                              onClick={() => setConfirmAction({ type: 'cancel_batch', batchId: batch.batch_id })}
+                              className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800"
                             >
-                              View Quote <ExternalLink className="w-3 h-3" />
+                              <Ban className="w-3 h-3" />
+                              Cancel Batch
                             </button>
-                          )}
-                          <button
-                            onClick={() => handleCancelPending(batch.batch_id)}
-                            className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800"
-                          >
-                            <Ban className="w-3 h-3" />
-                            Cancel
-                          </button>
+                          </div>
                         </div>
+                        {/* Inline confirm for Cancel Batch */}
+                        {confirmAction?.type === 'cancel_batch' && confirmAction.batchId === batch.batch_id && (
+                          <div className="mt-2 flex items-center gap-2 text-xs">
+                            <span className="text-gray-600">Cancel this batch? All pending files will be marked as failed.</span>
+                            <button
+                              onClick={() => handleCancelBatch(batch.batch_id, batch.total_files)}
+                              className="px-2 py-0.5 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => setConfirmAction(null)}
+                              className="px-2 py-0.5 border border-gray-300 text-gray-600 rounded text-xs hover:bg-gray-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -744,17 +922,80 @@ export default function OCRWordCountPage() {
                             {batch.failed_files}/{batch.total_files} files failed
                           </span>
                         </div>
-                        <div className="space-y-1 ml-4">
+                        <div className="space-y-2 ml-4">
                           {batch.files.map((f, i) => (
-                            <div key={i} className="flex items-center gap-2 text-sm">
-                              <FileStatusDot status={f.status} />
-                              <span className={f.status === 'failed' ? 'text-red-600' : 'text-gray-700'}>
-                                {f.filename}
-                              </span>
-                              {f.status === 'failed' && f.error_message && (
-                                <span className="text-xs text-red-500">
-                                  &mdash; &ldquo;{f.error_message}&rdquo;
+                            <div key={f.id || i}>
+                              <div className="flex items-center gap-2 text-sm">
+                                <FileStatusDot status={f.status} />
+                                <span className={`font-mono text-xs ${f.status === 'failed' ? 'text-red-600' : 'text-gray-700'}`}>
+                                  {f.filename}
                                 </span>
+                                {f.status === 'completed' && (
+                                  <span className="text-xs text-gray-400">
+                                    &mdash; {f.page_count != null && `${f.page_count} ${f.page_count === 1 ? 'page' : 'pages'}`}
+                                    {f.page_count != null && f.word_count != null && ', '}
+                                    {f.word_count != null && `${f.word_count.toLocaleString()} words`}
+                                  </span>
+                                )}
+                              </div>
+                              {f.status === 'failed' && (
+                                <div className="ml-6">
+                                  {f.error_message && (
+                                    <p className="text-xs text-red-600 mt-0.5">
+                                      &ldquo;{f.error_message}&rdquo;
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <button
+                                      onClick={() => setConfirmAction({ type: 'retry_file', fileId: f.id, batchId: batch.batch_id })}
+                                      className="px-2 py-0.5 text-xs border border-green-300 text-green-700 rounded hover:bg-green-50"
+                                    >
+                                      <span className="flex items-center gap-1"><RotateCcw className="w-3 h-3" /> Retry</span>
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmAction({ type: 'delete_file', fileId: f.id, batchId: batch.batch_id })}
+                                      className="px-2 py-0.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50"
+                                    >
+                                      <span className="flex items-center gap-1"><Trash2 className="w-3 h-3" /> Delete</span>
+                                    </button>
+                                  </div>
+                                  {/* Inline confirm for Retry */}
+                                  {confirmAction?.type === 'retry_file' && confirmAction.fileId === f.id && (
+                                    <div className="mt-1 flex items-center gap-2 text-xs">
+                                      <span className="text-gray-600">Retry this file?</span>
+                                      <button
+                                        onClick={() => handleRetryFile(f.id, batch.batch_id)}
+                                        className="px-2 py-0.5 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                                      >
+                                        Confirm
+                                      </button>
+                                      <button
+                                        onClick={() => setConfirmAction(null)}
+                                        className="px-2 py-0.5 border border-gray-300 text-gray-600 rounded text-xs hover:bg-gray-50"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  )}
+                                  {/* Inline confirm for Delete */}
+                                  {confirmAction?.type === 'delete_file' && confirmAction.fileId === f.id && (
+                                    <div className="mt-1 flex items-center gap-2 text-xs">
+                                      <span className="text-gray-600">Permanently delete this file record? This cannot be undone.</span>
+                                      <button
+                                        onClick={() => handleDeleteFile(f, batch.batch_id)}
+                                        className="px-2 py-0.5 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                                      >
+                                        Delete
+                                      </button>
+                                      <button
+                                        onClick={() => setConfirmAction(null)}
+                                        className="px-2 py-0.5 border border-gray-300 text-gray-600 rounded text-xs hover:bg-gray-50"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </div>
                           ))}
@@ -768,13 +1009,6 @@ export default function OCRWordCountPage() {
                               View Quote <ExternalLink className="w-3 h-3" />
                             </button>
                           )}
-                          <button
-                            onClick={() => handleRetryFailed(batch.batch_id)}
-                            className="flex items-center gap-1 text-xs text-green-600 hover:text-green-800"
-                          >
-                            <RotateCcw className="w-3 h-3" />
-                            Retry Failed Files
-                          </button>
                         </div>
                       </div>
                     ))}
