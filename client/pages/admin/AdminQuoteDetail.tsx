@@ -4952,11 +4952,11 @@ export default function AdminQuoteDetail() {
                   </div>
                 )}
 
-                {/* Pre-tax Total — authoritative stored value from quote */}
+                {/* Pre-tax Total — subtotal + adjustments + rush + delivery (before tax) */}
                 <div className="flex justify-between text-sm font-medium text-gray-700 pt-2 border-t border-gray-100">
                   <span>Pre-tax Total</span>
                   <span>
-                    ${(quote.subtotal || 0).toFixed(2)}
+                    ${((quote.subtotal || 0) + (quote.calculated_totals?.adjustments_total || 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0)).toFixed(2)}
                   </span>
                 </div>
 
