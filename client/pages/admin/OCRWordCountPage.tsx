@@ -523,6 +523,10 @@ export default function OCRWordCountPage() {
         return;
       }
 
+      // Optimistically remove from local state for instant UI update
+      setProcessingBatches(prev => prev.filter(b => b.batch_id !== batchId));
+      setBatches(prev => prev.filter(b => b.id !== batchId));
+
       setConfirmAction(null);
       toast.success('Batch deleted permanently');
       fetchProcessingStatus();
