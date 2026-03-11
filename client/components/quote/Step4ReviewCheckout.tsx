@@ -299,6 +299,9 @@ export default function Step4ReviewCheckout() {
   // Partner
   const [quotePartnerId, setQuotePartnerId] = useState<string | null>(null);
 
+  // Adjustments (discounts / surcharges from quote_adjustments table)
+  const [quoteAdjustments, setQuoteAdjustments] = useState<any[]>([]);
+
   // === STATE FROM STEP 6 (Payment) ===
   const [payLoading, setPayLoading] = useState(false);
   const [savingQuote, setSavingQuote] = useState(false);
@@ -774,6 +777,15 @@ export default function Step4ReviewCheckout() {
             setIntendedUse((quoteWithPricing.intended_use as any)?.code || "");
           }
 
+          // Fetch any staff-applied discounts or surcharges
+          const { data: adjustmentsData } = await supabase
+            .from('quote_adjustments')
+            .select('*')
+            .eq('quote_id', quoteId)
+            .order('created_at', { ascending: true });
+
+          setQuoteAdjustments(adjustmentsData || []);
+
           setDocuments([]);
           setProcessingState("complete");
 
@@ -924,6 +936,15 @@ export default function Step4ReviewCheckout() {
         (sum, doc) => sum + (doc.billable_pages || 0),
         0,
       );
+
+      // Fetch any staff-applied discounts or surcharges
+      const { data: adjustmentsData } = await supabase
+        .from('quote_adjustments')
+        .select('*')
+        .eq('quote_id', quoteId)
+        .order('created_at', { ascending: true });
+
+      setQuoteAdjustments(adjustmentsData || []);
 
       // Set documents and totals using stored values (no recalculation)
       setDocuments(mergedData);
@@ -1540,17 +1561,27 @@ export default function Step4ReviewCheckout() {
     const selectedDelivery = physicalOptions.find(opt => opt.code === selectedPhysicalOption);
     const deliveryFee = selectedDelivery?.price || 0;
 
-    // Tax
-    const taxableAmount = baseSubtotal + turnaroundFee + deliveryFee;
-    const taxAmount = taxableAmount * taxRate;
+    // Calculate total adjustment from quote_adjustments rows
+    const adjustmentsTotal = quoteAdjustments.reduce((sum, adj) => {
+      const amount =
+        adj.value_type === 'percentage'
+          ? baseSubtotal * Number(adj.value) / 100
+          : Number(adj.value);
+      return adj.adjustment_type === 'discount' ? sum - amount : sum + amount;
+    }, 0);
+
+    // Tax: pre-tax = subtotal + adjustments + rush + delivery
+    const taxableAmount = baseSubtotal + adjustmentsTotal + turnaroundFee + deliveryFee;
+    const taxAmount = Math.round(taxableAmount * taxRate * 100) / 100;
 
     // Final total
-    const finalTotal = taxableAmount + taxAmount;
+    const finalTotal = Math.round((taxableAmount + taxAmount) * 100) / 100;
 
     return {
       translationTotal: totals.translationSubtotal,
       certificationTotal: totals.certificationTotal,
       baseSubtotal,
+      adjustmentsTotal,
       turnaroundFee,
       deliveryFee,
       taxRate,
@@ -1649,6 +1680,7 @@ export default function Step4ReviewCheckout() {
             translation_total: pricing.translationTotal,
             certification_total: pricing.certificationTotal,
             subtotal: pricing.baseSubtotal,
+            adjustments_total: pricing.adjustmentsTotal,
             rush_fee: pricing.turnaroundFee,
             delivery_fee: pricing.deliveryFee,
             tax_rate: pricing.taxRate,
@@ -1745,6 +1777,7 @@ export default function Step4ReviewCheckout() {
             translation_total: pricing.translationTotal,
             certification_total: pricing.certificationTotal,
             subtotal: pricing.baseSubtotal,
+            adjustments_total: pricing.adjustmentsTotal,
             rush_fee: pricing.turnaroundFee,
             delivery_fee: pricing.deliveryFee,
             tax_rate: pricing.taxRate,
@@ -3144,6 +3177,34 @@ export default function Step4ReviewCheckout() {
                     <span className="text-gray-900 font-medium whitespace-nowrap">${pricing.deliveryFee.toFixed(2)}</span>
                   </div>
                 )}
+
+                {/* Adjustments (discounts / surcharges) */}
+                {quoteAdjustments.map((adj) => {
+                  const amount =
+                    adj.value_type === 'percentage'
+                      ? pricing.baseSubtotal * Number(adj.value) / 100
+                      : Number(adj.value);
+                  const isDiscount = adj.adjustment_type === 'discount';
+
+                  let label = adj.reason ?? 'Adjustment';
+                  if (adj.reason === 'auto_volume_discount') {
+                    label = `Volume discount (${Number(adj.value).toFixed(0)}%)`;
+                  } else {
+                    label = label.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+                  }
+
+                  return (
+                    <div
+                      key={adj.id}
+                      className={`flex justify-between text-sm ${isDiscount ? 'text-green-600' : 'text-red-600'}`}
+                    >
+                      <span>{label}</span>
+                      <span className="font-medium whitespace-nowrap">
+                        {isDiscount ? '\u2212' : '+'}${amount.toFixed(2)}
+                      </span>
+                    </div>
+                  );
+                })}
 
                 {pricing.taxRate > 0 && (
                   <div className="flex justify-between text-sm">
