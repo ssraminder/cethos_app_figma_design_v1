@@ -53,6 +53,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 
+import SendLinkConfirmModal from "../../components/admin/SendLinkConfirmModal";
 import OcrAnalysisModal from "../../components/admin/OcrAnalysisModal";
 import OriginalsModal from "../../components/admin/OriginalsModal";
 import QuoteActivityFeed from "../../components/admin/QuoteActivityFeed";
@@ -512,6 +513,8 @@ export default function AdminQuoteDetail() {
   const [resendCustomMessage, setResendCustomMessage] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [isSendingLink, setIsSendingLink] = useState(false);
+  const [showSendQuoteLinkConfirmModal, setShowSendQuoteLinkConfirmModal] = useState(false);
+  const [showSendPaymentLinkConfirmModal, setShowSendPaymentLinkConfirmModal] = useState(false);
   const [taxRates, setTaxRates] = useState<Array<{
     id: string;
     region_code: string;
@@ -2949,7 +2952,7 @@ export default function AdminQuoteDetail() {
           {!isConvertedToOrder && (
             <>
               <button
-                onClick={handleSendQuoteLink}
+                onClick={() => setShowSendQuoteLinkConfirmModal(true)}
                 disabled={isSendingLink}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
@@ -2958,7 +2961,7 @@ export default function AdminQuoteDetail() {
               </button>
 
               <button
-                onClick={handleSendPaymentLink}
+                onClick={() => setShowSendPaymentLinkConfirmModal(true)}
                 disabled={isSendingLink}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
@@ -5573,6 +5576,52 @@ export default function AdminQuoteDetail() {
           quoteNumber={quote?.quote_number}
         />
       )}
+
+      {/* Send Quote Link Confirmation Modal */}
+      <SendLinkConfirmModal
+        isOpen={showSendQuoteLinkConfirmModal}
+        onClose={() => setShowSendQuoteLinkConfirmModal(false)}
+        onConfirm={async () => {
+          setIsSendingLink(true);
+          await handleSendQuoteLink();
+          setIsSendingLink(false);
+          setShowSendQuoteLinkConfirmModal(false);
+        }}
+        mode="quote"
+        quoteNumber={quote?.quote_number ?? ""}
+        customerName={quote?.customer?.full_name ?? ""}
+        customerEmail={quote?.customer?.email ?? ""}
+        calculatedTotals={{
+          ...(quote?.calculated_totals ?? {}),
+          tax_name: taxRates.find(
+            (t) => t.id === quote?.tax_rate_id || Math.abs(t.rate - (quote?.tax_rate || 0)) < 0.001
+          )?.tax_name,
+        }}
+        isSending={isSendingLink}
+      />
+
+      {/* Send Payment Link Confirmation Modal */}
+      <SendLinkConfirmModal
+        isOpen={showSendPaymentLinkConfirmModal}
+        onClose={() => setShowSendPaymentLinkConfirmModal(false)}
+        onConfirm={async () => {
+          setIsSendingLink(true);
+          await handleSendPaymentLink();
+          setIsSendingLink(false);
+          setShowSendPaymentLinkConfirmModal(false);
+        }}
+        mode="payment"
+        quoteNumber={quote?.quote_number ?? ""}
+        customerName={quote?.customer?.full_name ?? ""}
+        customerEmail={quote?.customer?.email ?? ""}
+        calculatedTotals={{
+          ...(quote?.calculated_totals ?? {}),
+          tax_name: taxRates.find(
+            (t) => t.id === quote?.tax_rate_id || Math.abs(t.rate - (quote?.tax_rate || 0)) < 0.001
+          )?.tax_name,
+        }}
+        isSending={isSendingLink}
+      />
 
       {/* Originals Modal for combined files */}
       {originalsModalFile && id && (
