@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../../lib/supabase";
+import { supabase, isNetworkError, getNetworkErrorMessage } from "../../lib/supabase";
 import { useStaffAuth } from "../../context/StaffAuthContext";
 
 export default function AdminLogin() {
@@ -94,18 +94,34 @@ export default function AdminLogin() {
     try {
       const normalizedEmail = email.trim().toLowerCase();
 
-      // Step 1: Sign in with Supabase Auth
-      const { data: authData, error: authError } =
-        await supabase.auth.signInWithPassword({
+      // Step 1: Sign in with Supabase Auth (with timeout)
+      let authData, authError;
+      try {
+        const authPromise = supabase.auth.signInWithPassword({
           email: normalizedEmail,
           password,
         });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Connection timed out. The server may be unavailable — please try again later.")), 15000)
+        );
+        const result = await Promise.race([authPromise, timeoutPromise]);
+        authData = result.data;
+        authError = result.error;
+      } catch (raceError: any) {
+        if (isNetworkError(raceError) || raceError?.message?.includes("timed out")) {
+          throw new Error(getNetworkErrorMessage());
+        }
+        throw raceError;
+      }
 
       if (!isMountedRef.current) return;
 
       console.log("Auth response:", { authData, authError });
 
       if (authError) {
+        if (isNetworkError(authError)) {
+          throw new Error(getNetworkErrorMessage());
+        }
         throw new Error(
           authError.message === "Invalid login credentials"
             ? "Invalid email or password"
@@ -175,7 +191,11 @@ export default function AdminLogin() {
       }
       if (!isMountedRef.current) return;
       console.error("LOGIN ERROR:", err);
-      setError(err.message || "Failed to sign in. Please try again.");
+      if (isNetworkError(err)) {
+        setError(getNetworkErrorMessage());
+      } else {
+        setError(err.message || "Failed to sign in. Please try again.");
+      }
     } finally {
       console.log("=== LOGIN END ===");
       if (isMountedRef.current) {

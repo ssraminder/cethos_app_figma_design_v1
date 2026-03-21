@@ -75,6 +75,29 @@ export const isSupabaseEnabled = (): boolean => {
   return supabase !== null;
 };
 
+// Detect if an error is a network/connectivity failure
+export const isNetworkError = (error: unknown): boolean => {
+  if (error instanceof TypeError && error.message === "Failed to fetch") {
+    return true;
+  }
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return (
+      msg.includes("failed to fetch") ||
+      msg.includes("network") ||
+      msg.includes("timeout") ||
+      msg.includes("err_connection") ||
+      msg.includes("load failed")
+    );
+  }
+  return false;
+};
+
+// Return a user-friendly message for network errors
+export const getNetworkErrorMessage = (): string => {
+  return "Unable to connect to the server. The service may be temporarily unavailable. Please check your internet connection and try again.";
+};
+
 // Database types
 export interface Quote {
   id: string;
