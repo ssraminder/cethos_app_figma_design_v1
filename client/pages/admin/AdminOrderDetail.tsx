@@ -126,6 +126,10 @@ interface OrderDetail {
   xtrf_project_id?: string | null;
   xtrf_status?: string | null;
   xtrf_last_synced_at?: string | null;
+  xtrf_invoice_id: number | null;
+  xtrf_invoice_number: string | null;
+  xtrf_invoice_status: string | null;
+  xtrf_invoice_payment_status: string | null;
 }
 
 interface InvoiceRecord {
@@ -2225,6 +2229,25 @@ export default function AdminOrderDetail() {
             >
               Open in XTRF
               <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        </div>
+      )}
+
+      {order.xtrf_invoice_number && (
+        <div className="flex items-center justify-between py-2 border-t border-gray-100">
+          <span className="text-sm text-gray-500">XTRF Invoice</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-mono text-gray-900">{order.xtrf_invoice_number}</span>
+            <XtrfInvoiceStatusBadge status={order.xtrf_invoice_status} />
+            <XtrfPaymentStatusBadge status={order.xtrf_invoice_payment_status} />
+            <a
+              href={`https://automations.cethos.com/gui2/#/customerInvoice/form?action=edit&id=${order.xtrf_invoice_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:text-blue-800 underline ml-1"
+            >
+              Open in XTRF ↗
             </a>
           </div>
         </div>
@@ -4693,5 +4716,39 @@ export default function AdminOrderDetail() {
         />
       )}
     </div>
+  );
+}
+
+function XtrfInvoiceStatusBadge({ status }: { status?: string | null }) {
+  const styles: Record<string, string> = {
+    SENT:      "bg-green-100 text-green-700",
+    READY:     "bg-blue-100 text-blue-700",
+    NOT_READY: "bg-gray-100 text-gray-500",
+    DRAFT:     "bg-yellow-100 text-yellow-700",
+  };
+  if (!status) return null;
+  return (
+    <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${styles[status] || "bg-gray-100 text-gray-500"}`}>
+      {status}
+    </span>
+  );
+}
+
+function XtrfPaymentStatusBadge({ status }: { status?: string | null }) {
+  const styles: Record<string, string> = {
+    FULLY_PAID:     "bg-green-100 text-green-700",
+    PARTIALLY_PAID: "bg-amber-100 text-amber-700",
+    NOT_PAID:       "bg-red-100 text-red-700",
+  };
+  const labels: Record<string, string> = {
+    FULLY_PAID:     "Paid",
+    PARTIALLY_PAID: "Partial",
+    NOT_PAID:       "Unpaid",
+  };
+  if (!status) return null;
+  return (
+    <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${styles[status] || "bg-gray-100 text-gray-500"}`}>
+      {labels[status] || status}
+    </span>
   );
 }
