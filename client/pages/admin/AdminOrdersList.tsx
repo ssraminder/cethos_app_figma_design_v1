@@ -31,6 +31,10 @@ interface Order {
   customer_email: string;
   customer_name: string;
   document_count: number;
+  xtrf_invoice_id: number | null;
+  xtrf_invoice_number: string | null;
+  xtrf_invoice_status: string | null;
+  xtrf_invoice_payment_status: string | null;
 }
 
 const STATUS_OPTIONS = [
@@ -91,6 +95,7 @@ export default function AdminOrdersList() {
           is_rush,
           created_at,
           estimated_delivery_date,
+          xtrf_invoice_id, xtrf_invoice_number, xtrf_invoice_status, xtrf_invoice_payment_status,
           customers!inner(email, full_name)
         `,
         { count: "exact" },
@@ -154,6 +159,10 @@ export default function AdminOrdersList() {
           customer_email: (order.customers as any)?.email || "",
           customer_name: (order.customers as any)?.full_name || "",
           document_count: 0, // TODO: Add document count
+          xtrf_invoice_id: order.xtrf_invoice_id,
+          xtrf_invoice_number: order.xtrf_invoice_number,
+          xtrf_invoice_status: order.xtrf_invoice_status,
+          xtrf_invoice_payment_status: order.xtrf_invoice_payment_status,
         })) || [];
 
       setOrders(transformedOrders);
@@ -422,6 +431,9 @@ export default function AdminOrdersList() {
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Total
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    XTRF Invoice
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Delivery
                   </th>
@@ -433,14 +445,14 @@ export default function AdminOrdersList() {
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
+                    <td colSpan={7} className="px-6 py-12 text-center">
                       <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-6 py-12 text-center text-gray-500"
                     >
                       No orders found
@@ -493,6 +505,20 @@ export default function AdminOrdersList() {
                         <p className="text-sm font-semibold text-gray-900 tabular-nums">
                           ${(order.total_amount || 0).toFixed(2)}
                         </p>
+                      </td>
+                      {/* XTRF Invoice */}
+                      <td className="px-6 py-4">
+                        {order.xtrf_invoice_number ? (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-sm font-mono text-gray-900">{order.xtrf_invoice_number}</span>
+                            <div className="flex items-center gap-1">
+                              <XtrfInvoiceStatusBadge status={order.xtrf_invoice_status} />
+                              <XtrfPaymentStatusBadge status={order.xtrf_invoice_payment_status} />
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
                       </td>
                       {/* Delivery Date */}
                       <td className="px-4 py-3">
@@ -674,6 +700,40 @@ function WorkStatusBadge({ status }: { status?: string }) {
     >
       {icon}
       {label}
+    </span>
+  );
+}
+
+function XtrfInvoiceStatusBadge({ status }: { status?: string | null }) {
+  const styles: Record<string, string> = {
+    SENT:      "bg-green-100 text-green-700",
+    READY:     "bg-blue-100 text-blue-700",
+    NOT_READY: "bg-gray-100 text-gray-500",
+    DRAFT:     "bg-yellow-100 text-yellow-700",
+  };
+  if (!status) return null;
+  return (
+    <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${styles[status] || "bg-gray-100 text-gray-500"}`}>
+      {status}
+    </span>
+  );
+}
+
+function XtrfPaymentStatusBadge({ status }: { status?: string | null }) {
+  const styles: Record<string, string> = {
+    FULLY_PAID:     "bg-green-100 text-green-700",
+    PARTIALLY_PAID: "bg-amber-100 text-amber-700",
+    NOT_PAID:       "bg-red-100 text-red-700",
+  };
+  const labels: Record<string, string> = {
+    FULLY_PAID:     "Paid",
+    PARTIALLY_PAID: "Partial",
+    NOT_PAID:       "Unpaid",
+  };
+  if (!status) return null;
+  return (
+    <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${styles[status] || "bg-gray-100 text-gray-500"}`}>
+      {labels[status] || status}
     </span>
   );
 }
