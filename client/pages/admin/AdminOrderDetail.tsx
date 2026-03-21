@@ -34,6 +34,9 @@ import {
   Trash2,
   Layers,
   Loader2,
+  Package,
+  RotateCcw,
+  ShoppingCart,
   X,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -119,6 +122,10 @@ interface OrderDetail {
   balance_payment_link?: string;
   balance_payment_requested_at?: string;
   delivery_email_sent_at?: string;
+  xtrf_project_number?: string | null;
+  xtrf_project_id?: string | null;
+  xtrf_status?: string | null;
+  xtrf_last_synced_at?: string | null;
 }
 
 interface InvoiceRecord {
@@ -293,6 +300,10 @@ export default function AdminOrderDetail() {
   // Activity log
   const [activityLog, setActivityLog] = useState<any[]>([]);
 
+  // Activity timeline (unified)
+  const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+
   // File upload & draft management
   const [orderFiles, setOrderFiles] = useState<any[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
@@ -381,6 +392,13 @@ export default function AdminOrderDetail() {
       fetchOrderFiles();
     }
   }, [order?.quote_id]);
+
+  // Fetch activity timeline independently when order loads
+  useEffect(() => {
+    if (order?.id) {
+      fetchActivityTimeline(order);
+    }
+  }, [order?.id]);
 
   // Sync payment link URL when order loads
   useEffect(() => {
@@ -874,6 +892,222 @@ export default function AdminOrderDetail() {
       .limit(50);
 
     if (data) setActivityLog(data);
+  };
+
+  const fetchActivityTimeline = async (orderData: OrderDetail) => {
+    setTimelineLoading(true);
+    try {
+      const [quoteActivityResult, staffActivityResult, invoicesResult, refundsResult, paymentIntentsResult] =
+        await Promise.all([
+          // 1. quote_activity_log
+          orderData.quote_id
+            ? supabase
+                .from("quote_activity_log")
+                .select("id, action_type, details, staff_id, created_at, staff_users(full_name)")
+                .eq("quote_id", orderData.quote_id)
+                .order("created_at", { ascending: true })
+            : Promise.resolve({ data: [] }),
+          // 2. staff_activity_log
+          orderData.quote_id
+            ? supabase
+                .from("staff_activity_log")
+                .select("id, action_type, entity_type, details, staff_id, created_at, staff_users(full_name)")
+                .or(`entity_id.eq.${orderData.id},entity_id.eq.${orderData.quote_id}`)
+                .order("created_at", { ascending: true })
+                .limit(100)
+            : supabase
+                .from("staff_activity_log")
+                .select("id, action_type, entity_type, details, staff_id, created_at, staff_users(full_name)")
+                .eq("entity_id", orderData.id)
+                .order("created_at", { ascending: true })
+                .limit(100),
+          // 3. customer_invoices
+          supabase
+            .from("customer_invoices")
+            .select("id, invoice_number, total_amount, status, invoice_date, created_at")
+            .eq("order_id", orderData.id)
+            .order("created_at", { ascending: true }),
+          // 4. refunds
+          supabase
+            .from("refunds")
+            .select("id, amount, refund_method, status, reason, stripe_refund_id, processed_at, created_at, created_by_staff:staff_users!refunds_created_by_staff_id_fkey(full_name)")
+            .eq("order_id", orderData.id)
+            .order("created_at", { ascending: true }),
+          // 5. customer_payment_intents (within ±24h of order creation)
+          orderData.customer_id
+            ? supabase
+                .from("customer_payment_intents")
+                .select("id, total_amount, payment_method, stripe_payment_intent_id, status, completed_at, created_at")
+                .eq("customer_id", orderData.customer_id)
+                .eq("status", "completed")
+                .gte("created_at", new Date(new Date(orderData.created_at).getTime() - 86400000).toISOString())
+                .lte("created_at", new Date(new Date(orderData.created_at).getTime() + 86400000).toISOString())
+                .limit(3)
+            : Promise.resolve({ data: [] }),
+        ]);
+
+      const events: any[] = [];
+
+      // Synthetic: order created
+      events.push({
+        id: "order-created",
+        timestamp: new Date(orderData.created_at),
+        icon: "ShoppingCart",
+        color: "green",
+        label: "Order created",
+        detail: `Order ${orderData.order_number}`,
+      });
+
+      // quote_activity_log entries
+      (quoteActivityResult.data || []).forEach((entry: any) => {
+        const staffName = (entry.staff_users as any)?.full_name;
+        const d = entry.details || {};
+        let label = "";
+        let icon = "RefreshCw";
+        let color = "blue";
+        let detail = staffName ? `by ${staffName}` : undefined;
+
+        switch (entry.action_type) {
+          case "status_changed":
+            label = `Status changed to ${d.new_status || "unknown"}`;
+            icon = "RefreshCw";
+            color = "blue";
+            break;
+          case "payment_link_sent":
+            label = "Payment link sent";
+            icon = "Send";
+            color = "teal";
+            break;
+          case "quote_link_sent":
+            label = "Quote link sent";
+            icon = "Send";
+            color = "teal";
+            break;
+          case "manual_payment_recorded":
+            label = `Manual payment recorded — $${d.amount || ""}`;
+            icon = "DollarSign";
+            color = "green";
+            break;
+          case "message_sent":
+            label = "Message sent";
+            icon = "MessageSquare";
+            color = "gray";
+            break;
+          default:
+            label = entry.action_type?.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) || "Activity";
+            break;
+        }
+
+        events.push({
+          id: `qa-${entry.id}`,
+          timestamp: new Date(entry.created_at),
+          icon,
+          color,
+          label,
+          detail,
+        });
+      });
+
+      // staff_activity_log entries
+      (staffActivityResult.data || []).forEach((entry: any) => {
+        const staffName = (entry.staff_users as any)?.full_name;
+        let label = "";
+        let icon = "Clock";
+        let color = "blue";
+        let detail = staffName ? `by ${staffName}` : undefined;
+
+        switch (entry.action_type) {
+          case "deliver_final":
+            label = "Final files delivered";
+            icon = "Package";
+            color = "green";
+            break;
+          case "manual_payment":
+            label = "Manual payment recorded";
+            icon = "DollarSign";
+            color = "green";
+            break;
+          case "cancel_order":
+            label = "Order cancelled";
+            icon = "XCircle";
+            color = "red";
+            break;
+          case "send_delivery_email":
+            label = "Delivery email sent";
+            icon = "Mail";
+            color = "teal";
+            break;
+          default:
+            label = entry.action_type?.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) || "Activity";
+            break;
+        }
+
+        events.push({
+          id: `sa-${entry.id}`,
+          timestamp: new Date(entry.created_at),
+          icon,
+          color,
+          label,
+          detail,
+        });
+      });
+
+      // customer_invoices
+      (invoicesResult.data || []).forEach((inv: any) => {
+        events.push({
+          id: `inv-${inv.id}`,
+          timestamp: new Date(inv.created_at),
+          icon: "FileText",
+          color: "purple",
+          label: `Invoice #${inv.invoice_number} generated — $${Number(inv.total_amount).toFixed(2)}`,
+          detail: inv.status ? `Status: ${inv.status}` : undefined,
+        });
+      });
+
+      // customer_payment_intents
+      (paymentIntentsResult.data || []).forEach((pi: any) => {
+        if (pi.status === "completed") {
+          const stripeId = pi.stripe_payment_intent_id || "";
+          events.push({
+            id: `pi-${pi.id}`,
+            timestamp: new Date(pi.completed_at || pi.created_at),
+            icon: "CreditCard",
+            color: "green",
+            label: `Payment received — $${Number(pi.total_amount).toFixed(2)} via ${pi.payment_method || "card"}`,
+            detail: stripeId
+              ? stripeId.length > 24 ? `${stripeId.substring(0, 24)}...` : stripeId
+              : undefined,
+            mono: !!stripeId,
+          });
+        }
+      });
+
+      // refunds
+      (refundsResult.data || []).forEach((ref: any) => {
+        const staffName = (ref.created_by_staff as any)?.full_name;
+        const parts: string[] = [];
+        if (staffName) parts.push(`by ${staffName}`);
+        if (ref.reason) parts.push(ref.reason);
+        if (ref.stripe_refund_id) parts.push(ref.stripe_refund_id);
+        events.push({
+          id: `ref-${ref.id}`,
+          timestamp: new Date(ref.processed_at || ref.created_at),
+          icon: "RotateCcw",
+          color: "red",
+          label: `Refund issued — $${Number(ref.amount).toFixed(2)} (${ref.refund_method || "unknown"})`,
+          detail: parts.join(" • ") || undefined,
+          mono: !!ref.stripe_refund_id && !staffName && !ref.reason,
+        });
+      });
+
+      // Sort oldest first
+      events.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      setTimelineEvents(events);
+    } catch (err) {
+      console.error("Failed to fetch activity timeline:", err);
+    } finally {
+      setTimelineLoading(false);
+    }
   };
 
   const handleConfirmSend = async () => {
@@ -1945,6 +2179,53 @@ export default function AdminOrderDetail() {
                 </p>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* XTRF Project Info Banner */}
+      {order.xtrf_project_number && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <ExternalLink className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold text-blue-900">XTRF Project</p>
+                <div className="mt-1 space-y-1 text-sm text-blue-800">
+                  <p>
+                    Project Number: <span className="font-medium">{order.xtrf_project_number}</span>
+                  </p>
+                  <p className="flex items-center gap-2">
+                    XTRF Status:{" "}
+                    <span
+                      className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
+                        order.xtrf_status === "CLOSED"
+                          ? "bg-green-100 text-green-700"
+                          : order.xtrf_status === "OPENED"
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {order.xtrf_status || "Not set"}
+                    </span>
+                  </p>
+                  {order.xtrf_last_synced_at && (
+                    <p className="text-blue-600 text-xs">
+                      Last Synced: {format(new Date(order.xtrf_last_synced_at), "MMM d, yyyy h:mm a")}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+            <a
+              href={`https://automations.cethos.com/gui2/#/projectDetails?projectNum=${order.xtrf_project_number}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors whitespace-nowrap"
+            >
+              Open in XTRF
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
           </div>
         </div>
       )}
@@ -3761,6 +4042,107 @@ export default function AdminOrderDetail() {
           </div>
           </div>
         </div>
+      </div>
+
+      {/* Activity Timeline */}
+      <div className="mt-6 bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-5 flex items-center gap-2">
+          <Clock className="w-5 h-5 text-gray-400" />
+          Activity Timeline
+        </h2>
+
+        {timelineLoading ? (
+          <div className="space-y-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex items-start gap-4 animate-pulse">
+                <div className="w-3 h-3 rounded-full bg-gray-200 mt-1.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="h-4 bg-gray-200 rounded w-2/3 mb-2" />
+                  <div className="h-3 bg-gray-100 rounded w-1/3" />
+                </div>
+                <div className="h-3 bg-gray-100 rounded w-24" />
+              </div>
+            ))}
+          </div>
+        ) : timelineEvents.length === 0 ? (
+          <p className="text-sm text-gray-500">No activity recorded yet</p>
+        ) : (
+          <div className="relative">
+            {/* Vertical timeline line */}
+            <div className="absolute left-[5px] top-3 bottom-3 w-px bg-gray-200" />
+
+            <div className="space-y-0">
+              {timelineEvents.map((event) => {
+                const iconColor: Record<string, string> = {
+                  green: "text-green-500",
+                  blue: "text-blue-500",
+                  teal: "text-teal-500",
+                  red: "text-red-500",
+                  purple: "text-purple-500",
+                  gray: "text-gray-400",
+                };
+                const dotColor: Record<string, string> = {
+                  green: "bg-green-500",
+                  blue: "bg-blue-500",
+                  teal: "bg-teal-500",
+                  red: "bg-red-500",
+                  purple: "bg-purple-500",
+                  gray: "bg-gray-400",
+                };
+                const IconMap: Record<string, any> = {
+                  ShoppingCart,
+                  RefreshCw,
+                  Send,
+                  DollarSign,
+                  MessageSquare,
+                  Package,
+                  XCircle,
+                  Mail,
+                  FileText,
+                  CreditCard,
+                  RotateCcw,
+                  Clock,
+                };
+                const IconComponent = IconMap[event.icon] || Clock;
+
+                return (
+                  <div
+                    key={event.id}
+                    className="flex items-start gap-3 py-2.5 relative text-sm"
+                  >
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 z-10 ${
+                        dotColor[event.color] || "bg-gray-400"
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1 flex items-start gap-2">
+                      <IconComponent
+                        className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                          iconColor[event.color] || "text-gray-400"
+                        }`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-900">{event.label}</p>
+                        {event.detail && (
+                          <p
+                            className={`text-xs text-gray-500 mt-0.5 ${
+                              event.mono ? "font-mono" : ""
+                            }`}
+                          >
+                            {event.detail}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-gray-400 whitespace-nowrap mt-0.5">
+                      {format(event.timestamp, "MMM d, yyyy h:mm a")}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Cancel Order Modal */}
