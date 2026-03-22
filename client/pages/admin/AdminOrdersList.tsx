@@ -119,10 +119,12 @@ export default function AdminOrdersList() {
 
         if (customerIds.length > 0) {
           query = query.or(
-            `order_number.ilike.%${search}%,customer_id.in.(${customerIds.join(",")})`,
+            `order_number.ilike.%${search}%,xtrf_project_number.ilike.%${search}%,customer_id.in.(${customerIds.join(",")})`,
           );
         } else {
-          query = query.ilike("order_number", `%${search}%`);
+          query = query.or(
+            `order_number.ilike.%${search}%,xtrf_project_number.ilike.%${search}%`,
+          );
         }
       }
       if (status) {
@@ -216,6 +218,47 @@ export default function AdminOrdersList() {
     setSearchInput("");
   };
 
+  const handleExport = () => {
+    const headers = [
+      "Order Number",
+      "Customer Name",
+      "Customer Email",
+      "Status",
+      "Work Status",
+      "Total",
+      "Rush",
+      "XTRF Project",
+      "XTRF Invoice",
+      "Estimated Delivery",
+      "Created",
+    ];
+    const rows = orders.map((o) => [
+      o.order_number,
+      o.customer_name,
+      o.customer_email,
+      o.status,
+      o.work_status,
+      (o.total_amount || 0).toFixed(2),
+      o.is_rush ? "Yes" : "No",
+      o.xtrf_project_number ?? "",
+      o.xtrf_invoice_number ?? "",
+      o.estimated_delivery_date
+        ? format(new Date(o.estimated_delivery_date), "yyyy-MM-dd")
+        : "",
+      format(new Date(o.created_at), "yyyy-MM-dd"),
+    ]);
+    const csv = [headers, ...rows]
+      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `orders-export-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const hasActiveFilters =
     search || status || workStatus || dateFrom || dateTo || rushOnly || xtrfStatus;
@@ -243,7 +286,10 @@ export default function AdminOrdersList() {
             <RefreshCw className="w-4 h-4" />
             Refresh
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
             <Download className="w-4 h-4" />
             Export
           </button>
