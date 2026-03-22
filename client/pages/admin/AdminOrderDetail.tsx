@@ -137,6 +137,9 @@ interface OrderDetail {
   xtrf_project_link_source: string | null;
   xtrf_project_linked_at: string | null;
   xtrf_project_original_number: string | null;
+  refund_amount: number;
+  refund_status: string | null;
+  overpayment_credit: number | null;
 }
 
 interface InvoiceRecord {
@@ -264,6 +267,15 @@ export default function AdminOrderDetail() {
   const [xtrfLinkNumber, setXtrfLinkNumber] = useState("");
   const [linkingXtrfProject, setLinkingXtrfProject] = useState(false);
   const [xtrfLinkMessage, setXtrfLinkMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Refund / balance payment state
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [processingRefund, setProcessingRefund] = useState(false);
+  const [refundMessage, setRefundMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [requestingBalance, setRequestingBalance] = useState(false);
+  const [balanceMessage, setBalanceMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Document management state
   const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
@@ -1827,6 +1839,63 @@ export default function AdminOrderDetail() {
     }
   };
 
+  const handleProcessRefund = async () => {
+    if (!order || processingRefund) return;
+    const amount = parseFloat(refundAmount);
+    if (!amount || amount <= 0) return;
+    setProcessingRefund(true);
+    setRefundMessage(null);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/functions/v1/process-refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        body: JSON.stringify({ order_id: order.id, staff_id: currentStaff?.staffId || null, amount, reason: refundReason || 'Overpayment refund' }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setRefundMessage({ type: 'success', text: result.message });
+        setShowRefundModal(false);
+        setRefundAmount('');
+        setRefundReason('');
+        await fetchOrderDetails();
+      } else {
+        setRefundMessage({ type: 'error', text: result.error ?? 'Refund failed' });
+      }
+    } catch (err: any) {
+      setRefundMessage({ type: 'error', text: err.message ?? 'Request failed' });
+    } finally {
+      setProcessingRefund(false);
+    }
+  };
+
+  const handleRequestBalancePaymentV2 = async () => {
+    if (!order || requestingBalance) return;
+    setRequestingBalance(true);
+    setBalanceMessage(null);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/functions/v1/request-balance-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        body: JSON.stringify({ order_id: order.id, staff_id: currentStaff?.staffId || null, reason: 'Balance due' }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setBalanceMessage({ type: 'success', text: `Payment link sent to customer${result.email_sent ? ' via email' : ''}. Amount: $${result.amount?.toFixed(2)}` });
+        await fetchOrderDetails();
+      } else {
+        setBalanceMessage({ type: 'error', text: result.error ?? 'Failed to create payment link' });
+      }
+    } catch (err: any) {
+      setBalanceMessage({ type: 'error', text: err.message ?? 'Request failed' });
+    } finally {
+      setRequestingBalance(false);
+    }
+  };
+
   const handleLinkXtrfProject = async () => {
     if (!order || !xtrfLinkNumber.trim() || linkingXtrfProject) return;
     setLinkingXtrfProject(true);
@@ -2195,6 +2264,15 @@ export default function AdminOrderDetail() {
       (adjustment.type === "refund" ? -adjustment.amount : adjustment.amount),
     0,
   );
+
+  const overpaymentAmount = order
+    ? Math.max(0, parseFloat(String(order.amount_paid || 0)) - parseFloat(String(order.total_amount || 0)) - parseFloat(String(order.refund_amount || 0)))
+    : 0;
+  const underpaymentAmount = order
+    ? Math.max(0, parseFloat(String(order.balance_due || 0)))
+    : 0;
+  const hasOverpayment = overpaymentAmount > 0.01;
+  const hasUnderpayment = underpaymentAmount > 0.01;
 
   return (
     <div className="px-4 sm:px-6 py-6 max-w-6xl mx-auto">
@@ -3792,6 +3870,79 @@ export default function AdminOrderDetail() {
                 <span className="text-green-600">${(order.amount_paid ?? 0).toFixed(2)}</span>
               </div>
 
+              {/* Overpayment alert */}
+              {hasOverpayment && (
+                <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-amber-600 font-semibold text-sm">⚠️ Overpayment</span>
+                        <span className="text-lg font-bold text-amber-700">${overpaymentAmount.toFixed(2)} CAD</span>
+                      </div>
+                      <p className="text-xs text-amber-600">
+                        Customer paid ${parseFloat(String(order!.amount_paid)).toFixed(2)} but order total is ${parseFloat(String(order!.total_amount)).toFixed(2)}.
+                        {parseFloat(String(order!.refund_amount || 0)) > 0 && ` $${parseFloat(String(order!.refund_amount)).toFixed(2)} already refunded.`}
+                      </p>
+                      {refundMessage && (
+                        <p className={`mt-1.5 text-xs rounded px-2 py-1 ${refundMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {refundMessage.text}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => { setShowRefundModal(true); setRefundAmount(overpaymentAmount.toFixed(2)); setRefundMessage(null); }}
+                      className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors whitespace-nowrap"
+                    >
+                      Refund Customer
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Underpayment alert */}
+              {hasUnderpayment && (
+                <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-red-600 font-semibold text-sm">⚠️ Balance Due</span>
+                        <span className="text-lg font-bold text-red-700">${underpaymentAmount.toFixed(2)} CAD</span>
+                      </div>
+                      <p className="text-xs text-red-600">
+                        Customer still owes ${underpaymentAmount.toFixed(2)}.
+                        {order!.balance_payment_requested_at && ` Payment link sent ${new Date(order!.balance_payment_requested_at).toLocaleDateString()}.`}
+                      </p>
+                      {order!.balance_payment_link && (
+                        <a href={order!.balance_payment_link} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline mt-1 block">
+                          View payment link ↗
+                        </a>
+                      )}
+                      {balanceMessage && (
+                        <p className={`mt-1.5 text-xs rounded px-2 py-1 ${balanceMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {balanceMessage.text}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleRequestBalancePaymentV2}
+                      disabled={requestingBalance}
+                      className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors whitespace-nowrap"
+                    >
+                      {requestingBalance ? (
+                        <span className="flex items-center gap-1">
+                          <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                          </svg>
+                          Sending…
+                        </span>
+                      ) : order!.balance_payment_requested_at ? 'Resend Link' : 'Request Payment'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Refund Section - Only for cancelled orders */}
               {order.status === 'cancelled' && cancellation && cancellation.refund_amount > 0 && (
                 <>
@@ -4993,6 +5144,81 @@ export default function AdminOrderDetail() {
                 className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 transition-colors disabled:opacity-50"
               >
                 {processingOnBehalf ? "Processing..." : "Submit Change Request"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Refund Modal */}
+      {showRefundModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">Process Refund</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Refund to customer for order {order?.order_number}.
+                Available: <span className="font-semibold text-amber-600">${overpaymentAmount.toFixed(2)} CAD</span>
+              </p>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Refund Amount (CAD)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+                    <input
+                      type="number"
+                      value={refundAmount}
+                      onChange={(e) => setRefundAmount(e.target.value)}
+                      step="0.01"
+                      min="0.01"
+                      max={overpaymentAmount}
+                      className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+                  <input
+                    type="text"
+                    value={refundReason}
+                    onChange={(e) => setRefundReason(e.target.value)}
+                    placeholder="Overpayment refund"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              {refundMessage && (
+                <div className={`mt-3 text-xs rounded-lg px-3 py-2 ${refundMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {refundMessage.text}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 rounded-b-2xl border-t border-gray-100">
+              <button
+                onClick={() => { setShowRefundModal(false); setRefundMessage(null); }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleProcessRefund}
+                disabled={processingRefund || !refundAmount || parseFloat(refundAmount) <= 0 || parseFloat(refundAmount) > overpaymentAmount + 0.01}
+                className="px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+              >
+                {processingRefund ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    Processing…
+                  </span>
+                ) : `Refund $${parseFloat(refundAmount || '0').toFixed(2)}`}
               </button>
             </div>
           </div>
