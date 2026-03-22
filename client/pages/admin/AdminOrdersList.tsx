@@ -77,6 +77,7 @@ export default function AdminOrdersList() {
   const dateFrom = searchParams.get("from") || "";
   const dateTo = searchParams.get("to") || "";
   const rushOnly = searchParams.get("rush") === "true";
+  const xtrfStatus = searchParams.get("xtrfStatus") || "";
   const page = parseInt(searchParams.get("page") || "1", 10);
 
   const [searchInput, setSearchInput] = useState(search);
@@ -138,6 +139,11 @@ export default function AdminOrdersList() {
       if (rushOnly) {
         query = query.eq("is_rush", true);
       }
+      if (xtrfStatus === "none") {
+        query = query.is("xtrf_project_status", null);
+      } else if (xtrfStatus) {
+        query = query.eq("xtrf_project_status", xtrfStatus);
+      }
 
       // Pagination
       const from = (page - 1) * PAGE_SIZE;
@@ -183,7 +189,7 @@ export default function AdminOrdersList() {
 
   useEffect(() => {
     fetchOrders();
-  }, [search, status, workStatus, dateFrom, dateTo, rushOnly, page]);
+  }, [search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, page]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -210,7 +216,7 @@ export default function AdminOrdersList() {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const hasActiveFilters =
-    search || status || workStatus || dateFrom || dateTo || rushOnly;
+    search || status || workStatus || dateFrom || dateTo || rushOnly || xtrfStatus;
 
   // Calculate summary stats
   const totalRevenue = orders.reduce(
@@ -315,6 +321,7 @@ export default function AdminOrdersList() {
                       dateFrom,
                       dateTo,
                       rushOnly,
+                      xtrfStatus,
                     ].filter(Boolean).length
                   }
                 </span>
@@ -337,7 +344,7 @@ export default function AdminOrdersList() {
 
           {/* Expanded Filters */}
           {showFilters && (
-            <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-6 gap-4">
               {/* Order Status */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -398,6 +405,24 @@ export default function AdminOrdersList() {
                   onChange={(e) => updateFilter("to", e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+
+              {/* XTRF Status */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  XTRF Status
+                </label>
+                <select
+                  value={xtrfStatus}
+                  onChange={(e) => updateFilter("xtrfStatus", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All XTRF Status</option>
+                  <option value="OPENED">XTRF Open</option>
+                  <option value="CLOSED">XTRF Closed</option>
+                  <option value="CANCELLED">XTRF Cancelled</option>
+                  <option value="none">No XTRF Project</option>
+                </select>
               </div>
 
               {/* Rush Only */}
@@ -506,6 +531,7 @@ export default function AdminOrdersList() {
                           <div>
                             <WorkStatusBadge status={order.work_status} />
                           </div>
+                          <XtrfProjectStatusBadge status={order.xtrf_project_status} />
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -713,6 +739,21 @@ function WorkStatusBadge({ status }: { status?: string }) {
       className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${style}`}
     >
       {icon}
+      {label}
+    </span>
+  );
+}
+
+function XtrfProjectStatusBadge({ status }: { status?: string | null }) {
+  if (!status) return null;
+  const cfg: Record<string, { style: string; label: string }> = {
+    OPENED:    { style: "bg-blue-100 text-blue-700",   label: "XTRF Open" },
+    CLOSED:    { style: "bg-green-100 text-green-700", label: "XTRF Closed" },
+    CANCELLED: { style: "bg-red-100 text-red-700",     label: "XTRF Cancelled" },
+  };
+  const { style, label } = cfg[status] ?? { style: "bg-gray-100 text-gray-500", label: status };
+  return (
+    <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${style}`}>
       {label}
     </span>
   );
