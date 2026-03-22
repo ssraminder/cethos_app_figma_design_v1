@@ -2400,7 +2400,7 @@ export default function AdminOrderDetail() {
                 <XtrfInvoiceStatusBadge status={order.xtrf_invoice_status} />
                 <XtrfPaymentStatusBadge status={order.xtrf_invoice_payment_status} />
                 <a
-                  href={`https://automations.cethos.com/gui2/#/customerInvoice/form?action=edit&id=${order.xtrf_invoice_id}`}
+                  href={`https://cethos.s.xtrf.us/xtrf/faces/customerInvoice/form.seam?action=edit&id=${order.xtrf_invoice_id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-blue-600 hover:text-blue-800 underline"
