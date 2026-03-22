@@ -308,7 +308,7 @@ export default function AdminOrdersList() {
       "Client Total",
       "Vendor Cost",
       "Profit",
-      "ROI %",
+      "% Profit",
       "Currency",
       "XTRF Invoice",
       "Estimated Delivery",
@@ -320,8 +320,8 @@ export default function AdminOrdersList() {
       const profit = clientTotal != null && vendorCost != null && vendorCost > 0
         ? clientTotal - vendorCost
         : null;
-      const roi = profit != null && vendorCost != null && vendorCost > 0
-        ? (profit / vendorCost) * 100
+      const profitPct = profit != null && clientTotal != null && clientTotal > 0
+        ? (profit / clientTotal) * 100
         : null;
       return [
         o.order_number,
@@ -335,7 +335,7 @@ export default function AdminOrdersList() {
         clientTotal != null ? clientTotal.toFixed(2) : "",
         vendorCost != null && vendorCost > 0 ? vendorCost.toFixed(2) : "",
         profit != null ? profit.toFixed(2) : "",
-        roi != null ? roi.toFixed(1) : "",
+        profitPct != null ? profitPct.toFixed(1) : "",
         o.xtrf_project_currency_code ?? "",
         o.xtrf_invoice_number ?? "",
         o.estimated_delivery_date
@@ -645,7 +645,7 @@ export default function AdminOrdersList() {
         {/* Table */}
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px]">
+            <table className="w-full min-w-[1200px]">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -670,7 +670,7 @@ export default function AdminOrdersList() {
                     Profit
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ROI %
+                    % Profit
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     XTRF Project
@@ -737,12 +737,10 @@ export default function AdminOrdersList() {
                         </p>
                       </td>
                       {/* Combined Status Column */}
-                      <td className="px-4 py-3">
-                        <div className="space-y-1">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex flex-col gap-1">
                           <OrderStatusBadge status={order.status} />
-                          <div>
-                            <WorkStatusBadge status={order.work_status} />
-                          </div>
+                          <WorkStatusBadge status={order.work_status} />
                           <XtrfProjectStatusBadge status={order.xtrf_project_status} />
                         </div>
                       </td>
@@ -784,13 +782,13 @@ export default function AdminOrdersList() {
                           <span className="text-sm text-gray-300">—</span>
                         )}
                       </td>
-                      {/* ROI % */}
+                      {/* % Profit */}
                       <td className="px-4 py-3 text-right">
-                        {order.xtrf_project_total_agreed != null && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
-                          const roi = ((order.xtrf_project_total_agreed - order.xtrf_project_total_cost) / order.xtrf_project_total_cost) * 100;
+                        {order.xtrf_project_total_agreed != null && order.xtrf_project_total_agreed > 0 && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
+                          const profitPct = ((order.xtrf_project_total_agreed - order.xtrf_project_total_cost) / order.xtrf_project_total_agreed) * 100;
                           return (
-                            <span className={`text-sm font-medium tabular-nums ${roi >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                              {roi.toFixed(1)}%
+                            <span className={`text-sm font-medium tabular-nums ${profitPct >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                              {profitPct.toFixed(1)}%
                             </span>
                           );
                         })() : (
