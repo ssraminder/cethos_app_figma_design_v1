@@ -80,6 +80,8 @@ export default function AdminOrdersList() {
   const dateTo = searchParams.get("to") || "";
   const rushOnly = searchParams.get("rush") === "true";
   const xtrfStatus = searchParams.get("xtrfStatus") || "";
+  const xtrfInvoiceStatuses = searchParams.get("xtrfInvStatus")?.split(",").filter(Boolean) || [];
+  const xtrfPaymentStatuses = searchParams.get("xtrfPayStatus")?.split(",").filter(Boolean) || [];
   const page = parseInt(searchParams.get("page") || "1", 10);
 
   const [searchInput, setSearchInput] = useState(search);
@@ -148,6 +150,21 @@ export default function AdminOrdersList() {
       } else if (xtrfStatus) {
         query = query.eq("xtrf_project_status", xtrfStatus);
       }
+      if (xtrfInvoiceStatuses.length > 0) {
+        if (xtrfInvoiceStatuses.includes("NONE")) {
+          const otherStatuses = xtrfInvoiceStatuses.filter(s => s !== "NONE");
+          if (otherStatuses.length > 0) {
+            query = query.or(`xtrf_invoice_status.is.null,xtrf_invoice_status.in.(${otherStatuses.join(",")})`);
+          } else {
+            query = query.is("xtrf_invoice_status", null);
+          }
+        } else {
+          query = query.in("xtrf_invoice_status", xtrfInvoiceStatuses);
+        }
+      }
+      if (xtrfPaymentStatuses.length > 0) {
+        query = query.in("xtrf_invoice_payment_status", xtrfPaymentStatuses);
+      }
 
       // Pagination
       const from = (page - 1) * PAGE_SIZE;
@@ -195,7 +212,7 @@ export default function AdminOrdersList() {
 
   useEffect(() => {
     fetchOrders();
-  }, [search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, page]);
+  }, [search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -213,6 +230,13 @@ export default function AdminOrdersList() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     updateFilter("search", searchInput);
+  };
+
+  const toggleMultiFilter = (key: string, value: string, current: string[]) => {
+    const next = current.includes(value)
+      ? current.filter(v => v !== value)
+      : [...current, value];
+    updateFilter(key, next.join(","));
   };
 
   const clearFilters = () => {
@@ -283,7 +307,7 @@ export default function AdminOrdersList() {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const hasActiveFilters =
-    search || status || workStatus || dateFrom || dateTo || rushOnly || xtrfStatus;
+    search || status || workStatus || dateFrom || dateTo || rushOnly || xtrfStatus || xtrfInvoiceStatuses.length > 0 || xtrfPaymentStatuses.length > 0;
 
   // Calculate summary stats
   const totalRevenue = orders.reduce(
@@ -392,6 +416,8 @@ export default function AdminOrdersList() {
                       dateTo,
                       rushOnly,
                       xtrfStatus,
+                      xtrfInvoiceStatuses.length > 0,
+                      xtrfPaymentStatuses.length > 0,
                     ].filter(Boolean).length
                   }
                 </span>
@@ -510,6 +536,56 @@ export default function AdminOrdersList() {
                     Rush orders only
                   </span>
                 </label>
+              </div>
+
+              {/* XTRF Invoice Status */}
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  XTRF Invoice Status
+                </label>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {[
+                    { value: "NONE", label: "No Invoice" },
+                    { value: "READY", label: "Ready" },
+                    { value: "SENT", label: "Sent" },
+                    { value: "NOT_READY", label: "Not Ready" },
+                    { value: "DRAFT", label: "Draft" },
+                  ].map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={xtrfInvoiceStatuses.includes(opt.value)}
+                        onChange={() => toggleMultiFilter("xtrfInvStatus", opt.value, xtrfInvoiceStatuses)}
+                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* XTRF Payment Status */}
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  XTRF Payment Status
+                </label>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {[
+                    { value: "FULLY_PAID", label: "Paid" },
+                    { value: "PARTIALLY_PAID", label: "Partially Paid" },
+                    { value: "NOT_PAID", label: "Unpaid" },
+                  ].map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={xtrfPaymentStatuses.includes(opt.value)}
+                        onChange={() => toggleMultiFilter("xtrfPayStatus", opt.value, xtrfPaymentStatuses)}
+                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             </div>
           )}
