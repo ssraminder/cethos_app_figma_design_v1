@@ -256,6 +256,8 @@ export default function AdminOrderDetail() {
   // XTRF Invoice creation state
   const [creatingXtrfInvoice, setCreatingXtrfInvoice] = useState(false);
   const [xtrfInvoiceMessage, setXtrfInvoiceMessage] = useState<{ type: 'success' | 'warning' | 'error' | 'info'; text: string } | null>(null);
+  const [refreshingXtrfInvoice, setRefreshingXtrfInvoice] = useState(false);
+  const [xtrfRefreshMessage, setXtrfRefreshMessage] = useState<string | null>(null);
 
   // XTRF Project linking state
   const [showXtrfLinkInput, setShowXtrfLinkInput] = useState(false);
@@ -1865,6 +1867,37 @@ export default function AdminOrderDetail() {
     }
   };
 
+  const handleRefreshXtrfInvoice = async () => {
+    if (!order || refreshingXtrfInvoice) return;
+    setRefreshingXtrfInvoice(true);
+    setXtrfRefreshMessage(null);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const response = await fetch(`${supabaseUrl}/functions/v1/xtrf-refresh-order-invoice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({ order_id: order.id }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        setXtrfRefreshMessage(result.message);
+        if (result.changed) {
+          await fetchOrderDetails();
+        }
+      } else {
+        setXtrfRefreshMessage(`❌ ${result.error ?? 'Refresh failed'}`);
+      }
+    } catch (err: any) {
+      setXtrfRefreshMessage(`❌ ${err.message ?? 'Request failed'}`);
+    } finally {
+      setRefreshingXtrfInvoice(false);
+    }
+  };
+
   const handleCreateXtrfInvoice = async () => {
     if (!order || creatingXtrfInvoice) return;
     setCreatingXtrfInvoice(true);
@@ -2393,6 +2426,7 @@ export default function AdminOrderDetail() {
 
           {order.xtrf_invoice_number ? (
             /* Invoice exists */
+            <>
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-500">Invoice</span>
               <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -2407,8 +2441,30 @@ export default function AdminOrderDetail() {
                 >
                   Open ↗
                 </a>
+                <button
+                  onClick={handleRefreshXtrfInvoice}
+                  disabled={refreshingXtrfInvoice}
+                  title="Fetch latest invoice status from XTRF"
+                  className="text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ml-1"
+                >
+                  {refreshingXtrfInvoice ? (
+                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  )}
+                </button>
               </div>
             </div>
+            {xtrfRefreshMessage && (
+              <p className="mt-1 text-xs text-gray-500 text-right">{xtrfRefreshMessage}</p>
+            )}
+            </>
           ) : (
             /* No invoice yet */
             <div className="flex items-center justify-between">
@@ -2443,6 +2499,37 @@ export default function AdminOrderDetail() {
                   'Create XTRF Invoice'
                 )}
               </button>
+              {order.xtrf_invoice_id && !order.xtrf_invoice_number && (
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    onClick={handleRefreshXtrfInvoice}
+                    disabled={refreshingXtrfInvoice}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                  >
+                    {refreshingXtrfInvoice ? (
+                      <>
+                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                        </svg>
+                        Checking XTRF…
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Check if Ready
+                      </>
+                    )}
+                  </button>
+                  <span className="text-xs text-gray-400">Invoice created in XTRF, awaiting accountant approval</span>
+                </div>
+              )}
+              {xtrfRefreshMessage && !order.xtrf_invoice_number && (
+                <p className="mt-1 text-xs text-gray-500">{xtrfRefreshMessage}</p>
+              )}
             </div>
           )}
 
