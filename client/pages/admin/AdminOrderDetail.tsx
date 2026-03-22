@@ -2295,7 +2295,7 @@ export default function AdminOrderDetail() {
                 <span className="text-sm font-mono text-gray-900">{order.xtrf_project_number}</span>
                 <XtrfProjectStatusBadge status={order.xtrf_project_status} />
                 <a
-                  href={`https://automations.cethos.com/gui2/#/projectDetails?projectNum=${order.xtrf_project_number}`}
+                  href={`https://cethos.s.xtrf.us/xtrf/faces/projectAssistant/projects/project.seam?assistedProjectId=${order.xtrf_project_id}#/project`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-blue-600 hover:text-blue-800 underline"
