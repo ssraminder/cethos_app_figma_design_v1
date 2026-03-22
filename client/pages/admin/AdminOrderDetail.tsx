@@ -257,6 +257,12 @@ export default function AdminOrderDetail() {
   const [creatingXtrfInvoice, setCreatingXtrfInvoice] = useState(false);
   const [xtrfInvoiceMessage, setXtrfInvoiceMessage] = useState<{ type: 'success' | 'warning' | 'error' | 'info'; text: string } | null>(null);
 
+  // XTRF Project linking state
+  const [showXtrfLinkInput, setShowXtrfLinkInput] = useState(false);
+  const [xtrfLinkNumber, setXtrfLinkNumber] = useState("");
+  const [linkingXtrfProject, setLinkingXtrfProject] = useState(false);
+  const [xtrfLinkMessage, setXtrfLinkMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // Document management state
   const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -1819,6 +1825,46 @@ export default function AdminOrderDetail() {
     }
   };
 
+  const handleLinkXtrfProject = async () => {
+    if (!order || !xtrfLinkNumber.trim() || linkingXtrfProject) return;
+    setLinkingXtrfProject(true);
+    setXtrfLinkMessage(null);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/xtrf-link-project`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({
+          order_id: order.id,
+          xtrf_project_number: xtrfLinkNumber.trim(),
+          staff_id: currentStaff?.staffId || null,
+        }),
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        const originalNote = result.original_project_number
+          ? ` (was ${result.original_project_number})`
+          : '';
+        setXtrfLinkMessage({ type: 'success', text: `Linked to ${result.xtrf_project_number}${originalNote}` });
+        setShowXtrfLinkInput(false);
+        setXtrfLinkNumber("");
+        await fetchOrderDetails();
+      } else {
+        setXtrfLinkMessage({ type: 'error', text: result.error ?? 'Linking failed' });
+      }
+    } catch (err: any) {
+      setXtrfLinkMessage({ type: 'error', text: err.message ?? 'Request failed' });
+    } finally {
+      setLinkingXtrfProject(false);
+    }
+  };
+
   const handleCreateXtrfInvoice = async () => {
     if (!order || creatingXtrfInvoice) return;
     setCreatingXtrfInvoice(true);
@@ -2237,17 +2283,17 @@ export default function AdminOrderDetail() {
       )}
 
       {/* XTRF Project & Invoice Section */}
-      {order.xtrf_project_id && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-          <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-3">XTRF Project</p>
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+        <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-3">XTRF Project</p>
 
-          {/* Project number + link */}
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-500">Project</span>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-mono text-gray-900">{order.xtrf_project_number ?? '—'}</span>
-              <XtrfProjectStatusBadge status={order.xtrf_project_status} />
-              {order.xtrf_project_number && (
+        {/* Project number + link */}
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm text-gray-500">Project</span>
+          <div className="flex items-center gap-2">
+            {order.xtrf_project_number ? (
+              <>
+                <span className="text-sm font-mono text-gray-900">{order.xtrf_project_number}</span>
+                <XtrfProjectStatusBadge status={order.xtrf_project_status} />
                 <a
                   href={`https://automations.cethos.com/gui2/#/projectDetails?projectNum=${order.xtrf_project_number}`}
                   target="_blank"
@@ -2256,9 +2302,69 @@ export default function AdminOrderDetail() {
                 >
                   Open ↗
                 </a>
-              )}
-            </div>
+                <button
+                  onClick={() => { setShowXtrfLinkInput(true); setXtrfLinkNumber(order.xtrf_project_number ?? ""); setXtrfLinkMessage(null); }}
+                  className="text-xs text-gray-500 hover:text-blue-600 underline"
+                >
+                  Change
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-gray-400 italic">Not linked</span>
+                <button
+                  onClick={() => { setShowXtrfLinkInput(true); setXtrfLinkNumber(""); setXtrfLinkMessage(null); }}
+                  className="text-xs text-blue-600 hover:text-blue-800 underline"
+                >
+                  Link Project
+                </button>
+              </>
+            )}
           </div>
+        </div>
+
+        {/* Link / Change input */}
+        {showXtrfLinkInput && (
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="text"
+              value={xtrfLinkNumber}
+              onChange={(e) => setXtrfLinkNumber(e.target.value)}
+              placeholder="e.g. 2026/840"
+              className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <button
+              onClick={handleLinkXtrfProject}
+              disabled={linkingXtrfProject || !xtrfLinkNumber.trim()}
+              className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+            >
+              {linkingXtrfProject ? 'Linking…' : 'Save'}
+            </button>
+            <button
+              onClick={() => { setShowXtrfLinkInput(false); setXtrfLinkMessage(null); }}
+              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Link feedback */}
+        {xtrfLinkMessage && (
+          <div className={`mb-2 text-xs rounded-lg px-3 py-2 ${
+            xtrfLinkMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
+            'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {xtrfLinkMessage.text}
+          </div>
+        )}
+
+        {/* Original project number note */}
+        {order.xtrf_project_original_number && (
+          <div className="text-xs text-gray-500 mb-2">
+            Originally linked to <span className="font-mono">{order.xtrf_project_original_number}</span>
+          </div>
+        )}
 
           {/* Project cost — only show if data available */}
           {order.xtrf_project_total_agreed != null && (
@@ -2278,7 +2384,8 @@ export default function AdminOrderDetail() {
             </div>
           )}
 
-          {/* Divider */}
+          {order.xtrf_project_id && (
+          <div>
           <div className="border-t border-blue-200 my-3" />
 
           {/* XTRF Invoice */}
@@ -2350,8 +2457,8 @@ export default function AdminOrderDetail() {
               {xtrfInvoiceMessage.text}
             </div>
           )}
-        </div>
-      )}
+          </div>)}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
