@@ -134,6 +134,9 @@ interface OrderDetail {
   xtrf_project_total_cost: number | null;
   xtrf_project_currency_code: string | null;
   xtrf_project_status: string | null;
+  xtrf_project_link_source: string | null;
+  xtrf_project_linked_at: string | null;
+  xtrf_project_original_number: string | null;
 }
 
 interface InvoiceRecord {

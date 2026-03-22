@@ -37,6 +37,7 @@ interface Order {
   xtrf_invoice_payment_status: string | null;
   xtrf_project_total_agreed: number | null;
   xtrf_project_currency_code: string | null;
+  xtrf_project_number: string | null;
   xtrf_project_status: string | null;
 }
 
@@ -100,7 +101,7 @@ export default function AdminOrdersList() {
           created_at,
           estimated_delivery_date,
           xtrf_invoice_id, xtrf_invoice_number, xtrf_invoice_status, xtrf_invoice_payment_status,
-          xtrf_project_total_agreed, xtrf_project_currency_code, xtrf_project_status,
+          xtrf_project_number, xtrf_project_total_agreed, xtrf_project_currency_code, xtrf_project_status,
           customers!inner(email, full_name)
         `,
         { count: "exact" },
@@ -118,10 +119,12 @@ export default function AdminOrdersList() {
 
         if (customerIds.length > 0) {
           query = query.or(
-            `order_number.ilike.%${search}%,customer_id.in.(${customerIds.join(",")})`,
+            `order_number.ilike.%${search}%,xtrf_project_number.ilike.%${search}%,customer_id.in.(${customerIds.join(",")})`,
           );
         } else {
-          query = query.ilike("order_number", `%${search}%`);
+          query = query.or(
+            `order_number.ilike.%${search}%,xtrf_project_number.ilike.%${search}%`,
+          );
         }
       }
       if (status) {
@@ -169,6 +172,7 @@ export default function AdminOrdersList() {
           customer_email: (order.customers as any)?.email || "",
           customer_name: (order.customers as any)?.full_name || "",
           document_count: 0, // TODO: Add document count
+          xtrf_project_number: order.xtrf_project_number,
           xtrf_invoice_id: order.xtrf_invoice_id,
           xtrf_invoice_number: order.xtrf_invoice_number,
           xtrf_invoice_status: order.xtrf_invoice_status,
@@ -214,6 +218,47 @@ export default function AdminOrdersList() {
     setSearchInput("");
   };
 
+  const handleExport = () => {
+    const headers = [
+      "Order Number",
+      "Customer Name",
+      "Customer Email",
+      "Status",
+      "Work Status",
+      "Total",
+      "Rush",
+      "XTRF Project",
+      "XTRF Invoice",
+      "Estimated Delivery",
+      "Created",
+    ];
+    const rows = orders.map((o) => [
+      o.order_number,
+      o.customer_name,
+      o.customer_email,
+      o.status,
+      o.work_status,
+      (o.total_amount || 0).toFixed(2),
+      o.is_rush ? "Yes" : "No",
+      o.xtrf_project_number ?? "",
+      o.xtrf_invoice_number ?? "",
+      o.estimated_delivery_date
+        ? format(new Date(o.estimated_delivery_date), "yyyy-MM-dd")
+        : "",
+      format(new Date(o.created_at), "yyyy-MM-dd"),
+    ]);
+    const csv = [headers, ...rows]
+      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `orders-export-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const hasActiveFilters =
     search || status || workStatus || dateFrom || dateTo || rushOnly || xtrfStatus;
@@ -241,7 +286,10 @@ export default function AdminOrdersList() {
             <RefreshCw className="w-4 h-4" />
             Refresh
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
             <Download className="w-4 h-4" />
             Export
           </button>
@@ -463,6 +511,9 @@ export default function AdminOrdersList() {
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Total
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    XTRF Project
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     XTRF Invoice
                   </th>
@@ -477,14 +528,14 @@ export default function AdminOrdersList() {
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center">
+                    <td colSpan={8} className="px-6 py-12 text-center">
                       <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-6 py-12 text-center text-gray-500"
                     >
                       No orders found
@@ -538,6 +589,14 @@ export default function AdminOrdersList() {
                         <p className="text-sm font-semibold text-gray-900 tabular-nums">
                           ${(order.total_amount || 0).toFixed(2)}
                         </p>
+                      </td>
+                      {/* XTRF Project */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {order.xtrf_project_number ? (
+                          <span className="text-sm font-mono text-gray-900">{order.xtrf_project_number}</span>
+                        ) : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
                       </td>
                       {/* XTRF Invoice */}
                       <td className="px-6 py-4 whitespace-nowrap">
