@@ -37,6 +37,7 @@ interface Order {
   xtrf_invoice_payment_status: string | null;
   xtrf_project_total_agreed: number | null;
   xtrf_project_currency_code: string | null;
+  xtrf_project_number: string | null;
   xtrf_project_status: string | null;
 }
 
@@ -100,7 +101,7 @@ export default function AdminOrdersList() {
           created_at,
           estimated_delivery_date,
           xtrf_invoice_id, xtrf_invoice_number, xtrf_invoice_status, xtrf_invoice_payment_status,
-          xtrf_project_total_agreed, xtrf_project_currency_code, xtrf_project_status,
+          xtrf_project_number, xtrf_project_total_agreed, xtrf_project_currency_code, xtrf_project_status,
           customers!inner(email, full_name)
         `,
         { count: "exact" },
@@ -169,6 +170,7 @@ export default function AdminOrdersList() {
           customer_email: (order.customers as any)?.email || "",
           customer_name: (order.customers as any)?.full_name || "",
           document_count: 0, // TODO: Add document count
+          xtrf_project_number: order.xtrf_project_number,
           xtrf_invoice_id: order.xtrf_invoice_id,
           xtrf_invoice_number: order.xtrf_invoice_number,
           xtrf_invoice_status: order.xtrf_invoice_status,
@@ -463,6 +465,9 @@ export default function AdminOrdersList() {
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Total
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    XTRF Project
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     XTRF Invoice
                   </th>
@@ -477,14 +482,14 @@ export default function AdminOrdersList() {
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center">
+                    <td colSpan={8} className="px-6 py-12 text-center">
                       <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-6 py-12 text-center text-gray-500"
                     >
                       No orders found
@@ -538,6 +543,14 @@ export default function AdminOrdersList() {
                         <p className="text-sm font-semibold text-gray-900 tabular-nums">
                           ${(order.total_amount || 0).toFixed(2)}
                         </p>
+                      </td>
+                      {/* XTRF Project */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {order.xtrf_project_number ? (
+                          <span className="text-sm font-mono text-gray-900">{order.xtrf_project_number}</span>
+                        ) : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
                       </td>
                       {/* XTRF Invoice */}
                       <td className="px-6 py-4 whitespace-nowrap">
