@@ -16,6 +16,7 @@ import {
   CheckCircle,
   MoreVertical,
   Eye,
+  Settings2,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -66,6 +67,65 @@ const WORK_STATUS_OPTIONS = [
 const PAGE_SIZE = 25;
 
 const FILTERS_STORAGE_KEY = "adminOrdersFilters";
+const COLUMN_SETTINGS_KEY = "adminOrdersColumnSettings";
+
+// Column keys used for both UI and export visibility
+type ColumnKey =
+  | "orderDetails"
+  | "customer"
+  | "status"
+  | "total"
+  | "clientTotal"
+  | "vendorCost"
+  | "profit"
+  | "profitPct"
+  | "xtrfProject"
+  | "xtrfInvoice"
+  | "delivery";
+
+interface ColumnDef {
+  key: ColumnKey;
+  label: string;
+  ui: boolean;
+  export: boolean;
+}
+
+const DEFAULT_COLUMNS: ColumnDef[] = [
+  { key: "orderDetails", label: "Order Details", ui: true, export: true },
+  { key: "customer", label: "Customer", ui: true, export: true },
+  { key: "status", label: "Status", ui: true, export: true },
+  { key: "total", label: "Total", ui: true, export: true },
+  { key: "clientTotal", label: "Client Total", ui: true, export: true },
+  { key: "vendorCost", label: "Vendor Cost", ui: true, export: true },
+  { key: "profit", label: "Profit", ui: true, export: true },
+  { key: "profitPct", label: "% Profit", ui: true, export: true },
+  { key: "xtrfProject", label: "XTRF Project", ui: true, export: true },
+  { key: "xtrfInvoice", label: "XTRF Invoice", ui: true, export: true },
+  { key: "delivery", label: "Delivery", ui: true, export: true },
+];
+
+function loadColumnSettings(): ColumnDef[] {
+  try {
+    const saved = localStorage.getItem(COLUMN_SETTINGS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Record<string, { ui: boolean; export: boolean }>;
+      return DEFAULT_COLUMNS.map((col) => ({
+        ...col,
+        ui: parsed[col.key]?.ui ?? col.ui,
+        export: parsed[col.key]?.export ?? col.export,
+      }));
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_COLUMNS;
+}
+
+function saveColumnSettings(columns: ColumnDef[]) {
+  try {
+    const data: Record<string, { ui: boolean; export: boolean }> = {};
+    columns.forEach((c) => { data[c.key] = { ui: c.ui, export: c.export }; });
+    localStorage.setItem(COLUMN_SETTINGS_KEY, JSON.stringify(data));
+  } catch { /* ignore */ }
+}
 
 export default function AdminOrdersList() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -138,6 +198,19 @@ export default function AdminOrdersList() {
 
   // Actions menu state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Column visibility settings
+  const [columnSettings, setColumnSettings] = useState<ColumnDef[]>(loadColumnSettings);
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const isColVisible = (key: ColumnKey) => columnSettings.find((c) => c.key === key)?.ui !== false;
+  const isColExported = (key: ColumnKey) => columnSettings.find((c) => c.key === key)?.export !== false;
+  const toggleColumnSetting = (key: ColumnKey, field: "ui" | "export") => {
+    setColumnSettings((prev) => {
+      const next = prev.map((c) => c.key === key ? { ...c, [field]: !c[field] } : c);
+      saveColumnSettings(next);
+      return next;
+    });
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -296,54 +369,35 @@ export default function AdminOrdersList() {
   };
 
   const handleExport = () => {
-    const headers = [
-      "Order Number",
-      "Customer Name",
-      "Customer Email",
-      "Status",
-      "Work Status",
-      "Total",
-      "Rush",
-      "XTRF Project",
-      "Client Total",
-      "Vendor Cost",
-      "Profit",
-      "% Profit",
-      "Currency",
-      "XTRF Invoice",
-      "Estimated Delivery",
-      "Created",
+    // Map column keys to export headers and value extractors
+    const exportColumns: { key: ColumnKey; headers: string[]; values: (o: Order) => string[] }[] = [
+      { key: "orderDetails", headers: ["Order Number", "Rush", "Created"], values: (o) => [o.order_number, o.is_rush ? "Yes" : "No", format(new Date(o.created_at), "yyyy-MM-dd")] },
+      { key: "customer", headers: ["Customer Name", "Customer Email"], values: (o) => [o.customer_name, o.customer_email] },
+      { key: "status", headers: ["Status", "Work Status"], values: (o) => [o.status, o.work_status] },
+      { key: "total", headers: ["Total"], values: (o) => [(o.total_amount || 0).toFixed(2)] },
+      { key: "clientTotal", headers: ["Client Total"], values: (o) => [o.xtrf_project_total_agreed != null ? o.xtrf_project_total_agreed.toFixed(2) : ""] },
+      { key: "vendorCost", headers: ["Vendor Cost"], values: (o) => [o.xtrf_project_total_cost != null && o.xtrf_project_total_cost > 0 ? o.xtrf_project_total_cost.toFixed(2) : ""] },
+      { key: "profit", headers: ["Profit", "Currency"], values: (o) => {
+        const clientTotal = o.xtrf_project_total_agreed;
+        const vendorCost = o.xtrf_project_total_cost;
+        const profit = clientTotal != null && vendorCost != null && vendorCost > 0 ? clientTotal - vendorCost : null;
+        return [profit != null ? profit.toFixed(2) : "", o.xtrf_project_currency_code ?? ""];
+      }},
+      { key: "profitPct", headers: ["% Profit"], values: (o) => {
+        const clientTotal = o.xtrf_project_total_agreed;
+        const vendorCost = o.xtrf_project_total_cost;
+        const profit = clientTotal != null && vendorCost != null && vendorCost > 0 ? clientTotal - vendorCost : null;
+        const pct = profit != null && clientTotal != null && clientTotal > 0 ? (profit / clientTotal) * 100 : null;
+        return [pct != null ? pct.toFixed(1) : ""];
+      }},
+      { key: "xtrfProject", headers: ["XTRF Project"], values: (o) => [o.xtrf_project_number ?? ""] },
+      { key: "xtrfInvoice", headers: ["XTRF Invoice"], values: (o) => [o.xtrf_invoice_number ?? ""] },
+      { key: "delivery", headers: ["Estimated Delivery"], values: (o) => [o.estimated_delivery_date ? format(new Date(o.estimated_delivery_date), "yyyy-MM-dd") : ""] },
     ];
-    const rows = orders.map((o) => {
-      const clientTotal = o.xtrf_project_total_agreed;
-      const vendorCost = o.xtrf_project_total_cost;
-      const profit = clientTotal != null && vendorCost != null && vendorCost > 0
-        ? clientTotal - vendorCost
-        : null;
-      const profitPct = profit != null && clientTotal != null && clientTotal > 0
-        ? (profit / clientTotal) * 100
-        : null;
-      return [
-        o.order_number,
-        o.customer_name,
-        o.customer_email,
-        o.status,
-        o.work_status,
-        (o.total_amount || 0).toFixed(2),
-        o.is_rush ? "Yes" : "No",
-        o.xtrf_project_number ?? "",
-        clientTotal != null ? clientTotal.toFixed(2) : "",
-        vendorCost != null && vendorCost > 0 ? vendorCost.toFixed(2) : "",
-        profit != null ? profit.toFixed(2) : "",
-        profitPct != null ? profitPct.toFixed(1) : "",
-        o.xtrf_project_currency_code ?? "",
-        o.xtrf_invoice_number ?? "",
-        o.estimated_delivery_date
-          ? format(new Date(o.estimated_delivery_date), "yyyy-MM-dd")
-          : "",
-        format(new Date(o.created_at), "yyyy-MM-dd"),
-      ];
-    });
+
+    const visibleExportCols = exportColumns.filter((c) => isColExported(c.key));
+    const headers = visibleExportCols.flatMap((c) => c.headers);
+    const rows = orders.map((o) => visibleExportCols.flatMap((c) => c.values(o)));
     const csv = [headers, ...rows]
       .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
       .join("\n");
@@ -389,6 +443,14 @@ export default function AdminOrdersList() {
           >
             <Download className="w-4 h-4" />
             Export
+          </button>
+          <button
+            onClick={() => setShowColumnSettings(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Column Settings"
+          >
+            <Settings2 className="w-4 h-4" />
+            Columns
           </button>
         </div>
       </div>
@@ -648,39 +710,17 @@ export default function AdminOrdersList() {
             <table className="w-full min-w-[1200px]">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Order Details
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Customer
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Client Total
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Vendor Cost
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Profit
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    % Profit
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    XTRF Project
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    XTRF Invoice
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Delivery
-                  </th>
+                  {isColVisible("orderDetails") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order Details</th>}
+                  {isColVisible("customer") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>}
+                  {isColVisible("status") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>}
+                  {isColVisible("total") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>}
+                  {isColVisible("clientTotal") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Client Total</th>}
+                  {isColVisible("vendorCost") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor Cost</th>}
+                  {isColVisible("profit") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Profit</th>}
+                  {isColVisible("profitPct") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">% Profit</th>}
+                  {isColVisible("xtrfProject") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">XTRF Project</th>}
+                  {isColVisible("xtrfInvoice") && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">XTRF Invoice</th>}
+                  {isColVisible("delivery") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Delivery</th>}
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -689,14 +729,14 @@ export default function AdminOrdersList() {
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={12} className="px-6 py-12 text-center">
+                    <td colSpan={columnSettings.filter(c => c.ui).length + 1} className="px-6 py-12 text-center">
                       <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={12}
+                      colSpan={columnSettings.filter(c => c.ui).length + 1}
                       className="px-6 py-12 text-center text-gray-500"
                     >
                       No orders found
@@ -708,135 +748,146 @@ export default function AdminOrdersList() {
                       key={order.id}
                       className="hover:bg-gray-50 transition-colors"
                     >
-                      {/* Combined Order Details */}
-                      <td className="px-4 py-3">
-                        <Link
-                          to={`/admin/orders/${order.id}`}
-                          className="block group"
-                        >
-                          <p className="text-sm font-semibold text-gray-900 font-mono group-hover:text-teal-600">
-                            {order.order_number}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {format(new Date(order.created_at), "MMM d, yyyy")}
-                            {order.is_rush && (
-                              <span className="ml-1.5 text-amber-600 font-medium">
-                                ⚡ Rush
-                              </span>
-                            )}
-                          </p>
-                        </Link>
-                      </td>
+                      {/* Order Details */}
+                      {isColVisible("orderDetails") && (
+                        <td className="px-4 py-3">
+                          <Link to={`/admin/orders/${order.id}`} className="block group">
+                            <p className="text-sm font-semibold text-gray-900 font-mono group-hover:text-teal-600">
+                              {order.order_number}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {format(new Date(order.created_at), "MMM d, yyyy")}
+                              {order.is_rush && (
+                                <span className="ml-1.5 text-amber-600 font-medium">⚡ Rush</span>
+                              )}
+                            </p>
+                          </Link>
+                        </td>
+                      )}
                       {/* Customer */}
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-gray-900">
-                          {order.customer_name || "—"}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {order.customer_email || "—"}
-                        </p>
-                      </td>
-                      {/* Combined Status Column */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex flex-col gap-1">
-                          <OrderStatusBadge status={order.status} />
-                          <WorkStatusBadge status={order.work_status} />
-                          <XtrfProjectStatusBadge status={order.xtrf_project_status} />
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <p className="text-sm font-semibold text-gray-900 tabular-nums">
-                          ${(order.total_amount || 0).toFixed(2)}
-                        </p>
-                      </td>
-                      {/* Client Total */}
-                      <td className="px-4 py-3 text-right">
-                        {order.xtrf_project_total_agreed != null ? (
-                          <span className="text-sm text-gray-900 tabular-nums">
-                            {order.xtrf_project_total_agreed.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-gray-300">—</span>
-                        )}
-                      </td>
-                      {/* Vendor Cost */}
-                      <td className="px-4 py-3 text-right">
-                        {order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (
-                          <span className="text-sm text-gray-700 tabular-nums">
-                            {order.xtrf_project_total_cost.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-gray-300">—</span>
-                        )}
-                      </td>
-                      {/* Profit */}
-                      <td className="px-4 py-3 text-right">
-                        {order.xtrf_project_total_agreed != null && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
-                          const profit = order.xtrf_project_total_agreed - order.xtrf_project_total_cost;
-                          return (
-                            <span className={`text-sm font-medium tabular-nums ${profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                              {profit.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
-                            </span>
-                          );
-                        })() : (
-                          <span className="text-sm text-gray-300">—</span>
-                        )}
-                      </td>
-                      {/* % Profit */}
-                      <td className="px-4 py-3 text-right">
-                        {order.xtrf_project_total_agreed != null && order.xtrf_project_total_agreed > 0 && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
-                          const profitPct = ((order.xtrf_project_total_agreed - order.xtrf_project_total_cost) / order.xtrf_project_total_agreed) * 100;
-                          return (
-                            <span className={`text-sm font-medium tabular-nums ${profitPct >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                              {profitPct.toFixed(1)}%
-                            </span>
-                          );
-                        })() : (
-                          <span className="text-sm text-gray-300">—</span>
-                        )}
-                      </td>
-                      {/* XTRF Project */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {order.xtrf_project_number ? (
-                          <span className="text-sm font-mono text-gray-900">{order.xtrf_project_number}</span>
-                        ) : (
-                          <span className="text-sm text-gray-300">—</span>
-                        )}
-                      </td>
-                      {/* XTRF Invoice */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {order.xtrf_invoice_number ? (
+                      {isColVisible("customer") && (
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-medium text-gray-900">{order.customer_name || "—"}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{order.customer_email || "—"}</p>
+                        </td>
+                      )}
+                      {/* Status */}
+                      {isColVisible("status") && (
+                        <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex flex-col gap-1">
-                            <span className="text-sm font-mono text-gray-900">{order.xtrf_invoice_number}</span>
-                            <div className="flex items-center gap-1">
-                              <XtrfInvoiceStatusBadge status={order.xtrf_invoice_status} />
-                              <XtrfPaymentStatusBadge status={order.xtrf_invoice_payment_status} />
-                            </div>
+                            <OrderStatusBadge status={order.status} />
+                            <WorkStatusBadge status={order.work_status} />
+                            <XtrfProjectStatusBadge status={order.xtrf_project_status} />
                           </div>
-                        ) : order.xtrf_project_total_agreed != null ? (
-                          <div className="flex flex-col gap-1">
-                            <span className="text-xs text-gray-400 italic">No invoice</span>
-                            <span className="text-xs text-gray-500">
+                        </td>
+                      )}
+                      {/* Total */}
+                      {isColVisible("total") && (
+                        <td className="px-4 py-3 text-right">
+                          <p className="text-sm font-semibold text-gray-900 tabular-nums">
+                            ${(order.total_amount || 0).toFixed(2)}
+                          </p>
+                        </td>
+                      )}
+                      {/* Client Total */}
+                      {isColVisible("clientTotal") && (
+                        <td className="px-4 py-3 text-right">
+                          {order.xtrf_project_total_agreed != null ? (
+                            <span className="text-sm text-gray-900 tabular-nums">
                               {order.xtrf_project_total_agreed.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
                             </span>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-300">—</span>
-                        )}
-                      </td>
+                          ) : (
+                            <span className="text-sm text-gray-300">—</span>
+                          )}
+                        </td>
+                      )}
+                      {/* Vendor Cost */}
+                      {isColVisible("vendorCost") && (
+                        <td className="px-4 py-3 text-right">
+                          {order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (
+                            <span className="text-sm text-gray-700 tabular-nums">
+                              {order.xtrf_project_total_cost.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-300">—</span>
+                          )}
+                        </td>
+                      )}
+                      {/* Profit */}
+                      {isColVisible("profit") && (
+                        <td className="px-4 py-3 text-right">
+                          {order.xtrf_project_total_agreed != null && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
+                            const profit = order.xtrf_project_total_agreed - order.xtrf_project_total_cost;
+                            return (
+                              <span className={`text-sm font-medium tabular-nums ${profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                {profit.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                              </span>
+                            );
+                          })() : (
+                            <span className="text-sm text-gray-300">—</span>
+                          )}
+                        </td>
+                      )}
+                      {/* % Profit */}
+                      {isColVisible("profitPct") && (
+                        <td className="px-4 py-3 text-right">
+                          {order.xtrf_project_total_agreed != null && order.xtrf_project_total_agreed > 0 && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
+                            const profitPct = ((order.xtrf_project_total_agreed - order.xtrf_project_total_cost) / order.xtrf_project_total_agreed) * 100;
+                            return (
+                              <span className={`text-sm font-medium tabular-nums ${profitPct >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                {profitPct.toFixed(1)}%
+                              </span>
+                            );
+                          })() : (
+                            <span className="text-sm text-gray-300">—</span>
+                          )}
+                        </td>
+                      )}
+                      {/* XTRF Project */}
+                      {isColVisible("xtrfProject") && (
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {order.xtrf_project_number ? (
+                            <span className="text-sm font-mono text-gray-900">{order.xtrf_project_number}</span>
+                          ) : (
+                            <span className="text-sm text-gray-300">—</span>
+                          )}
+                        </td>
+                      )}
+                      {/* XTRF Invoice */}
+                      {isColVisible("xtrfInvoice") && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {order.xtrf_invoice_number ? (
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm font-mono text-gray-900">{order.xtrf_invoice_number}</span>
+                              <div className="flex items-center gap-1">
+                                <XtrfInvoiceStatusBadge status={order.xtrf_invoice_status} />
+                                <XtrfPaymentStatusBadge status={order.xtrf_invoice_payment_status} />
+                              </div>
+                            </div>
+                          ) : order.xtrf_project_total_agreed != null ? (
+                            <div className="flex flex-col gap-1">
+                              <span className="text-xs text-gray-400 italic">No invoice</span>
+                              <span className="text-xs text-gray-500">
+                                {order.xtrf_project_total_agreed.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-gray-300">—</span>
+                          )}
+                        </td>
+                      )}
                       {/* Delivery Date */}
-                      <td className="px-4 py-3">
-                        {order.estimated_delivery_date ? (
-                          <p className="text-sm text-gray-700">
-                            {format(
-                              new Date(order.estimated_delivery_date),
-                              "MMM d, yyyy",
-                            )}
-                          </p>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
-                      </td>
+                      {isColVisible("delivery") && (
+                        <td className="px-4 py-3">
+                          {order.estimated_delivery_date ? (
+                            <p className="text-sm text-gray-700">
+                              {format(new Date(order.estimated_delivery_date), "MMM d, yyyy")}
+                            </p>
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </td>
+                      )}
                       {/* Actions Meatball Menu */}
                       <td className="px-4 py-3 text-center relative">
                         <button
@@ -906,6 +957,74 @@ export default function AdminOrdersList() {
             </div>
           )}
         </div>
+
+        {/* Column Settings Modal */}
+        {showColumnSettings && (
+          <>
+            <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setShowColumnSettings(false)} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">Column Settings</h3>
+                  <button onClick={() => setShowColumnSettings(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+                <div className="px-6 py-4">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-xs font-medium text-gray-500 uppercase">
+                        <th className="pb-3">Column</th>
+                        <th className="pb-3 text-center w-20">UI</th>
+                        <th className="pb-3 text-center w-20">Export</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {columnSettings.map((col) => (
+                        <tr key={col.key} className="hover:bg-gray-50">
+                          <td className="py-2.5 text-sm text-gray-700">{col.label}</td>
+                          <td className="py-2.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={col.ui}
+                              onChange={() => toggleColumnSetting(col.key, "ui")}
+                              className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="py-2.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={col.export}
+                              onChange={() => toggleColumnSetting(col.key, "export")}
+                              className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-6 py-3 border-t border-gray-200 flex justify-between">
+                  <button
+                    onClick={() => {
+                      setColumnSettings(DEFAULT_COLUMNS);
+                      saveColumnSettings(DEFAULT_COLUMNS);
+                    }}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Reset to defaults
+                  </button>
+                  <button
+                    onClick={() => setShowColumnSettings(false)}
+                    className="px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
