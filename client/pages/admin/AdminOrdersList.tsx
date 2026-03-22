@@ -36,6 +36,7 @@ interface Order {
   xtrf_invoice_status: string | null;
   xtrf_invoice_payment_status: string | null;
   xtrf_project_total_agreed: number | null;
+  xtrf_project_total_cost: number | null;
   xtrf_project_currency_code: string | null;
   xtrf_project_number: string | null;
   xtrf_project_status: string | null;
@@ -101,7 +102,7 @@ export default function AdminOrdersList() {
           created_at,
           estimated_delivery_date,
           xtrf_invoice_id, xtrf_invoice_number, xtrf_invoice_status, xtrf_invoice_payment_status,
-          xtrf_project_number, xtrf_project_total_agreed, xtrf_project_currency_code, xtrf_project_status,
+          xtrf_project_number, xtrf_project_total_agreed, xtrf_project_total_cost, xtrf_project_currency_code, xtrf_project_status,
           customers!inner(email, full_name)
         `,
         { count: "exact" },
@@ -178,6 +179,7 @@ export default function AdminOrdersList() {
           xtrf_invoice_status: order.xtrf_invoice_status,
           xtrf_invoice_payment_status: order.xtrf_invoice_payment_status,
           xtrf_project_total_agreed: order.xtrf_project_total_agreed,
+          xtrf_project_total_cost: order.xtrf_project_total_cost,
           xtrf_project_currency_code: order.xtrf_project_currency_code,
           xtrf_project_status: order.xtrf_project_status,
         })) || [];
@@ -228,25 +230,45 @@ export default function AdminOrdersList() {
       "Total",
       "Rush",
       "XTRF Project",
+      "Client Total",
+      "Vendor Cost",
+      "Profit",
+      "ROI %",
+      "Currency",
       "XTRF Invoice",
       "Estimated Delivery",
       "Created",
     ];
-    const rows = orders.map((o) => [
-      o.order_number,
-      o.customer_name,
-      o.customer_email,
-      o.status,
-      o.work_status,
-      (o.total_amount || 0).toFixed(2),
-      o.is_rush ? "Yes" : "No",
-      o.xtrf_project_number ?? "",
-      o.xtrf_invoice_number ?? "",
-      o.estimated_delivery_date
-        ? format(new Date(o.estimated_delivery_date), "yyyy-MM-dd")
-        : "",
-      format(new Date(o.created_at), "yyyy-MM-dd"),
-    ]);
+    const rows = orders.map((o) => {
+      const clientTotal = o.xtrf_project_total_agreed;
+      const vendorCost = o.xtrf_project_total_cost;
+      const profit = clientTotal != null && vendorCost != null && vendorCost > 0
+        ? clientTotal - vendorCost
+        : null;
+      const roi = profit != null && vendorCost != null && vendorCost > 0
+        ? (profit / vendorCost) * 100
+        : null;
+      return [
+        o.order_number,
+        o.customer_name,
+        o.customer_email,
+        o.status,
+        o.work_status,
+        (o.total_amount || 0).toFixed(2),
+        o.is_rush ? "Yes" : "No",
+        o.xtrf_project_number ?? "",
+        clientTotal != null ? clientTotal.toFixed(2) : "",
+        vendorCost != null && vendorCost > 0 ? vendorCost.toFixed(2) : "",
+        profit != null ? profit.toFixed(2) : "",
+        roi != null ? roi.toFixed(1) : "",
+        o.xtrf_project_currency_code ?? "",
+        o.xtrf_invoice_number ?? "",
+        o.estimated_delivery_date
+          ? format(new Date(o.estimated_delivery_date), "yyyy-MM-dd")
+          : "",
+        format(new Date(o.created_at), "yyyy-MM-dd"),
+      ];
+    });
     const csv = [headers, ...rows]
       .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
       .join("\n");
@@ -511,6 +533,18 @@ export default function AdminOrdersList() {
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Total
                   </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Client Total
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Vendor Cost
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Profit
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    ROI %
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     XTRF Project
                   </th>
@@ -528,14 +562,14 @@ export default function AdminOrdersList() {
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
+                    <td colSpan={12} className="px-6 py-12 text-center">
                       <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={12}
                       className="px-6 py-12 text-center text-gray-500"
                     >
                       No orders found
@@ -589,6 +623,52 @@ export default function AdminOrdersList() {
                         <p className="text-sm font-semibold text-gray-900 tabular-nums">
                           ${(order.total_amount || 0).toFixed(2)}
                         </p>
+                      </td>
+                      {/* Client Total */}
+                      <td className="px-4 py-3 text-right">
+                        {order.xtrf_project_total_agreed != null ? (
+                          <span className="text-sm text-gray-900 tabular-nums">
+                            {order.xtrf_project_total_agreed.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
+                      </td>
+                      {/* Vendor Cost */}
+                      <td className="px-4 py-3 text-right">
+                        {order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (
+                          <span className="text-sm text-gray-700 tabular-nums">
+                            {order.xtrf_project_total_cost.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
+                      </td>
+                      {/* Profit */}
+                      <td className="px-4 py-3 text-right">
+                        {order.xtrf_project_total_agreed != null && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
+                          const profit = order.xtrf_project_total_agreed - order.xtrf_project_total_cost;
+                          return (
+                            <span className={`text-sm font-medium tabular-nums ${profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                              {profit.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                            </span>
+                          );
+                        })() : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
+                      </td>
+                      {/* ROI % */}
+                      <td className="px-4 py-3 text-right">
+                        {order.xtrf_project_total_agreed != null && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
+                          const roi = ((order.xtrf_project_total_agreed - order.xtrf_project_total_cost) / order.xtrf_project_total_cost) * 100;
+                          return (
+                            <span className={`text-sm font-medium tabular-nums ${roi >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                              {roi.toFixed(1)}%
+                            </span>
+                          );
+                        })() : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
                       </td>
                       {/* XTRF Project */}
                       <td className="px-4 py-3 whitespace-nowrap">
