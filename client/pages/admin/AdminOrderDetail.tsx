@@ -130,6 +130,10 @@ interface OrderDetail {
   xtrf_invoice_number: string | null;
   xtrf_invoice_status: string | null;
   xtrf_invoice_payment_status: string | null;
+  xtrf_project_total_agreed: number | null;
+  xtrf_project_total_cost: number | null;
+  xtrf_project_currency_code: string | null;
+  xtrf_project_status: string | null;
 }
 
 interface InvoiceRecord {
@@ -245,6 +249,10 @@ export default function AdminOrderDetail() {
   // Balance payment request state
   const [requestingPayment, setRequestingPayment] = useState(false);
   const [paymentLinkUrl, setPaymentLinkUrl] = useState<string | null>(null);
+
+  // XTRF Invoice creation state
+  const [creatingXtrfInvoice, setCreatingXtrfInvoice] = useState(false);
+  const [xtrfInvoiceMessage, setXtrfInvoiceMessage] = useState<{ type: 'success' | 'warning' | 'error' | 'info'; text: string } | null>(null);
 
   // Document management state
   const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
@@ -1808,6 +1816,44 @@ export default function AdminOrderDetail() {
     }
   };
 
+  const handleCreateXtrfInvoice = async () => {
+    if (!order || creatingXtrfInvoice) return;
+    setCreatingXtrfInvoice(true);
+    setXtrfInvoiceMessage(null);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/xtrf-create-invoice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({ order_id: order.id, staff_id: currentStaff?.staffId || null }),
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        const warningText = result.warning ? ` \u26a0\ufe0f ${result.warning}` : '';
+        setXtrfInvoiceMessage({
+          type: result.warning ? 'warning' : 'success',
+          text: `\u2705 Invoice ${result.xtrf_invoice_number ?? result.xtrf_invoice_id} created in XTRF.${warningText}`,
+        });
+        await fetchOrderDetails();
+      } else if (result.skipped) {
+        setXtrfInvoiceMessage({ type: 'info', text: `\u2139\ufe0f ${result.message}` });
+        await fetchOrderDetails();
+      } else {
+        setXtrfInvoiceMessage({ type: 'error', text: `\u274c ${result.error ?? 'Invoice creation failed'}` });
+      }
+    } catch (err: any) {
+      setXtrfInvoiceMessage({ type: 'error', text: `\u274c ${err.message ?? 'Request failed'}` });
+    } finally {
+      setCreatingXtrfInvoice(false);
+    }
+  };
+
   // ── Inline chat: fetch conversation messages ──
   const fetchConversationMessages = async () => {
     const customerId = order?.customer_id;
@@ -2187,69 +2233,120 @@ export default function AdminOrderDetail() {
         </div>
       )}
 
-      {/* XTRF Project Info Banner */}
-      {order.xtrf_project_number && (
-        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <ExternalLink className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-semibold text-blue-900">XTRF Project</p>
-                <div className="mt-1 space-y-1 text-sm text-blue-800">
-                  <p>
-                    Project Number: <span className="font-medium">{order.xtrf_project_number}</span>
-                  </p>
-                  <p className="flex items-center gap-2">
-                    XTRF Status:{" "}
-                    <span
-                      className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-                        order.xtrf_status === "CLOSED"
-                          ? "bg-green-100 text-green-700"
-                          : order.xtrf_status === "OPENED"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-gray-100 text-gray-500"
-                      }`}
-                    >
-                      {order.xtrf_status || "Not set"}
-                    </span>
-                  </p>
-                  {order.xtrf_last_synced_at && (
-                    <p className="text-blue-600 text-xs">
-                      Last Synced: {format(new Date(order.xtrf_last_synced_at), "MMM d, yyyy h:mm a")}
-                    </p>
-                  )}
-                </div>
+      {/* XTRF Project & Invoice Section */}
+      {order.xtrf_project_id && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+          <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-3">XTRF Project</p>
+
+          {/* Project number + link */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-gray-500">Project</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-mono text-gray-900">{order.xtrf_project_number ?? '—'}</span>
+              <XtrfProjectStatusBadge status={order.xtrf_project_status} />
+              {order.xtrf_project_number && (
+                <a
+                  href={`https://automations.cethos.com/gui2/#/projectDetails?projectNum=${order.xtrf_project_number}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 underline"
+                >
+                  Open ↗
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* Project cost — only show if data available */}
+          {order.xtrf_project_total_agreed != null && (
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-500">Client Total</span>
+              <span className="text-sm font-medium text-gray-900">
+                {order.xtrf_project_total_agreed.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+              </span>
+            </div>
+          )}
+          {order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 && (
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-500">Vendor Cost</span>
+              <span className="text-sm text-gray-700">
+                {order.xtrf_project_total_cost.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+              </span>
+            </div>
+          )}
+
+          {/* Divider */}
+          <div className="border-t border-blue-200 my-3" />
+
+          {/* XTRF Invoice */}
+          <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">XTRF Invoice</p>
+
+          {order.xtrf_invoice_number ? (
+            /* Invoice exists */
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">Invoice</span>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <span className="text-sm font-mono text-gray-900">{order.xtrf_invoice_number}</span>
+                <XtrfInvoiceStatusBadge status={order.xtrf_invoice_status} />
+                <XtrfPaymentStatusBadge status={order.xtrf_invoice_payment_status} />
+                <a
+                  href={`https://automations.cethos.com/gui2/#/customerInvoice/form?action=edit&id=${order.xtrf_invoice_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 underline"
+                >
+                  Open ↗
+                </a>
               </div>
             </div>
-            <a
-              href={`https://automations.cethos.com/gui2/#/projectDetails?projectNum=${order.xtrf_project_number}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors whitespace-nowrap"
-            >
-              Open in XTRF
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
-        </div>
-      )}
+          ) : (
+            /* No invoice yet */
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">Invoice</span>
+              <span className="text-sm text-gray-400 italic">Not created</span>
+            </div>
+          )}
 
-      {order.xtrf_invoice_number && (
-        <div className="flex items-center justify-between py-2 border-t border-gray-100">
-          <span className="text-sm text-gray-500">XTRF Invoice</span>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-mono text-gray-900">{order.xtrf_invoice_number}</span>
-            <XtrfInvoiceStatusBadge status={order.xtrf_invoice_status} />
-            <XtrfPaymentStatusBadge status={order.xtrf_invoice_payment_status} />
-            <a
-              href={`https://automations.cethos.com/gui2/#/customerInvoice/form?action=edit&id=${order.xtrf_invoice_id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:text-blue-800 underline ml-1"
-            >
-              Open in XTRF ↗
-            </a>
-          </div>
+          {/* Create Invoice button — show when no invoice exists */}
+          {!order.xtrf_invoice_number && (
+            <div className="mt-3">
+              {/* Open project warning */}
+              {order.xtrf_project_status === 'OPENED' && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+                  ⚠️ Project is still <strong>Open</strong> in XTRF. Best practice is to close it before invoicing. You can still proceed.
+                </p>
+              )}
+              <button
+                onClick={handleCreateXtrfInvoice}
+                disabled={creatingXtrfInvoice}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+              >
+                {creatingXtrfInvoice ? (
+                  <>
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    Syncing & Creating…
+                  </>
+                ) : (
+                  'Create XTRF Invoice'
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Feedback message */}
+          {xtrfInvoiceMessage && (
+            <div className={`mt-2 text-xs rounded-lg px-3 py-2 ${
+              xtrfInvoiceMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
+              xtrfInvoiceMessage.type === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+              xtrfInvoiceMessage.type === 'error'   ? 'bg-red-50 text-red-700 border border-red-200' :
+              'bg-blue-50 text-blue-700 border border-blue-200'
+            }`}>
+              {xtrfInvoiceMessage.text}
+            </div>
+          )}
         </div>
       )}
 
@@ -4751,4 +4848,15 @@ function XtrfPaymentStatusBadge({ status }: { status?: string | null }) {
       {labels[status] || status}
     </span>
   );
+}
+
+function XtrfProjectStatusBadge({ status }: { status?: string | null }) {
+  const cfg: Record<string, { style: string; label: string }> = {
+    OPENED:    { style: 'bg-blue-100 text-blue-700',   label: 'Open' },
+    CLOSED:    { style: 'bg-green-100 text-green-700', label: 'Closed' },
+    CANCELLED: { style: 'bg-red-100 text-red-700',     label: 'Cancelled' },
+  };
+  if (!status) return null;
+  const { style, label } = cfg[status] ?? { style: 'bg-gray-100 text-gray-500', label: status };
+  return <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${style}`}>{label}</span>;
 }

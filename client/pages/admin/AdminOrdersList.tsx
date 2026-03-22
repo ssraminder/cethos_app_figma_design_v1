@@ -35,6 +35,9 @@ interface Order {
   xtrf_invoice_number: string | null;
   xtrf_invoice_status: string | null;
   xtrf_invoice_payment_status: string | null;
+  xtrf_project_total_agreed: number | null;
+  xtrf_project_currency_code: string | null;
+  xtrf_project_status: string | null;
 }
 
 const STATUS_OPTIONS = [
@@ -96,6 +99,7 @@ export default function AdminOrdersList() {
           created_at,
           estimated_delivery_date,
           xtrf_invoice_id, xtrf_invoice_number, xtrf_invoice_status, xtrf_invoice_payment_status,
+          xtrf_project_total_agreed, xtrf_project_currency_code, xtrf_project_status,
           customers!inner(email, full_name)
         `,
         { count: "exact" },
@@ -163,6 +167,9 @@ export default function AdminOrdersList() {
           xtrf_invoice_number: order.xtrf_invoice_number,
           xtrf_invoice_status: order.xtrf_invoice_status,
           xtrf_invoice_payment_status: order.xtrf_invoice_payment_status,
+          xtrf_project_total_agreed: order.xtrf_project_total_agreed,
+          xtrf_project_currency_code: order.xtrf_project_currency_code,
+          xtrf_project_status: order.xtrf_project_status,
         })) || [];
 
       setOrders(transformedOrders);
@@ -507,7 +514,7 @@ export default function AdminOrdersList() {
                         </p>
                       </td>
                       {/* XTRF Invoice */}
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         {order.xtrf_invoice_number ? (
                           <div className="flex flex-col gap-1">
                             <span className="text-sm font-mono text-gray-900">{order.xtrf_invoice_number}</span>
@@ -516,8 +523,15 @@ export default function AdminOrdersList() {
                               <XtrfPaymentStatusBadge status={order.xtrf_invoice_payment_status} />
                             </div>
                           </div>
+                        ) : order.xtrf_project_total_agreed != null ? (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-400 italic">No invoice</span>
+                            <span className="text-xs text-gray-500">
+                              {order.xtrf_project_total_agreed.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                            </span>
+                          </div>
                         ) : (
-                          <span className="text-sm text-gray-400">—</span>
+                          <span className="text-sm text-gray-300">—</span>
                         )}
                       </td>
                       {/* Delivery Date */}
