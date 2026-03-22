@@ -2534,6 +2534,26 @@ export default function AdminOrderDetail() {
               </span>
             </div>
           )}
+          {order.xtrf_project_total_agreed != null && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 && (() => {
+            const profit = order.xtrf_project_total_agreed - order.xtrf_project_total_cost;
+            const roi = (profit / order.xtrf_project_total_cost) * 100;
+            return (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-500">Profit</span>
+                  <span className={`text-sm font-medium ${profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                    {profit.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-500">ROI</span>
+                  <span className={`text-sm font-medium ${roi >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                    {roi.toFixed(1)}%
+                  </span>
+                </div>
+              </>
+            );
+          })()}
 
           {order.xtrf_project_id && (
           <div>

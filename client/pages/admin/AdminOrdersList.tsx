@@ -36,6 +36,7 @@ interface Order {
   xtrf_invoice_status: string | null;
   xtrf_invoice_payment_status: string | null;
   xtrf_project_total_agreed: number | null;
+  xtrf_project_total_cost: number | null;
   xtrf_project_currency_code: string | null;
   xtrf_project_number: string | null;
   xtrf_project_status: string | null;
@@ -64,8 +65,30 @@ const WORK_STATUS_OPTIONS = [
 
 const PAGE_SIZE = 25;
 
+const FILTERS_STORAGE_KEY = "adminOrdersFilters";
+
 export default function AdminOrdersList() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [restoredFromSession, setRestoredFromSession] = useState(false);
+
+  // Restore filters from sessionStorage on mount if URL has no filter params
+  useEffect(() => {
+    const filterKeys = ["search", "status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus"];
+    const hasUrlFilters = filterKeys.some(k => searchParams.has(k));
+    if (!hasUrlFilters) {
+      try {
+        const saved = sessionStorage.getItem(FILTERS_STORAGE_KEY);
+        if (saved) {
+          const restored = new URLSearchParams(saved);
+          // Only restore if there are actual filter values
+          if (filterKeys.some(k => restored.has(k))) {
+            setSearchParams(restored, { replace: true });
+          }
+        }
+      } catch { /* ignore storage errors */ }
+    }
+    setRestoredFromSession(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -79,10 +102,39 @@ export default function AdminOrdersList() {
   const dateTo = searchParams.get("to") || "";
   const rushOnly = searchParams.get("rush") === "true";
   const xtrfStatus = searchParams.get("xtrfStatus") || "";
+  const xtrfInvoiceStatuses = searchParams.get("xtrfInvStatus")?.split(",").filter(Boolean) || [];
+  const xtrfPaymentStatuses = searchParams.get("xtrfPayStatus")?.split(",").filter(Boolean) || [];
   const page = parseInt(searchParams.get("page") || "1", 10);
 
+  // Persist filters to sessionStorage whenever they change
+  useEffect(() => {
+    if (!restoredFromSession) return;
+    try {
+      sessionStorage.setItem(FILTERS_STORAGE_KEY, searchParams.toString());
+    } catch { /* ignore storage errors */ }
+  }, [searchParams, restoredFromSession]);
+
   const [searchInput, setSearchInput] = useState(search);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(() => {
+    // Auto-open filter panel if there are active filters (from URL or session)
+    const filterKeys = ["status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus"];
+    return filterKeys.some(k => searchParams.has(k));
+  });
+
+  // Keep searchInput in sync when search param changes (e.g. after session restore)
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
+  // Auto-expand filter panel when filters become active
+  useEffect(() => {
+    if (restoredFromSession) {
+      const filterKeys = ["status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus"];
+      if (filterKeys.some(k => searchParams.has(k))) {
+        setShowFilters(true);
+      }
+    }
+  }, [searchParams, restoredFromSession]);
 
   // Actions menu state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -101,7 +153,7 @@ export default function AdminOrdersList() {
           created_at,
           estimated_delivery_date,
           xtrf_invoice_id, xtrf_invoice_number, xtrf_invoice_status, xtrf_invoice_payment_status,
-          xtrf_project_number, xtrf_project_total_agreed, xtrf_project_currency_code, xtrf_project_status,
+          xtrf_project_number, xtrf_project_total_agreed, xtrf_project_total_cost, xtrf_project_currency_code, xtrf_project_status,
           customers!inner(email, full_name)
         `,
         { count: "exact" },
@@ -147,6 +199,21 @@ export default function AdminOrdersList() {
       } else if (xtrfStatus) {
         query = query.eq("xtrf_project_status", xtrfStatus);
       }
+      if (xtrfInvoiceStatuses.length > 0) {
+        if (xtrfInvoiceStatuses.includes("NONE")) {
+          const otherStatuses = xtrfInvoiceStatuses.filter(s => s !== "NONE");
+          if (otherStatuses.length > 0) {
+            query = query.or(`xtrf_invoice_status.is.null,xtrf_invoice_status.in.(${otherStatuses.join(",")})`);
+          } else {
+            query = query.is("xtrf_invoice_status", null);
+          }
+        } else {
+          query = query.in("xtrf_invoice_status", xtrfInvoiceStatuses);
+        }
+      }
+      if (xtrfPaymentStatuses.length > 0) {
+        query = query.in("xtrf_invoice_payment_status", xtrfPaymentStatuses);
+      }
 
       // Pagination
       const from = (page - 1) * PAGE_SIZE;
@@ -178,6 +245,7 @@ export default function AdminOrdersList() {
           xtrf_invoice_status: order.xtrf_invoice_status,
           xtrf_invoice_payment_status: order.xtrf_invoice_payment_status,
           xtrf_project_total_agreed: order.xtrf_project_total_agreed,
+          xtrf_project_total_cost: order.xtrf_project_total_cost,
           xtrf_project_currency_code: order.xtrf_project_currency_code,
           xtrf_project_status: order.xtrf_project_status,
         })) || [];
@@ -192,8 +260,9 @@ export default function AdminOrdersList() {
   };
 
   useEffect(() => {
+    if (!restoredFromSession) return;
     fetchOrders();
-  }, [search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, page]);
+  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -213,9 +282,17 @@ export default function AdminOrdersList() {
     updateFilter("search", searchInput);
   };
 
+  const toggleMultiFilter = (key: string, value: string, current: string[]) => {
+    const next = current.includes(value)
+      ? current.filter(v => v !== value)
+      : [...current, value];
+    updateFilter(key, next.join(","));
+  };
+
   const clearFilters = () => {
     setSearchParams({});
     setSearchInput("");
+    try { sessionStorage.removeItem(FILTERS_STORAGE_KEY); } catch { /* ignore */ }
   };
 
   const handleExport = () => {
@@ -228,25 +305,45 @@ export default function AdminOrdersList() {
       "Total",
       "Rush",
       "XTRF Project",
+      "Client Total",
+      "Vendor Cost",
+      "Profit",
+      "ROI %",
+      "Currency",
       "XTRF Invoice",
       "Estimated Delivery",
       "Created",
     ];
-    const rows = orders.map((o) => [
-      o.order_number,
-      o.customer_name,
-      o.customer_email,
-      o.status,
-      o.work_status,
-      (o.total_amount || 0).toFixed(2),
-      o.is_rush ? "Yes" : "No",
-      o.xtrf_project_number ?? "",
-      o.xtrf_invoice_number ?? "",
-      o.estimated_delivery_date
-        ? format(new Date(o.estimated_delivery_date), "yyyy-MM-dd")
-        : "",
-      format(new Date(o.created_at), "yyyy-MM-dd"),
-    ]);
+    const rows = orders.map((o) => {
+      const clientTotal = o.xtrf_project_total_agreed;
+      const vendorCost = o.xtrf_project_total_cost;
+      const profit = clientTotal != null && vendorCost != null && vendorCost > 0
+        ? clientTotal - vendorCost
+        : null;
+      const roi = profit != null && vendorCost != null && vendorCost > 0
+        ? (profit / vendorCost) * 100
+        : null;
+      return [
+        o.order_number,
+        o.customer_name,
+        o.customer_email,
+        o.status,
+        o.work_status,
+        (o.total_amount || 0).toFixed(2),
+        o.is_rush ? "Yes" : "No",
+        o.xtrf_project_number ?? "",
+        clientTotal != null ? clientTotal.toFixed(2) : "",
+        vendorCost != null && vendorCost > 0 ? vendorCost.toFixed(2) : "",
+        profit != null ? profit.toFixed(2) : "",
+        roi != null ? roi.toFixed(1) : "",
+        o.xtrf_project_currency_code ?? "",
+        o.xtrf_invoice_number ?? "",
+        o.estimated_delivery_date
+          ? format(new Date(o.estimated_delivery_date), "yyyy-MM-dd")
+          : "",
+        format(new Date(o.created_at), "yyyy-MM-dd"),
+      ];
+    });
     const csv = [headers, ...rows]
       .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
       .join("\n");
@@ -261,7 +358,7 @@ export default function AdminOrdersList() {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const hasActiveFilters =
-    search || status || workStatus || dateFrom || dateTo || rushOnly || xtrfStatus;
+    search || status || workStatus || dateFrom || dateTo || rushOnly || xtrfStatus || xtrfInvoiceStatuses.length > 0 || xtrfPaymentStatuses.length > 0;
 
   // Calculate summary stats
   const totalRevenue = orders.reduce(
@@ -370,6 +467,8 @@ export default function AdminOrdersList() {
                       dateTo,
                       rushOnly,
                       xtrfStatus,
+                      xtrfInvoiceStatuses.length > 0,
+                      xtrfPaymentStatuses.length > 0,
                     ].filter(Boolean).length
                   }
                 </span>
@@ -489,6 +588,56 @@ export default function AdminOrdersList() {
                   </span>
                 </label>
               </div>
+
+              {/* XTRF Invoice Status */}
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  XTRF Invoice Status
+                </label>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {[
+                    { value: "NONE", label: "No Invoice" },
+                    { value: "READY", label: "Ready" },
+                    { value: "SENT", label: "Sent" },
+                    { value: "NOT_READY", label: "Not Ready" },
+                    { value: "DRAFT", label: "Draft" },
+                  ].map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={xtrfInvoiceStatuses.includes(opt.value)}
+                        onChange={() => toggleMultiFilter("xtrfInvStatus", opt.value, xtrfInvoiceStatuses)}
+                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* XTRF Payment Status */}
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  XTRF Payment Status
+                </label>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {[
+                    { value: "FULLY_PAID", label: "Paid" },
+                    { value: "PARTIALLY_PAID", label: "Partially Paid" },
+                    { value: "NOT_PAID", label: "Unpaid" },
+                  ].map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={xtrfPaymentStatuses.includes(opt.value)}
+                        onChange={() => toggleMultiFilter("xtrfPayStatus", opt.value, xtrfPaymentStatuses)}
+                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -511,6 +660,18 @@ export default function AdminOrdersList() {
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Total
                   </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Client Total
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Vendor Cost
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Profit
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    ROI %
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     XTRF Project
                   </th>
@@ -528,14 +689,14 @@ export default function AdminOrdersList() {
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
+                    <td colSpan={12} className="px-6 py-12 text-center">
                       <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={12}
                       className="px-6 py-12 text-center text-gray-500"
                     >
                       No orders found
@@ -589,6 +750,52 @@ export default function AdminOrdersList() {
                         <p className="text-sm font-semibold text-gray-900 tabular-nums">
                           ${(order.total_amount || 0).toFixed(2)}
                         </p>
+                      </td>
+                      {/* Client Total */}
+                      <td className="px-4 py-3 text-right">
+                        {order.xtrf_project_total_agreed != null ? (
+                          <span className="text-sm text-gray-900 tabular-nums">
+                            {order.xtrf_project_total_agreed.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
+                      </td>
+                      {/* Vendor Cost */}
+                      <td className="px-4 py-3 text-right">
+                        {order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (
+                          <span className="text-sm text-gray-700 tabular-nums">
+                            {order.xtrf_project_total_cost.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
+                      </td>
+                      {/* Profit */}
+                      <td className="px-4 py-3 text-right">
+                        {order.xtrf_project_total_agreed != null && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
+                          const profit = order.xtrf_project_total_agreed - order.xtrf_project_total_cost;
+                          return (
+                            <span className={`text-sm font-medium tabular-nums ${profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                              {profit.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
+                            </span>
+                          );
+                        })() : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
+                      </td>
+                      {/* ROI % */}
+                      <td className="px-4 py-3 text-right">
+                        {order.xtrf_project_total_agreed != null && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
+                          const roi = ((order.xtrf_project_total_agreed - order.xtrf_project_total_cost) / order.xtrf_project_total_cost) * 100;
+                          return (
+                            <span className={`text-sm font-medium tabular-nums ${roi >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                              {roi.toFixed(1)}%
+                            </span>
+                          );
+                        })() : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
                       </td>
                       {/* XTRF Project */}
                       <td className="px-4 py-3 whitespace-nowrap">
