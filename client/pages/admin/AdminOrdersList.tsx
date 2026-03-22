@@ -65,8 +65,30 @@ const WORK_STATUS_OPTIONS = [
 
 const PAGE_SIZE = 25;
 
+const FILTERS_STORAGE_KEY = "adminOrdersFilters";
+
 export default function AdminOrdersList() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [restoredFromSession, setRestoredFromSession] = useState(false);
+
+  // Restore filters from sessionStorage on mount if URL has no filter params
+  useEffect(() => {
+    const filterKeys = ["search", "status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus"];
+    const hasUrlFilters = filterKeys.some(k => searchParams.has(k));
+    if (!hasUrlFilters) {
+      try {
+        const saved = sessionStorage.getItem(FILTERS_STORAGE_KEY);
+        if (saved) {
+          const restored = new URLSearchParams(saved);
+          // Only restore if there are actual filter values
+          if (filterKeys.some(k => restored.has(k))) {
+            setSearchParams(restored, { replace: true });
+          }
+        }
+      } catch { /* ignore storage errors */ }
+    }
+    setRestoredFromSession(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -84,8 +106,35 @@ export default function AdminOrdersList() {
   const xtrfPaymentStatuses = searchParams.get("xtrfPayStatus")?.split(",").filter(Boolean) || [];
   const page = parseInt(searchParams.get("page") || "1", 10);
 
+  // Persist filters to sessionStorage whenever they change
+  useEffect(() => {
+    if (!restoredFromSession) return;
+    try {
+      sessionStorage.setItem(FILTERS_STORAGE_KEY, searchParams.toString());
+    } catch { /* ignore storage errors */ }
+  }, [searchParams, restoredFromSession]);
+
   const [searchInput, setSearchInput] = useState(search);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(() => {
+    // Auto-open filter panel if there are active filters (from URL or session)
+    const filterKeys = ["status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus"];
+    return filterKeys.some(k => searchParams.has(k));
+  });
+
+  // Keep searchInput in sync when search param changes (e.g. after session restore)
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
+  // Auto-expand filter panel when filters become active
+  useEffect(() => {
+    if (restoredFromSession) {
+      const filterKeys = ["status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus"];
+      if (filterKeys.some(k => searchParams.has(k))) {
+        setShowFilters(true);
+      }
+    }
+  }, [searchParams, restoredFromSession]);
 
   // Actions menu state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -211,8 +260,9 @@ export default function AdminOrdersList() {
   };
 
   useEffect(() => {
+    if (!restoredFromSession) return;
     fetchOrders();
-  }, [search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page]);
+  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -242,6 +292,7 @@ export default function AdminOrdersList() {
   const clearFilters = () => {
     setSearchParams({});
     setSearchInput("");
+    try { sessionStorage.removeItem(FILTERS_STORAGE_KEY); } catch { /* ignore */ }
   };
 
   const handleExport = () => {
