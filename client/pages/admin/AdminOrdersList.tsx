@@ -143,7 +143,7 @@ export default function AdminOrdersList() {
         query = query.eq("is_rush", true);
       }
       if (xtrfStatus === "none") {
-        query = query.is("xtrf_project_status", null);
+        query = query.is("xtrf_project_number", null);
       } else if (xtrfStatus) {
         query = query.eq("xtrf_project_status", xtrfStatus);
       }
