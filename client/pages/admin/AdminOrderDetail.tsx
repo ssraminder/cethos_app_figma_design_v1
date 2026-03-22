@@ -213,6 +213,26 @@ interface TurnaroundOption {
   sort_order: number;
 }
 
+interface DocumentLineItem {
+  id: string;
+  group_label: string | null;
+  document_type: string | null;
+  detected_language_name: string | null;
+  billable_pages: number;
+  base_rate: number;
+  line_total: number;
+  certification_price: number;
+}
+
+interface OrderAdjustment {
+  id: string;
+  adjustment_type: string;
+  value_type: string;
+  value: number;
+  calculated_amount: number;
+  reason: string | null;
+}
+
 const ORDER_STATUSES = [
   { value: "pending", label: "Pending", color: "gray" },
   { value: "paid", label: "Paid", color: "green" },
@@ -379,6 +399,8 @@ export default function AdminOrderDetail() {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [unreadStaffCount, setUnreadStaffCount] = useState(0);
+  const [documentLineItems, setDocumentLineItems] = useState<DocumentLineItem[]>([]);
+  const [orderAdjustments, setOrderAdjustments] = useState<OrderAdjustment[]>([]);
   const messagesBottomRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1402,6 +1424,24 @@ export default function AdminOrderDetail() {
       setDigitalDeliveries(digDelsResult.data || []);
       setPickupLocation(pickupResult.data || null);
       setCancellation(cancellationResult.data || null);
+
+      // Fetch document line items
+      if (orderData.quote_id) {
+        const { data: lineItems } = await supabase
+          .from('quote_document_groups')
+          .select('id, group_label, document_type, detected_language_name, billable_pages, base_rate, line_total, certification_price')
+          .eq('quote_id', orderData.quote_id)
+          .order('created_at', { ascending: true });
+        setDocumentLineItems(lineItems ?? []);
+
+        // Fetch adjustments (discounts, surcharges)
+        const { data: quoteAdjustments } = await supabase
+          .from('quote_adjustments')
+          .select('id, adjustment_type, value_type, value, calculated_amount, reason')
+          .eq('quote_id', orderData.quote_id)
+          .order('created_at', { ascending: true });
+        setOrderAdjustments(quoteAdjustments ?? []);
+      }
 
       // Set promised delivery date from quote, fallback to order's estimated date
       setPromisedDeliveryDate(
@@ -3818,36 +3858,101 @@ export default function AdminOrderDetail() {
             </h2>
 
             <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Subtotal</span>
-                <span>${order.subtotal?.toFixed(2) || "0.00"}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Certification</span>
-                <span>${order.certification_total?.toFixed(2) || "0.00"}</span>
-              </div>
-              {order.is_rush && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 flex items-center gap-1">
-                    <Zap className="w-3 h-3 text-amber-500" />
-                    Rush Fee
-                  </span>
-                  <span>${order.rush_fee?.toFixed(2) || "0.00"}</span>
+              {/* Document line items */}
+              {documentLineItems.length > 0 && (
+                <div className="mb-2">
+                  {documentLineItems.map((item) => (
+                    <div key={item.id} className="flex justify-between py-1">
+                      <div className="flex-1 mr-4">
+                        <p className="text-gray-700 text-xs leading-tight">
+                          {item.group_label ?? item.document_type ?? 'Document'}
+                        </p>
+                        <p className="text-gray-400 text-xs">
+                          {item.billable_pages} pages × ${parseFloat(String(item.base_rate)).toFixed(2)}
+                          {item.detected_language_name ? ` · ${item.detected_language_name}` : ''}
+                        </p>
+                      </div>
+                      <span className="text-gray-900 font-medium whitespace-nowrap">
+                        ${parseFloat(String(item.line_total)).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Delivery</span>
-                <span>${order.delivery_fee?.toFixed(2) || "0.00"}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Tax</span>
-                <span>${order.tax_amount?.toFixed(2) || "0.00"}</span>
+
+              {/* Certification */}
+              {parseFloat(String(order.certification_total || 0)) > 0 && (
+                <div className="flex justify-between py-1 text-sm">
+                  <span className="text-gray-500">Certification</span>
+                  <span>${parseFloat(String(order.certification_total)).toFixed(2)}</span>
+                </div>
+              )}
+
+              {/* Rush fee */}
+              {parseFloat(String(order.rush_fee || 0)) > 0 && (
+                <div className="flex justify-between py-1 text-sm">
+                  <span className="text-gray-500">Rush Fee</span>
+                  <span>${parseFloat(String(order.rush_fee)).toFixed(2)}</span>
+                </div>
+              )}
+
+              {/* Delivery fee */}
+              {parseFloat(String(order.delivery_fee || 0)) > 0 && (
+                <div className="flex justify-between py-1 text-sm">
+                  <span className="text-gray-500">Delivery</span>
+                  <span>${parseFloat(String(order.delivery_fee)).toFixed(2)}</span>
+                </div>
+              )}
+
+              {/* Adjustments (discounts / surcharges) */}
+              {orderAdjustments.map((adj) => {
+                const amount = parseFloat(String(adj.calculated_amount));
+                const isDiscount = amount < 0;
+                return (
+                  <div key={adj.id} className="flex justify-between py-1 text-sm">
+                    <span className={isDiscount ? 'text-green-600' : 'text-gray-500'}>
+                      {adj.reason ?? (isDiscount ? 'Discount' : 'Surcharge')}
+                      {adj.value_type === 'percentage' ? ` (${parseFloat(String(adj.value)).toFixed(0)}%)` : ''}
+                    </span>
+                    <span className={isDiscount ? 'text-green-600 font-medium' : 'text-gray-900'}>
+                      {isDiscount ? '−' : '+'}${Math.abs(amount).toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {/* Divider before tax */}
+              <div className="border-t border-gray-100 my-1" />
+
+              {/* Subtotal after discounts */}
+              {orderAdjustments.length > 0 && (
+                <div className="flex justify-between py-1 text-sm text-gray-500">
+                  <span>Subtotal after discount</span>
+                  <span>
+                    ${(
+                      parseFloat(String(order.subtotal || 0)) +
+                      parseFloat(String(order.certification_total || 0)) +
+                      parseFloat(String(order.rush_fee || 0)) +
+                      parseFloat(String(order.delivery_fee || 0)) +
+                      orderAdjustments.reduce((sum, a) => sum + parseFloat(String(a.calculated_amount)), 0)
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              {/* Tax */}
+              <div className="flex justify-between py-1 text-sm">
+                <span className="text-gray-500">
+                  Tax ({(parseFloat(String(order.tax_rate || 0)) * 100).toFixed(0)}%)
+                </span>
+                <span>${parseFloat(String(order.tax_amount || 0)).toFixed(2)}</span>
               </div>
 
+              {/* Order Total */}
               <div className="border-t pt-2 mt-2">
                 <div className="flex justify-between font-semibold">
                   <span>Order Total</span>
-                  <span>${order.total_amount?.toFixed(2) || "0.00"}</span>
+                  <span>${parseFloat(String(order.total_amount || 0)).toFixed(2)}</span>
                 </div>
               </div>
 
@@ -3865,10 +3970,21 @@ export default function AdminOrderDetail() {
                 </div>
               )}
 
-              <div className="flex justify-between text-sm">
+              {/* Total Paid */}
+              <div className="flex justify-between text-sm py-1">
                 <span className="text-gray-500">Total Paid</span>
-                <span className="text-green-600">${(order.amount_paid ?? 0).toFixed(2)}</span>
+                <span className="font-medium text-green-600">${parseFloat(String(order.amount_paid || 0)).toFixed(2)}</span>
               </div>
+
+              {/* Refunded */}
+              {parseFloat(String(order.refund_amount || 0)) > 0 && (
+                <div className="flex justify-between text-sm py-1">
+                  <span className="text-gray-500">Refunded</span>
+                  <span className="text-red-500">
+                    −${parseFloat(String(order.refund_amount)).toFixed(2)}
+                  </span>
+                </div>
+              )}
 
               {/* Overpayment alert */}
               {hasOverpayment && (
