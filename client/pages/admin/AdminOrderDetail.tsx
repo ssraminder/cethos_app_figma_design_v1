@@ -38,6 +38,10 @@ import {
   RotateCcw,
   ShoppingCart,
   X,
+  AlertTriangle,
+  Link2,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -287,6 +291,12 @@ export default function AdminOrderDetail() {
   const [xtrfLinkNumber, setXtrfLinkNumber] = useState("");
   const [linkingXtrfProject, setLinkingXtrfProject] = useState(false);
   const [xtrfLinkMessage, setXtrfLinkMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // XTRF Action Buttons state
+  const [retryingXtrfPush, setRetryingXtrfPush] = useState(false);
+  const [pushingReceivable, setPushingReceivable] = useState(false);
+  const [xtrfPushLogs, setXtrfPushLogs] = useState<any[]>([]);
+  const [showPushLogHistory, setShowPushLogHistory] = useState(false);
 
   // Refund / balance payment state
   const [showRefundModal, setShowRefundModal] = useState(false);
@@ -2045,6 +2055,94 @@ export default function AdminOrderDetail() {
     }
   };
 
+  // ── XTRF Action Buttons handlers ──
+  const fetchXtrfPushLogs = async () => {
+    if (!id) return;
+    const { data } = await supabase
+      .from("xtrf_push_log")
+      .select("*")
+      .eq("order_id", id)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (data) setXtrfPushLogs(data);
+  };
+
+  useEffect(() => {
+    if (order?.id) {
+      fetchXtrfPushLogs();
+    }
+  }, [order?.id]);
+
+  const handleRetryXtrfPush = async () => {
+    if (!order || retryingXtrfPush) return;
+    if (!window.confirm("This will attempt to create a new XTRF project and link it to this order. Continue?")) return;
+    setRetryingXtrfPush(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/xtrf-push-project`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            order_id: order.id,
+            triggered_by: "manual_retry",
+          }),
+        }
+      );
+      const result = await response.json();
+      if (result.success) {
+        toast.success(`XTRF project ${result.xtrf_project_number} created successfully`);
+        await fetchOrderDetails();
+        await fetchXtrfPushLogs();
+      } else {
+        toast.error(`Failed: ${result.error}`);
+      }
+    } catch (err: any) {
+      toast.error(`Failed: ${err.message ?? "Request failed"}`);
+    } finally {
+      setRetryingXtrfPush(false);
+    }
+  };
+
+  const handlePushReceivable = async () => {
+    if (!order || pushingReceivable) return;
+    if (!window.confirm("This will push the receivable (pre-tax total) and payment notes to the linked XTRF project. This is safe to run multiple times — it won't create duplicate receivables. Continue?")) return;
+    setPushingReceivable(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/xtrf-push-receivable`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ order_id: order.id }),
+        }
+      );
+      const result = await response.json();
+      if (result.success) {
+        if (result.receivable === "created") {
+          toast.success(`Receivable ($${result.amount?.toFixed(2) ?? "XX.XX"}) and notes pushed to XTRF project ${result.xtrf_project_number}`);
+        } else if (result.receivable === "already_exists") {
+          toast.info("Receivable already exists on XTRF project. Notes were updated.");
+        } else {
+          toast.success("Receivable pushed to XTRF successfully.");
+        }
+        await fetchXtrfPushLogs();
+      } else {
+        toast.error(`Failed: ${result.error}`);
+      }
+    } catch (err: any) {
+      toast.error(`Failed: ${err.message ?? "Request failed"}`);
+    } finally {
+      setPushingReceivable(false);
+    }
+  };
+
   // ── Inline chat: fetch conversation messages ──
   const fetchConversationMessages = async () => {
     const customerId = order?.customer_id;
@@ -2430,6 +2528,163 @@ export default function AdminOrderDetail() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* XTRF Action Buttons Section */}
+      {!order.xtrf_project_id ? (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium text-amber-800">XTRF Project Not Created</p>
+              <p className="text-sm text-amber-700 mt-1">
+                The automatic project creation failed for this order. You can retry the automatic push, or create it manually in XTRF and link it below.
+              </p>
+              <button
+                onClick={handleRetryXtrfPush}
+                disabled={retryingXtrfPush}
+                className="mt-3 inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                {retryingXtrfPush ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                Retry XTRF Project Push
+              </button>
+            </div>
+          </div>
+
+          {/* Push Log History */}
+          {xtrfPushLogs.length > 0 && (
+            <div className="mt-3 border-t border-amber-200 pt-3">
+              <button
+                onClick={() => setShowPushLogHistory(!showPushLogHistory)}
+                className="inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900"
+              >
+                {showPushLogHistory ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                Show push history ({xtrfPushLogs.length})
+              </button>
+              {showPushLogHistory && (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-amber-700">
+                        <th className="pb-1 pr-3 font-medium">Timestamp</th>
+                        <th className="pb-1 pr-3 font-medium">Result</th>
+                        <th className="pb-1 pr-3 font-medium">Triggered By</th>
+                        <th className="pb-1 font-medium">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {xtrfPushLogs.map((log: any) => (
+                        <tr key={log.id} className="border-t border-amber-100">
+                          <td className="py-1 pr-3 text-gray-600 whitespace-nowrap">
+                            {format(new Date(log.created_at), "MMM d, yyyy HH:mm")}
+                          </td>
+                          <td className="py-1 pr-3">
+                            <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${log.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                              {log.success ? "Success" : "Failed"}
+                            </span>
+                          </td>
+                          <td className="py-1 pr-3 text-gray-600">{log.triggered_by || "—"}</td>
+                          <td className="py-1 text-red-600 max-w-xs truncate">{log.error_message || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Link2 className="w-5 h-5 text-blue-500 flex-shrink-0" />
+              <div>
+                <span className="font-medium text-blue-900">
+                  XTRF Project: {order.xtrf_project_number}
+                </span>
+                {order.xtrf_status && (
+                  <span className="ml-2 text-sm text-blue-600">(Status: {order.xtrf_status})</span>
+                )}
+                {order.xtrf_last_synced_at && (
+                  <p className="text-xs text-blue-500 mt-0.5">
+                    Last synced: {format(new Date(order.xtrf_last_synced_at), "yyyy-MM-dd HH:mm")}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href={`https://automations.cethos.com/gui2/#/projectDetails?projectNum=${order.xtrf_project_number}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 underline"
+              >
+                Open in XTRF
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              <button
+                onClick={handlePushReceivable}
+                disabled={pushingReceivable}
+                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                {pushingReceivable ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                Push Receivable & Notes to XTRF
+              </button>
+            </div>
+          </div>
+
+          {/* Push Log History */}
+          {xtrfPushLogs.length > 0 && (
+            <div className="mt-3 border-t border-blue-200 pt-3">
+              <button
+                onClick={() => setShowPushLogHistory(!showPushLogHistory)}
+                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+              >
+                {showPushLogHistory ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                Show push history ({xtrfPushLogs.length})
+              </button>
+              {showPushLogHistory && (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-blue-700">
+                        <th className="pb-1 pr-3 font-medium">Timestamp</th>
+                        <th className="pb-1 pr-3 font-medium">Result</th>
+                        <th className="pb-1 pr-3 font-medium">Triggered By</th>
+                        <th className="pb-1 font-medium">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {xtrfPushLogs.map((log: any) => (
+                        <tr key={log.id} className="border-t border-blue-100">
+                          <td className="py-1 pr-3 text-gray-600 whitespace-nowrap">
+                            {format(new Date(log.created_at), "MMM d, yyyy HH:mm")}
+                          </td>
+                          <td className="py-1 pr-3">
+                            <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${log.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                              {log.success ? "Success" : "Failed"}
+                            </span>
+                          </td>
+                          <td className="py-1 pr-3 text-gray-600">{log.triggered_by || "—"}</td>
+                          <td className="py-1 text-red-600 max-w-xs truncate">{log.error_message || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
