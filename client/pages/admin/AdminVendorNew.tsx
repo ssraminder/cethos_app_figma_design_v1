@@ -12,14 +12,9 @@ import {
 
 const vendorTypeOptions = [
   { value: "", label: "Select type" },
-  { value: "translator", label: "Translator" },
-  { value: "reviewer", label: "Reviewer" },
-  { value: "interpreter", label: "Interpreter" },
-  { value: "editor", label: "Editor" },
-  { value: "proofreader", label: "Proofreader" },
-  { value: "consultant", label: "Consultant" },
-  { value: "dtp_specialist", label: "DTP Specialist" },
-  { value: "other", label: "Other" },
+  { value: "individual", label: "Individual" },
+  { value: "lsp", label: "LSP" },
+  { value: "in_house", label: "In-House" },
 ];
 
 const statusOptions = [
