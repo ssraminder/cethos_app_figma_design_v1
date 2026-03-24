@@ -1562,9 +1562,11 @@ export default function Step4ReviewCheckout() {
     const deliveryFee = selectedDelivery?.price || 0;
 
     // Calculate total adjustment from quote_adjustments rows
+    // Prefer pre-computed calculated_amount from the database when available
     const adjustmentsTotal = quoteAdjustments.reduce((sum, adj) => {
-      const amount =
-        adj.value_type === 'percentage'
+      const amount = adj.calculated_amount != null
+        ? Math.abs(Number(adj.calculated_amount))
+        : adj.value_type === 'percentage'
           ? baseSubtotal * Number(adj.value) / 100
           : Number(adj.value);
       return adj.adjustment_type === 'discount' ? sum - amount : sum + amount;
@@ -1582,6 +1584,7 @@ export default function Step4ReviewCheckout() {
       certificationTotal: totals.certificationTotal,
       baseSubtotal,
       adjustmentsTotal,
+      preTax: taxableAmount,
       turnaroundFee,
       deliveryFee,
       taxRate,
@@ -1681,6 +1684,7 @@ export default function Step4ReviewCheckout() {
             certification_total: pricing.certificationTotal,
             subtotal: pricing.baseSubtotal,
             adjustments_total: pricing.adjustmentsTotal,
+            pre_tax: pricing.preTax,
             rush_fee: pricing.turnaroundFee,
             delivery_fee: pricing.deliveryFee,
             tax_rate: pricing.taxRate,
@@ -1778,6 +1782,7 @@ export default function Step4ReviewCheckout() {
             certification_total: pricing.certificationTotal,
             subtotal: pricing.baseSubtotal,
             adjustments_total: pricing.adjustmentsTotal,
+            pre_tax: pricing.preTax,
             rush_fee: pricing.turnaroundFee,
             delivery_fee: pricing.deliveryFee,
             tax_rate: pricing.taxRate,
@@ -3180,8 +3185,9 @@ export default function Step4ReviewCheckout() {
 
                 {/* Adjustments (discounts / surcharges) */}
                 {quoteAdjustments.map((adj) => {
-                  const amount =
-                    adj.value_type === 'percentage'
+                  const amount = adj.calculated_amount != null
+                    ? Math.abs(Number(adj.calculated_amount))
+                    : adj.value_type === 'percentage'
                       ? pricing.baseSubtotal * Number(adj.value) / 100
                       : Number(adj.value);
                   const isDiscount = adj.adjustment_type === 'discount';
