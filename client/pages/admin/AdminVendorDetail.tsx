@@ -46,6 +46,10 @@ interface Vendor {
   last_project_date: string | null;
   availability_status: string;
   auth_user_id: string | null;
+  invitation_sent_at: string | null;
+  last_reminder_sent_at: string | null;
+  invitation_reminder_count: number;
+  invitation_accepted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -934,10 +938,28 @@ export default function AdminVendorDetail() {
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-gray-300" />
-                  <span className="text-sm text-gray-500">Not invited</span>
+                  {vendor.invitation_sent_at ? (
+                    <>
+                      <Clock className="w-4 h-4 text-amber-500" />
+                      <span className="text-sm font-medium text-amber-700">Invited — pending</span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-2 h-2 rounded-full bg-gray-300" />
+                      <span className="text-sm text-gray-500">Not invited</span>
+                    </>
+                  )}
                 </div>
-                <p className="text-sm text-gray-400">This vendor has no portal account.</p>
+                {vendor.invitation_sent_at ? (
+                  <div className="text-xs text-gray-500 space-y-1">
+                    <p>Invited on {formatDate(vendor.invitation_sent_at)}</p>
+                    {vendor.invitation_reminder_count > 0 && (
+                      <p>{vendor.invitation_reminder_count} reminder{vendor.invitation_reminder_count === 1 ? "" : "s"} sent</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">This vendor has no portal account.</p>
+                )}
                 <button
                   onClick={sendInvitation}
                   disabled={sendingInvite}
