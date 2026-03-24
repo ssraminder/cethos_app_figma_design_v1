@@ -35,6 +35,7 @@ export interface Vendor {
   invitation_sent_at: string | null;
   last_reminder_sent_at: string | null;
   invitation_reminder_count: number;
+  native_languages: string[] | null;
   invitation_accepted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -45,7 +46,6 @@ export interface VendorLanguagePair {
   vendor_id: string;
   source_language: string;
   target_language: string;
-  source_type: string | null;
   notes: string | null;
   is_active: boolean;
   created_at: string;

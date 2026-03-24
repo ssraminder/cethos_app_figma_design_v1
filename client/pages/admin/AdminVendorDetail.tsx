@@ -70,13 +70,21 @@ export default function AdminVendorDetail() {
       const d = result.data;
       setVendorData({
         vendor: d.vendor,
-        languagePairs: d.language_pairs,
-        rates: d.rates,
-        paymentInfo: d.payment_info,
-        auth: d.auth,
-        activeSessions: d.active_sessions,
-        activeJobs: d.active_jobs,
-        summary: d.summary,
+        languagePairs: d.language_pairs ?? [],
+        rates: d.rates ?? [],
+        paymentInfo: d.payment_info ?? null,
+        auth: d.auth ?? null,
+        activeSessions: d.active_sessions ?? 0,
+        activeJobs: d.active_jobs ?? [],
+        summary: d.summary ?? {
+          language_pairs_active: 0,
+          language_pairs_total: 0,
+          rates_active: 0,
+          rates_total: 0,
+          has_payment_info: false,
+          has_portal_access: false,
+          active_job_count: 0,
+        },
       });
       setError(null);
     } catch (err) {

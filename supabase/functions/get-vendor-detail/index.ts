@@ -49,7 +49,7 @@ serve(async (req) => {
       // 2. Language pairs
       supabase
         .from("vendor_language_pairs")
-        .select("id, vendor_id, source_language, target_language, source_type, notes, is_active, created_at")
+        .select("id, vendor_id, source_language, target_language, notes, is_active, created_at")
         .eq("vendor_id", vendorId)
         .order("source_language")
         .order("target_language"),

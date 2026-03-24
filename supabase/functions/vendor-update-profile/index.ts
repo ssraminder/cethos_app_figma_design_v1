@@ -21,6 +21,7 @@ const ALLOWED_FIELDS = new Set([
   "tax_id",
   "tax_rate",
   "minimum_rate",
+  "native_languages",
   "certifications",
   "specializations",
   "notes",

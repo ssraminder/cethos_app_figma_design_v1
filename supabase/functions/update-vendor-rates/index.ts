@@ -41,6 +41,7 @@ serve(async (req) => {
     if (action === "add") {
       const {
         service_id,
+        language_pair_id,
         calculation_unit,
         rate,
         currency,
@@ -82,6 +83,7 @@ serve(async (req) => {
         .insert({
           vendor_id,
           service_id,
+          language_pair_id: language_pair_id || null,
           calculation_unit,
           rate: parseFloat(rate),
           currency,
@@ -114,7 +116,7 @@ serve(async (req) => {
     }
 
     if (action === "update") {
-      const { rate_id, rate, currency, calculation_unit, minimum_charge } = body;
+      const { rate_id, rate, currency, calculation_unit, minimum_charge, language_pair_id } = body;
 
       if (!rate_id) {
         return new Response(
@@ -133,6 +135,7 @@ serve(async (req) => {
       if (rate != null) updates.rate = parseFloat(rate);
       if (currency) updates.currency = currency;
       if (calculation_unit) updates.calculation_unit = calculation_unit;
+      if (language_pair_id !== undefined) updates.language_pair_id = language_pair_id || null;
       if (minimum_charge !== undefined)
         updates.minimum_charge = minimum_charge
           ? parseFloat(minimum_charge)
