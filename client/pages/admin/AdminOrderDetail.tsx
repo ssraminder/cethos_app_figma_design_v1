@@ -107,6 +107,7 @@ interface OrderDetail {
     selected_pickup_location_id: string | null;
     shipping_address: Record<string, any> | null;
     delivery_fee: number | null;
+    calculated_totals: Record<string, number> | null;
     source_language: { id: string; code: string; name: string } | null;
     target_language: { id: string; code: string; name: string } | null;
     intended_use?: {
@@ -1275,6 +1276,7 @@ export default function AdminOrderDetail() {
               special_instructions, turnaround_type, is_rush,
               physical_delivery_option_id, digital_delivery_options,
               selected_pickup_location_id, shipping_address, delivery_fee,
+              calculated_totals,
               source_language:languages!source_language_id(id, code, name),
               target_language:languages!target_language_id(id, code, name),
               intended_use:intended_uses!intended_use_id(
@@ -4155,13 +4157,20 @@ export default function AdminOrderDetail() {
                 </div>
               )}
 
-              {/* Certification */}
-              {parseFloat(String(order.certification_total || 0)) > 0 && (
-                <div className="flex justify-between py-1 text-sm">
-                  <span className="text-gray-500">Certification</span>
-                  <span>${parseFloat(String(order.certification_total)).toFixed(2)}</span>
-                </div>
-              )}
+              {/* Certification — only show quote-level cert not already in document line items */}
+              {(() => {
+                const groupCertSum = documentLineItems.reduce((sum, g) => sum + Number(g.certification_price || 0), 0);
+                const ct = order.quote?.calculated_totals;
+                const quoteCert = Number(ct?.certification_total) || parseFloat(String(order.certification_total || 0));
+                const quoteLevelCert = quoteCert - groupCertSum;
+                if (quoteLevelCert <= 0) return null;
+                return (
+                  <div className="flex justify-between py-1 text-sm">
+                    <span className="text-gray-500">Certification</span>
+                    <span>${quoteLevelCert.toFixed(2)}</span>
+                  </div>
+                );
+              })()}
 
               {/* Rush fee */}
               {parseFloat(String(order.rush_fee || 0)) > 0 && (
@@ -4181,8 +4190,8 @@ export default function AdminOrderDetail() {
 
               {/* Adjustments (discounts / surcharges) */}
               {orderAdjustments.map((adj) => {
-                const amount = parseFloat(String(adj.calculated_amount));
-                const isDiscount = amount < 0;
+                const amount = Math.abs(parseFloat(String(adj.calculated_amount)));
+                const isDiscount = adj.adjustment_type === 'discount';
                 return (
                   <div key={adj.id} className="flex justify-between py-1 text-sm">
                     <span className={isDiscount ? 'text-green-600' : 'text-gray-500'}>
@@ -4190,7 +4199,7 @@ export default function AdminOrderDetail() {
                       {adj.value_type === 'percentage' ? ` (${parseFloat(String(adj.value)).toFixed(0)}%)` : ''}
                     </span>
                     <span className={isDiscount ? 'text-green-600 font-medium' : 'text-gray-900'}>
-                      {isDiscount ? '−' : '+'}${Math.abs(amount).toFixed(2)}
+                      {isDiscount ? '−' : '+'}${amount.toFixed(2)}
                     </span>
                   </div>
                 );
@@ -4199,18 +4208,24 @@ export default function AdminOrderDetail() {
               {/* Divider before tax */}
               <div className="border-t border-gray-100 my-1" />
 
-              {/* Subtotal after discounts */}
+              {/* Subtotal after discounts — read from calculated_totals, don't re-compute */}
               {orderAdjustments.length > 0 && (
                 <div className="flex justify-between py-1 text-sm text-gray-500">
                   <span>Subtotal after discount</span>
                   <span>
-                    ${(
-                      parseFloat(String(order.subtotal || 0)) +
-                      parseFloat(String(order.certification_total || 0)) +
-                      parseFloat(String(order.rush_fee || 0)) +
-                      parseFloat(String(order.delivery_fee || 0)) +
-                      orderAdjustments.reduce((sum, a) => sum + parseFloat(String(a.calculated_amount)), 0)
-                    ).toFixed(2)}
+                    ${(() => {
+                      const ct = order.quote?.calculated_totals;
+                      if (ct?.pre_tax != null) return Number(ct.pre_tax).toFixed(2);
+                      // Fallback: subtotal already includes certification, so don't add it again
+                      const subtotal = parseFloat(String(order.subtotal || 0));
+                      const rushFee = parseFloat(String(order.rush_fee || 0));
+                      const deliveryFee = parseFloat(String(order.delivery_fee || 0));
+                      const adjTotal = orderAdjustments.reduce((sum, a) => {
+                        const amt = Math.abs(parseFloat(String(a.calculated_amount)));
+                        return a.adjustment_type === 'discount' ? sum - amt : sum + amt;
+                      }, 0);
+                      return (subtotal + rushFee + deliveryFee + adjTotal).toFixed(2);
+                    })()}
                   </span>
                 </div>
               )}
