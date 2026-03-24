@@ -12,6 +12,9 @@ import {
   RefreshCw,
   Plus,
   X,
+  Mail,
+  Clock,
+  XCircle,
 } from "lucide-react";
 
 interface Vendor {
@@ -37,6 +40,7 @@ interface Vendor {
   notes: string | null;
   auth_user_id: string | null;
   xtrf_account_name: string | null;
+  invitation_sent_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -176,6 +180,17 @@ export default function AdminVendorsList() {
   const [page, setPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkSending, setBulkSending] = useState(false);
+
+  // Toast
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
@@ -262,6 +277,11 @@ export default function AdminVendorsList() {
     if (portalFilter === "has_access")
       query = query.not("auth_user_id", "is", null);
     if (portalFilter === "no_access") query = query.is("auth_user_id", null);
+    if (portalFilter === "invited_pending") {
+      query = query
+        .not("invitation_sent_at", "is", null)
+        .is("auth_user_id", null);
+    }
 
     const { data, count, error } = await query;
     if (!error) {
@@ -279,6 +299,59 @@ export default function AdminVendorsList() {
     countryFilter,
     portalFilter,
   ]);
+
+  // Clear selection when data changes
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [vendors]);
+
+  // Bulk send invitations
+  const sendBulkInvitations = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkSending(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("vendor-auth-otp-send", {
+        body: { vendor_ids: [...selectedIds] },
+      });
+      if (error) throw error;
+      const sent = data?.sent ?? 0;
+      const failed = data?.failed ?? 0;
+      showToast(
+        `Invitations sent: ${sent}${failed > 0 ? `, ${failed} failed` : ""}`,
+        failed > 0 ? "error" : "success",
+      );
+      setSelectedIds(new Set());
+      fetchVendors();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to send invitations";
+      showToast(message, "error");
+    }
+    setBulkSending(false);
+  };
+
+  // Selectable vendors: those without portal access
+  const selectableVendors = vendors.filter((v) => !v.auth_user_id);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectableVendors.every((v) => selectedIds.has(v.id))) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectableVendors.map((v) => v.id)));
+    }
+  };
+
+  const allSelectableChecked =
+    selectableVendors.length > 0 &&
+    selectableVendors.every((v) => selectedIds.has(v.id));
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -517,6 +590,7 @@ export default function AdminVendorsList() {
               <option value="">All</option>
               <option value="has_access">Has Portal Access</option>
               <option value="no_access">No Portal Access</option>
+              <option value="invited_pending">Invited (Pending)</option>
             </select>
           </div>
 
@@ -548,6 +622,15 @@ export default function AdminVendorsList() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
+                <th className="px-3 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelectableChecked}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    title="Select all uninvited vendors on this page"
+                  />
+                </th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Name
                 </th>
@@ -586,14 +669,14 @@ export default function AdminVendorsList() {
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-12 text-gray-400">
+                  <td colSpan={12} className="text-center py-12 text-gray-400">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
                     Loading vendors...
                   </td>
                 </tr>
               ) : vendors.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-12 text-gray-400">
+                  <td colSpan={12} className="text-center py-12 text-gray-400">
                     No vendors found
                   </td>
                 </tr>
@@ -604,6 +687,23 @@ export default function AdminVendorsList() {
                     onClick={() => navigate(`/admin/vendors/${v.id}`)}
                     className="hover:bg-gray-50/50 cursor-pointer transition-colors"
                   >
+                    <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                      {v.auth_user_id ? (
+                        <input
+                          type="checkbox"
+                          disabled
+                          className="w-4 h-4 rounded border-gray-200 text-gray-300 cursor-not-allowed"
+                          title="Already has portal access"
+                        />
+                      ) : (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(v.id)}
+                          onChange={() => toggleSelect(v.id)}
+                          className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <Link
                         to={`/admin/vendors/${v.id}`}
@@ -649,6 +749,11 @@ export default function AdminVendorsList() {
                     <td className="px-4 py-3 text-center">
                       {v.auth_user_id ? (
                         <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
+                      ) : v.invitation_sent_at ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-700 text-xs rounded" title={`Invited ${new Date(v.invitation_sent_at).toLocaleDateString()}`}>
+                          <Clock className="w-3 h-3" />
+                          Invited
+                        </span>
                       ) : (
                         <span className="text-gray-300">—</span>
                       )}
@@ -711,6 +816,51 @@ export default function AdminVendorsList() {
           </div>
         )}
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm flex items-center gap-2 ${
+            toast.type === "error"
+              ? "bg-red-600 text-white"
+              : "bg-gray-900 text-white"
+          }`}
+        >
+          {toast.type === "error" ? (
+            <XCircle className="w-4 h-4 shrink-0" />
+          ) : (
+            <CheckCircle className="w-4 h-4 shrink-0" />
+          )}
+          {toast.message}
+        </div>
+      )}
+
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white border border-gray-200 rounded-xl shadow-lg px-5 py-3 flex items-center gap-4">
+          <span className="text-sm font-medium text-gray-700">
+            {selectedIds.size} vendor{selectedIds.size === 1 ? "" : "s"} selected
+          </span>
+          <button
+            onClick={sendBulkInvitations}
+            disabled={bulkSending}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+          >
+            {bulkSending ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Mail className="w-3.5 h-3.5" />
+            )}
+            Send Invitations
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* Add Vendor Modal */}
       {showAddModal && (
