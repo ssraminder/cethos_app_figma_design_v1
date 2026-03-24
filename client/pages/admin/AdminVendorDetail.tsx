@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Shield,
   Key,
+  DollarSign,
 } from "lucide-react";
 
 interface Vendor {
@@ -60,6 +61,25 @@ interface VendorAuth {
   must_reset: boolean;
 }
 
+interface VendorRate {
+  id: string;
+  vendor_id: string;
+  language_pair_id: string | null;
+  service_id: string;
+  calculation_unit: string;
+  rate: number;
+  currency: string;
+  rate_cad: number | null;
+  minimum_charge: number | null;
+  source: string;
+  is_active: boolean;
+  notes: string | null;
+  // joined fields
+  source_language: string | null;
+  target_language: string | null;
+  service_name: string;
+}
+
 const EDITABLE_FIELDS = [
   "full_name",
   "phone",
@@ -69,8 +89,6 @@ const EDITABLE_FIELDS = [
   "status",
   "vendor_type",
   "availability_status",
-  "rate_per_page",
-  "rate_currency",
   "payment_method",
   "years_experience",
   "notes",
@@ -269,6 +287,7 @@ export default function AdminVendorDetail() {
   // Data
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [vendorAuth, setVendorAuth] = useState<VendorAuth | null>(null);
+  const [vendorRates, setVendorRates] = useState<VendorRate[]>([]);
   const [activeSessions, setActiveSessions] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -298,7 +317,7 @@ export default function AdminVendorDetail() {
     if (!vendorId) return;
     setLoading(true);
 
-    const [vendorRes, authRes, sessionsRes] = await Promise.all([
+    const [vendorRes, authRes, sessionsRes, ratesRes] = await Promise.all([
       supabase.from("vendors").select("*").eq("id", vendorId).single(),
       supabase
         .from("vendor_auth")
@@ -310,6 +329,13 @@ export default function AdminVendorDetail() {
         .select("id", { count: "exact", head: true })
         .eq("vendor_id", vendorId)
         .gte("expires_at", new Date().toISOString()),
+      supabase
+        .from("vendor_rates")
+        .select("*, vendor_language_pairs(source_language, target_language), services(name)")
+        .eq("vendor_id", vendorId)
+        .eq("is_active", true)
+        .order("currency")
+        .order("rate", { ascending: true }),
     ]);
 
     if (vendorRes.data) setVendor(vendorRes.data as Vendor);
@@ -317,6 +343,23 @@ export default function AdminVendorDetail() {
     if (authRes.data) setVendorAuth(authRes.data as VendorAuth);
     else setVendorAuth(null);
     setActiveSessions(sessionsRes.count ?? 0);
+
+    // Flatten joined rate rows
+    if (ratesRes.data) {
+      const mapped = ratesRes.data.map((r: Record<string, unknown>) => {
+        const lp = r.vendor_language_pairs as { source_language: string; target_language: string } | null;
+        const svc = r.services as { name: string } | null;
+        return {
+          ...r,
+          source_language: lp?.source_language ?? null,
+          target_language: lp?.target_language ?? null,
+          service_name: svc?.name ?? "Unknown",
+        } as VendorRate;
+      });
+      setVendorRates(mapped);
+    } else {
+      setVendorRates([]);
+    }
     setLoading(false);
   }, [vendorId]);
 
@@ -353,11 +396,6 @@ export default function AdminVendorDetail() {
     for (const key of EDITABLE_FIELDS) {
       const val = editForm[key];
       updates[key] = val === "" ? null : val;
-    }
-    // Ensure rate_per_page is numeric or null
-    if (updates.rate_per_page != null) {
-      updates.rate_per_page = parseFloat(String(updates.rate_per_page));
-      if (isNaN(updates.rate_per_page as number)) updates.rate_per_page = null;
     }
     if (updates.years_experience != null) {
       updates.years_experience = parseInt(String(updates.years_experience), 10);
@@ -800,49 +838,59 @@ export default function AdminVendorDetail() {
             </div>
           </Card>
 
-          {/* Card 5 — Rate & Payment */}
-          <Card title="Rate & Payment">
+          {/* Card 5 — Rates (from vendor_rates table) */}
+          <Card title="Rates">
+            {vendorRates.length > 0 ? (
+              <>
+                <div className="overflow-x-auto -mx-5 px-5">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left border-b border-gray-100">
+                        <th className="pb-2 text-xs font-medium text-gray-500 uppercase">Service</th>
+                        <th className="pb-2 text-xs font-medium text-gray-500 uppercase">Language Pair</th>
+                        <th className="pb-2 text-xs font-medium text-gray-500 uppercase text-right">Rate</th>
+                        <th className="pb-2 text-xs font-medium text-gray-500 uppercase text-right">Unit</th>
+                        <th className="pb-2 text-xs font-medium text-gray-500 uppercase text-right">CAD</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {vendorRates.map((vr) => (
+                        <tr key={vr.id}>
+                          <td className="py-2 text-gray-800">{vr.service_name}</td>
+                          <td className="py-2 text-gray-600 font-mono text-xs">
+                            {vr.source_language && vr.target_language
+                              ? `${vr.source_language} → ${vr.target_language}`
+                              : <span className="text-gray-400">All pairs</span>}
+                          </td>
+                          <td className="py-2 text-right font-mono text-gray-800">
+                            {vr.rate.toFixed(4)} {vr.currency}
+                          </td>
+                          <td className="py-2 text-right text-gray-500 text-xs">
+                            {vr.calculation_unit.replace(/_/g, " ")}
+                          </td>
+                          <td className="py-2 text-right font-mono text-gray-500 text-xs">
+                            {vr.rate_cad != null ? `${vr.rate_cad.toFixed(4)}` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-gray-400 mt-3">
+                  {vendorRates.length} active rate{vendorRates.length === 1 ? "" : "s"} · Source: {[...new Set(vendorRates.map(r => r.source))].join(", ")}
+                </p>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <DollarSign className="w-5 h-5 text-gray-300 mx-auto mb-2" />
+                <p className="text-sm text-gray-400">No rates on file</p>
+              </div>
+            )}
+          </Card>
+
+          {/* Card 5b — Payment */}
+          <Card title="Payment">
             <div className="divide-y divide-gray-50">
-              <FieldRow
-                label="Rate per page"
-                value={
-                  vendor.rate_per_page != null
-                    ? `$${vendor.rate_per_page.toFixed(2)} ${vendor.rate_currency}/page`
-                    : "—"
-                }
-                editing={editing}
-                input={
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={ef.rate_per_page ?? ""}
-                    onChange={(e) =>
-                      updateField(
-                        "rate_per_page",
-                        e.target.value === "" ? null : parseFloat(e.target.value)
-                      )
-                    }
-                    className="px-2 py-1 border border-gray-200 rounded text-sm w-28 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                }
-              />
-              <FieldRow
-                label="Currency"
-                value={vendor.rate_currency}
-                editing={editing}
-                input={
-                  <select
-                    value={ef.rate_currency ?? "CAD"}
-                    onChange={(e) => updateField("rate_currency", e.target.value)}
-                    className="px-2 py-1 border border-gray-200 rounded text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="CAD">CAD</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                    <option value="GBP">GBP</option>
-                  </select>
-                }
-              />
               <FieldRow
                 label="Payment method"
                 value={vendor.payment_method ?? "—"}

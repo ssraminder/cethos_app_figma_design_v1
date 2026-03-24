@@ -52,6 +52,7 @@ import OcrResultsModal from "@/components/shared/analysis/OcrResultsModal";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import OriginalsModal from "@/components/admin/OriginalsModal";
 import { syncOrderFromQuote } from "../../utils/syncOrderFromQuote";
+import OrderWorkflowSection from "@/components/admin/OrderWorkflowSection";
 
 interface OrderDetail {
   id: string;
@@ -3692,6 +3693,9 @@ export default function AdminOrderDetail() {
               </div>
             )}
           </div>
+
+          {/* Order Workflow */}
+          {id && <OrderWorkflowSection orderId={id} />}
 
           <div className="bg-white rounded-lg border p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
