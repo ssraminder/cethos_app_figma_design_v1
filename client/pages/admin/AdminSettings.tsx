@@ -414,6 +414,18 @@ export default function AdminSettings() {
                 Google Analytics, Tag Manager, custom scripts
               </p>
             </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/services")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Services
+              </h3>
+              <p className="text-sm text-gray-600">
+                Manage translation and language services
+              </p>
+            </button>
           </div>
         </div>
 

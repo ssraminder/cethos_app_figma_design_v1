@@ -106,6 +106,7 @@ import LanguageTiersSettings from "./pages/admin/settings/LanguageTiersSettings"
 import LanguagesSettings from "./pages/admin/settings/LanguagesSettings";
 import FileCategoriesSettings from "./pages/admin/settings/FileCategoriesSettings";
 import TrackingSettings from "./pages/admin/settings/TrackingSettings";
+import ServicesSettings from "./pages/admin/settings/ServicesSettings";
 import GoogleTagManager from "./components/shared/GoogleTagManager";
 
 const queryClient = new QueryClient();
@@ -405,6 +406,10 @@ const App = () => (
                     <Route
                       path="settings/tracking"
                       element={<TrackingSettings />}
+                    />
+                    <Route
+                      path="settings/services"
+                      element={<ServicesSettings />}
                     />
                   </Route>
 
