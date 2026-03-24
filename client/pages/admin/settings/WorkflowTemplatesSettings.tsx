@@ -7,7 +7,7 @@ import {
   Zap,
   Circle,
   ChevronDown,
-  ChevronUp,
+  ChevronRight,
   X,
   Pencil,
   Trash2,
@@ -541,7 +541,7 @@ export default function WorkflowTemplatesSettings() {
                       {expandedId === t.id ? (
                         <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
                       ) : (
-                        <ChevronUp className="h-4 w-4 text-gray-400 flex-shrink-0 -rotate-90" />
+                        <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
                       )}
                       <span
                         className={`font-semibold ${
@@ -979,7 +979,7 @@ export default function WorkflowTemplatesSettings() {
                         {step.showAdvanced ? (
                           <ChevronDown className="h-3 w-3" />
                         ) : (
-                          <ChevronUp className="h-3 w-3 -rotate-90" />
+                          <ChevronRight className="h-3 w-3" />
                         )}
                         Advanced options
                       </button>
