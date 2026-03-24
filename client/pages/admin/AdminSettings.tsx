@@ -426,6 +426,18 @@ export default function AdminSettings() {
                 Manage translation and language services
               </p>
             </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/workflows")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Workflow Templates
+              </h3>
+              <p className="text-sm text-gray-600">
+                Process templates for order workflows
+              </p>
+            </button>
           </div>
         </div>
 
