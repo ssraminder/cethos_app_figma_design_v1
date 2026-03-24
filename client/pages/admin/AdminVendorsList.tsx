@@ -177,7 +177,6 @@ export default function AdminVendorsList() {
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
-  const [showAddModal, setShowAddModal] = useState(false);
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -405,7 +404,7 @@ export default function AdminVendorsList() {
           </p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => navigate("/admin/vendors/new")}
           className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -866,25 +865,6 @@ export default function AdminVendorsList() {
         </div>
       )}
 
-      {/* Add Vendor Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full mx-4">
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">
-              Add Vendor
-            </h2>
-            <p className="text-sm text-gray-500 mb-4">
-              This feature is coming soon.
-            </p>
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
