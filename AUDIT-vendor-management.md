@@ -172,6 +172,16 @@ Comprehensive audit of the Cethos translation management app to identify what ve
 
 ---
 
+## Source Code Gap: Local Repo vs Deployed
+
+Only **2 of 18** vendor edge functions have source code in this repository:
+- `supabase/functions/vendor-auth-otp-send/index.ts`
+- `supabase/functions/vendor-invitation-reminder/index.ts`
+
+The other 16 functions (vendor-auth-otp-verify, vendor-auth-password, vendor-auth-session, vendor-auth-logout, vendor-auth-check, vendor-auth-activate, vendor-auth-invite, vendor-set-password, vendor-update-profile, vendor-verify-phone, import-applicant-vendors, import-vendor-lang-rates, xtrf-sync-vendor-lp, xtrf-sync-vendors, cvp-prescreen-application, cvp-submit-application) are deployed to Supabase but their source is **not version-controlled** in this repository. This is a maintenance and auditability risk.
+
+---
+
 ## Key File Paths
 - `client/pages/admin/AdminVendorsList.tsx` — vendor list page
 - `client/pages/admin/AdminVendorDetail.tsx` — vendor detail page
