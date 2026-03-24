@@ -87,6 +87,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "AI",
   },
   {
+    label: "Vendors",
+    path: "/admin/vendors",
+    icon: Users,
+    section: "Vendors",
+  },
+  {
     label: "Recruitment",
     path: "/admin/recruitment",
     icon: UserPlus,

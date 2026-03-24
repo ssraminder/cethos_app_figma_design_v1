@@ -77,6 +77,8 @@ import RecruitmentList from "./pages/admin/RecruitmentList";
 import RecruitmentDetail from "./pages/admin/RecruitmentDetail";
 import AdminQuickPayment from "./pages/admin/AdminQuickPayment";
 import AdminPaymentHistory from "./pages/admin/AdminPaymentHistory";
+import AdminVendorsList from "./pages/admin/AdminVendorsList";
+import AdminVendorDetail from "./pages/admin/AdminVendorDetail";
 import FastQuoteCreate from "./pages/admin/FastQuoteCreate";
 import VendorInvoices from "./pages/admin/invoices/VendorInvoices";
 import CustomerInvoices from "./pages/admin/invoices/CustomerInvoices";
@@ -322,6 +324,8 @@ const App = () => (
                     <Route path="ocr-word-count" element={<OCRWordCountPage />} />
                     <Route path="ocr-word-count/:batchId" element={<OCRBatchResultsPage />} />
                     <Route path="preprocess-ocr" element={<PreprocessOCRPage />} />
+                    <Route path="vendors" element={<AdminVendorsList />} />
+                    <Route path="vendors/:vendorId" element={<AdminVendorDetail />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
                     <Route path="quick-payment" element={<AdminQuickPayment />} />
