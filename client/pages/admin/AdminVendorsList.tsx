@@ -31,8 +31,7 @@ interface Vendor {
   target_languages: string[] | null;
   language_pairs: { source: string; target: string }[] | null;
   specializations: string[] | null;
-  rate_per_page: number | null;
-  rate_currency: string;
+  vendor_rates: { count: number }[];
   availability_status: string;
   rating: number | null;
   total_projects: number;
@@ -251,7 +250,8 @@ export default function AdminVendorsList() {
     setLoading(true);
     let query = supabase
       .from("vendors")
-      .select("*", { count: "exact" })
+      .select("*, vendor_rates(count)", { count: "exact" })
+      .eq("vendor_rates.is_active", true)
       .order("total_projects", { ascending: false })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
@@ -650,7 +650,7 @@ export default function AdminVendorsList() {
                   Last Active
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Rate
+                  Rates
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
@@ -736,9 +736,13 @@ export default function AdminVendorsList() {
                       {formatLastActive(v.last_project_date)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">
-                      {v.rate_per_page != null
-                        ? `$${v.rate_per_page.toFixed(2)}/page`
-                        : "—"}
+                      {v.vendor_rates?.[0]?.count > 0 ? (
+                        <span className="px-1.5 py-0.5 bg-green-50 text-green-700 text-xs rounded font-medium">
+                          {v.vendor_rates[0].count} rate{v.vendor_rates[0].count === 1 ? "" : "s"}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={v.status} />
