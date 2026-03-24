@@ -18,9 +18,11 @@ import {
 } from "@/components/ui/dialog";
 import type { TabPropsWithServices, VendorRate } from "./types";
 import { POPULAR_CURRENCIES } from "./constants";
+import { getLanguageName } from "./data/languages";
 
 interface RateFormData {
   service_id: string;
+  language_pair_id: string;
   calculation_unit: string;
   rate: string;
   currency: string;
@@ -29,6 +31,7 @@ interface RateFormData {
 
 const EMPTY_FORM: RateFormData = {
   service_id: "",
+  language_pair_id: "",
   calculation_unit: "",
   rate: "",
   currency: "",
@@ -41,7 +44,7 @@ export default function VendorRatesTab({
   services,
   onRefresh,
 }: TabPropsWithServices) {
-  const { vendor, rates } = vendorData;
+  const { vendor, rates, languagePairs } = vendorData;
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRate, setEditingRate] = useState<VendorRate | null>(null);
   const [form, setForm] = useState<RateFormData>(EMPTY_FORM);
@@ -127,6 +130,27 @@ export default function VendorRatesTab({
       })),
   ];
 
+  // Language pair options for the rate modal
+  const languagePairOptions = useMemo(() => {
+    const activePairs = languagePairs.filter((lp) => lp.is_active);
+    return [
+      { value: "", label: "All language pairs (default rate)", group: "" },
+      ...activePairs.map((lp) => ({
+        value: lp.id,
+        label: `${getLanguageName(lp.source_language)} → ${getLanguageName(lp.target_language)}`,
+        group: "",
+      })),
+    ];
+  }, [languagePairs]);
+
+  // Helper to get language pair display text for a rate
+  const getLangPairLabel = (rate: VendorRate): string => {
+    if (!rate.language_pair_id) return "All pairs";
+    const lp = languagePairs.find((p) => p.id === rate.language_pair_id);
+    if (!lp) return "All pairs";
+    return `${lp.source_language} → ${lp.target_language}`;
+  };
+
   const openAddModal = () => {
     setEditingRate(null);
     setForm({
@@ -141,6 +165,7 @@ export default function VendorRatesTab({
     setEditingRate(rate);
     setForm({
       service_id: rate.service_id,
+      language_pair_id: rate.language_pair_id ?? "",
       calculation_unit: rate.calculation_unit,
       rate: String(rate.rate),
       currency: rate.currency,
@@ -164,6 +189,7 @@ export default function VendorRatesTab({
             vendor_id: vendor.id,
             action: "update",
             rate_id: editingRate.id,
+            language_pair_id: form.language_pair_id || null,
             rate: form.rate,
             currency: form.currency,
             calculation_unit: form.calculation_unit,
@@ -173,6 +199,7 @@ export default function VendorRatesTab({
             vendor_id: vendor.id,
             action: "add",
             service_id: form.service_id,
+            language_pair_id: form.language_pair_id || null,
             calculation_unit: form.calculation_unit,
             rate: form.rate,
             currency: form.currency,
@@ -273,6 +300,9 @@ export default function VendorRatesTab({
                     <th className="pb-2 text-xs font-medium text-gray-500 uppercase">
                       Service
                     </th>
+                    <th className="pb-2 text-xs font-medium text-gray-500 uppercase">
+                      Language Pair
+                    </th>
                     <th className="pb-2 text-xs font-medium text-gray-500 uppercase text-right">
                       Rate
                     </th>
@@ -301,6 +331,13 @@ export default function VendorRatesTab({
                     >
                       <td className="py-2.5 text-gray-800">
                         {rate.service_name}
+                      </td>
+                      <td className="py-2.5 text-gray-600 text-xs">
+                        {rate.language_pair_id ? (
+                          <span className="font-mono">{getLangPairLabel(rate)}</span>
+                        ) : (
+                          <span className="text-gray-400 italic">All pairs</span>
+                        )}
                       </td>
                       <td className="py-2.5 text-right font-mono text-gray-800">
                         {rate.rate.toFixed(4)}
@@ -386,6 +423,35 @@ export default function VendorRatesTab({
                 disabled={!!editingRate}
               />
             </div>
+
+            {languagePairs.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Language Pair
+                  <span className="text-gray-400 font-normal ml-1">(optional)</span>
+                </label>
+                <select
+                  value={form.language_pair_id}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, language_pair_id: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="">All language pairs (default rate)</option>
+                  {languagePairs
+                    .filter((lp) => lp.is_active)
+                    .map((lp) => (
+                      <option key={lp.id} value={lp.id}>
+                        {getLanguageName(lp.source_language)} → {getLanguageName(lp.target_language)}
+                      </option>
+                    ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  Leave empty for a default rate that applies to all language pairs.
+                  Select a specific pair to set a rate override.
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

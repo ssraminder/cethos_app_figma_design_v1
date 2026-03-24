@@ -20,6 +20,7 @@ import {
   formatDate,
   relativeTime,
 } from "./constants";
+import { LANGUAGE_OPTIONS, LANGUAGE_GROUP_ORDER, getLanguageName } from "./data/languages";
 
 export default function VendorProfileTab({
   vendorData,
@@ -34,6 +35,7 @@ export default function VendorProfileTab({
   // Chip input state
   const [certInput, setCertInput] = useState("");
   const [specInput, setSpecInput] = useState("");
+  const [nativeLangSearch, setNativeLangSearch] = useState("");
 
   const startEditing = () => {
     setForm({
@@ -46,6 +48,7 @@ export default function VendorProfileTab({
       years_experience: vendor.years_experience ?? "",
       availability_status: vendor.availability_status ?? "available",
       status: vendor.status ?? "active",
+      native_languages: vendor.native_languages ?? [],
       preferred_rate_currency: vendor.preferred_rate_currency ?? vendor.rate_currency ?? "",
       tax_id: vendor.tax_id ?? "",
       tax_rate: vendor.tax_rate ?? "",
@@ -347,6 +350,58 @@ export default function VendorProfileTab({
                 {vendor.availability_status?.replace(/_/g, " ") ?? "—"}
               </span>,
               selectInput("availability_status", AVAILABILITY_OPTIONS)
+            )}
+            {renderField(
+              "Native Language(s)",
+              vendor.native_languages && vendor.native_languages.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {vendor.native_languages.map((code, i) => (
+                    <span
+                      key={i}
+                      className="px-2.5 py-1 bg-teal-50 text-teal-700 text-xs rounded-full font-medium"
+                    >
+                      {getLanguageName(code)}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-gray-400 text-sm">Not set</span>
+              ),
+              <div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {((form.native_languages as string[]) || []).map((code, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-50 text-teal-700 text-xs rounded-full"
+                    >
+                      {getLanguageName(code)}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = (form.native_languages as string[]) || [];
+                          updateField("native_languages", current.filter((_, idx) => idx !== i));
+                        }}
+                        className="hover:text-teal-900"
+                      >
+                        <XCircle className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <SearchableSelect
+                  options={LANGUAGE_OPTIONS}
+                  value=""
+                  onChange={(code) => {
+                    if (!code) return;
+                    const current = (form.native_languages as string[]) || [];
+                    if (!current.includes(code)) {
+                      updateField("native_languages", [...current, code]);
+                    }
+                  }}
+                  placeholder="Search languages..."
+                  groupOrder={LANGUAGE_GROUP_ORDER}
+                />
+              </div>
             )}
           </div>
         </div>
