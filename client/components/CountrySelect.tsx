@@ -6,7 +6,7 @@ interface CountrySelectProps {
   onChange: (value: string) => void;
 }
 
-export const countries = [
+const countries = [
   "United States",
   "Canada",
   "United Kingdom",

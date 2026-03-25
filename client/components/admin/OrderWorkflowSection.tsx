@@ -15,11 +15,6 @@ import {
   ArrowRight,
   Zap,
 } from "lucide-react";
-import CompactSearchableSelect from "@/components/CompactSearchableSelect";
-import CompactMultiSearchableSelect from "@/components/CompactMultiSearchableSelect";
-import VendorNameAutocomplete from "@/components/VendorNameAutocomplete";
-import { LANGUAGE_OPTIONS, LANGUAGE_GROUP_ORDER } from "@/pages/admin/vendor-detail/data/languages";
-import { countries } from "@/components/CountrySelect";
 
 // ── Types ──
 
@@ -244,7 +239,7 @@ function VendorFinderModal({
   const [filterSourceLang, setFilterSourceLang] = useState(sourceLanguage || "");
   const [filterTargetLang, setFilterTargetLang] = useState(targetLanguage || "");
   const [filterServiceId, setFilterServiceId] = useState(serviceId || "");
-  const [nativeLanguages, setNativeLanguages] = useState<string[]>([]);
+  const [nativeLanguages, setNativeLanguages] = useState("");
   const [country, setCountry] = useState("");
   const [minRating, setMinRating] = useState(0);
   const [maxRate, setMaxRate] = useState("");
@@ -255,8 +250,8 @@ function VendorFinderModal({
   const doSearch = useCallback(async () => {
     setSearching(true);
     try {
-      const nativeLangs = nativeLanguages.length > 0
-        ? nativeLanguages.map((s) => s.toLowerCase())
+      const nativeLangs = nativeLanguages.trim()
+        ? nativeLanguages.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
         : null;
       const { data } = await supabase.functions.invoke("find-matching-vendors", {
         body: {
@@ -313,7 +308,7 @@ function VendorFinderModal({
     setFilterSourceLang(sourceLanguage || "");
     setFilterTargetLang(targetLanguage || "");
     setFilterServiceId(serviceId || "");
-    setNativeLanguages([]);
+    setNativeLanguages("");
     setCountry("");
     setMinRating(0);
     setMaxRate("");
@@ -371,22 +366,22 @@ function VendorFinderModal({
                 <div className="grid grid-cols-4 gap-2">
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Source Lang</label>
-                    <CompactSearchableSelect
-                      options={LANGUAGE_OPTIONS}
+                    <input
+                      type="text"
                       value={filterSourceLang}
-                      onChange={setFilterSourceLang}
+                      onChange={(e) => setFilterSourceLang(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
                       placeholder="e.g. FR"
-                      groupOrder={LANGUAGE_GROUP_ORDER}
                     />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Target Lang</label>
-                    <CompactSearchableSelect
-                      options={LANGUAGE_OPTIONS}
+                    <input
+                      type="text"
                       value={filterTargetLang}
-                      onChange={setFilterTargetLang}
+                      onChange={(e) => setFilterTargetLang(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
                       placeholder="e.g. EN"
-                      groupOrder={LANGUAGE_GROUP_ORDER}
                     />
                   </div>
                   <div>
@@ -408,22 +403,23 @@ function VendorFinderModal({
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Native Lang</label>
-                    <CompactMultiSearchableSelect
-                      options={LANGUAGE_OPTIONS}
-                      values={nativeLanguages}
-                      onChange={setNativeLanguages}
+                    <input
+                      type="text"
+                      value={nativeLanguages}
+                      onChange={(e) => setNativeLanguages(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
                       placeholder="en, fr"
-                      groupOrder={LANGUAGE_GROUP_ORDER}
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-4 gap-2">
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Country</label>
-                    <CompactSearchableSelect
-                      options={countries.map((c) => ({ value: c, label: c }))}
+                    <input
+                      type="text"
                       value={country}
-                      onChange={setCountry}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
                       placeholder="Country"
                     />
                   </div>
@@ -469,9 +465,11 @@ function VendorFinderModal({
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Search</label>
-                    <VendorNameAutocomplete
+                    <input
+                      type="text"
                       value={searchText}
-                      onChange={setSearchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
                       placeholder="Name or email..."
                     />
                   </div>
