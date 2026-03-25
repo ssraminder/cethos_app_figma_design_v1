@@ -56,6 +56,18 @@ interface WorkflowStep {
   service_name: string | null;
   order_document_id: string | null;
   offer_count: number;
+  active_offer_count: number;
+  offers: Array<{
+    id: string;
+    vendor_id: string;
+    vendor_name: string;
+    status: string;
+    vendor_rate: number | null;
+    expires_at: string | null;
+    offered_at: string | null;
+    declined_reason: string | null;
+    responded_at: string | null;
+  }> | null;
   created_at: string;
   updated_at: string;
 }
@@ -104,13 +116,6 @@ interface WorkflowData {
   workflow: Workflow | null;
   steps: WorkflowStep[];
   available_templates?: WorkflowTemplate[];
-}
-
-interface VendorSearchResult {
-  id: string;
-  full_name: string;
-  email: string;
-  rating: number | null;
 }
 
 // ── Status styling ──
@@ -192,147 +197,506 @@ function ActorTypeBadge({ actorType }: { actorType: string }) {
   );
 }
 
-// ── VendorPickerModal ──
+// ── VendorFinderModal ──
 
-interface VendorPickerModalProps {
+interface VendorFinderModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAssign: (params: {
-    vendor_id: string;
+  onSelectVendor: (vendor: any, mode: 'assign' | 'offer') => void;
+  onSelectMultiple: (vendors: any[]) => void;
+  stepName: string;
+  stepNumber: number;
+  sourceLanguage: string | null;
+  targetLanguage: string | null;
+  serviceId: string | null;
+  serviceName: string | null;
+}
+
+function VendorFinderModal({
+  isOpen,
+  onClose,
+  onSelectVendor,
+  onSelectMultiple,
+  stepName,
+  stepNumber,
+  sourceLanguage,
+  targetLanguage,
+  serviceId,
+  serviceName,
+}: VendorFinderModalProps) {
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [totalMatches, setTotalMatches] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
+
+  // Filter state
+  const [filterSourceLang, setFilterSourceLang] = useState(sourceLanguage || "");
+  const [filterTargetLang, setFilterTargetLang] = useState(targetLanguage || "");
+  const [filterServiceId, setFilterServiceId] = useState(serviceId || "");
+  const [nativeLanguages, setNativeLanguages] = useState("");
+  const [country, setCountry] = useState("");
+  const [minRating, setMinRating] = useState(0);
+  const [maxRate, setMaxRate] = useState("");
+  const [availability, setAvailability] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [sortBy, setSortBy] = useState("match_score");
+
+  const doSearch = useCallback(async () => {
+    setSearching(true);
+    try {
+      const nativeLangs = nativeLanguages.trim()
+        ? nativeLanguages.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+        : null;
+      const { data } = await supabase.functions.invoke("find-matching-vendors", {
+        body: {
+          source_language: filterSourceLang || null,
+          target_language: filterTargetLang || null,
+          service_id: filterServiceId || null,
+          native_languages: nativeLangs,
+          country: country || null,
+          min_rating: minRating || null,
+          max_rate: maxRate ? parseFloat(maxRate) : null,
+          availability: availability || null,
+          search_text: searchText || null,
+          sort_by: sortBy,
+          limit: 30,
+          offset: 0,
+        },
+      });
+      setVendors(data?.vendors || []);
+      setTotalMatches(data?.total_matches || 0);
+    } catch (err) {
+      console.error("Vendor search failed:", err);
+      setVendors([]);
+      setTotalMatches(0);
+    }
+    setSearching(false);
+  }, [filterSourceLang, filterTargetLang, filterServiceId, nativeLanguages, country, minRating, maxRate, availability, searchText, sortBy]);
+
+  // Auto-search on open
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedIds(new Set());
+      doSearch();
+    }
+  }, [isOpen]);
+
+  const handleReset = () => {
+    setFilterSourceLang(sourceLanguage || "");
+    setFilterTargetLang(targetLanguage || "");
+    setFilterServiceId(serviceId || "");
+    setNativeLanguages("");
+    setCountry("");
+    setMinRating(0);
+    setMaxRate("");
+    setAvailability("");
+    setSearchText("");
+    setSortBy("match_score");
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === vendors.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(vendors.map((v) => v.id)));
+    }
+  };
+
+  const selectedVendors = vendors.filter((v) => selectedIds.has(v.id));
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+      <div className="bg-white rounded-lg shadow-lg max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b shrink-0">
+          <h2 className="text-base font-semibold text-gray-900">
+            Find Vendors — Step {stepNumber}: {stepName}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Filters bar */}
+          <div className="border rounded-lg">
+            <button
+              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => setFiltersExpanded(!filtersExpanded)}
+            >
+              <span>Filters</span>
+              <span className="text-xs text-gray-400">{filtersExpanded ? "▼" : "▶"}</span>
+            </button>
+            {filtersExpanded && (
+              <div className="px-3 pb-3 space-y-3">
+                <div className="grid grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Source Lang</label>
+                    <input
+                      type="text"
+                      value={filterSourceLang}
+                      onChange={(e) => setFilterSourceLang(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                      placeholder="e.g. FR"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Target Lang</label>
+                    <input
+                      type="text"
+                      value={filterTargetLang}
+                      onChange={(e) => setFilterTargetLang(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                      placeholder="e.g. EN"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Service</label>
+                    <input
+                      type="text"
+                      value={filterServiceId}
+                      onChange={(e) => setFilterServiceId(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                      placeholder="Service ID"
+                      title={serviceName || ""}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Native Lang</label>
+                    <input
+                      type="text"
+                      value={nativeLanguages}
+                      onChange={(e) => setNativeLanguages(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                      placeholder="en, fr"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Country</label>
+                    <input
+                      type="text"
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                      placeholder="Country"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Min Rating</label>
+                    <select
+                      value={minRating}
+                      onChange={(e) => setMinRating(parseInt(e.target.value))}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                    >
+                      <option value={0}>Any</option>
+                      <option value={1}>1+</option>
+                      <option value={2}>2+</option>
+                      <option value={3}>3+</option>
+                      <option value={4}>4+</option>
+                      <option value={5}>5</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Max Rate</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={maxRate}
+                      onChange={(e) => setMaxRate(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Availability</label>
+                    <select
+                      value={availability}
+                      onChange={(e) => setAvailability(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                    >
+                      <option value="">All</option>
+                      <option value="available">Available</option>
+                      <option value="busy">Busy</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Search</label>
+                    <input
+                      type="text"
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                      placeholder="Name or email..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Sort by</label>
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                    >
+                      <option value="match_score">Match Score</option>
+                      <option value="rating">Rating</option>
+                      <option value="rate_asc">Rate (low to high)</option>
+                      <option value="rate_desc">Rate (high to low)</option>
+                      <option value="projects">Projects</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <button
+                      onClick={doSearch}
+                      className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                    >
+                      Search
+                    </button>
+                    <button
+                      onClick={() => { handleReset(); }}
+                      className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50"
+                    >
+                      Reset Filters
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Select all + count */}
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={vendors.length > 0 && selectedIds.size === vendors.length}
+                onChange={toggleSelectAll}
+              />
+              Select all (for batch offer)
+            </label>
+            <span className="text-sm text-gray-500">
+              {searching ? "Searching..." : `${totalMatches} vendor(s) found`}
+            </span>
+          </div>
+
+          {/* Vendor rows */}
+          {searching ? (
+            <div className="flex items-center justify-center py-8 text-gray-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          ) : vendors.length === 0 ? (
+            <p className="text-center py-8 text-sm text-gray-400">No vendors found. Adjust filters and search again.</p>
+          ) : (
+            <div className="space-y-2">
+              {vendors.map((v: any) => (
+                <div key={v.id} className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50">
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(v.id)}
+                      onChange={() => toggleSelect(v.id)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {v.rating != null && (
+                          <span className="flex items-center gap-0.5 text-xs text-gray-600">
+                            <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                            {v.rating}
+                          </span>
+                        )}
+                        <span className="font-medium text-sm text-gray-900">{v.full_name}</span>
+                        <span className="text-xs text-gray-400">· {v.email}</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                        {v.matching_pairs && v.matching_pairs.length > 0 && (
+                          <span>{v.matching_pairs.map((p: any) => `${p.source}→${p.target}`).join(", ")}</span>
+                        )}
+                        {v.rate_for_service && (
+                          <span>· ${v.rate_for_service.rate}/{v.rate_for_service.unit} {v.rate_for_service.currency}</span>
+                        )}
+                        <span>
+                          · {v.availability_status === "available" ? (
+                            <span className="text-green-600">Available</span>
+                          ) : (
+                            <span className="text-yellow-600">Busy</span>
+                          )}
+                        </span>
+                        <span>· {v.total_projects || 0} jobs</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
+                        {v.native_languages && v.native_languages.length > 0 && (
+                          <span className="text-gray-400">
+                            Native: {v.native_languages.map((l: string) => (
+                              <span key={l} className="inline-block bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-1">{l.toUpperCase()}</span>
+                            ))}
+                          </span>
+                        )}
+                        {v.active_jobs != null && (
+                          <span className="text-gray-400">· Active jobs: {v.active_jobs}</span>
+                        )}
+                        {v.match_score != null && (
+                          <span className="text-gray-400">· Score: {v.match_score}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                        onClick={() => onSelectVendor(v, "assign")}
+                      >
+                        Assign
+                      </button>
+                      <button
+                        className="text-xs px-2.5 py-1 bg-teal-600 text-white rounded hover:bg-teal-700"
+                        onClick={() => onSelectVendor(v, "offer")}
+                      >
+                        Offer
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between p-4 border-t shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onSelectMultiple(selectedVendors)}
+            disabled={selectedIds.size === 0}
+            className={`px-4 py-2 rounded-lg text-sm font-medium text-white ${
+              selectedIds.size > 0
+                ? "bg-teal-600 hover:bg-teal-700"
+                : "bg-teal-600 opacity-50 cursor-not-allowed"
+            }`}
+          >
+            Offer to Selected ({selectedIds.size})
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── VendorAssignModal ──
+
+interface VendorAssignModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (params: {
+    action: 'direct_assign' | 'offer_vendor' | 'offer_multiple';
+    vendor_id?: string;
+    vendors?: Array<{ vendor_id: string; vendor_rate?: number; vendor_total?: number }>;
     vendor_rate: number;
     vendor_rate_unit: string;
     vendor_total: number;
     vendor_currency: string;
     deadline: string | null;
     instructions: string | null;
+    expires_in_hours: number | null;
   }) => void;
+  mode: 'assign' | 'offer' | 'offer_multiple';
+  vendor: any | null;
+  vendors: any[] | null;
   stepId: string;
   stepName: string;
   stepNumber: number;
   serviceName: string | null;
-  sourceLanguage: string | null;
-  targetLanguage: string | null;
   orderFinancials: OrderFinancials | null;
-  offerCount: number;
+  totalVendorCost: number;
 }
 
-function VendorPickerModal({
+function VendorAssignModal({
   isOpen,
   onClose,
-  onAssign,
+  onSubmit,
+  mode,
+  vendor,
+  vendors,
   stepId,
   stepName,
   stepNumber,
   serviceName,
-  sourceLanguage,
-  targetLanguage,
   orderFinancials,
-  offerCount,
-}: VendorPickerModalProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [selectedVendor, setSelectedVendor] = useState<{ id: string; name: string } | null>(null);
-  const [suggestedRate, setSuggestedRate] = useState<{ rate: number; calculation_unit: string; currency: string } | null>(null);
-  const [lookingUpRate, setLookingUpRate] = useState(false);
+  totalVendorCost,
+}: VendorAssignModalProps) {
   const [vendorRate, setVendorRate] = useState<string>("");
   const [vendorRateUnit, setVendorRateUnit] = useState("per_word");
   const [vendorTotal, setVendorTotal] = useState<string>("");
   const [vendorCurrency, setVendorCurrency] = useState("CAD");
   const [deadline, setDeadline] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [expiresInHours, setExpiresInHours] = useState<string>("24");
+  const [suggestedRate, setSuggestedRate] = useState<{ rate: number; calculation_unit: string; currency: string } | null>(null);
+  const [lookingUpRate, setLookingUpRate] = useState(false);
 
-  const resetState = useCallback(() => {
-    setSearchQuery("");
-    setSearchResults([]);
-    setSearching(false);
-    setSelectedVendor(null);
-    setSuggestedRate(null);
-    setLookingUpRate(false);
-    setVendorRate("");
-    setVendorRateUnit("per_word");
-    setVendorTotal("");
-    setVendorCurrency("CAD");
-    setDeadline("");
-    setInstructions("");
-  }, []);
-
+  // Reset on open
   useEffect(() => {
     if (isOpen) {
-      resetState();
+      setVendorRate("");
+      setVendorRateUnit("per_word");
+      setVendorTotal("");
+      setVendorCurrency("CAD");
+      setDeadline("");
+      setInstructions("");
+      setExpiresInHours("24");
+      setSuggestedRate(null);
     }
-  }, [isOpen, resetState]);
+  }, [isOpen]);
 
-  // Debounced vendor search
+  // Lookup rate for single vendor mode
   useEffect(() => {
-    if (!searchQuery || searchQuery.length < 2) {
-      setSearchResults([]);
-      return;
+    if (isOpen && vendor && mode !== "offer_multiple") {
+      const lookupRate = async () => {
+        setLookingUpRate(true);
+        try {
+          const { data } = await supabase.functions.invoke("update-workflow-step", {
+            body: { step_id: stepId, action: "lookup_vendor_rate", vendor_id: vendor.id },
+          });
+          if (data?.suggested_rate) {
+            setSuggestedRate(data.suggested_rate);
+            setVendorRate(String(data.suggested_rate.rate));
+            setVendorRateUnit(data.suggested_rate.calculation_unit);
+            setVendorCurrency(data.suggested_rate.currency);
+          }
+        } catch (err) {
+          console.error("Rate lookup failed:", err);
+        }
+        setLookingUpRate(false);
+      };
+      lookupRate();
     }
-    const timer = setTimeout(async () => {
-      setSearching(true);
-      const { data } = await supabase
-        .from("vendors")
-        .select("id, full_name, email, rating")
-        .eq("status", "active")
-        .or(`full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
-        .limit(10);
-      setSearchResults(data ?? []);
-      setSearching(false);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [isOpen, vendor, mode, stepId]);
 
-  const lookupRate = async (vendorId: string) => {
-    setLookingUpRate(true);
-    setSuggestedRate(null);
-    try {
-      const { data } = await supabase.functions.invoke("update-workflow-step", {
-        body: { step_id: stepId, action: "lookup_vendor_rate", vendor_id: vendorId },
-      });
-      if (data?.suggested_rate) {
-        setSuggestedRate(data.suggested_rate);
-        setVendorRate(String(data.suggested_rate.rate));
-        setVendorRateUnit(data.suggested_rate.calculation_unit);
-        setVendorCurrency(data.suggested_rate.currency);
-      }
-    } catch (err) {
-      console.error("Rate lookup failed:", err);
-    } finally {
-      setLookingUpRate(false);
+  // Pre-fill rate from vendor's rate_for_service if available and no suggested rate
+  useEffect(() => {
+    if (isOpen && vendor && vendor.rate_for_service && !suggestedRate && !vendorRate) {
+      setVendorRate(String(vendor.rate_for_service.rate));
+      setVendorCurrency(vendor.rate_for_service.currency || "CAD");
     }
-  };
-
-  const handleSelectVendor = (vendor: { id: string; full_name: string }) => {
-    setSelectedVendor({ id: vendor.id, name: vendor.full_name });
-    setSearchResults([]);
-    setSearchQuery("");
-    lookupRate(vendor.id);
-  };
-
-  const handleDeselectVendor = () => {
-    setSelectedVendor(null);
-    setSuggestedRate(null);
-    setVendorRate("");
-    setVendorRateUnit("per_word");
-    setVendorTotal("");
-    setVendorCurrency("CAD");
-  };
-
-  const canSubmit = selectedVendor && vendorRate !== "" && vendorRateUnit && vendorTotal !== "";
-
-  const handleSubmit = () => {
-    if (!canSubmit || !selectedVendor) return;
-    onAssign({
-      vendor_id: selectedVendor.id,
-      vendor_rate: parseFloat(vendorRate),
-      vendor_rate_unit: vendorRateUnit,
-      vendor_total: parseFloat(vendorTotal),
-      vendor_currency: vendorCurrency,
-      deadline: deadline || null,
-      instructions: instructions || null,
-    });
-  };
+  }, [isOpen, vendor, suggestedRate]);
 
   const margin =
     orderFinancials && orderFinancials.subtotal > 0 && vendorTotal
@@ -342,38 +706,96 @@ function VendorPickerModal({
   const marginColor =
     margin === null ? "gray" : margin >= 50 ? "green" : margin >= 30 ? "yellow" : "red";
 
+  const canSubmit = vendorRate !== "" && vendorRateUnit && vendorTotal !== "";
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    const baseParams = {
+      vendor_rate: parseFloat(vendorRate),
+      vendor_rate_unit: vendorRateUnit,
+      vendor_total: parseFloat(vendorTotal),
+      vendor_currency: vendorCurrency,
+      deadline: deadline || null,
+      instructions: instructions || null,
+      expires_in_hours: mode !== "assign" && expiresInHours !== "0" ? parseInt(expiresInHours) : null,
+    };
+
+    if (mode === "assign" && vendor) {
+      onSubmit({ ...baseParams, action: "direct_assign", vendor_id: vendor.id });
+    } else if (mode === "offer" && vendor) {
+      onSubmit({ ...baseParams, action: "offer_vendor", vendor_id: vendor.id });
+    } else if (mode === "offer_multiple" && vendors) {
+      onSubmit({
+        ...baseParams,
+        action: "offer_multiple",
+        vendors: vendors.map((v) => ({ vendor_id: v.id })),
+      });
+    }
+  };
+
+  const headerText =
+    mode === "assign"
+      ? `Assign Vendor — Step ${stepNumber}: ${stepName}`
+      : mode === "offer"
+        ? `Offer to Vendor — Step ${stepNumber}: ${stepName}`
+        : `Offer to ${vendors?.length || 0} Vendors — Step ${stepNumber}: ${stepName}`;
+
+  const submitLabel =
+    mode === "assign"
+      ? "Assign"
+      : mode === "offer"
+        ? "Send Offer"
+        : `Send Offers (${vendors?.length || 0})`;
+
+  const submitColor =
+    mode === "assign" ? "bg-blue-600 hover:bg-blue-700" : "bg-teal-600 hover:bg-teal-700";
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center">
       <div className="bg-white rounded-lg shadow-lg max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-base font-semibold text-gray-900">
-            Assign Vendor — Step {stepNumber}: {stepName}
-          </h2>
+          <h2 className="text-base font-semibold text-gray-900">{headerText}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-4 space-y-4">
-          {/* Info bar */}
-          <div className="bg-gray-50 rounded px-3 py-2 text-sm text-gray-600">
-            <div>Service: {serviceName || "N/A"} · LP: {sourceLanguage && targetLanguage ? `${sourceLanguage} → ${targetLanguage}` : "Not set"}</div>
-            <div>Offer attempt #{offerCount + 1}</div>
-          </div>
-
-          {/* Vendor search section */}
+          {/* Vendor display */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
-            {selectedVendor ? (
+            <label className="block text-sm font-medium text-gray-700 mb-1">Vendor{mode === "offer_multiple" ? "s" : ""}</label>
+            {mode === "offer_multiple" && vendors ? (
+              <div className="flex flex-wrap gap-1">
+                {vendors.map((v) => (
+                  <span key={v.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full text-xs font-medium">
+                    {v.full_name}
+                    {v.rating != null && (
+                      <span className="flex items-center gap-0.5">
+                        <Star className="w-2.5 h-2.5 text-yellow-400 fill-yellow-400" />
+                        {v.rating}
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            ) : vendor ? (
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium">
-                  {selectedVendor.name}
-                  <button onClick={handleDeselectVendor} className="ml-1 hover:text-indigo-900">
-                    <X className="w-3 h-3" />
-                  </button>
+                  {vendor.full_name}
+                  {vendor.rating != null && (
+                    <span className="flex items-center gap-0.5 ml-1">
+                      <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                      {vendor.rating}
+                    </span>
+                  )}
+                  {vendor.rate_for_service && (
+                    <span className="ml-1 text-xs text-indigo-400">
+                      ${vendor.rate_for_service.rate}/{vendor.rate_for_service.unit}
+                    </span>
+                  )}
                 </span>
                 {lookingUpRate && (
                   <span className="flex items-center gap-1 text-xs text-gray-400">
@@ -382,63 +804,19 @@ function VendorPickerModal({
                   </span>
                 )}
               </div>
-            ) : (
-              <div>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by name or email..."
-                    className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    autoFocus
-                  />
-                </div>
-                <div className="max-h-48 overflow-y-auto mt-1">
-                  {searching ? (
-                    <div className="text-center py-4 text-gray-400">
-                      <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1" />
-                      <p className="text-xs">Searching...</p>
-                    </div>
-                  ) : searchResults.length === 0 ? (
-                    <p className="text-center py-4 text-sm text-gray-400">
-                      {searchQuery.length < 2 ? "Type to search vendors" : "No vendors found"}
-                    </p>
-                  ) : (
-                    <div className="divide-y divide-gray-50 border border-gray-100 rounded-lg">
-                      {searchResults.map((v: any) => (
-                        <button
-                          key={v.id}
-                          onClick={() => handleSelectVendor(v)}
-                          className="w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">{v.full_name}</p>
-                              <p className="text-xs text-gray-500">{v.email}</p>
-                            </div>
-                            {v.rating != null && (
-                              <div className="flex items-center gap-0.5 text-xs text-gray-500">
-                                <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                                {v.rating}
-                              </div>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            ) : null}
+          </div>
+
+          {/* Service info */}
+          <div className="bg-gray-50 rounded px-3 py-2 text-sm text-gray-600">
+            Service: {serviceName || "N/A"}
           </div>
 
           {/* Rate section */}
           <div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Rate</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Rate *</label>
                 <input
                   type="number"
                   step="0.001"
@@ -454,7 +832,7 @@ function VendorPickerModal({
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Rate Unit</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Rate Unit *</label>
                 <select
                   value={vendorRateUnit}
                   onChange={(e) => setVendorRateUnit(e.target.value)}
@@ -467,7 +845,7 @@ function VendorPickerModal({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Total</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Total *</label>
                 <input
                   type="number"
                   step="0.01"
@@ -514,13 +892,32 @@ function VendorPickerModal({
               </div>
               {margin !== null && margin < 30 && (
                 <div className="bg-amber-50 border border-amber-200 text-amber-800 p-2 rounded text-sm mt-2">
-                  ⚠️ Margin below minimum threshold (30%). Proceed with caution.
+                  Warning: Margin below minimum threshold (30%). Proceed with caution.
                 </div>
               )}
             </div>
           ) : vendorTotal ? (
             <p className="text-xs text-gray-400">Margin unavailable — order has no pricing data.</p>
           ) : null}
+
+          {/* Offer expiry (offer modes only) */}
+          {mode !== "assign" && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Offer expires in</label>
+              <select
+                value={expiresInHours}
+                onChange={(e) => setExpiresInHours(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="0">No expiry</option>
+                <option value="4">4 hours</option>
+                <option value="8">8 hours</option>
+                <option value="12">12 hours</option>
+                <option value="24">24 hours</option>
+                <option value="48">48 hours</option>
+              </select>
+            </div>
+          )}
 
           {/* Deadline */}
           <div>
@@ -558,12 +955,10 @@ function VendorPickerModal({
             onClick={handleSubmit}
             disabled={!canSubmit}
             className={`px-4 py-2 rounded-lg text-sm font-medium text-white ${
-              canSubmit
-                ? "bg-indigo-600 hover:bg-indigo-700"
-                : "bg-indigo-600 opacity-50 cursor-not-allowed"
+              canSubmit ? submitColor : "bg-gray-400 cursor-not-allowed"
             }`}
           >
-            Assign & Offer
+            {submitLabel}
           </button>
         </div>
       </div>
@@ -926,7 +1321,7 @@ interface WorkflowPipelineProps {
   onToggleExpand?: (stepId: string) => void;
   orderFinancials?: OrderFinancials | null;
   totalVendorCost?: number;
-  onAssignVendor?: (step: WorkflowStep) => void;
+  onFindVendor?: (step: WorkflowStep) => void;
   handleStepAction?: (stepId: string, action: string, params: any) => Promise<void>;
   actionLoading?: string | null;
   revisionStepId?: string | null;
@@ -945,7 +1340,7 @@ function WorkflowPipeline({
   onToggleExpand = () => {},
   orderFinancials = null,
   totalVendorCost = 0,
-  onAssignVendor = () => {},
+  onFindVendor = () => {},
   handleStepAction = async () => {},
   actionLoading = null,
   revisionStepId = null,
@@ -1155,6 +1550,50 @@ function WorkflowPipeline({
                   </span>
                 </div>
 
+                {/* Active offers display */}
+                {step.offers && step.offers.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {step.offers.filter((o) => o.status === "sent").length > 0 && (
+                      <div className="text-xs text-blue-600">
+                        {step.offers.filter((o) => o.status === "sent").length} offer(s) pending
+                        {step.offers
+                          .filter((o) => o.status === "sent")
+                          .map((o) => (
+                            <span
+                              key={o.id}
+                              className="ml-2 inline-flex items-center bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs"
+                            >
+                              {o.vendor_name}
+                              {o.expires_at &&
+                                (() => {
+                                  const hrs = Math.round(
+                                    (new Date(o.expires_at).getTime() - Date.now()) / 3600000
+                                  );
+                                  return hrs > 0 ? (
+                                    <span className="ml-1 text-blue-400">({hrs}h left)</span>
+                                  ) : (
+                                    <span className="ml-1 text-red-500">(expired)</span>
+                                  );
+                                })()}
+                            </span>
+                          ))}
+                      </div>
+                    )}
+                    {step.offers.filter((o) => o.status === "declined").length > 0 && (
+                      <div className="text-xs text-gray-400">
+                        {step.offers.filter((o) => o.status === "declined").length} declined
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Accepted vendor */}
+                {step.offers?.find((o) => o.status === "accepted") && (
+                  <div className="text-xs text-green-600 mt-0.5">
+                    Accepted by {step.offers!.find((o) => o.status === "accepted")?.vendor_name}
+                  </div>
+                )}
+
                 {/* Line 3: Rate info (vendor steps with rate) */}
                 {step.actor_type === "vendor" && step.vendor_rate && (
                   <div className="text-sm text-gray-500 mt-1">
@@ -1226,16 +1665,16 @@ function WorkflowPipeline({
 
                 {/* Action buttons */}
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                  {/* Assign Vendor: pending + vendor + no vendor_id */}
+                  {/* Find Vendor: pending + vendor + no vendor_id */}
                   {step.status === "pending" && step.actor_type === "vendor" && !step.vendor_id && (
                     <button
                       className="text-xs px-3 py-1 border border-blue-400 text-blue-600 rounded hover:bg-blue-50"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onAssignVendor(step);
+                        onFindVendor(step);
                       }}
                     >
-                      Assign Vendor
+                      Find Vendor
                     </button>
                   )}
 
@@ -1248,20 +1687,32 @@ function WorkflowPipeline({
                     />
                   )}
 
-                  {/* Retract Offer: offered */}
+                  {/* Send More Offers + Retract Offers: offered */}
                   {step.status === "offered" && (
-                    <button
-                      className="text-xs px-3 py-1 border border-red-400 text-red-600 rounded hover:bg-red-50"
-                      disabled={actionLoading === step.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm("Retract this offer? The vendor will be unassigned.")) {
-                          handleStepAction(step.id, "change_status", { status: "pending" });
-                        }
-                      }}
-                    >
-                      {actionLoading === step.id ? "..." : "Retract Offer"}
-                    </button>
+                    <>
+                      <button
+                        className="text-xs px-3 py-1 border border-teal-400 text-teal-600 rounded hover:bg-teal-50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onFindVendor(step);
+                        }}
+                      >
+                        Send More Offers
+                      </button>
+                      <button
+                        className="text-xs px-3 py-1 border border-red-400 text-red-600 rounded hover:bg-red-50"
+                        disabled={actionLoading === step.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const count = step.active_offer_count || 1;
+                          if (confirm(`Retract ${count} active offer(s)? All pending offers will be cancelled.`)) {
+                            handleStepAction(step.id, "retract_offers", {});
+                          }
+                        }}
+                      >
+                        {actionLoading === step.id ? "..." : "Retract Offers"}
+                      </button>
+                    </>
                   )}
 
                   {/* Mark In Progress: accepted */}
@@ -1468,7 +1919,11 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
   const [data, setData] = useState<WorkflowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [vendorPickerStep, setVendorPickerStep] = useState<WorkflowStep | null>(null);
+  const [finderStep, setFinderStep] = useState<WorkflowStep | null>(null);
+  const [assignMode, setAssignMode] = useState<'assign' | 'offer' | 'offer_multiple'>('offer');
+  const [assignVendor, setAssignVendor] = useState<any | null>(null);
+  const [assignVendors, setAssignVendors] = useState<any[] | null>(null);
+  const [showAssignModal, setShowAssignModal] = useState(false);
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
   const [revisionStepId, setRevisionStepId] = useState<string | null>(null);
   const [revisionReason, setRevisionReason] = useState("");
@@ -1549,6 +2004,15 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
     }
   };
 
+  const handleAssignSubmit = async (params: any) => {
+    if (!finderStep) return;
+    await handleStepAction(finderStep.id, params.action, params);
+    setShowAssignModal(false);
+    setFinderStep(null);
+    setAssignVendor(null);
+    setAssignVendors(null);
+  };
+
   if (loading) {
     return (
       <div className="bg-white rounded-lg border p-6">
@@ -1579,7 +2043,7 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
           onToggleExpand={(id) => setExpandedStepId(expandedStepId === id ? null : id)}
           orderFinancials={orderFinancials}
           totalVendorCost={totalVendorCost}
-          onAssignVendor={(step) => setVendorPickerStep(step)}
+          onFindVendor={(step) => setFinderStep(step)}
           handleStepAction={handleStepAction}
           actionLoading={actionLoading}
           revisionStepId={revisionStepId}
@@ -1600,22 +2064,49 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
         />
       )}
 
-      {vendorPickerStep && (
-        <VendorPickerModal
-          isOpen={!!vendorPickerStep}
-          onClose={() => setVendorPickerStep(null)}
-          onAssign={async (params) => {
-            await handleStepAction(vendorPickerStep.id, "assign_vendor", params);
-            setVendorPickerStep(null);
+      {/* Vendor Finder Modal */}
+      {finderStep && (
+        <VendorFinderModal
+          isOpen={!!finderStep}
+          onClose={() => setFinderStep(null)}
+          onSelectVendor={(vendor, mode) => {
+            setAssignVendor(vendor);
+            setAssignMode(mode);
+            setShowAssignModal(true);
           }}
-          stepId={vendorPickerStep.id}
-          stepName={vendorPickerStep.name}
-          stepNumber={vendorPickerStep.step_number}
-          serviceName={vendorPickerStep.service_name}
-          sourceLanguage={vendorPickerStep.source_language}
-          targetLanguage={vendorPickerStep.target_language}
+          onSelectMultiple={(vendors) => {
+            setAssignVendors(vendors);
+            setAssignMode('offer_multiple');
+            setShowAssignModal(true);
+          }}
+          stepName={finderStep.name}
+          stepNumber={finderStep.step_number}
+          sourceLanguage={finderStep.source_language}
+          targetLanguage={finderStep.target_language}
+          serviceId={finderStep.service_id}
+          serviceName={finderStep.service_name}
+        />
+      )}
+
+      {/* Vendor Assign/Offer Modal (stacks on top of finder) */}
+      {showAssignModal && finderStep && (
+        <VendorAssignModal
+          isOpen={showAssignModal}
+          onClose={() => {
+            setShowAssignModal(false);
+            setAssignVendor(null);
+            setAssignVendors(null);
+          }}
+          onSubmit={handleAssignSubmit}
+          mode={assignMode}
+          vendor={assignVendor}
+          vendors={assignVendors}
+          stepId={finderStep.id}
+          stepName={finderStep.name}
+          stepNumber={finderStep.step_number}
+          serviceName={finderStep.service_name}
           orderFinancials={orderFinancials}
-          offerCount={vendorPickerStep.offer_count}
+          totalVendorCost={totalVendorCost}
         />
       )}
 
