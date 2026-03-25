@@ -2007,7 +2007,7 @@ function WorkflowPipeline({
 
 // ── Main Exported Section Component ──
 
-export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
+export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { orderId: string; onWorkflowLoaded?: (data: any) => void }) {
   const [data, setData] = useState<WorkflowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -2049,6 +2049,7 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
       setTotalVendorCost(wfData.total_vendor_cost || 0);
       setVendorFinancials(wfData.vendor_financials || null);
       setMarginData(wfData.margin || null);
+      onWorkflowLoaded?.(wfData);
     } catch (err: unknown) {
       console.error("Failed to load workflow:", err);
       setData({ success: true, has_workflow: false, workflow: null, steps: [], available_templates: [] });
