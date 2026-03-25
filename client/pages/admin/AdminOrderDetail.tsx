@@ -53,6 +53,7 @@ import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import OriginalsModal from "@/components/admin/OriginalsModal";
 import { syncOrderFromQuote } from "../../utils/syncOrderFromQuote";
 import OrderWorkflowSection from "@/components/admin/OrderWorkflowSection";
+import OrderFinanceSection from "@/components/admin/OrderFinanceSection";
 
 interface OrderDetail {
   id: string;
@@ -413,6 +414,8 @@ export default function AdminOrderDetail() {
   const [unreadStaffCount, setUnreadStaffCount] = useState(0);
   const [documentLineItems, setDocumentLineItems] = useState<DocumentLineItem[]>([]);
   const [orderAdjustments, setOrderAdjustments] = useState<OrderAdjustment[]>([]);
+  const [workflowData, setWorkflowData] = useState<any>(null);
+  const [refunds, setRefunds] = useState<any[]>([]);
   const messagesBottomRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1344,6 +1347,14 @@ export default function AdminOrderDetail() {
         .eq("order_id", orderData.id)
         .order("created_at", { ascending: false });
       setPaymentRequests(prData || []);
+
+      // Refunds for Finance section
+      const { data: refundsData } = await supabase
+        .from("refunds")
+        .select("*")
+        .eq("order_id", orderData.id)
+        .order("created_at", { ascending: false });
+      setRefunds(refundsData || []);
 
       setAdjustments(
         (adjustmentsResult.data || []).map((adjustment: any) => ({
@@ -3694,139 +3705,20 @@ export default function AdminOrderDetail() {
             )}
           </div>
 
+          {/* Finance */}
+          <OrderFinanceSection
+            order={order}
+            invoice={invoices.length > 0 ? invoices[0] : null}
+            payments={[]}
+            paymentAllocations={paymentAllocations}
+            paymentRequests={paymentRequests}
+            refunds={refunds}
+            workflowData={workflowData}
+            onRefresh={fetchOrderDetails}
+          />
+
           {/* Order Workflow */}
-          {id && <OrderWorkflowSection orderId={id} />}
-
-          <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-gray-400" />
-              Payment History
-            </h2>
-
-            {invoices.length > 0 || paymentAllocations.length > 0 || paymentRequests.some(pr => pr.status === "paid") ? (
-              <div className="space-y-5">
-                {/* Invoices */}
-                {invoices.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Invoices</h3>
-                    <div className="space-y-2">
-                      {invoices.map((inv) => (
-                        <div key={inv.id} className="p-3 bg-gray-50 rounded-lg">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-sm">{inv.invoice_number}</span>
-                            <span
-                              className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-                                inv.status === "paid"
-                                  ? "bg-green-100 text-green-700"
-                                  : inv.status === "partial"
-                                    ? "bg-yellow-100 text-yellow-700"
-                                    : "bg-blue-100 text-blue-700"
-                              }`}
-                            >
-                              {inv.status}
-                            </span>
-                          </div>
-                          <div className="mt-1 text-sm text-gray-600 space-y-0.5">
-                            <p>Total: ${inv.total_amount.toFixed(2)}</p>
-                            <p>Paid: ${inv.amount_paid.toFixed(2)}</p>
-                            {inv.balance_due > 0 && <p>Balance: ${inv.balance_due.toFixed(2)}</p>}
-                            <p>Payment method: {
-                              inv.quotes?.payment_methods?.name
-                              || (inv.quotes?.payment_methods?.code && /stripe|card/i.test(inv.quotes.payment_methods.code) ? "Stripe / Credit Card" : null)
-                              || "Online Payment"
-                            }</p>
-                          </div>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {format(new Date(inv.created_at), "MMM d, yyyy")}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Payments via allocations */}
-                {paymentAllocations.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Payments</h3>
-                    <div className="space-y-2">
-                      {paymentAllocations.map((alloc, idx) => (
-                        <div key={alloc.customer_payments?.id || idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">
-                                ${alloc.allocated_amount.toFixed(2)}
-                              </span>
-                              <span
-                                className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-                                  alloc.customer_payments?.status === "completed"
-                                    ? "bg-green-100 text-green-700"
-                                    : "bg-yellow-100 text-yellow-700"
-                                }`}
-                              >
-                                {alloc.customer_payments?.status || "recorded"}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-500 mt-1">
-                              {alloc.customer_payments?.payment_method_name || "Online Payment"}
-                              {alloc.customer_payments?.payment_date && (
-                                <> • {format(new Date(alloc.customer_payments.payment_date), "MMM d, yyyy")}</>
-                              )}
-                            </p>
-                            {alloc.customer_payments?.reference_number && (
-                              <p className="text-xs text-gray-400">Ref: {alloc.customer_payments.reference_number}</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Stripe payment requests */}
-                {paymentRequests.some(pr => pr.status === "paid") && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Stripe Payments</h3>
-                    <div className="space-y-2">
-                      {paymentRequests.filter(pr => pr.status === "paid").map((pr) => (
-                        <div key={pr.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">
-                                ${pr.amount.toFixed(2)}
-                              </span>
-                              <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">
-                                paid
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-500 mt-1">
-                              Stripe / Credit Card
-                              {pr.paid_at && (
-                                <> • {format(new Date(pr.paid_at), "MMM d, yyyy h:mm a")}</>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : order && order.amount_paid > 0 ? (
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">${order.amount_paid.toFixed(2)}</span>
-                  <span className="text-sm text-gray-500">paid</span>
-                </div>
-                {order.balance_due > 0 && (
-                  <p className="text-sm text-gray-600 mt-1">Balance due: ${order.balance_due.toFixed(2)}</p>
-                )}
-                <p className="text-xs text-gray-400 italic mt-1">Payment details not yet available</p>
-              </div>
-            ) : (
-              <p className="text-gray-500">No payments recorded</p>
-            )}
-          </div>
+          {id && <OrderWorkflowSection orderId={id} onWorkflowLoaded={setWorkflowData} />}
         </div>
 
         <div className="lg:col-span-1">
@@ -4129,401 +4021,6 @@ export default function AdminOrderDetail() {
               <p className="text-[11px] text-gray-400 mt-1.5 px-1">
                 Enter to send · Shift+Enter for new line · Customer receives an email notification
               </p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-gray-400" />
-              Order Summary
-            </h2>
-
-            <div className="space-y-2">
-              {/* Document line items */}
-              {documentLineItems.length > 0 && (
-                <div className="mb-2">
-                  {documentLineItems.map((item) => (
-                    <div key={item.id} className="flex justify-between py-1">
-                      <div className="flex-1 mr-4">
-                        <p className="text-gray-700 text-xs leading-tight">
-                          {item.group_label ?? item.document_type ?? 'Document'}
-                        </p>
-                        <p className="text-gray-400 text-xs">
-                          {item.billable_pages} pages × ${parseFloat(String(item.base_rate)).toFixed(2)}
-                          {item.detected_language_name ? ` · ${item.detected_language_name}` : ''}
-                        </p>
-                      </div>
-                      <span className="text-gray-900 font-medium whitespace-nowrap">
-                        ${parseFloat(String(item.line_total)).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Certification — only show quote-level cert not already in document line items */}
-              {(() => {
-                const groupCertSum = documentLineItems.reduce((sum, g) => sum + Number(g.certification_price || 0), 0);
-                const ct = order.quote?.calculated_totals;
-                const quoteCert = Number(ct?.certification_total) || parseFloat(String(order.certification_total || 0));
-                const quoteLevelCert = quoteCert - groupCertSum;
-                if (quoteLevelCert <= 0) return null;
-                return (
-                  <div className="flex justify-between py-1 text-sm">
-                    <span className="text-gray-500">Certification</span>
-                    <span>${quoteLevelCert.toFixed(2)}</span>
-                  </div>
-                );
-              })()}
-
-              {/* Rush fee */}
-              {parseFloat(String(order.rush_fee || 0)) > 0 && (
-                <div className="flex justify-between py-1 text-sm">
-                  <span className="text-gray-500">Rush Fee</span>
-                  <span>${parseFloat(String(order.rush_fee)).toFixed(2)}</span>
-                </div>
-              )}
-
-              {/* Delivery fee */}
-              {parseFloat(String(order.delivery_fee || 0)) > 0 && (
-                <div className="flex justify-between py-1 text-sm">
-                  <span className="text-gray-500">Delivery</span>
-                  <span>${parseFloat(String(order.delivery_fee)).toFixed(2)}</span>
-                </div>
-              )}
-
-              {/* Adjustments (discounts / surcharges) */}
-              {orderAdjustments.map((adj) => {
-                const amount = Math.abs(parseFloat(String(adj.calculated_amount)));
-                const isDiscount = adj.adjustment_type === 'discount';
-                return (
-                  <div key={adj.id} className="flex justify-between py-1 text-sm">
-                    <span className={isDiscount ? 'text-green-600' : 'text-gray-500'}>
-                      {adj.reason ?? (isDiscount ? 'Discount' : 'Surcharge')}
-                      {adj.value_type === 'percentage' ? ` (${parseFloat(String(adj.value)).toFixed(0)}%)` : ''}
-                    </span>
-                    <span className={isDiscount ? 'text-green-600 font-medium' : 'text-gray-900'}>
-                      {isDiscount ? '−' : '+'}${amount.toFixed(2)}
-                    </span>
-                  </div>
-                );
-              })}
-
-              {/* Divider before tax */}
-              <div className="border-t border-gray-100 my-1" />
-
-              {/* Subtotal after discounts — read from calculated_totals, don't re-compute */}
-              {orderAdjustments.length > 0 && (
-                <div className="flex justify-between py-1 text-sm text-gray-500">
-                  <span>Subtotal after discount</span>
-                  <span>
-                    ${(() => {
-                      const ct = order.quote?.calculated_totals;
-                      if (ct?.pre_tax != null) return Number(ct.pre_tax).toFixed(2);
-                      // Fallback: subtotal already includes certification, so don't add it again
-                      const subtotal = parseFloat(String(order.subtotal || 0));
-                      const rushFee = parseFloat(String(order.rush_fee || 0));
-                      const deliveryFee = parseFloat(String(order.delivery_fee || 0));
-                      const adjTotal = orderAdjustments.reduce((sum, a) => {
-                        const amt = Math.abs(parseFloat(String(a.calculated_amount)));
-                        return a.adjustment_type === 'discount' ? sum - amt : sum + amt;
-                      }, 0);
-                      return (subtotal + rushFee + deliveryFee + adjTotal).toFixed(2);
-                    })()}
-                  </span>
-                </div>
-              )}
-
-              {/* Tax */}
-              <div className="flex justify-between py-1 text-sm">
-                <span className="text-gray-500">
-                  Tax ({(parseFloat(String(order.tax_rate || 0)) * 100).toFixed(0)}%)
-                </span>
-                <span>${parseFloat(String(order.tax_amount || 0)).toFixed(2)}</span>
-              </div>
-
-              {/* Order Total */}
-              <div className="border-t pt-2 mt-2">
-                <div className="flex justify-between font-semibold">
-                  <span>Order Total</span>
-                  <span>${parseFloat(String(order.total_amount || 0)).toFixed(2)}</span>
-                </div>
-              </div>
-
-              {adjustments.length > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Adjustments</span>
-                  <span
-                    className={
-                      totalAdjustments >= 0 ? "text-green-600" : "text-red-600"
-                    }
-                  >
-                    {totalAdjustments >= 0 ? "+" : ""}$
-                    {totalAdjustments.toFixed(2)}
-                  </span>
-                </div>
-              )}
-
-              {/* Total Paid */}
-              <div className="flex justify-between text-sm py-1">
-                <span className="text-gray-500">Total Paid</span>
-                <span className="font-medium text-green-600">${parseFloat(String(order.amount_paid || 0)).toFixed(2)}</span>
-              </div>
-
-              {/* Refunded */}
-              {parseFloat(String(order.refund_amount || 0)) > 0 && (
-                <div className="flex justify-between text-sm py-1">
-                  <span className="text-gray-500">Refunded</span>
-                  <span className="text-red-500">
-                    −${parseFloat(String(order.refund_amount)).toFixed(2)}
-                  </span>
-                </div>
-              )}
-
-              {/* Overpayment alert */}
-              {hasOverpayment && (
-                <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-amber-600 font-semibold text-sm">⚠️ Overpayment</span>
-                        <span className="text-lg font-bold text-amber-700">${overpaymentAmount.toFixed(2)} CAD</span>
-                      </div>
-                      <p className="text-xs text-amber-600">
-                        Customer paid ${parseFloat(String(order!.amount_paid)).toFixed(2)} but order total is ${parseFloat(String(order!.total_amount)).toFixed(2)}.
-                        {parseFloat(String(order!.refund_amount || 0)) > 0 && ` $${parseFloat(String(order!.refund_amount)).toFixed(2)} already refunded.`}
-                      </p>
-                      {refundMessage && (
-                        <p className={`mt-1.5 text-xs rounded px-2 py-1 ${refundMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {refundMessage.text}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => { setShowRefundModal(true); setRefundAmount(overpaymentAmount.toFixed(2)); setRefundMessage(null); }}
-                      className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors whitespace-nowrap"
-                    >
-                      Refund Customer
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Underpayment alert */}
-              {hasUnderpayment && (
-                <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-red-600 font-semibold text-sm">⚠️ Balance Due</span>
-                        <span className="text-lg font-bold text-red-700">${underpaymentAmount.toFixed(2)} CAD</span>
-                      </div>
-                      <p className="text-xs text-red-600">
-                        Customer still owes ${underpaymentAmount.toFixed(2)}.
-                        {order!.balance_payment_requested_at && ` Payment link sent ${new Date(order!.balance_payment_requested_at).toLocaleDateString()}.`}
-                      </p>
-                      {order!.balance_payment_link && (
-                        <a href={order!.balance_payment_link} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-blue-600 hover:underline mt-1 block">
-                          View payment link ↗
-                        </a>
-                      )}
-                      {balanceMessage && (
-                        <p className={`mt-1.5 text-xs rounded px-2 py-1 ${balanceMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {balanceMessage.text}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      onClick={handleRequestBalancePaymentV2}
-                      disabled={requestingBalance}
-                      className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors whitespace-nowrap"
-                    >
-                      {requestingBalance ? (
-                        <span className="flex items-center gap-1">
-                          <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                          </svg>
-                          Sending…
-                        </span>
-                      ) : order!.balance_payment_requested_at ? 'Resend Link' : 'Request Payment'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Refund Section - Only for cancelled orders */}
-              {order.status === 'cancelled' && cancellation && cancellation.refund_amount > 0 && (
-                <>
-                  <div className="border-t pt-2 mt-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Refund Amount</span>
-                      <span className="text-red-600 font-medium">
-                        -${cancellation.refund_amount?.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Refund Method</span>
-                      <span className="capitalize">{cancellation.refund_method?.replace('_', ' ') || '—'}</span>
-                    </div>
-                    <div className="flex justify-between text-sm items-center">
-                      <span className="text-gray-500">Refund Status</span>
-                      <span className={`px-2 py-0.5 text-xs rounded-full ${
-                        cancellation.refund_status === 'completed'
-                          ? 'bg-green-100 text-green-700'
-                          : cancellation.refund_status === 'pending'
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {cancellation.refund_status}
-                      </span>
-                    </div>
-                    {cancellation.refund_reference && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Reference</span>
-                        <span className="font-mono text-xs">{cancellation.refund_reference}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Final Balance After Refund */}
-                  <div className="border-t pt-2 mt-2">
-                    <div className="flex justify-between font-semibold">
-                      <span>Final Balance</span>
-                      <span className={
-                        ((order.amount_paid || 0) - (cancellation.refund_amount || 0)) === 0
-                          ? 'text-gray-500'
-                          : 'text-amber-600'
-                      }>
-                        ${Math.max(0, (order.amount_paid || 0) - (cancellation.refund_amount || 0)).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Balance Due - Only show for non-cancelled orders */}
-              {order.status !== 'cancelled' && (order.balance_due ?? 0) > 0 && (
-                <div className="space-y-3">
-                  <div className="flex justify-between font-semibold text-amber-600 bg-amber-50 -mx-2 px-2 py-2 rounded">
-                    <span>Balance Due</span>
-                    <span>${(order.balance_due ?? 0).toFixed(2)}</span>
-                  </div>
-
-                  {/* Send Payment Link Button */}
-                  <button
-                    onClick={handleRequestBalancePayment}
-                    disabled={requestingPayment}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
-                  >
-                    {requestingPayment ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Creating Link...
-                      </>
-                    ) : (
-                      <>
-                        <CreditCard className="w-4 h-4" />
-                        Send Payment Link (${(order.balance_due ?? 0).toFixed(2)})
-                      </>
-                    )}
-                  </button>
-
-                  {/* Show existing payment link if available */}
-                  {(paymentLinkUrl || order.balance_payment_link) && (
-                    <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 space-y-2">
-                      <p className="text-xs text-teal-700 font-medium">Payment link sent to customer</p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(paymentLinkUrl || order.balance_payment_link || "");
-                            toast.success("Payment link copied!");
-                          }}
-                          className="flex-1 text-xs px-3 py-1.5 bg-white border border-teal-300 text-teal-700 rounded-md hover:bg-teal-50 transition-colors"
-                        >
-                          Copy Link
-                        </button>
-                        <a
-                          href={paymentLinkUrl || order.balance_payment_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 text-xs px-3 py-1.5 bg-white border border-teal-300 text-teal-700 rounded-md hover:bg-teal-50 transition-colors text-center"
-                        >
-                          Open Link
-                        </a>
-                      </div>
-                      {order.balance_payment_requested_at && (
-                        <p className="text-xs text-teal-600">
-                          Sent: {new Date(order.balance_payment_requested_at).toLocaleString()}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Record Manual Payment Button */}
-                  <button
-                    onClick={() => {
-                      setPaymentForm({
-                        ...paymentForm,
-                        amount: order.balance_due.toFixed(2),
-                      });
-                      setShowPaymentModal(true);
-                    }}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium"
-                  >
-                    <DollarSign className="w-4 h-4" />
-                    Record Manual Payment (${(order.balance_due ?? 0).toFixed(2)})
-                  </button>
-                </div>
-              )}
-
-              {/* Cancelled Notice */}
-              {order.status === 'cancelled' && (
-                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-700 font-medium text-center">
-                    Order Cancelled
-                  </p>
-                  {cancellation?.created_at && (
-                    <p className="text-xs text-red-600 text-center mt-1">
-                      {new Date(cancellation.created_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit'
-                      })}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Recalculate + Quote Link buttons */}
-              {order.status !== 'cancelled' && (
-                <div className="flex gap-2 mt-4">
-                  <button
-                    onClick={handleRecalculateOrder}
-                    disabled={recalculating}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${recalculating ? "animate-spin" : ""}`} />
-                    {recalculating ? "Recalculating..." : "Recalculate Totals"}
-                  </button>
-
-                  {order.quote_id && (
-                    <Link
-                      to={`/admin/quotes/${order.quote_id}`}
-                      className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      View Quote
-                    </Link>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
