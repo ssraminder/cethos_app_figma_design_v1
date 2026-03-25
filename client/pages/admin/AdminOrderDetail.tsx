@@ -54,6 +54,7 @@ import OriginalsModal from "@/components/admin/OriginalsModal";
 import { syncOrderFromQuote } from "../../utils/syncOrderFromQuote";
 import OrderWorkflowSection from "@/components/admin/OrderWorkflowSection";
 import OrderFinanceSection from "@/components/admin/OrderFinanceSection";
+import OrderFinanceTab from "@/components/admin/OrderFinanceTab";
 
 interface OrderDetail {
   id: string;
@@ -416,6 +417,7 @@ export default function AdminOrderDetail() {
   const [orderAdjustments, setOrderAdjustments] = useState<OrderAdjustment[]>([]);
   const [workflowData, setWorkflowData] = useState<any>(null);
   const [refunds, setRefunds] = useState<any[]>([]);
+  const [activeMainTab, setActiveMainTab] = useState<"workflow" | "finance">("workflow");
   const messagesBottomRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -3705,20 +3707,37 @@ export default function AdminOrderDetail() {
             )}
           </div>
 
-          {/* Finance */}
-          <OrderFinanceSection
-            order={order}
-            invoice={invoices.length > 0 ? invoices[0] : null}
-            payments={[]}
-            paymentAllocations={paymentAllocations}
-            paymentRequests={paymentRequests}
-            refunds={refunds}
-            workflowData={workflowData}
-            onRefresh={fetchOrderDetails}
-          />
+          {/* Workflow / Finance Tab Bar */}
+          <div className="bg-white rounded-lg border">
+            <div className="flex border-b border-gray-200 px-2">
+              {([
+                { key: "workflow" as const, label: "Workflow" },
+                { key: "finance" as const, label: "Finance" },
+              ]).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveMainTab(tab.key)}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                    activeMainTab === tab.key
+                      ? "border-blue-600 text-blue-600 font-semibold"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {/* Order Workflow */}
-          {id && <OrderWorkflowSection orderId={id} onWorkflowLoaded={setWorkflowData} />}
+          {/* Tab Content: Finance */}
+          {activeMainTab === "finance" && (
+            <OrderFinanceTab workflowData={workflowData} />
+          )}
+
+          {/* Tab Content: Workflow (also renders when finance tab is active but hidden, to keep data loaded) */}
+          <div className={activeMainTab !== "workflow" ? "hidden" : ""}>
+            {id && <OrderWorkflowSection orderId={id} onWorkflowLoaded={setWorkflowData} />}
+          </div>
         </div>
 
         <div className="lg:col-span-1">
