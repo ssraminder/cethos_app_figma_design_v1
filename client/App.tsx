@@ -86,6 +86,16 @@ import CustomerInvoices from "./pages/admin/invoices/CustomerInvoices";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
 
+// Blog & Content Management pages
+import BlogPostsList from "./pages/admin/blog/BlogPostsList";
+import BlogPostEditor from "./pages/admin/blog/BlogPostEditor";
+import BlogCategories from "./pages/admin/blog/BlogCategories";
+import BlogAuthors from "./pages/admin/blog/BlogAuthors";
+import ContentCalendar from "./pages/admin/ContentCalendar";
+import MediaLibrary from "./pages/admin/MediaLibrary";
+import SEOSettings from "./pages/admin/SEOSettings";
+import RedirectManager from "./pages/admin/RedirectManager";
+
 // Admin Settings pages
 import PricingSettings from "./pages/admin/settings/PricingSettings";
 import ComplexitySettings from "./pages/admin/settings/ComplexitySettings";
@@ -301,6 +311,18 @@ const App = () => (
                   >
                     <Route index element={<AdminDashboard />} />
                     <Route path="dashboard" element={<AdminDashboard />} />
+
+                    {/* Blog & Content Management */}
+                    <Route path="blog" element={<BlogPostsList />} />
+                    <Route path="blog/new" element={<BlogPostEditor />} />
+                    <Route path="blog/:id/edit" element={<BlogPostEditor />} />
+                    <Route path="blog/categories" element={<BlogCategories />} />
+                    <Route path="blog/authors" element={<BlogAuthors />} />
+                    <Route path="calendar" element={<ContentCalendar />} />
+                    <Route path="media" element={<MediaLibrary />} />
+                    <Route path="seo" element={<SEOSettings />} />
+                    <Route path="redirects" element={<RedirectManager />} />
+
                     <Route path="quotes" element={<AdminQuotesList />} />
                     <Route path="quotes/fast-create" element={<FastQuoteCreate />} />
                     <Route path="quotes/:id" element={<AdminQuoteDetail />} />
