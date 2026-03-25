@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import {
   FileText,
   ShoppingCart,
@@ -10,6 +11,8 @@ import {
   ArrowRight,
   RefreshCw,
   BarChart3,
+  Plus,
+  ExternalLink,
 } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 
@@ -49,7 +52,15 @@ interface RecentActivity {
   status?: string;
 }
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function AdminDashboard() {
+  const { session } = useAdminAuthContext();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [needsAttention, setNeedsAttention] = useState<NeedsAttention>({
     paidOrdersCount: 0,
@@ -70,7 +81,6 @@ export default function AdminDashboard() {
       const todayEnd = endOfDay(now).toISOString();
       const weekStart = startOfDay(subDays(now, 7)).toISOString();
 
-      // Fetch quotes counts
       const [quotesToday, quotesWeek] = await Promise.all([
         supabase
           .from("quotes")
@@ -83,7 +93,6 @@ export default function AdminDashboard() {
           .gte("created_at", weekStart),
       ]);
 
-      // Fetch orders counts
       const [ordersToday, ordersWeek] = await Promise.all([
         supabase
           .from("orders")
@@ -96,7 +105,6 @@ export default function AdminDashboard() {
           .gte("created_at", weekStart),
       ]);
 
-      // Fetch revenue
       const [revenueToday, revenueWeek] = await Promise.all([
         supabase
           .from("orders")
@@ -111,7 +119,6 @@ export default function AdminDashboard() {
           .eq("status", "paid"),
       ]);
 
-      // Calculate revenue sums
       const sumRevenue = (data: any[] | null) =>
         data?.reduce((sum, row) => sum + (row.total_amount || 0), 0) || 0;
 
@@ -124,13 +131,11 @@ export default function AdminDashboard() {
         revenueThisWeek: sumRevenue(revenueWeek.data),
       });
 
-      // --- Needs Attention ---
       const { count: paidOrdersCount } = await supabase
         .from("orders")
         .select("id", { count: "exact", head: true })
         .eq("status", "paid");
 
-      // Unread customer messages (messages from customers not yet read by staff)
       let unreadMessagesCount = 0;
       try {
         const { count } = await supabase
@@ -140,7 +145,7 @@ export default function AdminDashboard() {
           .is("read_by_staff_at", null);
         unreadMessagesCount = count || 0;
       } catch {
-        // read_by_staff_at column may not exist, skip gracefully
+        // column may not exist
       }
 
       setNeedsAttention({
@@ -148,7 +153,6 @@ export default function AdminDashboard() {
         unreadMessagesCount,
       });
 
-      // --- Orders by Status ---
       const { data: activeOrders } = await supabase
         .from("orders")
         .select("status")
@@ -179,17 +183,14 @@ export default function AdminDashboard() {
         );
       }
 
-      // --- Upcoming Deliveries ---
       const threeDaysFromNow = new Date();
       threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
 
       const { data: deliveries } = await supabase
         .from("orders")
         .select(
-          `
-          id, order_number, estimated_delivery_date,
-          customer:customers!customer_id(full_name)
-        `,
+          `id, order_number, estimated_delivery_date,
+          customer:customers!customer_id(full_name)`,
         )
         .not("status", "in", "(cancelled,completed,delivered)")
         .not("estimated_delivery_date", "is", null)
@@ -202,7 +203,6 @@ export default function AdminDashboard() {
 
       setUpcomingDeliveries((deliveries as any[]) || []);
 
-      // --- Recent Activity ---
       const { data: recentQuotes } = await supabase
         .from("quotes")
         .select("id, quote_number, status, created_at, customers(full_name)")
@@ -252,7 +252,6 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchDashboardData();
-    // Refresh every 5 minutes
     const interval = setInterval(fetchDashboardData, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
@@ -270,272 +269,302 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-64 mb-2" />
+          <div className="h-4 bg-gray-100 rounded w-40 mb-8" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white rounded-lg border border-[#e2e8f0] p-6">
+                <div className="h-4 bg-gray-100 rounded w-24 mb-4" />
+                <div className="h-8 bg-gray-200 rounded w-16 mb-2" />
+                <div className="h-3 bg-gray-100 rounded w-20" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
+  const firstName = session?.staffName?.split(" ")[0] || "there";
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Welcome back. Here's what's happening today.
+          <h1 className="text-2xl font-semibold text-[#0f172a]">
+            {getGreeting()}, {firstName}
+          </h1>
+          <p className="text-sm text-[#64748b] mt-1">
+            {format(new Date(), "EEEE, MMMM d, yyyy")}
           </p>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <RefreshCw
-            className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
-          />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <a
+            href="https://cethos.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm text-[#64748b] border border-[#e2e8f0] hover:bg-slate-50 rounded-md transition-colors"
+          >
+            <ExternalLink className="w-4 h-4" />
+            View Site
+          </a>
+          <Link
+            to="/admin/quotes/fast-create"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-[#0d9488] hover:bg-[#0f766e] rounded-md transition-colors font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            New Quote
+          </Link>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="p-2 text-[#64748b] hover:text-[#0f172a] hover:bg-slate-100 rounded-md transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw
+              className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
+            />
+          </button>
+        </div>
       </div>
 
-      <div className="py-2">
-        {/* ROW 1: Primary Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard
-            icon={<FileText className="w-5 h-5" />}
-            iconBg="bg-blue-50"
-            iconColor="text-blue-600"
-            label="Quotes Today"
-            value={stats?.quotesToday || 0}
-            subtext={`${stats?.quotesThisWeek || 0} this week`}
-          />
-
-          <StatCard
-            icon={<ShoppingCart className="w-5 h-5" />}
-            iconBg="bg-green-50"
-            iconColor="text-green-600"
-            label="Orders Today"
-            value={stats?.ordersToday || 0}
-            subtext={`${stats?.ordersThisWeek || 0} this week`}
-          />
-
-          <StatCard
-            icon={<DollarSign className="w-5 h-5" />}
-            iconBg="bg-purple-50"
-            iconColor="text-purple-600"
-            label="Revenue Today"
-            value={`$${(stats?.revenueToday || 0).toLocaleString()}`}
-            subtext={`$${(stats?.revenueThisWeek || 0).toLocaleString()} this week`}
-          />
-
-          {/* Needs Attention */}
-          <div className="bg-white rounded-lg border p-6">
-            <h3 className="text-sm font-medium text-gray-500 mb-3">
-              Needs Attention
-            </h3>
-            <div className="space-y-2">
-              {needsAttention.paidOrdersCount > 0 && (
-                <Link
-                  to="/admin/orders?status=paid"
-                  className="flex justify-between items-center text-sm"
-                >
-                  <span className="text-gray-700">
-                    Orders waiting to start
-                  </span>
-                  <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
-                    {needsAttention.paidOrdersCount}
-                  </span>
-                </Link>
-              )}
-              {needsAttention.unreadMessagesCount > 0 && (
-                <Link
-                  to="/admin/orders"
-                  className="flex justify-between items-center text-sm"
-                >
-                  <span className="text-gray-700">
-                    Unread customer messages
-                  </span>
-                  <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-medium">
-                    {needsAttention.unreadMessagesCount}
-                  </span>
-                </Link>
-              )}
-              {needsAttention.paidOrdersCount === 0 &&
-                needsAttention.unreadMessagesCount === 0 && (
-                  <p className="text-sm text-green-600 flex items-center gap-1">
-                    <CheckCircle className="h-4 w-4" /> All caught up!
-                  </p>
-                )}
-            </div>
-          </div>
-        </div>
-
-        {/* ROW 2: Operations */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Active Orders */}
-          <div className="bg-white rounded-lg border p-6">
-            <h3 className="text-sm font-medium text-gray-500 mb-3">
-              Active Orders
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {ordersByStatus.length > 0 ? (
-                ordersByStatus.map(({ status, count, color }) => (
-                  <Link
-                    key={status}
-                    to={`/admin/orders?status=${status}`}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium ${color}`}
-                  >
-                    {formatStatus(status)} ({count})
-                  </Link>
-                ))
-              ) : (
-                <p className="text-sm text-gray-400">No active orders</p>
-              )}
-            </div>
-          </div>
-
-          {/* Upcoming Deliveries */}
-          <div className="bg-white rounded-lg border p-6">
-            <h3 className="text-sm font-medium text-gray-500 mb-3">
-              Upcoming Deliveries
-            </h3>
-            <div className="space-y-3">
-              {upcomingDeliveries.map((order) => {
-                const isOverdue =
-                  new Date(order.estimated_delivery_date) < new Date();
-                return (
-                  <Link
-                    key={order.id}
-                    to={`/admin/orders/${order.id}`}
-                    className="flex justify-between items-center text-sm"
-                  >
-                    <div>
-                      <span className="font-medium text-gray-900">
-                        {order.order_number}
-                      </span>
-                      <span className="text-gray-500 ml-2">
-                        {order.customer?.full_name}
-                      </span>
-                    </div>
-                    <span
-                      className={
-                        isOverdue
-                          ? "text-red-600 font-medium"
-                          : "text-gray-600"
-                      }
-                    >
-                      {isOverdue ? "OVERDUE \u2014 " : ""}
-                      {new Date(
-                        order.estimated_delivery_date,
-                      ).toLocaleDateString("en-CA", {
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </span>
-                  </Link>
-                );
-              })}
-              {upcomingDeliveries.length === 0 && (
-                <p className="text-sm text-gray-400">
-                  No upcoming deliveries
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <StatCard
+          accentColor="border-l-[#2563eb]"
+          icon={<FileText className="w-5 h-5" />}
+          iconBg="bg-blue-50"
+          iconColor="text-[#2563eb]"
+          label="Quotes Today"
+          value={stats?.quotesToday || 0}
+          subtext={`${stats?.quotesThisWeek || 0} this week`}
+          href="/admin/quotes"
+        />
+        <StatCard
+          accentColor="border-l-[#16a34a]"
+          icon={<ShoppingCart className="w-5 h-5" />}
+          iconBg="bg-green-50"
+          iconColor="text-[#16a34a]"
+          label="Orders Today"
+          value={stats?.ordersToday || 0}
+          subtext={`${stats?.ordersThisWeek || 0} this week`}
+          href="/admin/orders"
+        />
+        <StatCard
+          accentColor="border-l-[#d97706]"
+          icon={<DollarSign className="w-5 h-5" />}
+          iconBg="bg-amber-50"
+          iconColor="text-[#d97706]"
+          label="Revenue Today"
+          value={`$${(stats?.revenueToday || 0).toLocaleString()}`}
+          subtext={`$${(stats?.revenueThisWeek || 0).toLocaleString()} this week`}
+          href="/admin/reports"
+        />
+        <div className="bg-white rounded-lg border border-[#e2e8f0] border-l-4 border-l-purple-500 p-6">
+          <h3 className="text-sm font-medium text-[#64748b] mb-3">
+            Needs Attention
+          </h3>
+          <div className="space-y-2">
+            {needsAttention.paidOrdersCount > 0 && (
+              <Link
+                to="/admin/orders?status=paid"
+                className="flex justify-between items-center text-sm hover:bg-slate-50 -mx-2 px-2 py-1 rounded transition-colors"
+              >
+                <span className="text-[#0f172a]">Orders waiting to start</span>
+                <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-xs font-medium">
+                  {needsAttention.paidOrdersCount}
+                </span>
+              </Link>
+            )}
+            {needsAttention.unreadMessagesCount > 0 && (
+              <Link
+                to="/admin/orders"
+                className="flex justify-between items-center text-sm hover:bg-slate-50 -mx-2 px-2 py-1 rounded transition-colors"
+              >
+                <span className="text-[#0f172a]">Unread messages</span>
+                <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs font-medium">
+                  {needsAttention.unreadMessagesCount}
+                </span>
+              </Link>
+            )}
+            {needsAttention.paidOrdersCount === 0 &&
+              needsAttention.unreadMessagesCount === 0 && (
+                <p className="text-sm text-[#16a34a] flex items-center gap-1">
+                  <CheckCircle className="h-4 w-4" /> All caught up!
                 </p>
               )}
-            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Operations Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
+          <h3 className="text-sm font-medium text-[#64748b] mb-3">
+            Active Orders
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {ordersByStatus.length > 0 ? (
+              ordersByStatus.map(({ status, count, color }) => (
+                <Link
+                  key={status}
+                  to={`/admin/orders?status=${status}`}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium ${color} hover:opacity-80 transition-opacity`}
+                >
+                  {formatStatus(status)} ({count})
+                </Link>
+              ))
+            ) : (
+              <p className="text-sm text-[#64748b]">No active orders</p>
+            )}
           </div>
         </div>
 
-        {/* ROW 3: Activity & Nav */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Recent Activity */}
-          <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-                Recent Activity
-              </h3>
-              <div className="flex gap-3">
+        <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
+          <h3 className="text-sm font-medium text-[#64748b] mb-3">
+            Upcoming Deliveries
+          </h3>
+          <div className="space-y-3">
+            {upcomingDeliveries.map((order) => {
+              const isOverdue =
+                new Date(order.estimated_delivery_date) < new Date();
+              return (
                 <Link
-                  to="/admin/quotes"
-                  className="text-sm text-blue-600 hover:text-blue-800"
+                  key={order.id}
+                  to={`/admin/orders/${order.id}`}
+                  className="flex justify-between items-center text-sm hover:bg-slate-50 -mx-2 px-2 py-1 rounded transition-colors"
                 >
-                  View Quotes &rarr;
-                </Link>
-                <Link
-                  to="/admin/orders"
-                  className="text-sm text-blue-600 hover:text-blue-800"
-                >
-                  View Orders &rarr;
-                </Link>
-              </div>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {recentActivity.map((item) => (
-                <Link
-                  key={`${item.type}-${item.id}`}
-                  to={
-                    item.type === "quote"
-                      ? `/admin/quotes/${item.id}`
-                      : `/admin/orders/${item.id}`
-                  }
-                  className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors"
-                >
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      item.type === "quote" ? "bg-blue-50" : "bg-green-50"
-                    }`}
+                  <div>
+                    <span className="font-medium text-[#0f172a]">
+                      {order.order_number}
+                    </span>
+                    <span className="text-[#64748b] ml-2">
+                      {order.customer?.full_name}
+                    </span>
+                  </div>
+                  <span
+                    className={
+                      isOverdue
+                        ? "text-[#dc2626] font-medium"
+                        : "text-[#64748b]"
+                    }
                   >
-                    {item.type === "quote" ? (
-                      <FileText className="w-5 h-5 text-blue-600" />
-                    ) : (
-                      <ShoppingCart className="w-5 h-5 text-green-600" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {item.title}
-                    </p>
-                    <p className="text-sm text-gray-500 truncate">
-                      {item.subtitle}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <StatusBadge status={item.status} />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {format(new Date(item.timestamp), "MMM d, h:mm a")}
-                    </p>
-                  </div>
+                    {isOverdue ? "OVERDUE \u2014 " : ""}
+                    {new Date(
+                      order.estimated_delivery_date,
+                    ).toLocaleDateString("en-CA", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
                 </Link>
-              ))}
-              {recentActivity.length === 0 && (
-                <div className="px-6 py-8 text-center text-gray-500">
-                  No recent activity
-                </div>
-              )}
+              );
+            })}
+            {upcomingDeliveries.length === 0 && (
+              <p className="text-sm text-[#64748b]">No upcoming deliveries</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Activity & Quick Links */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white border border-[#e2e8f0] rounded-lg">
+          <div className="px-6 py-4 border-b border-[#e2e8f0] flex items-center justify-between">
+            <h3 className="text-sm font-medium text-[#64748b] uppercase tracking-wide">
+              Recent Activity
+            </h3>
+            <div className="flex gap-3">
+              <Link
+                to="/admin/quotes"
+                className="text-sm text-[#0d9488] hover:text-[#0f766e]"
+              >
+                View Quotes &rarr;
+              </Link>
+              <Link
+                to="/admin/orders"
+                className="text-sm text-[#0d9488] hover:text-[#0f766e]"
+              >
+                View Orders &rarr;
+              </Link>
             </div>
           </div>
+          <div className="divide-y divide-gray-100">
+            {recentActivity.map((item) => (
+              <Link
+                key={`${item.type}-${item.id}`}
+                to={
+                  item.type === "quote"
+                    ? `/admin/quotes/${item.id}`
+                    : `/admin/orders/${item.id}`
+                }
+                className="flex items-center gap-4 px-6 py-4 hover:bg-[#f8fafc] transition-colors"
+              >
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    item.type === "quote" ? "bg-blue-50" : "bg-green-50"
+                  }`}
+                >
+                  {item.type === "quote" ? (
+                    <FileText className="w-5 h-5 text-[#2563eb]" />
+                  ) : (
+                    <ShoppingCart className="w-5 h-5 text-[#16a34a]" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#0f172a] truncate">
+                    {item.title}
+                  </p>
+                  <p className="text-sm text-[#64748b] truncate">
+                    {item.subtitle}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <StatusBadge status={item.status} />
+                  <p className="text-xs text-[#64748b] mt-1">
+                    {format(new Date(item.timestamp), "MMM d, h:mm a")}
+                  </p>
+                </div>
+              </Link>
+            ))}
+            {recentActivity.length === 0 && (
+              <div className="px-6 py-8 text-center text-[#64748b]">
+                No recent activity
+              </div>
+            )}
+          </div>
+        </div>
 
-          {/* Go To */}
-          <div className="bg-white border border-gray-200 rounded-xl">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-                Go To
-              </h3>
-            </div>
-            <div className="p-4 space-y-2">
-              <QuickActionLink
-                to="/admin/quotes"
-                icon={<FileText className="w-5 h-5" />}
-                label="All Quotes"
-              />
-              <QuickActionLink
-                to="/admin/orders"
-                icon={<ShoppingBag className="w-5 h-5" />}
-                label="All Orders"
-              />
-              <QuickActionLink
-                to="/admin/reports"
-                icon={<BarChart3 className="w-5 h-5" />}
-                label="Reports"
-              />
-            </div>
+        <div className="bg-white border border-[#e2e8f0] rounded-lg">
+          <div className="px-6 py-4 border-b border-[#e2e8f0]">
+            <h3 className="text-sm font-medium text-[#64748b] uppercase tracking-wide">
+              Quick Links
+            </h3>
+          </div>
+          <div className="p-4 space-y-1">
+            <QuickActionLink
+              to="/admin/quotes"
+              icon={<FileText className="w-5 h-5" />}
+              label="All Quotes"
+            />
+            <QuickActionLink
+              to="/admin/orders"
+              icon={<ShoppingBag className="w-5 h-5" />}
+              label="All Orders"
+            />
+            <QuickActionLink
+              to="/admin/reports"
+              icon={<BarChart3 className="w-5 h-5" />}
+              label="Reports"
+            />
+            <QuickActionLink
+              to="/admin/blog"
+              icon={<FileText className="w-5 h-5" />}
+              label="Blog Posts"
+            />
           </div>
         </div>
       </div>
@@ -543,24 +572,30 @@ export default function AdminDashboard() {
   );
 }
 
-// Stat Card Component
 function StatCard({
+  accentColor,
   icon,
   iconBg,
   iconColor,
   label,
   value,
   subtext,
+  href,
 }: {
+  accentColor: string;
   icon: React.ReactNode;
   iconBg: string;
   iconColor: string;
   label: string;
   value: string | number;
   subtext: string;
+  href: string;
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-6">
+    <Link
+      to={href}
+      className={`bg-white border border-[#e2e8f0] border-l-4 ${accentColor} rounded-lg p-6 hover:shadow-md transition-shadow`}
+    >
       <div className="flex items-start justify-between">
         <div
           className={`w-10 h-10 ${iconBg} rounded-lg flex items-center justify-center ${iconColor}`}
@@ -569,17 +604,16 @@ function StatCard({
         </div>
       </div>
       <div className="mt-4">
-        <p className="text-2xl font-semibold text-gray-900 tabular-nums">
+        <p className="text-2xl font-semibold text-[#0f172a] tabular-nums">
           {value}
         </p>
-        <p className="text-sm text-gray-500 mt-1">{label}</p>
-        <p className="text-xs text-gray-400 mt-2">{subtext}</p>
+        <p className="text-sm text-[#64748b] mt-1">{label}</p>
+        <p className="text-xs text-[#64748b] mt-2">{subtext}</p>
       </div>
-    </div>
+    </Link>
   );
 }
 
-// Quick Action Link Component
 function QuickActionLink({
   to,
   icon,
@@ -592,16 +626,15 @@ function QuickActionLink({
   return (
     <Link
       to={to}
-      className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors"
+      className="flex items-center gap-3 px-4 py-3 rounded-md hover:bg-[#f8fafc] transition-colors"
     >
-      <div className="text-gray-400">{icon}</div>
-      <span className="flex-1 text-sm text-gray-700">{label}</span>
-      <ArrowRight className="w-4 h-4 text-gray-400" />
+      <div className="text-[#64748b]">{icon}</div>
+      <span className="flex-1 text-sm text-[#0f172a]">{label}</span>
+      <ArrowRight className="w-4 h-4 text-[#64748b]" />
     </Link>
   );
 }
 
-// Status Badge Component
 function StatusBadge({ status }: { status?: string }) {
   const styles: Record<string, string> = {
     details_pending: "bg-amber-100 text-amber-700",
