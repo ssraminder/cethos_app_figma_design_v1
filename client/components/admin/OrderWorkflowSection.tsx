@@ -230,6 +230,10 @@ function VendorFinderModal({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filtersExpanded, setFiltersExpanded] = useState(true);
 
+  // Services for dropdown
+  const [services, setServices] = useState<Array<{ id: string; name: string; category: string }>>([]);
+  const [servicesLoaded, setServicesLoaded] = useState(false);
+
   // Filter state
   const [filterSourceLang, setFilterSourceLang] = useState(sourceLanguage || "");
   const [filterTargetLang, setFilterTargetLang] = useState(targetLanguage || "");
@@ -273,6 +277,23 @@ function VendorFinderModal({
     }
     setSearching(false);
   }, [filterSourceLang, filterTargetLang, filterServiceId, nativeLanguages, country, minRating, maxRate, availability, searchText, sortBy]);
+
+  // Fetch services for dropdown
+  useEffect(() => {
+    if (isOpen && !servicesLoaded) {
+      const fetchServices = async () => {
+        const { data } = await supabase
+          .from("services")
+          .select("id, name, category")
+          .eq("is_active", true)
+          .order("category")
+          .order("name");
+        setServices(data || []);
+        setServicesLoaded(true);
+      };
+      fetchServices();
+    }
+  }, [isOpen]);
 
   // Auto-search on open
   useEffect(() => {
@@ -364,14 +385,20 @@ function VendorFinderModal({
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Service</label>
-                    <input
-                      type="text"
+                    <select
                       value={filterServiceId}
                       onChange={(e) => setFilterServiceId(e.target.value)}
                       className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="Service ID"
-                      title={serviceName || ""}
-                    />
+                    >
+                      <option value="">All Services</option>
+                      {Array.from(new Set(services.map(s => s.category))).map(cat => (
+                        <optgroup key={cat} label={cat.charAt(0).toUpperCase() + cat.slice(1).replace(/_/g, ' ')}>
+                          {services.filter(s => s.category === cat).map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Native Lang</label>
