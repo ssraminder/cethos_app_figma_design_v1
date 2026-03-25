@@ -22,6 +22,7 @@ import {
   Zap,
   Receipt,
   FileSpreadsheet,
+  ClipboardList,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -40,6 +41,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Dashboard",
     path: "/admin/dashboard",
     icon: LayoutDashboard,
+    section: "Main",
+  },
+  {
+    label: "Tasks",
+    path: "/admin/tasks",
+    icon: ClipboardList,
     section: "Main",
   },
   { label: "Quotes", path: "/admin/quotes", icon: FileText, section: "Main" },

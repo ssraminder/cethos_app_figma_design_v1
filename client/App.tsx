@@ -58,6 +58,7 @@ import AdminQuoteDetail from "./pages/admin/AdminQuoteDetail";
 import PurgeDraftQuotes from "./pages/admin/PurgeDraftQuotes";
 import AdminOrderDetail from "./pages/admin/AdminOrderDetail";
 import AdminOrdersList from "./pages/admin/AdminOrdersList";
+import StaffTasks from "./pages/admin/StaffTasks";
 import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
 import AdminAIAnalytics from "./pages/admin/AdminAIAnalytics";
 import AdminReports from "./pages/admin/AdminReports";
@@ -304,6 +305,7 @@ const App = () => (
                     <Route path="quotes" element={<AdminQuotesList />} />
                     <Route path="quotes/fast-create" element={<FastQuoteCreate />} />
                     <Route path="quotes/:id" element={<AdminQuoteDetail />} />
+                    <Route path="tasks" element={<StaffTasks />} />
                     <Route path="orders" element={<AdminOrdersList />} />
                     <Route path="orders/:id" element={<AdminOrderDetail />} />
                     <Route path="partners" element={<AdminPartners />} />
