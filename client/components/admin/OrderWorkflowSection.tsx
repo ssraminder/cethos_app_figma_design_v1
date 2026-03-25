@@ -571,6 +571,212 @@ function VendorPickerModal({
   );
 }
 
+// ── AddStepModal ──
+
+function AddStepModal({
+  isOpen,
+  onClose,
+  onAdd,
+  steps,
+  availableServices,
+  onLoadServices,
+  servicesLoaded,
+  defaultInsertAfter,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onAdd: (params: any) => void;
+  steps: WorkflowStep[];
+  availableServices: any[];
+  onLoadServices: () => void;
+  servicesLoaded: boolean;
+  defaultInsertAfter: number;
+}) {
+  const [stepName, setStepName] = useState("");
+  const [serviceId, setServiceId] = useState("");
+  const [actorType, setActorType] = useState("vendor");
+  const [insertAfter, setInsertAfter] = useState(defaultInsertAfter);
+  const [autoAdvance, setAutoAdvance] = useState(false);
+  const [isOptional, setIsOptional] = useState(false);
+  const [requiresFileUpload, setRequiresFileUpload] = useState(true);
+  const [instructions, setInstructions] = useState("");
+
+  // Load services on first open
+  useEffect(() => {
+    if (isOpen && !servicesLoaded) onLoadServices();
+  }, [isOpen]);
+
+  // Reset on open
+  useEffect(() => {
+    if (isOpen) {
+      setStepName("");
+      setServiceId("");
+      setActorType("vendor");
+      setInsertAfter(defaultInsertAfter);
+      setAutoAdvance(false);
+      setIsOptional(false);
+      setRequiresFileUpload(true);
+      setInstructions("");
+    }
+  }, [isOpen, defaultInsertAfter]);
+
+  // Auto-fill name from selected service
+  const handleServiceChange = (id: string) => {
+    setServiceId(id);
+    if (id) {
+      const svc = availableServices.find((s) => s.id === id);
+      if (svc && !stepName) setStepName(svc.name);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="px-6 py-4 border-b">
+          <h3 className="text-lg font-semibold">Add Workflow Step</h3>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-4 space-y-4">
+
+          {/* Insert position */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Insert after</label>
+            <select
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+              value={insertAfter}
+              onChange={(e) => setInsertAfter(parseInt(e.target.value))}
+            >
+              <option value={0}>— At the beginning —</option>
+              {steps.map((s) => (
+                <option key={s.step_number} value={s.step_number}>
+                  Step {s.step_number}: {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Service */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Service</label>
+            <select
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+              value={serviceId}
+              onChange={(e) => handleServiceChange(e.target.value)}
+            >
+              <option value="">— Select service (optional) —</option>
+              {availableServices.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.category})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Step name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Step name *</label>
+            <input
+              type="text"
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+              placeholder="e.g., Proofreading, DTP, Client Review"
+              value={stepName}
+              onChange={(e) => setStepName(e.target.value)}
+            />
+          </div>
+
+          {/* Actor type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Actor type</label>
+            <select
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+              value={actorType}
+              onChange={(e) => setActorType(e.target.value)}
+            >
+              <option value="vendor">Vendor (freelancer)</option>
+              <option value="internal">Internal (staff)</option>
+              <option value="customer">Customer (review)</option>
+              <option value="automated">Automated (system)</option>
+            </select>
+          </div>
+
+          {/* Options row */}
+          <div className="flex gap-6">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={autoAdvance}
+                onChange={(e) => setAutoAdvance(e.target.checked)}
+              />
+              Auto-advance to next step
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isOptional}
+                onChange={(e) => setIsOptional(e.target.checked)}
+              />
+              Optional step
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={requiresFileUpload}
+                onChange={(e) => setRequiresFileUpload(e.target.checked)}
+              />
+              Requires file upload
+            </label>
+          </div>
+
+          {/* Instructions */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Instructions (optional)</label>
+            <textarea
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+              rows={2}
+              placeholder="Default instructions for this step..."
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t flex justify-end gap-2">
+          <button
+            className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            disabled={!stepName.trim()}
+            onClick={() => {
+              onAdd({
+                insert_after: insertAfter,
+                name: stepName.trim(),
+                service_id: serviceId || null,
+                actor_type: actorType,
+                auto_advance: autoAdvance,
+                is_optional: isOptional,
+                requires_file_upload: requiresFileUpload,
+                instructions: instructions.trim() || null,
+              });
+              onClose();
+            }}
+          >
+            Add Step
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── TemplateSelector (no workflow assigned) ──
 
 function TemplateSelector({
@@ -727,6 +933,8 @@ interface WorkflowPipelineProps {
   revisionReason?: string;
   onSetRevisionStepId?: (id: string | null) => void;
   onSetRevisionReason?: (text: string) => void;
+  handleManageSteps?: (action: string, params: any) => Promise<void>;
+  onAddStepAt?: (afterPosition: number) => void;
 }
 
 function WorkflowPipeline({
@@ -744,6 +952,8 @@ function WorkflowPipeline({
   revisionReason = "",
   onSetRevisionStepId = () => {},
   onSetRevisionReason = () => {},
+  handleManageSteps = async () => {},
+  onAddStepAt = () => {},
 }: WorkflowPipelineProps) {
   return (
     <div className="space-y-4">
@@ -765,7 +975,15 @@ function WorkflowPipeline({
               {workflow.template_code.replace(/_/g, " ")}
             </span>
           </div>
-          <StepStatusBadge status={workflow.status} />
+          <div className="flex items-center gap-2">
+            <button
+              className="text-xs px-3 py-1 border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+              onClick={() => onAddStepAt(steps.length)}
+            >
+              + Add Step
+            </button>
+            <StepStatusBadge status={workflow.status} />
+          </div>
         </div>
 
         {/* Row 2: Progress bar */}
@@ -813,6 +1031,20 @@ function WorkflowPipeline({
         {/* Vertical connecting line */}
         <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-gray-200" />
 
+        {/* Insert point before first step */}
+        <div className="relative flex items-center justify-center h-2 group">
+          <button
+            className="absolute left-0.5 w-5 h-5 rounded-full bg-white border border-dashed border-gray-300 text-gray-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:border-blue-400 hover:text-blue-500 flex items-center justify-center z-10"
+            title="Add step at the beginning"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddStepAt(0);
+            }}
+          >
+            +
+          </button>
+        </div>
+
         {steps.map((step) => {
           const isActive = [
             "offered",
@@ -842,7 +1074,8 @@ function WorkflowPipeline({
                 : "border-gray-200 bg-white";
 
           return (
-            <div key={step.id} className="relative flex items-start mb-3">
+            <div key={step.id}>
+            <div className="relative flex items-start mb-3">
               {/* Dot on the vertical line */}
               <div
                 className={`absolute left-1.5 top-4 w-3 h-3 rounded-full border-2 ${dotClass} z-10`}
@@ -862,7 +1095,49 @@ function WorkflowPipeline({
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
+                    {step.status === 'pending' && (
+                      <span className="flex gap-0.5">
+                        {step.step_number > 1 && (
+                          <button
+                            className="text-gray-400 hover:text-blue-500 text-xs p-1"
+                            title="Move up"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleManageSteps("reorder_step", { step_id: step.id, new_position: step.step_number - 1 });
+                            }}
+                          >
+                            ↑
+                          </button>
+                        )}
+                        {step.step_number < steps.length && (
+                          <button
+                            className="text-gray-400 hover:text-blue-500 text-xs p-1"
+                            title="Move down"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleManageSteps("reorder_step", { step_id: step.id, new_position: step.step_number + 1 });
+                            }}
+                          >
+                            ↓
+                          </button>
+                        )}
+                      </span>
+                    )}
                     <StepStatusBadge status={step.status} />
+                    {['pending', 'skipped', 'cancelled'].includes(step.status) && steps.length > 1 && (
+                      <button
+                        className="text-gray-400 hover:text-red-500 text-xs p-1"
+                        title="Remove step"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Remove step "${step.name}"? This cannot be undone.`)) {
+                            handleManageSteps("remove_step", { step_id: step.id });
+                          }
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
                     <span className="text-gray-400 text-xs">{isExpanded ? "▼" : "▶"}</span>
                   </div>
                 </div>
@@ -1165,6 +1440,21 @@ function WorkflowPipeline({
                 )}
               </div>
             </div>
+
+            {/* Insert point between steps — shows on hover */}
+            <div className="relative flex items-center justify-center h-2 group">
+              <button
+                className="absolute left-0.5 w-5 h-5 rounded-full bg-white border border-dashed border-gray-300 text-gray-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:border-blue-400 hover:text-blue-500 flex items-center justify-center z-10"
+                title={`Add step after step ${step.step_number}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddStepAt(step.step_number);
+                }}
+              >
+                +
+              </button>
+            </div>
+            </div>
           );
         })}
       </div>
@@ -1185,6 +1475,10 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
   const [orderFinancials, setOrderFinancials] = useState<OrderFinancials | null>(null);
   const [totalVendorCost, setTotalVendorCost] = useState(0);
   const [minMarginPercent, setMinMarginPercent] = useState(30);
+  const [showAddStepModal, setShowAddStepModal] = useState(false);
+  const [availableServices, setAvailableServices] = useState<any[]>([]);
+  const [servicesLoaded, setServicesLoaded] = useState(false);
+  const [addStepAfter, setAddStepAfter] = useState<number>(0);
 
   const fetchWorkflow = useCallback(async () => {
     setLoading(true);
@@ -1239,6 +1533,22 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
     setActionLoading(null);
   };
 
+  const handleManageSteps = async (action: string, params: any) => {
+    if (!data?.workflow?.id) return;
+    try {
+      const { data: result, error } = await supabase.functions.invoke("manage-order-workflow-steps", {
+        body: { workflow_id: data.workflow.id, action, ...params },
+      });
+      if (error || !result?.success) {
+        alert(result?.error || error?.message || "Action failed");
+        return;
+      }
+      await fetchWorkflow();
+    } catch (err: any) {
+      alert(err.message || "Action failed");
+    }
+  };
+
   if (loading) {
     return (
       <div className="bg-white rounded-lg border p-6">
@@ -1276,6 +1586,11 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
           revisionReason={revisionReason}
           onSetRevisionStepId={setRevisionStepId}
           onSetRevisionReason={setRevisionReason}
+          handleManageSteps={handleManageSteps}
+          onAddStepAt={(pos) => {
+            setAddStepAfter(pos);
+            setShowAddStepModal(true);
+          }}
         />
       ) : (
         <TemplateSelector
@@ -1303,6 +1618,25 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
           offerCount={vendorPickerStep.offer_count}
         />
       )}
+
+      <AddStepModal
+        isOpen={showAddStepModal}
+        onClose={() => setShowAddStepModal(false)}
+        onAdd={(params) => handleManageSteps("add_step", params)}
+        steps={data?.steps || []}
+        availableServices={availableServices}
+        servicesLoaded={servicesLoaded}
+        defaultInsertAfter={addStepAfter}
+        onLoadServices={async () => {
+          const { data: result } = await supabase.functions.invoke("manage-order-workflow-steps", {
+            body: { workflow_id: data?.workflow?.id, action: "list_available_services" },
+          });
+          if (result?.services) {
+            setAvailableServices(result.services);
+            setServicesLoaded(true);
+          }
+        }}
+      />
     </div>
   );
 }
