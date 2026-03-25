@@ -21,7 +21,7 @@ interface MediaItem {
   alt_text?: string;
 }
 
-const BUCKET = "media";
+const BUCKET = "blog-images";
 
 export default function MediaLibrary() {
   const [items, setItems] = useState<MediaItem[]>([]);
