@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import {
@@ -219,6 +219,84 @@ function ActorTypeBadge({ actorType }: { actorType: string }) {
   );
 }
 
+// ── SearchableSelect (reusable dropdown for VendorFinderModal) ──
+
+interface SearchableSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder: string;
+  allowClear?: boolean;
+}
+
+function SearchableSelect({ value, onChange, options, placeholder, allowClear = true }: SearchableSelectProps) {
+  const [search, setSearch] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setIsDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = options.filter(o =>
+    o.label.toLowerCase().includes(search.toLowerCase()) ||
+    o.value.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const selectedLabel = options.find(o => o.value === value)?.label || '';
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+        placeholder={placeholder}
+        value={isDropdownOpen ? search : (selectedLabel || '')}
+        onChange={(e) => { setSearch(e.target.value); setIsDropdownOpen(true); }}
+        onFocus={() => { setIsDropdownOpen(true); setSearch(''); }}
+      />
+      {value && allowClear && !isDropdownOpen && (
+        <button
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+          onClick={(e) => { e.stopPropagation(); onChange(''); }}
+        >✕</button>
+      )}
+      {isDropdownOpen && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto">
+          {allowClear && (
+            <div
+              className="px-3 py-1.5 text-sm text-gray-400 hover:bg-gray-50 cursor-pointer"
+              onClick={() => { onChange(''); setIsDropdownOpen(false); setSearch(''); }}
+            >
+              — Clear —
+            </div>
+          )}
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-gray-400">No matches</div>
+          ) : (
+            filtered.slice(0, 50).map(o => (
+              <div
+                key={o.value}
+                className={`px-3 py-1.5 text-sm cursor-pointer hover:bg-blue-50 ${o.value === value ? 'bg-blue-100 font-medium' : ''}`}
+                onClick={() => { onChange(o.value); setIsDropdownOpen(false); setSearch(''); }}
+              >
+                {o.label}
+                {o.value !== o.label && (
+                  <span className="text-gray-400 ml-1 text-xs">({o.value})</span>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── VendorFinderModal ──
 
 interface VendorFinderModalProps {
@@ -256,11 +334,26 @@ function VendorFinderModal({
   const [services, setServices] = useState<Array<{ id: string; name: string; category: string }>>([]);
   const [servicesLoaded, setServicesLoaded] = useState(false);
 
+  // Reference data for searchable dropdowns
+  const [languageOptions, setLanguageOptions] = useState<Array<{ code: string; name: string }>>([]);
+  const [countryOptions, setCountryOptions] = useState<string[]>([]);
+  const [vendorNameOptions, setVendorNameOptions] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [optionsLoaded, setOptionsLoaded] = useState(false);
+
+  // Native lang multi-select state
+  const [nativeLangSearch, setNativeLangSearch] = useState('');
+  const [nativeLangOpen, setNativeLangOpen] = useState(false);
+  const nativeLangRef = useRef<HTMLDivElement>(null);
+
+  // Name search autocomplete state
+  const [nameSearchOpen, setNameSearchOpen] = useState(false);
+  const nameSearchRef = useRef<HTMLDivElement>(null);
+
   // Filter state
   const [filterSourceLang, setFilterSourceLang] = useState(sourceLanguage || "");
   const [filterTargetLang, setFilterTargetLang] = useState(targetLanguage || "");
   const [filterServiceId, setFilterServiceId] = useState(serviceId || "");
-  const [nativeLanguages, setNativeLanguages] = useState("");
+  const [nativeLanguages, setNativeLanguages] = useState<string[]>([]);
   const [country, setCountry] = useState("");
   const [minRating, setMinRating] = useState(0);
   const [maxRate, setMaxRate] = useState("");
@@ -271,8 +364,8 @@ function VendorFinderModal({
   const doSearch = useCallback(async () => {
     setSearching(true);
     try {
-      const nativeLangs = nativeLanguages.trim()
-        ? nativeLanguages.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+      const nativeLangs = nativeLanguages.length > 0
+        ? nativeLanguages.map((s) => s.toLowerCase())
         : null;
       const { data } = await supabase.functions.invoke("find-matching-vendors", {
         body: {
@@ -317,6 +410,62 @@ function VendorFinderModal({
     }
   }, [isOpen]);
 
+  // Fetch language and country options on modal open
+  useEffect(() => {
+    if (isOpen && !optionsLoaded) {
+      const loadOptions = async () => {
+        const { data: langs } = await supabase
+          .from("languages")
+          .select("code, name")
+          .order("name");
+        setLanguageOptions(langs || []);
+
+        const { data: vendors } = await supabase
+          .from("vendors")
+          .select("country")
+          .not("country", "is", null)
+          .neq("country", "")
+          .eq("status", "active");
+        const uniqueCountries = [...new Set((vendors || []).map((v: any) => v.country))]
+          .filter(Boolean)
+          .sort() as string[];
+        setCountryOptions(uniqueCountries);
+
+        setOptionsLoaded(true);
+      };
+      loadOptions();
+    }
+  }, [isOpen]);
+
+  // Outside click handlers for custom dropdowns
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (nativeLangRef.current && !nativeLangRef.current.contains(e.target as Node)) setNativeLangOpen(false);
+      if (nameSearchRef.current && !nameSearchRef.current.contains(e.target as Node)) setNameSearchOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Debounced vendor name search
+  const debouncedNameSearch = useMemo(() => {
+    let timer: any;
+    return (query: string) => {
+      clearTimeout(timer);
+      if (!query || query.length < 2) { setVendorNameOptions([]); setNameSearchOpen(false); return; }
+      timer = setTimeout(async () => {
+        const { data } = await supabase
+          .from("vendors")
+          .select("id, full_name, email")
+          .eq("status", "active")
+          .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
+          .limit(10);
+        setVendorNameOptions((data || []).map((v: any) => ({ id: v.id, name: v.full_name, email: v.email })));
+        setNameSearchOpen(true);
+      }, 300);
+    };
+  }, []);
+
   // Auto-search on open
   useEffect(() => {
     if (isOpen) {
@@ -329,13 +478,16 @@ function VendorFinderModal({
     setFilterSourceLang(sourceLanguage || "");
     setFilterTargetLang(targetLanguage || "");
     setFilterServiceId(serviceId || "");
-    setNativeLanguages("");
+    setNativeLanguages([]);
+    setNativeLangSearch('');
     setCountry("");
     setMinRating(0);
     setMaxRate("");
     setAvailability("");
     setSearchText("");
     setSortBy("match_score");
+    setVendorNameOptions([]);
+    setNameSearchOpen(false);
   };
 
   const toggleSelect = (id: string) => {
@@ -387,22 +539,26 @@ function VendorFinderModal({
                 <div className="grid grid-cols-4 gap-2">
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Source Lang</label>
-                    <input
-                      type="text"
+                    <SearchableSelect
                       value={filterSourceLang}
-                      onChange={(e) => setFilterSourceLang(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="e.g. FR"
+                      onChange={(val) => setFilterSourceLang(val)}
+                      options={languageOptions.map(l => ({
+                        value: l.code.toUpperCase(),
+                        label: `${l.name} (${l.code.toUpperCase()})`,
+                      }))}
+                      placeholder="Search language..."
                     />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Target Lang</label>
-                    <input
-                      type="text"
+                    <SearchableSelect
                       value={filterTargetLang}
-                      onChange={(e) => setFilterTargetLang(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="e.g. EN"
+                      onChange={(val) => setFilterTargetLang(val)}
+                      options={languageOptions.map(l => ({
+                        value: l.code.toUpperCase(),
+                        label: `${l.name} (${l.code.toUpperCase()})`,
+                      }))}
+                      placeholder="Search language..."
                     />
                   </div>
                   <div>
@@ -424,24 +580,61 @@ function VendorFinderModal({
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Native Lang</label>
-                    <input
-                      type="text"
-                      value={nativeLanguages}
-                      onChange={(e) => setNativeLanguages(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="en, fr"
-                    />
+                    <div className="relative" ref={nativeLangRef}>
+                      {nativeLanguages.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-1">
+                          {nativeLanguages.map(code => {
+                            const lang = languageOptions.find(l => l.code.toUpperCase() === code);
+                            return (
+                              <span key={code} className="inline-flex items-center bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs">
+                                {lang?.name || code}
+                                <button className="ml-1 text-blue-500 hover:text-blue-700"
+                                  onClick={() => setNativeLanguages(nativeLanguages.filter(c => c !== code))}
+                                >✕</button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                        placeholder={nativeLanguages.length > 0 ? "Add more..." : "Search native language..."}
+                        value={nativeLangSearch}
+                        onChange={(e) => { setNativeLangSearch(e.target.value); setNativeLangOpen(true); }}
+                        onFocus={() => setNativeLangOpen(true)}
+                      />
+                      {nativeLangOpen && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto">
+                          {languageOptions
+                            .filter(l => !nativeLanguages.includes(l.code.toUpperCase()))
+                            .filter(l => l.name.toLowerCase().includes(nativeLangSearch.toLowerCase()) || l.code.toLowerCase().includes(nativeLangSearch.toLowerCase()))
+                            .slice(0, 30)
+                            .map(l => (
+                              <div key={l.code}
+                                className="px-3 py-1.5 text-sm cursor-pointer hover:bg-blue-50"
+                                onClick={() => {
+                                  setNativeLanguages([...nativeLanguages, l.code.toUpperCase()]);
+                                  setNativeLangSearch('');
+                                  setNativeLangOpen(false);
+                                }}
+                              >
+                                {l.name} <span className="text-gray-400 text-xs">({l.code.toUpperCase()})</span>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-4 gap-2">
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Country</label>
-                    <input
-                      type="text"
+                    <SearchableSelect
                       value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="Country"
+                      onChange={(val) => setCountry(val)}
+                      options={countryOptions.map(c => ({ value: c, label: c }))}
+                      placeholder="Search country..."
                     />
                   </div>
                   <div>
@@ -486,13 +679,34 @@ function VendorFinderModal({
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Search</label>
-                    <input
-                      type="text"
-                      value={searchText}
-                      onChange={(e) => setSearchText(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="Name or email..."
-                    />
+                    <div className="relative" ref={nameSearchRef}>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
+                        placeholder="Name or email..."
+                        value={searchText}
+                        onChange={(e) => {
+                          setSearchText(e.target.value);
+                          debouncedNameSearch(e.target.value);
+                        }}
+                      />
+                      {nameSearchOpen && vendorNameOptions.length > 0 && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto">
+                          {vendorNameOptions.map(v => (
+                            <div key={v.id}
+                              className="px-3 py-1.5 text-sm cursor-pointer hover:bg-blue-50"
+                              onClick={() => {
+                                setSearchText(v.name);
+                                setNameSearchOpen(false);
+                              }}
+                            >
+                              <span className="font-medium">{v.name}</span>
+                              <span className="text-gray-400 ml-1 text-xs">{v.email}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Sort by</label>
