@@ -200,29 +200,79 @@ function ActorTypeBadge({ actorType }: { actorType: string }) {
 
 // ── VendorPickerModal ──
 
+interface VendorPickerModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onAssign: (params: {
+    vendor_id: string;
+    vendor_rate: number;
+    vendor_rate_unit: string;
+    vendor_total: number;
+    vendor_currency: string;
+    deadline: string | null;
+    instructions: string | null;
+  }) => void;
+  stepId: string;
+  stepName: string;
+  stepNumber: number;
+  serviceName: string | null;
+  sourceLanguage: string | null;
+  targetLanguage: string | null;
+  orderFinancials: OrderFinancials | null;
+  offerCount: number;
+}
+
 function VendorPickerModal({
   isOpen,
   onClose,
-  onSelect,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onSelect: (vendorId: string, vendorName: string) => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [results, setResults] = useState<VendorSearchResult[]>([]);
+  onAssign,
+  stepId,
+  stepName,
+  stepNumber,
+  serviceName,
+  sourceLanguage,
+  targetLanguage,
+  orderFinancials,
+  offerCount,
+}: VendorPickerModalProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  const [selectedVendor, setSelectedVendor] = useState<{ id: string; name: string } | null>(null);
+  const [suggestedRate, setSuggestedRate] = useState<{ rate: number; calculation_unit: string; currency: string } | null>(null);
+  const [lookingUpRate, setLookingUpRate] = useState(false);
+  const [vendorRate, setVendorRate] = useState<string>("");
+  const [vendorRateUnit, setVendorRateUnit] = useState("per_word");
+  const [vendorTotal, setVendorTotal] = useState<string>("");
+  const [vendorCurrency, setVendorCurrency] = useState("CAD");
+  const [deadline, setDeadline] = useState("");
+  const [instructions, setInstructions] = useState("");
+
+  const resetState = useCallback(() => {
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearching(false);
+    setSelectedVendor(null);
+    setSuggestedRate(null);
+    setLookingUpRate(false);
+    setVendorRate("");
+    setVendorRateUnit("per_word");
+    setVendorTotal("");
+    setVendorCurrency("CAD");
+    setDeadline("");
+    setInstructions("");
+  }, []);
 
   useEffect(() => {
-    if (!isOpen) {
-      setSearch("");
-      setResults([]);
+    if (isOpen) {
+      resetState();
     }
-  }, [isOpen]);
+  }, [isOpen, resetState]);
 
+  // Debounced vendor search
   useEffect(() => {
-    if (!search || search.length < 2) {
-      setResults([]);
+    if (!searchQuery || searchQuery.length < 2) {
+      setSearchResults([]);
       return;
     }
     const timer = setTimeout(async () => {
@@ -231,75 +281,326 @@ function VendorPickerModal({
         .from("vendors")
         .select("id, full_name, email, rating")
         .eq("status", "active")
-        .or(`full_name.ilike.%${search}%,email.ilike.%${search}%`)
+        .or(`full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
         .limit(10);
-      setResults((data as VendorSearchResult[]) ?? []);
+      setSearchResults(data ?? []);
       setSearching(false);
     }, 300);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [searchQuery]);
+
+  const lookupRate = async (vendorId: string) => {
+    setLookingUpRate(true);
+    setSuggestedRate(null);
+    try {
+      const { data } = await supabase.functions.invoke("update-workflow-step", {
+        body: { step_id: stepId, action: "lookup_vendor_rate", vendor_id: vendorId },
+      });
+      if (data?.suggested_rate) {
+        setSuggestedRate(data.suggested_rate);
+        setVendorRate(String(data.suggested_rate.rate));
+        setVendorRateUnit(data.suggested_rate.calculation_unit);
+        setVendorCurrency(data.suggested_rate.currency);
+      }
+    } catch (err) {
+      console.error("Rate lookup failed:", err);
+    } finally {
+      setLookingUpRate(false);
+    }
+  };
+
+  const handleSelectVendor = (vendor: { id: string; full_name: string }) => {
+    setSelectedVendor({ id: vendor.id, name: vendor.full_name });
+    setSearchResults([]);
+    setSearchQuery("");
+    lookupRate(vendor.id);
+  };
+
+  const handleDeselectVendor = () => {
+    setSelectedVendor(null);
+    setSuggestedRate(null);
+    setVendorRate("");
+    setVendorRateUnit("per_word");
+    setVendorTotal("");
+    setVendorCurrency("CAD");
+  };
+
+  const canSubmit = selectedVendor && vendorRate !== "" && vendorRateUnit && vendorTotal !== "";
+
+  const handleSubmit = () => {
+    if (!canSubmit || !selectedVendor) return;
+    onAssign({
+      vendor_id: selectedVendor.id,
+      vendor_rate: parseFloat(vendorRate),
+      vendor_rate_unit: vendorRateUnit,
+      vendor_total: parseFloat(vendorTotal),
+      vendor_currency: vendorCurrency,
+      deadline: deadline || null,
+      instructions: instructions || null,
+    });
+  };
+
+  const margin =
+    orderFinancials && orderFinancials.subtotal > 0 && vendorTotal
+      ? ((orderFinancials.subtotal - parseFloat(vendorTotal)) / orderFinancials.subtotal) * 100
+      : null;
+
+  const marginColor =
+    margin === null ? "gray" : margin >= 50 ? "green" : margin >= 30 ? "yellow" : "red";
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-lg max-w-md w-full mx-4">
+      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-base font-semibold text-gray-900">Assign Vendor</h2>
+          <h2 className="text-base font-semibold text-gray-900">
+            Assign Vendor — Step {stepNumber}: {stepName}
+          </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-4">
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or email..."
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              autoFocus
-            />
+
+        <div className="p-4 space-y-4">
+          {/* Info bar */}
+          <div className="bg-gray-50 rounded px-3 py-2 text-sm text-gray-600">
+            <div>Service: {serviceName || "N/A"} · LP: {sourceLanguage && targetLanguage ? `${sourceLanguage} → ${targetLanguage}` : "Not set"}</div>
+            <div>Offer attempt #{offerCount + 1}</div>
           </div>
-          <div className="max-h-64 overflow-y-auto">
-            {searching ? (
-              <div className="text-center py-6 text-gray-400">
-                <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1" />
-                <p className="text-xs">Searching...</p>
-              </div>
-            ) : results.length === 0 ? (
-              <p className="text-center py-6 text-sm text-gray-400">
-                {search.length < 2 ? "Type to search vendors" : "No vendors found"}
-              </p>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {results.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => onSelect(v.id, v.full_name)}
-                    className="w-full text-left px-3 py-2.5 hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{v.full_name}</p>
-                        <p className="text-xs text-gray-500">{v.email}</p>
-                      </div>
-                      {v.rating != null && (
-                        <div className="flex items-center gap-0.5 text-xs text-gray-500">
-                          <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                          {v.rating}
-                        </div>
-                      )}
-                    </div>
+
+          {/* Vendor search section */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+            {selectedVendor ? (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium">
+                  {selectedVendor.name}
+                  <button onClick={handleDeselectVendor} className="ml-1 hover:text-indigo-900">
+                    <X className="w-3 h-3" />
                   </button>
-                ))}
+                </span>
+                {lookingUpRate && (
+                  <span className="flex items-center gap-1 text-xs text-gray-400">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Looking up rate...
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by name or email..."
+                    className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    autoFocus
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto mt-1">
+                  {searching ? (
+                    <div className="text-center py-4 text-gray-400">
+                      <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1" />
+                      <p className="text-xs">Searching...</p>
+                    </div>
+                  ) : searchResults.length === 0 ? (
+                    <p className="text-center py-4 text-sm text-gray-400">
+                      {searchQuery.length < 2 ? "Type to search vendors" : "No vendors found"}
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-gray-50 border border-gray-100 rounded-lg">
+                      {searchResults.map((v: any) => (
+                        <button
+                          key={v.id}
+                          onClick={() => handleSelectVendor(v)}
+                          className="w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{v.full_name}</p>
+                              <p className="text-xs text-gray-500">{v.email}</p>
+                            </div>
+                            {v.rating != null && (
+                              <div className="flex items-center gap-0.5 text-xs text-gray-500">
+                                <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                                {v.rating}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
+
+          {/* Rate section */}
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Rate</label>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={vendorRate}
+                  onChange={(e) => setVendorRate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="0.00"
+                />
+                {suggestedRate && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Vendor&apos;s rate: ${suggestedRate.rate}/{suggestedRate.calculation_unit} {suggestedRate.currency}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Rate Unit</label>
+                <select
+                  value={vendorRateUnit}
+                  onChange={(e) => setVendorRateUnit(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="per_word">Per Word</option>
+                  <option value="per_page">Per Page</option>
+                  <option value="per_hour">Per Hour</option>
+                  <option value="flat">Flat</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Total</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={vendorTotal}
+                  onChange={(e) => setVendorTotal(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
+                <select
+                  value={vendorCurrency}
+                  onChange={(e) => setVendorCurrency(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="CAD">CAD</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="GBP">GBP</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Margin indicator */}
+          {vendorTotal && orderFinancials && orderFinancials.subtotal > 0 ? (
+            <div className="border rounded p-3 text-sm">
+              <div className="text-gray-600">Customer subtotal: ${orderFinancials.subtotal.toFixed(2)}</div>
+              <div className="text-gray-600">This step cost: ${vendorTotal}</div>
+              <div className="flex items-center gap-1">
+                <span
+                  className={
+                    marginColor === "green"
+                      ? "text-green-600"
+                      : marginColor === "yellow"
+                        ? "text-yellow-600"
+                        : "text-red-600"
+                  }
+                >
+                  ●
+                </span>
+                <span className="text-gray-700">Step margin: {margin !== null ? `${margin.toFixed(1)}%` : "N/A"}</span>
+              </div>
+              {margin !== null && margin < 30 && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 p-2 rounded text-sm mt-2">
+                  ⚠️ Margin below minimum threshold (30%). Proceed with caution.
+                </div>
+              )}
+            </div>
+          ) : vendorTotal ? (
+            <p className="text-xs text-gray-400">Margin unavailable — order has no pricing data.</p>
+          ) : null}
+
+          {/* Deadline */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Deadline</label>
+            <input
+              type="datetime-local"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Instructions */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Instructions for vendor</label>
+            <textarea
+              rows={3}
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="Special instructions, reference materials, glossary links..."
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 p-4 border-t">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className={`px-4 py-2 rounded-lg text-sm font-medium text-white ${
+              canSubmit
+                ? "bg-indigo-600 hover:bg-indigo-700"
+                : "bg-indigo-600 opacity-50 cursor-not-allowed"
+            }`}
+          >
+            Assign & Offer
+          </button>
         </div>
       </div>
     </div>
+  );
+}
+
+// Thin compatibility wrapper for existing parent calls (will be removed in Part 5)
+function VendorPickerModalCompat({
+  isOpen,
+  onClose,
+  onSelect,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (vendorId: string, vendorName: string) => void;
+}) {
+  return (
+    <VendorPickerModal
+      isOpen={isOpen}
+      onClose={onClose}
+      onAssign={(params) => onSelect(params.vendor_id, "")}
+      stepId=""
+      stepName=""
+      stepNumber={0}
+      serviceName={null}
+      sourceLanguage={null}
+      targetLanguage={null}
+      orderFinancials={null}
+      offerCount={0}
+    />
   );
 }
 
@@ -614,7 +915,7 @@ function StepDetailPanel({
           </div>
         </div>
       </div>
-      <VendorPickerModal
+      <VendorPickerModalCompat
         isOpen={showVendorPicker}
         onClose={() => setShowVendorPicker(false)}
         onSelect={handleAssignVendor}
