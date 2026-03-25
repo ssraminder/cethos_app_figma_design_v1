@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import {
@@ -674,7 +674,7 @@ function VendorAssignModal({
 }: VendorAssignModalProps) {
   const [vendorRate, setVendorRate] = useState<string>("");
   const [vendorRateUnit, setVendorRateUnit] = useState("per_word");
-  const [vendorTotal, setVendorTotal] = useState<string>("");
+  const [units, setUnits] = useState<string>("1");
   const [vendorCurrency, setVendorCurrency] = useState("CAD");
   const [deadline, setDeadline] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -687,7 +687,7 @@ function VendorAssignModal({
     if (isOpen) {
       setVendorRate("");
       setVendorRateUnit("per_word");
-      setVendorTotal("");
+      setUnits("1");
       setVendorCurrency("CAD");
       setDeadline("");
       setInstructions("");
@@ -728,22 +728,58 @@ function VendorAssignModal({
     }
   }, [isOpen, vendor, suggestedRate]);
 
+  // Auto-set units to 1 for flat rate
+  useEffect(() => {
+    if (vendorRateUnit === 'flat') {
+      setUnits("1");
+    }
+  }, [vendorRateUnit]);
+
+  // Auto-calculate total
+  const calculatedTotal = useMemo(() => {
+    const r = parseFloat(vendorRate) || 0;
+    const u = parseFloat(units) || 0;
+    return (r * u).toFixed(2);
+  }, [vendorRate, units]);
+
+  // Dynamic unit label
+  const unitLabel = useMemo(() => {
+    switch (vendorRateUnit) {
+      case 'per_word': return 'Word Count *';
+      case 'per_page': return 'Page Count *';
+      case 'per_hour': return 'Hours *';
+      case 'flat': return 'Units *';
+      default: return 'Units *';
+    }
+  }, [vendorRateUnit]);
+
+  // Display name for rate units
+  const unitDisplayName = (unit: string) => {
+    const map: Record<string, string> = {
+      per_word: 'per word',
+      per_page: 'per page',
+      per_hour: 'per hour',
+      flat: 'flat rate',
+    };
+    return map[unit] || unit;
+  };
+
   const margin =
-    orderFinancials && orderFinancials.subtotal > 0 && vendorTotal
-      ? ((orderFinancials.subtotal - parseFloat(vendorTotal)) / orderFinancials.subtotal) * 100
+    orderFinancials && orderFinancials.subtotal > 0 && parseFloat(calculatedTotal) > 0
+      ? ((orderFinancials.subtotal - parseFloat(calculatedTotal)) / orderFinancials.subtotal) * 100
       : null;
 
   const marginColor =
     margin === null ? "gray" : margin >= 50 ? "green" : margin >= minMarginPercent ? "yellow" : "red";
 
-  const canSubmit = vendorRate !== "" && vendorRateUnit && vendorTotal !== "";
+  const canSubmit = vendorRate !== "" && parseFloat(vendorRate) > 0 && vendorRateUnit && units !== "" && parseFloat(units) > 0;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
     const baseParams = {
       vendor_rate: parseFloat(vendorRate),
       vendor_rate_unit: vendorRateUnit,
-      vendor_total: parseFloat(vendorTotal),
+      vendor_total: parseFloat(calculatedTotal),
       vendor_currency: vendorCurrency,
       deadline: deadline || null,
       instructions: instructions || null,
@@ -843,8 +879,9 @@ function VendorAssignModal({
           </div>
 
           {/* Rate section */}
-          <div>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-3">
+            {/* Row 1: Rate, Rate Unit, Currency */}
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Rate *</label>
                 <input
@@ -855,11 +892,6 @@ function VendorAssignModal({
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="0.00"
                 />
-                {suggestedRate && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Vendor&apos;s rate: ${suggestedRate.rate}/{suggestedRate.calculation_unit} {suggestedRate.currency}
-                  </p>
-                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Rate Unit *</label>
@@ -875,17 +907,6 @@ function VendorAssignModal({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Total *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={vendorTotal}
-                  onChange={(e) => setVendorTotal(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="0.00"
-                />
-              </div>
-              <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
                 <select
                   value={vendorCurrency}
@@ -899,13 +920,40 @@ function VendorAssignModal({
                 </select>
               </div>
             </div>
+            {suggestedRate && (
+              <p className="text-xs text-gray-400">
+                Vendor&apos;s rate: ${suggestedRate.rate} {unitDisplayName(suggestedRate.calculation_unit)} ({suggestedRate.currency})
+              </p>
+            )}
+            {/* Row 2: Units, Total */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{unitLabel}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={units}
+                  onChange={(e) => setUnits(e.target.value)}
+                  disabled={vendorRateUnit === 'flat'}
+                  className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${vendorRateUnit === 'flat' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Total</label>
+                <div className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-700">
+                  {vendorCurrency} ${calculatedTotal}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Margin indicator */}
-          {vendorTotal && orderFinancials && orderFinancials.subtotal > 0 ? (
+          {parseFloat(calculatedTotal) > 0 && orderFinancials && orderFinancials.subtotal > 0 ? (
             <div className="border rounded p-3 text-sm">
               <div className="text-gray-600">Customer subtotal: ${orderFinancials.subtotal.toFixed(2)}</div>
-              <div className="text-gray-600">This step cost: ${vendorTotal}</div>
+              <div className="text-gray-600">This step cost: ${calculatedTotal}</div>
               <div className="flex items-center gap-1">
                 <span
                   className={
@@ -926,7 +974,7 @@ function VendorAssignModal({
                 </div>
               )}
             </div>
-          ) : vendorTotal ? (
+          ) : parseFloat(calculatedTotal) > 0 ? (
             <p className="text-xs text-gray-400">Margin unavailable — order has no pricing data.</p>
           ) : null}
 
