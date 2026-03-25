@@ -665,6 +665,11 @@ interface VendorAssignModalProps {
     deadline: string | null;
     instructions: string | null;
     expires_in_hours: number | null;
+    negotiation_allowed: boolean;
+    max_rate: number | null;
+    max_total: number | null;
+    latest_deadline: string | null;
+    auto_accept_within_limits: boolean;
   }) => void;
   mode: 'assign' | 'offer' | 'offer_multiple';
   vendor: any | null;
@@ -702,6 +707,11 @@ function VendorAssignModal({
   const [expiresInHours, setExpiresInHours] = useState<string>("24");
   const [suggestedRate, setSuggestedRate] = useState<{ rate: number; calculation_unit: string; currency: string } | null>(null);
   const [lookingUpRate, setLookingUpRate] = useState(false);
+  const [negotiationAllowed, setNegotiationAllowed] = useState(false);
+  const [maxRate, setMaxRate] = useState('');
+  const [maxTotal, setMaxTotal] = useState('');
+  const [latestDeadline, setLatestDeadline] = useState('');
+  const [autoAccept, setAutoAccept] = useState(true);
 
   // Reset on open
   useEffect(() => {
@@ -714,6 +724,11 @@ function VendorAssignModal({
       setInstructions("");
       setExpiresInHours("24");
       setSuggestedRate(null);
+      setNegotiationAllowed(false);
+      setMaxRate('');
+      setMaxTotal('');
+      setLatestDeadline('');
+      setAutoAccept(true);
     }
   }, [isOpen]);
 
@@ -797,6 +812,7 @@ function VendorAssignModal({
 
   const handleSubmit = () => {
     if (!canSubmit) return;
+    const isOffer = mode !== "assign";
     const baseParams = {
       vendor_rate: parseFloat(vendorRate),
       vendor_rate_unit: vendorRateUnit,
@@ -804,7 +820,13 @@ function VendorAssignModal({
       vendor_currency: vendorCurrency,
       deadline: deadline || null,
       instructions: instructions || null,
-      expires_in_hours: mode !== "assign" && expiresInHours !== "0" ? parseInt(expiresInHours) : null,
+      expires_in_hours: isOffer && expiresInHours !== "0" ? parseInt(expiresInHours) : null,
+      // v6: Negotiation policy
+      negotiation_allowed: isOffer ? negotiationAllowed : false,
+      max_rate: isOffer && negotiationAllowed && maxRate ? parseFloat(maxRate) : null,
+      max_total: isOffer && negotiationAllowed && maxTotal ? parseFloat(maxTotal) : null,
+      latest_deadline: isOffer && negotiationAllowed && latestDeadline ? new Date(latestDeadline).toISOString() : null,
+      auto_accept_within_limits: isOffer && negotiationAllowed ? autoAccept : true,
     };
 
     if (mode === "assign" && vendor) {
@@ -1040,6 +1062,101 @@ function VendorAssignModal({
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
             />
           </div>
+
+          {/* Negotiation config (offer modes only) */}
+          {(mode === 'offer' || mode === 'offer_multiple') && (
+            <div className="border-t pt-3 mt-3">
+              {/* Toggle */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={negotiationAllowed}
+                  onChange={(e) => setNegotiationAllowed(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                <span className="text-sm font-medium text-gray-700">Allow vendor to negotiate</span>
+              </label>
+
+              {/* Bounds (only when enabled) */}
+              {negotiationAllowed && (
+                <div className="mt-3 ml-6 space-y-3 p-3 bg-gray-50 rounded border border-gray-200">
+                  <p className="text-xs text-gray-500">
+                    Set maximum acceptable terms. Counters within these bounds will be auto-accepted.
+                    Counters exceeding any limit will be queued for your review.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Max Rate */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Max acceptable rate
+                      </label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        value={maxRate}
+                        onChange={(e) => setMaxRate(e.target.value)}
+                        placeholder={vendorRate ? `Current: ${vendorRate}` : '0.00'}
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+                      />
+                      <span className="text-xs text-gray-400 mt-0.5">
+                        {unitDisplayName(vendorRateUnit)}
+                      </span>
+                    </div>
+
+                    {/* Max Total */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Max acceptable total
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={maxTotal}
+                        onChange={(e) => setMaxTotal(e.target.value)}
+                        placeholder={calculatedTotal ? `Current: ${calculatedTotal}` : '0.00'}
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+                      />
+                      <span className="text-xs text-gray-400 mt-0.5">{vendorCurrency}</span>
+                    </div>
+                  </div>
+
+                  {/* Latest Deadline */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Latest acceptable deadline
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={latestDeadline}
+                      onChange={(e) => setLatestDeadline(e.target.value)}
+                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+                    />
+                  </div>
+
+                  {/* Auto-accept toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoAccept}
+                      onChange={(e) => setAutoAccept(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-xs text-gray-600">
+                      Auto-accept counters within limits
+                    </span>
+                  </label>
+                  <p className="text-xs text-gray-400 ml-6">
+                    {autoAccept
+                      ? 'Counters within bounds will be accepted automatically — no PM action needed.'
+                      : 'All counters will be queued for your review, even if within bounds.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -1667,12 +1784,12 @@ function WorkflowPipeline({
                 {/* Active offers display */}
                 {step.offers && step.offers.length > 0 && (
                   <div className="mt-1 space-y-0.5">
-                    {step.offers.filter((o) => o.status === "sent").length > 0 && (
+                    {step.offers.filter((o: any) => o.status === "sent").length > 0 && (
                       <div className="text-xs text-blue-600">
-                        {step.offers.filter((o) => o.status === "sent").length} offer(s) pending
+                        {step.offers.filter((o: any) => o.status === "sent").length} offer(s) pending
                         {step.offers
-                          .filter((o) => o.status === "sent")
-                          .map((o) => (
+                          .filter((o: any) => o.status === "sent")
+                          .map((o: any) => (
                             <span
                               key={o.id}
                               className="ml-2 inline-flex items-center bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs"
@@ -1689,9 +1806,19 @@ function WorkflowPipeline({
                                 })()}
                             </span>
                           ))}
+                        {/* Negotiation indicator */}
+                        {step.offers.some((o: any) => o.negotiation_allowed) ? (
+                          <span className="ml-2 text-xs text-teal-600" title="Vendors can submit counter-proposals">
+                            📝 Negotiable
+                          </span>
+                        ) : (
+                          <span className="ml-2 text-xs text-gray-400" title="Fixed terms — no negotiation">
+                            🔒 Fixed
+                          </span>
+                        )}
                       </div>
                     )}
-                    {step.offers.filter((o) => o.status === "declined").length > 0 && (
+                    {step.offers.filter((o: any) => o.status === "declined").length > 0 && (
                       <div className="text-xs text-gray-400 space-y-0.5">
                         <span>{step.offers.filter((o) => o.status === "declined").length} declined:</span>
                         {step.offers.filter((o) => o.status === "declined").map((o) => (
@@ -1706,8 +1833,18 @@ function WorkflowPipeline({
                     )}
 
                     {/* Counter-offer details for each offer */}
-                    {step.offers.map((offer) => (
+                    {step.offers.map((offer: any) => (
                       <div key={`counter-${offer.id}`}>
+                        {/* Negotiation bounds (admin only) */}
+                        {offer.negotiation_allowed && (
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            Bounds:{' '}
+                            {offer.max_rate && `max $${offer.max_rate}/${offer.vendor_rate_unit}`}
+                            {offer.max_total && `${offer.max_rate ? ' / ' : ''}max $${offer.max_total}`}
+                            {offer.latest_deadline && `${(offer.max_rate || offer.max_total) ? ' / ' : ''}by ${new Date(offer.latest_deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                            {offer.auto_accept_within_limits ? ' · auto' : ' · manual review'}
+                          </div>
+                        )}
                         {offer.counter_status === 'proposed' && (
                           <div className="mt-1 p-2 bg-orange-50 border border-orange-200 rounded text-xs">
                             <div className="font-medium text-orange-700 mb-1">
