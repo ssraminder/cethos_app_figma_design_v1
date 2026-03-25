@@ -9,17 +9,17 @@ import {
   X,
   Check,
   Linkedin,
-  Twitter,
 } from "lucide-react";
 
 interface Author {
   id: string;
   name: string;
+  slug: string;
+  title: string;
   email: string;
   bio: string;
   avatar_url: string;
   linkedin_url: string;
-  twitter_handle: string;
   created_at: string;
 }
 
@@ -30,11 +30,12 @@ export default function BlogAuthors() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
+    slug: "",
+    title: "",
     email: "",
     bio: "",
     avatar_url: "",
     linkedin_url: "",
-    twitter_handle: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -42,7 +43,7 @@ export default function BlogAuthors() {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from("blog_authors")
+        .from("cethosweb_blog_authors")
         .select("*")
         .order("name");
 
@@ -64,20 +65,24 @@ export default function BlogAuthors() {
     setSaving(true);
 
     try {
+      const generateSlug = (n: string) =>
+        n.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").trim();
+
       const payload = {
         name: formData.name.trim(),
-        email: formData.email.trim(),
-        bio: formData.bio.trim(),
+        slug: formData.slug.trim() || generateSlug(formData.name),
+        title: formData.title.trim() || null,
+        email: formData.email.trim() || null,
+        bio: formData.bio.trim() || null,
         avatar_url: formData.avatar_url.trim() || null,
         linkedin_url: formData.linkedin_url.trim() || null,
-        twitter_handle: formData.twitter_handle.trim() || null,
       };
 
       if (editingId) {
-        const { error } = await supabase.from("blog_authors").update(payload).eq("id", editingId);
+        const { error } = await supabase.from("cethosweb_blog_authors").update(payload).eq("id", editingId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("blog_authors").insert(payload);
+        const { error } = await supabase.from("cethosweb_blog_authors").insert(payload);
         if (error) throw error;
       }
 
@@ -94,11 +99,12 @@ export default function BlogAuthors() {
     setEditingId(author.id);
     setFormData({
       name: author.name,
+      slug: author.slug || "",
+      title: author.title || "",
       email: author.email || "",
       bio: author.bio || "",
       avatar_url: author.avatar_url || "",
       linkedin_url: author.linkedin_url || "",
-      twitter_handle: author.twitter_handle || "",
     });
     setShowForm(true);
   };
@@ -106,7 +112,7 @@ export default function BlogAuthors() {
   const handleDelete = async (author: Author) => {
     if (!confirm(`Are you sure you want to delete "${author.name}"? This cannot be undone.`)) return;
     try {
-      const { error } = await supabase.from("blog_authors").delete().eq("id", author.id);
+      const { error } = await supabase.from("cethosweb_blog_authors").delete().eq("id", author.id);
       if (error) throw error;
       fetchAuthors();
     } catch (err) {
@@ -117,7 +123,7 @@ export default function BlogAuthors() {
   const resetForm = () => {
     setShowForm(false);
     setEditingId(null);
-    setFormData({ name: "", email: "", bio: "", avatar_url: "", linkedin_url: "", twitter_handle: "" });
+    setFormData({ name: "", slug: "", title: "", email: "", bio: "", avatar_url: "", linkedin_url: "" });
   };
 
   const getInitials = (name: string) =>
@@ -163,13 +169,13 @@ export default function BlogAuthors() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#0f172a] mb-1">Email</label>
+                <label className="block text-sm font-medium text-[#0f172a] mb-1">Title / Role</label>
                 <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md text-sm focus:ring-2 focus:ring-[#0d9488] outline-none"
-                  placeholder="author@cethos.com"
+                  placeholder="e.g. Content Director"
                 />
               </div>
             </div>
@@ -195,6 +201,16 @@ export default function BlogAuthors() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
+                <label className="block text-sm font-medium text-[#0f172a] mb-1">Email</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md text-sm focus:ring-2 focus:ring-[#0d9488] outline-none"
+                  placeholder="author@cethos.com"
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-[#0f172a] mb-1">LinkedIn URL</label>
                 <input
                   type="url"
@@ -202,16 +218,6 @@ export default function BlogAuthors() {
                   onChange={(e) => setFormData({ ...formData, linkedin_url: e.target.value })}
                   className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md text-sm focus:ring-2 focus:ring-[#0d9488] outline-none"
                   placeholder="https://linkedin.com/in/..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[#0f172a] mb-1">Twitter / X Handle</label>
-                <input
-                  type="text"
-                  value={formData.twitter_handle}
-                  onChange={(e) => setFormData({ ...formData, twitter_handle: e.target.value })}
-                  className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md text-sm focus:ring-2 focus:ring-[#0d9488] outline-none"
-                  placeholder="@handle"
                 />
               </div>
             </div>
@@ -288,8 +294,8 @@ export default function BlogAuthors() {
                   {author.bio && (
                     <p className="text-xs text-[#94a3b8] mt-0.5 truncate max-w-md">{author.bio}</p>
                   )}
-                  <div className="flex items-center gap-3 mt-1">
-                    {author.linkedin_url && (
+                  {author.linkedin_url && (
+                    <div className="flex items-center gap-3 mt-1">
                       <a
                         href={author.linkedin_url}
                         target="_blank"
@@ -298,18 +304,8 @@ export default function BlogAuthors() {
                       >
                         <Linkedin className="w-3.5 h-3.5" />
                       </a>
-                    )}
-                    {author.twitter_handle && (
-                      <a
-                        href={`https://x.com/${author.twitter_handle.replace("@", "")}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#94a3b8] hover:text-[#0d9488] transition-colors"
-                      >
-                        <Twitter className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button

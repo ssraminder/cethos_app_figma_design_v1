@@ -57,7 +57,7 @@ export default function ContentCalendar() {
       const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
 
       const { data, error } = await supabase
-        .from("blog_posts")
+        .from("cethosweb_blog_posts")
         .select("id, title, status, published_at, created_at")
         .or(`published_at.gte.${startOfMonth},created_at.gte.${startOfMonth}`)
         .or(`published_at.lte.${endOfMonth},created_at.lte.${endOfMonth}`)

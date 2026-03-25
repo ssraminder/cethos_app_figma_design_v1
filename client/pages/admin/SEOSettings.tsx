@@ -34,20 +34,20 @@ export default function SEOSettings() {
   useEffect(() => {
     async function fetch() {
       try {
+        // Fetch the homepage SEO settings (page_path = '/')
         const { data } = await supabase
-          .from("site_settings")
-          .select("key, value")
-          .in("key", ["seo_meta_title", "seo_meta_description", "seo_og_image", "google_verification", "robots_txt"]);
+          .from("cethosweb_seo_settings")
+          .select("*")
+          .eq("page_path", "/")
+          .single();
 
         if (data) {
-          const map: Record<string, string> = {};
-          data.forEach((r: any) => (map[r.key] = r.value));
           setSeo({
-            meta_title: map.seo_meta_title || "",
-            meta_description: map.seo_meta_description || "",
-            og_image_url: map.seo_og_image || "",
-            google_verification: map.google_verification || "",
-            robots_txt: map.robots_txt || "",
+            meta_title: data.meta_title || "",
+            meta_description: data.meta_description || "",
+            og_image_url: data.og_image || "",
+            google_verification: "",
+            robots_txt: "",
           });
         }
       } catch (err) {
@@ -62,19 +62,19 @@ export default function SEOSettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const pairs = [
-        { key: "seo_meta_title", value: seo.meta_title },
-        { key: "seo_meta_description", value: seo.meta_description },
-        { key: "seo_og_image", value: seo.og_image_url },
-        { key: "google_verification", value: seo.google_verification },
-        { key: "robots_txt", value: seo.robots_txt },
-      ];
-
-      for (const pair of pairs) {
-        await supabase
-          .from("site_settings")
-          .upsert({ key: pair.key, value: pair.value }, { onConflict: "key" });
-      }
+      await supabase
+        .from("cethosweb_seo_settings")
+        .upsert(
+          {
+            page_path: "/",
+            page_name: "Homepage",
+            meta_title: seo.meta_title,
+            meta_description: seo.meta_description,
+            og_image: seo.og_image_url,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "page_path" },
+        );
 
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);

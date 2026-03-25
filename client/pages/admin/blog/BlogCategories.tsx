@@ -31,7 +31,7 @@ export default function BlogCategories() {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from("blog_categories")
+        .from("cethosweb_blog_categories")
         .select("id, name, slug, description, created_at")
         .order("name");
 
@@ -63,10 +63,10 @@ export default function BlogCategories() {
       };
 
       if (editingId) {
-        const { error } = await supabase.from("blog_categories").update(payload).eq("id", editingId);
+        const { error } = await supabase.from("cethosweb_blog_categories").update(payload).eq("id", editingId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("blog_categories").insert(payload);
+        const { error } = await supabase.from("cethosweb_blog_categories").insert(payload);
         if (error) throw error;
       }
 
@@ -88,7 +88,7 @@ export default function BlogCategories() {
   const handleDelete = async (cat: Category) => {
     if (!confirm(`Are you sure you want to delete "${cat.name}"? This cannot be undone.`)) return;
     try {
-      const { error } = await supabase.from("blog_categories").delete().eq("id", cat.id);
+      const { error } = await supabase.from("cethosweb_blog_categories").delete().eq("id", cat.id);
       if (error) throw error;
       fetchCategories();
     } catch (err) {

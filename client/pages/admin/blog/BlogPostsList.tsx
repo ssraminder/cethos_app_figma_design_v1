@@ -50,11 +50,11 @@ export default function BlogPostsList() {
     setLoading(true);
     try {
       let query = supabase
-        .from("blog_posts")
+        .from("cethosweb_blog_posts")
         .select(
           `id, title, slug, status, published_at, created_at, updated_at,
-           blog_authors(name),
-           blog_categories(name)`,
+           cethosweb_blog_authors(name),
+           cethosweb_blog_categories(name)`,
           { count: "exact" },
         )
         .order("created_at", { ascending: false })
@@ -82,8 +82,8 @@ export default function BlogPostsList() {
         title: p.title,
         slug: p.slug,
         status: p.status,
-        author_name: p.blog_authors?.name || "Unknown",
-        category_name: p.blog_categories?.name || "Uncategorized",
+        author_name: p.cethosweb_blog_authors?.name || "Unknown",
+        category_name: p.cethosweb_blog_categories?.name || "Uncategorized",
         published_at: p.published_at,
         created_at: p.created_at,
         updated_at: p.updated_at,
@@ -140,7 +140,7 @@ export default function BlogPostsList() {
   const handleBulkDelete = async () => {
     if (!confirm(`Are you sure you want to delete ${selectedIds.size} post(s)? This cannot be undone.`)) return;
     try {
-      const { error } = await supabase.from("blog_posts").delete().in("id", Array.from(selectedIds));
+      const { error } = await supabase.from("cethosweb_blog_posts").delete().in("id", Array.from(selectedIds));
       if (error) throw error;
       setSelectedIds(new Set());
       fetchPosts();
@@ -153,7 +153,7 @@ export default function BlogPostsList() {
     try {
       const updateData: any = { status: newStatus };
       if (newStatus === "published") updateData.published_at = new Date().toISOString();
-      const { error } = await supabase.from("blog_posts").update(updateData).in("id", Array.from(selectedIds));
+      const { error } = await supabase.from("cethosweb_blog_posts").update(updateData).in("id", Array.from(selectedIds));
       if (error) throw error;
       setSelectedIds(new Set());
       fetchPosts();

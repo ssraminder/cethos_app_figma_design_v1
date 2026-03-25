@@ -23,19 +23,18 @@ interface PostData {
   title: string;
   slug: string;
   content: string;
-  excerpt: string;
+  description: string;
   status: "draft" | "published" | "scheduled" | "archived";
   author_id: string;
   category_id: string;
   tags: string[];
-  featured_image_url: string;
+  featured_image: string;
   featured_image_alt: string;
   meta_title: string;
   meta_description: string;
-  focus_keyword: string;
   canonical_url: string;
   published_at: string | null;
-  read_time: number;
+  read_time: string;
 }
 
 interface Author {
@@ -52,19 +51,18 @@ const DEFAULT_POST: PostData = {
   title: "",
   slug: "",
   content: "",
-  excerpt: "",
+  description: "",
   status: "draft",
   author_id: "",
   category_id: "",
   tags: [],
-  featured_image_url: "",
+  featured_image: "",
   featured_image_alt: "",
   meta_title: "",
   meta_description: "",
-  focus_keyword: "",
   canonical_url: "",
   published_at: null,
-  read_time: 0,
+  read_time: "",
 };
 
 function generateSlug(title: string): string {
@@ -123,8 +121,8 @@ export default function BlogPostEditor() {
   useEffect(() => {
     async function fetchMeta() {
       const [authorsRes, catsRes] = await Promise.all([
-        supabase.from("blog_authors").select("id, name").order("name"),
-        supabase.from("blog_categories").select("id, name").order("name"),
+        supabase.from("cethosweb_blog_authors").select("id, name").order("name"),
+        supabase.from("cethosweb_blog_categories").select("id, name").order("name"),
       ]);
       setAuthors(authorsRes.data || []);
       setCategories(catsRes.data || []);
@@ -137,7 +135,7 @@ export default function BlogPostEditor() {
     if (isNew) return;
     async function fetchPost() {
       const { data, error } = await supabase
-        .from("blog_posts")
+        .from("cethosweb_blog_posts")
         .select("*")
         .eq("id", id)
         .single();
@@ -153,19 +151,18 @@ export default function BlogPostEditor() {
         title: data.title || "",
         slug: data.slug || "",
         content: data.content || "",
-        excerpt: data.excerpt || "",
+        description: data.description || "",
         status: data.status || "draft",
         author_id: data.author_id || "",
         category_id: data.category_id || "",
         tags: data.tags || [],
-        featured_image_url: data.featured_image_url || "",
+        featured_image: data.featured_image || "",
         featured_image_alt: data.featured_image_alt || "",
         meta_title: data.meta_title || "",
         meta_description: data.meta_description || "",
-        focus_keyword: data.focus_keyword || "",
         canonical_url: data.canonical_url || "",
         published_at: data.published_at,
-        read_time: data.read_time || 0,
+        read_time: data.read_time || "",
       });
       setSlugEdited(true);
       setLoading(false);
@@ -203,7 +200,7 @@ export default function BlogPostEditor() {
         next.slug = generateSlug(value as string);
       }
       if (key === "content") {
-        next.read_time = estimateReadTime(value as string);
+        next.read_time = String(estimateReadTime(value as string));
       }
       return next;
     });
@@ -220,18 +217,17 @@ export default function BlogPostEditor() {
         title: post.title,
         slug: post.slug,
         content: post.content,
-        excerpt: post.excerpt,
+        description: post.description,
         status: post.status,
         author_id: post.author_id || null,
         category_id: post.category_id || null,
         tags: post.tags,
-        featured_image_url: post.featured_image_url || null,
+        featured_image: post.featured_image || null,
         featured_image_alt: post.featured_image_alt || null,
         meta_title: post.meta_title || null,
         meta_description: post.meta_description || null,
-        focus_keyword: post.focus_keyword || null,
         canonical_url: post.canonical_url || null,
-        read_time: post.read_time,
+        read_time: post.read_time || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -244,9 +240,8 @@ export default function BlogPostEditor() {
       }
 
       if (isNew) {
-        payload.created_by = session?.staffId;
         const { data, error } = await supabase
-          .from("blog_posts")
+          .from("cethosweb_blog_posts")
           .insert(payload)
           .select("id")
           .single();
@@ -257,7 +252,7 @@ export default function BlogPostEditor() {
         }
       } else {
         const { error } = await supabase
-          .from("blog_posts")
+          .from("cethosweb_blog_posts")
           .update(payload)
           .eq("id", post.id);
 
@@ -277,24 +272,22 @@ export default function BlogPostEditor() {
   const handleDuplicate = async () => {
     if (!post.id) return;
     const { data, error } = await supabase
-      .from("blog_posts")
+      .from("cethosweb_blog_posts")
       .insert({
         title: `${post.title} (Copy)`,
         slug: `${post.slug}-copy`,
         content: post.content,
-        excerpt: post.excerpt,
+        description: post.description,
         status: "draft",
         author_id: post.author_id || null,
         category_id: post.category_id || null,
         tags: post.tags,
-        featured_image_url: post.featured_image_url || null,
+        featured_image: post.featured_image || null,
         featured_image_alt: post.featured_image_alt || null,
         meta_title: post.meta_title || null,
         meta_description: post.meta_description || null,
-        focus_keyword: post.focus_keyword || null,
         canonical_url: post.canonical_url || null,
-        read_time: post.read_time,
-        created_by: session?.staffId,
+        read_time: post.read_time || null,
       })
       .select("id")
       .single();
@@ -307,7 +300,7 @@ export default function BlogPostEditor() {
   const handleDelete = async () => {
     if (!post.id) return;
     if (!confirm(`Are you sure you want to delete "${post.title}"? This cannot be undone.`)) return;
-    const { error } = await supabase.from("blog_posts").delete().eq("id", post.id);
+    const { error } = await supabase.from("cethosweb_blog_posts").delete().eq("id", post.id);
     if (!error) navigate("/admin/blog");
   };
 
@@ -457,14 +450,14 @@ export default function BlogPostEditor() {
               </div>
             )}
 
-            {/* Excerpt */}
+            {/* Description */}
             <div>
               <label className="block text-sm font-medium text-[#0f172a] mb-1.5">
-                Excerpt
+                Description
               </label>
               <textarea
-                value={post.excerpt}
-                onChange={(e) => updateField("excerpt", e.target.value)}
+                value={post.description}
+                onChange={(e) => updateField("description", e.target.value)}
                 rows={3}
                 className="w-full px-3.5 py-2.5 border border-[#e2e8f0] rounded-md text-sm text-[#0f172a] focus:ring-2 focus:ring-[#0d9488] focus:border-[#0d9488] outline-none resize-none"
                 placeholder="A brief summary of the post..."
@@ -620,7 +613,7 @@ export default function BlogPostEditor() {
                   <input
                     type="number"
                     value={post.read_time}
-                    onChange={(e) => updateField("read_time", parseInt(e.target.value) || 0)}
+                    onChange={(e) => updateField("read_time", e.target.value)}
                     min={1}
                     className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md text-sm focus:ring-2 focus:ring-[#0d9488] outline-none"
                   />
@@ -636,10 +629,10 @@ export default function BlogPostEditor() {
               onToggle={() => toggleSection("image")}
             >
               <div className="space-y-3">
-                {post.featured_image_url && (
+                {post.featured_image && (
                   <div className="rounded-md overflow-hidden border border-[#e2e8f0]">
                     <img
-                      src={post.featured_image_url}
+                      src={post.featured_image}
                       alt={post.featured_image_alt || "Featured"}
                       className="w-full h-32 object-cover"
                     />
@@ -651,8 +644,8 @@ export default function BlogPostEditor() {
                   </label>
                   <input
                     type="url"
-                    value={post.featured_image_url}
-                    onChange={(e) => updateField("featured_image_url", e.target.value)}
+                    value={post.featured_image}
+                    onChange={(e) => updateField("featured_image", e.target.value)}
                     placeholder="https://..."
                     className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md text-sm focus:ring-2 focus:ring-[#0d9488] outline-none"
                   />
@@ -723,22 +716,9 @@ export default function BlogPostEditor() {
                       {post.meta_title || post.title || "Post Title"}
                     </p>
                     <p className="text-xs text-[#64748b] line-clamp-2">
-                      {post.meta_description || post.excerpt || "Post description will appear here..."}
+                      {post.meta_description || post.description || "Post description will appear here..."}
                     </p>
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-[#64748b] mb-1">
-                    Focus Keyword
-                  </label>
-                  <input
-                    type="text"
-                    value={post.focus_keyword}
-                    onChange={(e) => updateField("focus_keyword", e.target.value)}
-                    placeholder="Primary keyword..."
-                    className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md text-sm focus:ring-2 focus:ring-[#0d9488] outline-none"
-                  />
                 </div>
 
                 <div>
