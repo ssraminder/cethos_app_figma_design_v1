@@ -1020,6 +1020,44 @@ function TemplateSelector({
   );
 }
 
+// ── StaffPickerDropdown ──
+
+function StaffPickerDropdown({ onSelect }: { onSelect: (staffId: string) => void }) {
+  const [staff, setStaff] = useState<StaffUser[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStaff = async () => {
+      const { data } = await supabase
+        .from("staff_users")
+        .select("id, full_name, email")
+        .eq("is_active", true)
+        .order("full_name");
+      setStaff(data || []);
+      setLoading(false);
+    };
+    fetchStaff();
+  }, []);
+
+  return (
+    <select
+      className="text-sm border border-gray-300 rounded px-2 py-1"
+      defaultValue=""
+      onChange={(e) => e.target.value && onSelect(e.target.value)}
+      disabled={loading}
+    >
+      <option value="" disabled>
+        {loading ? "Loading..." : "Select staff member..."}
+      </option>
+      {staff.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.full_name || s.email}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 // ── WorkflowPipeline (main visible component) ──
 
 interface WorkflowPipelineProps {
@@ -1030,6 +1068,13 @@ interface WorkflowPipelineProps {
   onToggleExpand?: (stepId: string) => void;
   orderFinancials?: OrderFinancials | null;
   totalVendorCost?: number;
+  onAssignVendor?: (step: WorkflowStep) => void;
+  handleStepAction?: (stepId: string, action: string, params: any) => Promise<void>;
+  actionLoading?: string | null;
+  revisionStepId?: string | null;
+  revisionReason?: string;
+  onSetRevisionStepId?: (id: string | null) => void;
+  onSetRevisionReason?: (text: string) => void;
 }
 
 function WorkflowPipeline({
@@ -1040,6 +1085,13 @@ function WorkflowPipeline({
   onToggleExpand = () => {},
   orderFinancials = null,
   totalVendorCost = 0,
+  onAssignVendor = () => {},
+  handleStepAction = async () => {},
+  actionLoading = null,
+  revisionStepId = null,
+  revisionReason = "",
+  onSetRevisionStepId = () => {},
+  onSetRevisionReason = () => {},
 }: WorkflowPipelineProps) {
   return (
     <div className="space-y-4">
@@ -1242,6 +1294,142 @@ function WorkflowPipeline({
                 {step.offer_count > 0 && (
                   <div className="text-xs text-gray-400 mt-1">
                     Offers: {step.offer_count} attempt(s)
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  {/* Assign Vendor: pending + vendor + no vendor_id */}
+                  {step.status === "pending" && step.actor_type === "vendor" && !step.vendor_id && (
+                    <button
+                      className="text-xs px-3 py-1 border border-blue-400 text-blue-600 rounded hover:bg-blue-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAssignVendor(step);
+                      }}
+                    >
+                      Assign Vendor
+                    </button>
+                  )}
+
+                  {/* Assign Staff: pending + internal + no assigned_staff_id */}
+                  {step.status === "pending" && step.actor_type === "internal" && !step.assigned_staff_id && (
+                    <StaffPickerDropdown
+                      onSelect={(staffId) =>
+                        handleStepAction(step.id, "assign_vendor", { vendor_id: staffId })
+                      }
+                    />
+                  )}
+
+                  {/* Retract Offer: offered */}
+                  {step.status === "offered" && (
+                    <button
+                      className="text-xs px-3 py-1 border border-red-400 text-red-600 rounded hover:bg-red-50"
+                      disabled={actionLoading === step.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm("Retract this offer? The vendor will be unassigned.")) {
+                          handleStepAction(step.id, "change_status", { status: "pending" });
+                        }
+                      }}
+                    >
+                      {actionLoading === step.id ? "..." : "Retract Offer"}
+                    </button>
+                  )}
+
+                  {/* Mark In Progress: accepted */}
+                  {step.status === "accepted" && (
+                    <button
+                      className="text-xs px-3 py-1 border border-blue-400 text-blue-600 rounded hover:bg-blue-50"
+                      disabled={actionLoading === step.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStepAction(step.id, "change_status", { status: "in_progress" });
+                      }}
+                    >
+                      {actionLoading === step.id ? "..." : "Mark In Progress"}
+                    </button>
+                  )}
+
+                  {/* Approve + Request Revision: delivered */}
+                  {step.status === "delivered" && (
+                    <>
+                      <button
+                        className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                        disabled={actionLoading === step.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm("Approve this deliverable?")) {
+                            handleStepAction(step.id, "change_status", { status: "approved" });
+                          }
+                        }}
+                      >
+                        {actionLoading === step.id ? "..." : "Approve"}
+                      </button>
+                      <button
+                        className="text-xs px-3 py-1 border border-amber-400 text-amber-600 rounded hover:bg-amber-50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSetRevisionStepId(step.id);
+                        }}
+                      >
+                        Request Revision
+                      </button>
+                    </>
+                  )}
+
+                  {/* Skip Step: optional + not terminal */}
+                  {step.is_optional && !["approved", "skipped", "cancelled"].includes(step.status) && (
+                    <button
+                      className="text-xs px-3 py-1 border border-gray-400 text-gray-600 rounded hover:bg-gray-50"
+                      disabled={actionLoading === step.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm("Skip this optional step?")) {
+                          handleStepAction(step.id, "skip_step", {});
+                        }
+                      }}
+                    >
+                      {actionLoading === step.id ? "..." : "Skip Step"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Inline revision request */}
+                {revisionStepId === step.id && (
+                  <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+                    <textarea
+                      className="w-full text-sm border border-amber-300 rounded p-2"
+                      rows={3}
+                      placeholder="Reason for revision..."
+                      value={revisionReason}
+                      onChange={(e) => onSetRevisionReason(e.target.value)}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        className="text-xs px-3 py-1 border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+                        onClick={() => {
+                          onSetRevisionStepId(null);
+                          onSetRevisionReason("");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="text-xs px-3 py-1 bg-amber-500 text-white rounded hover:bg-amber-600"
+                        disabled={!revisionReason.trim() || actionLoading === step.id}
+                        onClick={() => {
+                          handleStepAction(step.id, "change_status", {
+                            status: "revision_requested",
+                            rejection_reason: revisionReason.trim(),
+                          });
+                          onSetRevisionStepId(null);
+                          onSetRevisionReason("");
+                        }}
+                      >
+                        {actionLoading === step.id ? "Sending..." : "Send Revision Request"}
+                      </button>
+                    </div>
                   </div>
                 )}
 
