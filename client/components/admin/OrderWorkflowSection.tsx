@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import {
@@ -15,6 +15,9 @@ import {
   ArrowRight,
   Zap,
 } from "lucide-react";
+import SearchableDropdown, { DropdownOption } from "@/components/SearchableDropdown";
+import { LANGUAGES } from "@/pages/admin/vendor-detail/data/languages";
+import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 
 // ── Types ──
 
@@ -235,6 +238,23 @@ function VendorFinderModal({
   const [services, setServices] = useState<Array<{ id: string; name: string; category: string }>>([]);
   const [servicesLoaded, setServicesLoaded] = useState(false);
 
+  // Dropdown options for languages and countries
+  const { countries: countryList } = useDropdownOptions();
+
+  const languageOptions: DropdownOption[] = useMemo(() =>
+    LANGUAGES.map((l) => ({ id: l.code, label: l.name, group: l.group })),
+    []
+  );
+
+  const countryOptions: DropdownOption[] = useMemo(() => {
+    const common = countryList.filter((c) => c.is_common);
+    const other = countryList.filter((c) => !c.is_common).sort((a, b) => a.name.localeCompare(b.name));
+    return [
+      ...common.map((c) => ({ id: c.code, label: c.name, group: "Common" })),
+      ...other.map((c) => ({ id: c.code, label: c.name, group: "All Countries" })),
+    ];
+  }, [countryList]);
+
   // Filter state
   const [filterSourceLang, setFilterSourceLang] = useState(sourceLanguage || "");
   const [filterTargetLang, setFilterTargetLang] = useState(targetLanguage || "");
@@ -246,6 +266,47 @@ function VendorFinderModal({
   const [availability, setAvailability] = useState("");
   const [searchText, setSearchText] = useState("");
   const [sortBy, setSortBy] = useState("match_score");
+
+  // Name autocomplete state
+  const [nameSuggestions, setNameSuggestions] = useState<Array<{ id: string; full_name: string; email: string }>>([]);
+  const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const nameContainerRef = useRef<HTMLDivElement>(null);
+
+  // Debounced vendor name autocomplete
+  useEffect(() => {
+    if (!searchText || searchText.length < 2) {
+      setNameSuggestions([]);
+      setShowNameSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from("vendors")
+        .select("id, full_name, email")
+        .or(`full_name.ilike.%${searchText}%,email.ilike.%${searchText}%`)
+        .limit(8);
+      if (data && data.length > 0) {
+        setNameSuggestions(data);
+        setShowNameSuggestions(true);
+      } else {
+        setNameSuggestions([]);
+        setShowNameSuggestions(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  // Close name suggestions on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (nameContainerRef.current && !nameContainerRef.current.contains(e.target as Node)) {
+        setShowNameSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const doSearch = useCallback(async () => {
     setSearching(true);
@@ -366,22 +427,22 @@ function VendorFinderModal({
                 <div className="grid grid-cols-4 gap-2">
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Source Lang</label>
-                    <input
-                      type="text"
+                    <SearchableDropdown
+                      options={languageOptions}
                       value={filterSourceLang}
-                      onChange={(e) => setFilterSourceLang(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="e.g. FR"
+                      onChange={setFilterSourceLang}
+                      placeholder="e.g. French"
+                      className="[&_button]:h-[34px] [&_button]:px-2 [&_button]:text-sm [&_button]:rounded [&_button]:border-gray-200"
                     />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Target Lang</label>
-                    <input
-                      type="text"
+                    <SearchableDropdown
+                      options={languageOptions}
                       value={filterTargetLang}
-                      onChange={(e) => setFilterTargetLang(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="e.g. EN"
+                      onChange={setFilterTargetLang}
+                      placeholder="e.g. English"
+                      className="[&_button]:h-[34px] [&_button]:px-2 [&_button]:text-sm [&_button]:rounded [&_button]:border-gray-200"
                     />
                   </div>
                   <div>
@@ -403,24 +464,25 @@ function VendorFinderModal({
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Native Lang</label>
-                    <input
-                      type="text"
+                    <SearchableDropdown
+                      options={languageOptions}
                       value={nativeLanguages}
-                      onChange={(e) => setNativeLanguages(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="en, fr"
+                      onChange={setNativeLanguages}
+                      placeholder="e.g. English"
+                      className="[&_button]:h-[34px] [&_button]:px-2 [&_button]:text-sm [&_button]:rounded [&_button]:border-gray-200"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-4 gap-2">
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Country</label>
-                    <input
-                      type="text"
+                    <SearchableDropdown
+                      options={countryOptions}
                       value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="Country"
+                      onChange={setCountry}
+                      placeholder="Select country"
+                      groupOrder={["Common", "All Countries"]}
+                      className="[&_button]:h-[34px] [&_button]:px-2 [&_button]:text-sm [&_button]:rounded [&_button]:border-gray-200"
                     />
                   </div>
                   <div>
@@ -463,15 +525,39 @@ function VendorFinderModal({
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  <div>
+                  <div ref={nameContainerRef} className="relative">
                     <label className="block text-xs text-gray-500 mb-0.5">Search</label>
-                    <input
-                      type="text"
-                      value={searchText}
-                      onChange={(e) => setSearchText(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
-                      placeholder="Name or email..."
-                    />
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                      <input
+                        ref={nameInputRef}
+                        type="text"
+                        value={searchText}
+                        onChange={(e) => setSearchText(e.target.value)}
+                        onFocus={() => { if (nameSuggestions.length > 0) setShowNameSuggestions(true); }}
+                        className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded text-sm"
+                        placeholder="Name or email..."
+                        autoComplete="off"
+                      />
+                    </div>
+                    {showNameSuggestions && nameSuggestions.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {nameSuggestions.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex flex-col"
+                            onClick={() => {
+                              setSearchText(s.full_name);
+                              setShowNameSuggestions(false);
+                            }}
+                          >
+                            <span className="font-medium text-gray-900">{s.full_name}</span>
+                            <span className="text-xs text-gray-400">{s.email}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">Sort by</label>
