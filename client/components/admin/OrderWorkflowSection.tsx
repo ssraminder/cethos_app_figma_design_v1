@@ -1763,6 +1763,7 @@ interface WorkflowPipelineProps {
   onSetRevisionReason?: (text: string) => void;
   handleManageSteps?: (action: string, params: any) => Promise<void>;
   onAddStepAt?: (afterPosition: number) => void;
+  handleRetractSingleOffer?: (stepId: string, offerId: string, vendorName: string) => Promise<void>;
   handleRespondCounter?: (offerId: string, action: 'accept' | 'reject') => Promise<void>;
   rejectingOfferId?: string | null;
   rejectReason?: string;
@@ -1788,6 +1789,7 @@ function WorkflowPipeline({
   onSetRevisionReason = () => {},
   handleManageSteps = async () => {},
   onAddStepAt = () => {},
+  handleRetractSingleOffer = async () => {},
   handleRespondCounter = async () => {},
   rejectingOfferId = null,
   rejectReason = '',
@@ -2011,7 +2013,7 @@ function WorkflowPipeline({
                           .map((o: any) => (
                             <span
                               key={o.id}
-                              className="ml-2 inline-flex items-center bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs"
+                              className="ml-2 inline-flex items-center gap-1 bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs"
                             >
                               {o.vendor_name}
                               {o.expires_at &&
@@ -2023,6 +2025,16 @@ function WorkflowPipeline({
                                   if (hrs > 0) return <span className="ml-1 text-blue-400">({hrs}h {mins}m left)</span>;
                                   return <span className="ml-1 text-amber-500">({mins}m left)</span>;
                                 })()}
+                              <button
+                                className="text-xs text-red-400 hover:text-red-600 p-0.5"
+                                title={`Retract offer to ${o.vendor_name}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRetractSingleOffer(step.id, o.id, o.vendor_name);
+                                }}
+                              >
+                                ✕
+                              </button>
                             </span>
                           ))}
                         {/* Negotiation indicator */}
@@ -2151,8 +2163,21 @@ function WorkflowPipeline({
 
                 {/* Accepted vendor */}
                 {step.offers?.find((o) => o.status === "accepted") && (
-                  <div className="text-xs text-green-600 mt-0.5">
-                    Accepted by {step.offers!.find((o) => o.status === "accepted")?.vendor_name}
+                  <div className="text-xs text-green-600 mt-0.5 inline-flex items-center gap-1">
+                    <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+                      Accepted by {step.offers!.find((o) => o.status === "accepted")?.vendor_name}
+                    </span>
+                    <button
+                      className="text-xs text-red-400 hover:text-red-600 p-0.5"
+                      title={`Retract offer to ${step.offers!.find((o) => o.status === "accepted")?.vendor_name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const accepted = step.offers!.find((o) => o.status === "accepted")!;
+                        handleRetractSingleOffer(step.id, accepted.id, accepted.vendor_name);
+                      }}
+                    >
+                      ✕
+                    </button>
                   </div>
                 )}
 
@@ -2269,19 +2294,21 @@ function WorkflowPipeline({
                       >
                         Send More Offers
                       </button>
-                      <button
-                        className="text-xs px-3 py-1 border border-red-400 text-red-600 rounded hover:bg-red-50"
-                        disabled={actionLoading === step.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const count = step.active_offer_count || 1;
-                          if (confirm(`Retract ${count} active offer(s)? All pending offers will be cancelled.`)) {
-                            handleStepAction(step.id, "retract_offers", {});
-                          }
-                        }}
-                      >
-                        {actionLoading === step.id ? "..." : "Retract Offers"}
-                      </button>
+                      {step.offers?.some((o: any) => ['sent', 'accepted'].includes(o.status)) && (
+                        <button
+                          className="text-xs px-2 py-1 border border-red-300 text-red-600 rounded hover:bg-red-50"
+                          disabled={actionLoading === step.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const activeCount = step.offers!.filter((o: any) => ['sent', 'accepted'].includes(o.status)).length;
+                            if (confirm(`Retract all ${activeCount} offer(s) and reset step to Pending? All associated payables will be cancelled.`)) {
+                              handleStepAction(step.id, "retract_offers", {});
+                            }
+                          }}
+                        >
+                          {actionLoading === step.id ? "..." : `Retract All (${step.offers!.filter((o: any) => ['sent', 'accepted'].includes(o.status)).length})`}
+                        </button>
+                      )}
                     </>
                   )}
 
@@ -2836,6 +2863,37 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
     setActionLoading(null);
   };
 
+  const handleRetractSingleOffer = async (stepId: string, offerId: string, vendorName: string) => {
+    if (!confirm(`Retract offer to ${vendorName}? This will also cancel their payable if one exists.`)) return;
+
+    try {
+      const { data: result, error } = await supabase.functions.invoke('update-workflow-step', {
+        body: {
+          step_id: stepId,
+          action: 'retract_offer',
+          staff_id: currentStaff?.staffId,
+          offer_id: offerId,
+        },
+      });
+
+      if (error || !result?.success) {
+        toast.error(result?.error || 'Failed to retract offer');
+        return;
+      }
+
+      const remaining = result.remaining_offers || 0;
+      if (remaining > 0) {
+        toast.success(`Offer to ${vendorName} retracted. ${remaining} offer(s) still active.`);
+      } else {
+        toast.success(`Offer to ${vendorName} retracted. Step reset to Pending.`);
+      }
+
+      await fetchWorkflow();
+    } catch (err) {
+      toast.error('Failed to retract offer');
+    }
+  };
+
   const handleManageSteps = async (action: string, params: any) => {
     if (!data?.workflow?.id) return;
     try {
@@ -2868,9 +2926,13 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
         return;
       }
 
-      toast.success(action === 'accept'
-        ? 'Counter-proposal accepted — offer terms updated'
-        : 'Counter-proposal rejected — original terms remain');
+      if (action === 'accept') {
+        toast.success(
+          `Counter accepted — ${result.vendor_name || 'Vendor'} assigned to ${result.step_name || 'step'}. Work can begin.`
+        );
+      } else {
+        toast.success('Counter-proposal rejected — original terms remain');
+      }
 
       setRejectingOfferId(null);
       setRejectReason('');
@@ -2932,6 +2994,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
               setAddStepAfter(pos);
               setShowAddStepModal(true);
             }}
+            handleRetractSingleOffer={handleRetractSingleOffer}
             handleRespondCounter={handleRespondCounter}
             rejectingOfferId={rejectingOfferId}
             rejectReason={rejectReason}
