@@ -74,6 +74,8 @@ interface WorkflowStep {
     vendor_rate: number | null;
     vendor_rate_unit: string | null;
     vendor_total: number | null;
+    vendor_currency: string;
+    deadline: string | null;
     expires_at: string | null;
     offered_at: string | null;
     declined_reason: string | null;
@@ -82,11 +84,17 @@ interface WorkflowStep {
     counter_rate: number | null;
     counter_rate_unit: string | null;
     counter_total: number | null;
+    counter_currency: string | null;
     counter_deadline: string | null;
     counter_note: string | null;
     counter_at: string | null;
     counter_responded_at: string | null;
     counter_rejection_reason: string | null;
+    negotiation_allowed: boolean;
+    max_rate: number | null;
+    max_total: number | null;
+    latest_deadline: string | null;
+    auto_accept_within_limits: boolean;
   }> | null;
   payable: StepPayable | null;
   unassigned_vendor_id: string | null;
@@ -1786,6 +1794,7 @@ interface WorkflowPipelineProps {
   rejectReason?: string;
   onSetRejectingOfferId?: (id: string | null) => void;
   onSetRejectReason?: (text: string) => void;
+  counterLoadingId?: string | null;
   onUnassignVendor?: (step: WorkflowStep) => void;
 }
 
@@ -1812,6 +1821,7 @@ function WorkflowPipeline({
   rejectReason = '',
   onSetRejectingOfferId = () => {},
   onSetRejectReason = () => {},
+  counterLoadingId = null,
   onUnassignVendor = () => {},
 }: WorkflowPipelineProps) {
   return (
@@ -1984,8 +1994,8 @@ function WorkflowPipeline({
                     )}
                     <StepStatusBadge status={step.status} />
                     {step.has_pending_counter && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 animate-pulse">
-                        🔄 Counter-proposal
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-300 animate-pulse">
+                        🔔 Counter-proposal pending
                       </span>
                     )}
                     {['pending', 'skipped', 'cancelled'].includes(step.status) && steps.length > 1 && (
@@ -2080,80 +2090,121 @@ function WorkflowPipeline({
                       </div>
                     )}
 
-                    {/* Counter-offer details for each offer */}
+                    {/* Counter-offer details and negotiation policy for each offer */}
                     {step.offers.map((offer: any) => (
                       <div key={`counter-${offer.id}`}>
-                        {/* Negotiation bounds (admin only) */}
+                        {/* Negotiation policy (read-only) */}
                         {offer.negotiation_allowed && (
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            Bounds:{' '}
-                            {offer.max_rate && `max $${offer.max_rate}/${offer.vendor_rate_unit}`}
-                            {offer.max_total && `${offer.max_rate ? ' / ' : ''}max $${offer.max_total}`}
-                            {offer.latest_deadline && `${(offer.max_rate || offer.max_total) ? ' / ' : ''}by ${new Date(offer.latest_deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
-                            {offer.auto_accept_within_limits ? ' · auto' : ' · manual review'}
+                          <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                            <span className="text-gray-400">Negotiation:</span> Allowed
+                            {offer.auto_accept_within_limits && (
+                              <>
+                                {' · Auto-accept'}
+                                {offer.max_rate != null && ` ≤ $${Number(offer.max_rate).toFixed(2)}`}
+                                {offer.max_total != null && `${offer.max_rate != null ? '' : ' ≤'} / $${Number(offer.max_total).toFixed(2)} total`}
+                              </>
+                            )}
+                            {!offer.auto_accept_within_limits && (
+                              <>
+                                {' · Manual review'}
+                                {offer.max_rate != null && ` · Max rate $${Number(offer.max_rate).toFixed(2)}`}
+                                {offer.max_total != null && ` · Max total $${Number(offer.max_total).toFixed(2)}`}
+                              </>
+                            )}
+                            {offer.latest_deadline && (
+                              <> · by {new Date(offer.latest_deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</>
+                            )}
                           </div>
                         )}
+
+                        {/* Proposed counter – pending review */}
                         {offer.counter_status === 'proposed' && (
-                          <div className="mt-1 p-2 bg-orange-50 border border-orange-200 rounded text-xs">
-                            <div className="font-medium text-orange-700 mb-1">
-                              🔄 Counter-proposal from {offer.vendor_name}
+                          <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-xs">
+                            <div className="font-medium text-yellow-800 mb-2">
+                              🔔 Counter-Proposal <span className="font-normal text-yellow-600">(pending)</span>
                             </div>
-                            <div className="space-y-0.5 text-gray-600">
+                            <div className="space-y-1 text-gray-700">
                               {offer.counter_rate !== null && offer.counter_rate !== offer.vendor_rate && (
                                 <div>
-                                  Rate: <span className="line-through text-gray-400">${offer.vendor_rate}/{offer.vendor_rate_unit}</span>
-                                  {' → '}<span className="font-medium text-orange-700">${offer.counter_rate}/{offer.counter_rate_unit || offer.vendor_rate_unit}</span>
+                                  Rate: <span className="line-through text-gray-400">${Number(offer.vendor_rate).toFixed(2)} {offer.vendor_rate_unit}</span>
+                                  {' → '}<span className="font-medium text-yellow-800">${Number(offer.counter_rate).toFixed(2)} {offer.counter_rate_unit || offer.vendor_rate_unit}</span>
                                 </div>
                               )}
                               {offer.counter_total !== null && offer.counter_total !== offer.vendor_total && (
                                 <div>
-                                  Total: <span className="line-through text-gray-400">${offer.vendor_total}</span>
-                                  {' → '}<span className="font-medium text-orange-700">${offer.counter_total}</span>
+                                  Total: <span className="line-through text-gray-400">${Number(offer.vendor_total).toFixed(2)}</span>
+                                  {' → '}<span className="font-medium text-yellow-800">${Number(offer.counter_total).toFixed(2)}</span>
                                 </div>
                               )}
-                              {offer.counter_deadline && offer.counter_deadline !== (step as any).deadline && (
+                              {offer.counter_deadline && offer.counter_deadline !== offer.deadline && (
                                 <div>
-                                  Deadline: <span className="font-medium text-orange-700">
-                                    {new Date(offer.counter_deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                  Deadline: <span className="line-through text-gray-400">
+                                    {offer.deadline ? new Date(offer.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'none'}
+                                  </span>
+                                  {' → '}<span className="font-medium text-yellow-800">
+                                    {new Date(offer.counter_deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                   </span>
                                 </div>
                               )}
                               {offer.counter_note && (
-                                <div className="mt-1 italic text-gray-500">&ldquo;{offer.counter_note}&rdquo;</div>
+                                <div className="mt-1.5 italic text-gray-500">
+                                  &ldquo;{offer.counter_note}&rdquo;
+                                </div>
+                              )}
+                              {offer.counter_at && (
+                                <div className="text-gray-400 mt-1">
+                                  Submitted: {new Date(offer.counter_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} at {new Date(offer.counter_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                </div>
                               )}
                             </div>
-                            <div className="mt-2 flex gap-2">
+                            <div className="mt-3 flex gap-2">
                               <button
-                                className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
-                                onClick={() => handleRespondCounter(offer.id, 'accept')}
+                                className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded inline-flex items-center gap-1 disabled:opacity-50"
+                                disabled={counterLoadingId === offer.id}
+                                onClick={() => {
+                                  if (confirm(`Accept counter-proposal from ${offer.vendor_name}? This will assign them to the step at the new rate.`)) {
+                                    handleRespondCounter(offer.id, 'accept');
+                                  }
+                                }}
                               >
-                                ✓ Accept Counter
+                                {counterLoadingId === offer.id ? (
+                                  <><Loader2 className="w-3 h-3 animate-spin" /> Accepting...</>
+                                ) : (
+                                  <>✓ Accept Counter</>
+                                )}
                               </button>
                               <button
-                                className="px-3 py-1 bg-red-100 text-red-700 border border-red-300 rounded text-xs hover:bg-red-200"
+                                className="bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-700 text-xs px-3 py-1.5 rounded border inline-flex items-center gap-1 disabled:opacity-50"
+                                disabled={counterLoadingId === offer.id}
                                 onClick={() => onSetRejectingOfferId(offer.id)}
                               >
-                                ✕ Reject
+                                ✕ Reject Counter
                               </button>
                             </div>
                             {rejectingOfferId === offer.id && (
                               <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
                                 <textarea
-                                  className="w-full border rounded p-1 text-xs"
+                                  className="w-full border border-gray-300 rounded p-1.5 text-xs"
                                   placeholder="Reason for rejection (optional, visible to vendor)..."
                                   value={rejectReason}
                                   onChange={(e) => onSetRejectReason(e.target.value)}
                                   rows={2}
                                 />
-                                <div className="mt-1 flex gap-2">
+                                <div className="mt-1.5 flex gap-2">
                                   <button
-                                    className="px-3 py-1 bg-red-600 text-white rounded text-xs"
+                                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs disabled:opacity-50"
+                                    disabled={counterLoadingId === offer.id}
                                     onClick={() => handleRespondCounter(offer.id, 'reject')}
                                   >
-                                    Confirm Reject
+                                    {counterLoadingId === offer.id ? (
+                                      <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Rejecting...</>
+                                    ) : (
+                                      'Confirm Reject'
+                                    )}
                                   </button>
                                   <button
-                                    className="px-3 py-1 text-gray-500 text-xs"
+                                    className="px-3 py-1.5 text-gray-500 hover:text-gray-700 text-xs"
+                                    disabled={counterLoadingId === offer.id}
                                     onClick={() => { onSetRejectingOfferId(null); onSetRejectReason(''); }}
                                   >
                                     Cancel
@@ -2163,14 +2214,33 @@ function WorkflowPipeline({
                             )}
                           </div>
                         )}
+
+                        {/* Accepted counter */}
                         {offer.counter_status === 'accepted' && (
-                          <div className="text-xs text-green-600 mt-0.5">
-                            ✓ Counter accepted — rate updated to ${offer.vendor_rate}/{offer.vendor_rate_unit}
+                          <div className="mt-1.5 p-2 bg-green-50 border border-green-200 rounded-md text-xs text-green-700 flex items-center gap-1.5">
+                            <span>✅</span>
+                            <span>
+                              Counter accepted
+                              {offer.counter_rate != null && <> · Rate: ${Number(offer.counter_rate).toFixed(2)} {offer.counter_rate_unit || offer.vendor_rate_unit}</>}
+                              {offer.counter_total != null && <> · Total: ${Number(offer.counter_total).toFixed(2)}</>}
+                              {offer.counter_responded_at && (
+                                <> · Responded {new Date(offer.counter_responded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {new Date(offer.counter_responded_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</>
+                              )}
+                            </span>
                           </div>
                         )}
+
+                        {/* Rejected counter */}
                         {offer.counter_status === 'rejected' && (
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            ✕ Counter rejected{offer.counter_rejection_reason ? `: "${offer.counter_rejection_reason}"` : ''}
+                          <div className="mt-1.5 p-2 bg-red-50 border border-red-200 rounded-md text-xs text-red-600 flex items-center gap-1.5">
+                            <span>❌</span>
+                            <span>
+                              Counter rejected
+                              {offer.counter_rejection_reason && <> · &ldquo;{offer.counter_rejection_reason}&rdquo;</>}
+                              {offer.counter_responded_at && (
+                                <> · Responded {new Date(offer.counter_responded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {new Date(offer.counter_responded_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</>
+                              )}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -2831,6 +2901,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
   const [addStepAfter, setAddStepAfter] = useState<number>(0);
   const [rejectingOfferId, setRejectingOfferId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [counterLoadingId, setCounterLoadingId] = useState<string | null>(null);
   const [unassignStep, setUnassignStep] = useState<any | null>(null);
   const { session: currentStaff } = useAdminAuthContext();
 
@@ -2943,6 +3014,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
   };
 
   const handleRespondCounter = async (offerId: string, action: 'accept' | 'reject') => {
+    setCounterLoadingId(offerId);
     try {
       const { data: result, error } = await supabase.functions.invoke('admin-respond-counter-offer', {
         body: {
@@ -2960,10 +3032,10 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
 
       if (action === 'accept') {
         toast.success(
-          `Counter accepted — ${result.vendor_name || 'Vendor'} assigned to ${result.step_name || 'step'}. Work can begin.`
+          `Counter-proposal accepted. ${result.vendor_name || 'Vendor'} assigned to ${result.step_name || 'step'}.`
         );
       } else {
-        toast.success('Counter-proposal rejected — original terms remain');
+        toast.success('Counter-proposal rejected.');
       }
 
       setRejectingOfferId(null);
@@ -2971,6 +3043,8 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
       await fetchWorkflow();
     } catch (err) {
       toast.error('Failed to respond to counter-offer');
+    } finally {
+      setCounterLoadingId(null);
     }
   };
 
@@ -3032,6 +3106,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
             rejectReason={rejectReason}
             onSetRejectingOfferId={setRejectingOfferId}
             onSetRejectReason={setRejectReason}
+            counterLoadingId={counterLoadingId}
             onUnassignVendor={(step) => setUnassignStep(step)}
           />
           {data.steps.some(s => s.has_pending_counter) && (
