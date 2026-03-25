@@ -6,21 +6,15 @@ import {
   X,
   CheckCircle,
   XCircle,
-  Clock,
   User,
   Building,
   Cog,
   Users,
-  ChevronRight,
   Search,
   Star,
-  SkipForward,
-  Play,
-  RotateCcw,
   ArrowRight,
   Zap,
 } from "lucide-react";
-import { format } from "date-fns";
 
 // ── Types ──
 
@@ -577,353 +571,6 @@ function VendorPickerModal({
   );
 }
 
-// Thin compatibility wrapper for existing parent calls (will be removed in Part 5)
-function VendorPickerModalCompat({
-  isOpen,
-  onClose,
-  onSelect,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onSelect: (vendorId: string, vendorName: string) => void;
-}) {
-  return (
-    <VendorPickerModal
-      isOpen={isOpen}
-      onClose={onClose}
-      onAssign={(params) => onSelect(params.vendor_id, "")}
-      stepId=""
-      stepName=""
-      stepNumber={0}
-      serviceName={null}
-      sourceLanguage={null}
-      targetLanguage={null}
-      orderFinancials={null}
-      offerCount={0}
-    />
-  );
-}
-
-// ── StepDetailPanel (modal) ──
-
-function StepDetailPanel({
-  step,
-  onClose,
-  onAction,
-  actionLoading,
-}: {
-  step: WorkflowStep;
-  onClose: () => void;
-  onAction: (stepId: string, action: string, params?: Record<string, unknown>) => Promise<void>;
-  actionLoading: boolean;
-}) {
-  const [showVendorPicker, setShowVendorPicker] = useState(false);
-  const [revisionReason, setRevisionReason] = useState("");
-  const [showRevisionInput, setShowRevisionInput] = useState(false);
-  const [assignmentMode, setAssignmentMode] = useState(step.assignment_mode);
-  const [autoAdvance, setAutoAdvance] = useState(step.auto_advance);
-  const [deadline, setDeadline] = useState(step.deadline?.slice(0, 10) ?? "");
-  const [vendorRate, setVendorRate] = useState(step.vendor_rate?.toString() ?? "");
-  const [vendorRateUnit, setVendorRateUnit] = useState(step.vendor_rate_unit ?? "per_page");
-
-  const style = STEP_STATUS_STYLES[step.status] ?? STEP_STATUS_STYLES.pending;
-
-  const handleAssignVendor = async (vendorId: string, _vendorName: string) => {
-    setShowVendorPicker(false);
-    const params: Record<string, unknown> = { vendor_id: vendorId };
-    if (vendorRate) params.vendor_rate = parseFloat(vendorRate);
-    if (vendorRateUnit) params.vendor_rate_unit = vendorRateUnit;
-    if (deadline) params.deadline = deadline;
-    await onAction(step.id, "assign_vendor", params);
-  };
-
-  const handleUpdateConfig = async () => {
-    await onAction(step.id, "update_config", {
-      assignment_mode: assignmentMode,
-      auto_advance: autoAdvance,
-    });
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-lg max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">
-                Step {step.step_number}: {step.name}
-              </h2>
-              <div className="mt-1">
-                <StepStatusBadge status={step.status} />
-              </div>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="p-4 space-y-5">
-            {/* Info section */}
-            <div className="space-y-2">
-              <h3 className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Details</h3>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="text-gray-500">Actor</span>
-                  <div className="flex items-center gap-1.5 mt-0.5 text-gray-800 capitalize">
-                    <ActorIcon type={step.actor_type} className="w-3.5 h-3.5 text-gray-400" />
-                    {step.actor_type}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-gray-500">Service</span>
-                  <p className="mt-0.5 text-gray-800">{step.service_name}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Assignment Mode</span>
-                  <select
-                    value={assignmentMode}
-                    onChange={(e) => setAssignmentMode(e.target.value as "manual" | "auto" | "auto_offer")}
-                    className="mt-0.5 w-full px-2 py-1 border border-gray-200 rounded text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="manual">Manual</option>
-                    <option value="auto">Auto</option>
-                    <option value="auto_offer">Auto Offer</option>
-                  </select>
-                </div>
-                <div>
-                  <span className="text-gray-500">Auto-Advance</span>
-                  <div className="mt-1">
-                    <label className="inline-flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={autoAdvance}
-                        onChange={(e) => setAutoAdvance(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-sm text-gray-700">{autoAdvance ? "Yes" : "No"}</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-              {(assignmentMode !== step.assignment_mode || autoAdvance !== step.auto_advance) && (
-                <button
-                  onClick={handleUpdateConfig}
-                  disabled={actionLoading}
-                  className="mt-2 px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors disabled:opacity-50"
-                >
-                  Save Config
-                </button>
-              )}
-            </div>
-
-            {/* Vendor section (for vendor steps) */}
-            {step.actor_type === "vendor" && (
-              <div className="space-y-2">
-                <h3 className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Vendor</h3>
-                {step.vendor_id ? (
-                  <div className="bg-gray-50 rounded-lg p-3 space-y-1.5 text-sm">
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-gray-400" />
-                      <span className="font-medium text-gray-900">{step.vendor_name}</span>
-                    </div>
-                    {step.vendor_rate != null && (
-                      <p className="text-gray-600">
-                        Rate: ${step.vendor_rate.toFixed(2)}/{step.vendor_rate_unit?.replace("per_", "") ?? "unit"}
-                      </p>
-                    )}
-                    {step.offered_at && (
-                      <p className="text-xs text-gray-500">Offered: {format(new Date(step.offered_at), "MMM d, h:mm a")}</p>
-                    )}
-                    {step.accepted_at && (
-                      <p className="text-xs text-gray-500">Accepted: {format(new Date(step.accepted_at), "MMM d, h:mm a")}</p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs text-gray-500">Rate</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={vendorRate}
-                          onChange={(e) => setVendorRate(e.target.value)}
-                          placeholder="25.00"
-                          className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500">Unit</label>
-                        <select
-                          value={vendorRateUnit}
-                          onChange={(e) => setVendorRateUnit(e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-200 rounded text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                          <option value="per_page">Per Page</option>
-                          <option value="per_word">Per Word</option>
-                          <option value="per_hour">Per Hour</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Deadline</label>
-                      <input
-                        type="date"
-                        value={deadline}
-                        onChange={(e) => setDeadline(e.target.value)}
-                        className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-                    <button
-                      onClick={() => setShowVendorPicker(true)}
-                      disabled={actionLoading}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                    >
-                      <User className="w-3.5 h-3.5" />
-                      Assign Vendor
-                    </button>
-                  </div>
-                )}
-                {step.deadline && (
-                  <p className="text-xs text-gray-500">
-                    Deadline: {format(new Date(step.deadline), "MMM d, yyyy")}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Timestamps */}
-            {(step.delivered_at || step.approved_at) && (
-              <div className="space-y-1 text-xs text-gray-500">
-                {step.delivered_at && <p>Delivered: {format(new Date(step.delivered_at), "MMM d, h:mm a")}</p>}
-                {step.approved_at && <p>Approved: {format(new Date(step.approved_at), "MMM d, h:mm a")}</p>}
-              </div>
-            )}
-
-            {/* Actions based on status */}
-            <div className="space-y-2">
-              <h3 className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Actions</h3>
-              <div className="flex flex-wrap gap-2">
-                {/* pending + vendor → assign vendor already shown above */}
-                {step.status === "pending" && step.actor_type !== "vendor" && (
-                  <button
-                    onClick={() => onAction(step.id, "change_status", { status: "in_progress" })}
-                    disabled={actionLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    Start
-                  </button>
-                )}
-                {step.status === "offered" && (
-                  <button
-                    onClick={() => onAction(step.id, "change_status", { status: "pending" })}
-                    disabled={actionLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    Retract Offer
-                  </button>
-                )}
-                {step.status === "delivered" && (
-                  <>
-                    <button
-                      onClick={() => onAction(step.id, "change_status", { status: "approved" })}
-                      disabled={actionLoading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                    >
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      Approve
-                    </button>
-                    {showRevisionInput ? (
-                      <div className="w-full space-y-2">
-                        <textarea
-                          value={revisionReason}
-                          onChange={(e) => setRevisionReason(e.target.value)}
-                          placeholder="Revision reason..."
-                          rows={2}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-y"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              onAction(step.id, "change_status", {
-                                status: "revision_requested",
-                                reason: revisionReason,
-                              });
-                              setShowRevisionInput(false);
-                              setRevisionReason("");
-                            }}
-                            disabled={actionLoading || !revisionReason.trim()}
-                            className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                          >
-                            Request Revision
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowRevisionInput(false);
-                              setRevisionReason("");
-                            }}
-                            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowRevisionInput(true)}
-                        disabled={actionLoading}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        Request Revision
-                      </button>
-                    )}
-                  </>
-                )}
-                {step.status === "revision_requested" && (
-                  <button
-                    onClick={() => onAction(step.id, "change_status", { status: "in_progress" })}
-                    disabled={actionLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    Mark In Progress
-                  </button>
-                )}
-                {/* Skip always available for non-terminal states */}
-                {!["approved", "skipped", "cancelled"].includes(step.status) && (
-                  <button
-                    onClick={() => onAction(step.id, "skip_step")}
-                    disabled={actionLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    <SkipForward className="w-3.5 h-3.5" />
-                    Skip
-                  </button>
-                )}
-              </div>
-              {actionLoading && (
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Processing...
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-      <VendorPickerModalCompat
-        isOpen={showVendorPicker}
-        onClose={() => setShowVendorPicker(false)}
-        onSelect={handleAssignVendor}
-      />
-    </>
-  );
-}
-
 // ── TemplateSelector (no workflow assigned) ──
 
 function TemplateSelector({
@@ -935,11 +582,16 @@ function TemplateSelector({
   orderId: string;
   onAssigned: () => void;
 }) {
-  const suggested = templates.find((t) => t.is_suggested);
-  const [selectedCode, setSelectedCode] = useState(suggested?.code ?? templates[0]?.code ?? "");
+  const sortedTemplates = [...templates].sort((a, b) => {
+    if (a.is_suggested && !b.is_suggested) return -1;
+    if (!a.is_suggested && b.is_suggested) return 1;
+    return 0;
+  });
+  const suggested = sortedTemplates.find((t) => t.is_suggested);
+  const [selectedCode, setSelectedCode] = useState(suggested?.code ?? sortedTemplates[0]?.code ?? "");
   const [assigning, setAssigning] = useState(false);
 
-  const selectedTemplate = templates.find((t) => t.code === selectedCode);
+  const selectedTemplate = sortedTemplates.find((t) => t.code === selectedCode);
 
   const handleAssign = async () => {
     if (!selectedCode) return;
@@ -976,9 +628,9 @@ function TemplateSelector({
           onChange={(e) => setSelectedCode(e.target.value)}
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
-          {templates.map((t) => (
+          {sortedTemplates.map((t) => (
             <option key={t.code} value={t.code}>
-              {t.name} ({t.step_count} steps){t.is_suggested ? " — Suggested" : ""}
+              {t.is_suggested ? "★ " : ""}{t.name} ({t.step_count} steps)
             </option>
           ))}
         </select>
@@ -1525,8 +1177,14 @@ function WorkflowPipeline({
 export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
   const [data, setData] = useState<WorkflowData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [vendorPickerStep, setVendorPickerStep] = useState<WorkflowStep | null>(null);
+  const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
+  const [revisionStepId, setRevisionStepId] = useState<string | null>(null);
+  const [revisionReason, setRevisionReason] = useState("");
+  const [orderFinancials, setOrderFinancials] = useState<OrderFinancials | null>(null);
+  const [totalVendorCost, setTotalVendorCost] = useState(0);
+  const [minMarginPercent, setMinMarginPercent] = useState(30);
 
   const fetchWorkflow = useCallback(async () => {
     setLoading(true);
@@ -1535,10 +1193,14 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
         body: { order_id: orderId },
       });
       if (error) throw error;
-      setData(result as WorkflowData);
+      const wfData = result as WorkflowData & { order_financials?: OrderFinancials; total_vendor_cost?: number };
+      setData(wfData);
+      if (wfData.order_financials) {
+        setOrderFinancials(wfData.order_financials);
+      }
+      setTotalVendorCost(wfData.total_vendor_cost || 0);
     } catch (err: unknown) {
       console.error("Failed to load workflow:", err);
-      // Don't toast on initial load — workflow may just not exist
       setData({ success: true, has_workflow: false, workflow: null, steps: [], available_templates: [] });
     }
     setLoading(false);
@@ -1548,8 +1210,20 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
     fetchWorkflow();
   }, [fetchWorkflow]);
 
-  const handleStepAction = async (stepId: string, action: string, params?: Record<string, unknown>) => {
-    setActionLoading(true);
+  useEffect(() => {
+    const fetchMarginSetting = async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("setting_value")
+        .eq("setting_key", "min_vendor_margin_percent")
+        .single();
+      if (data) setMinMarginPercent(parseFloat(data.setting_value || "30"));
+    };
+    fetchMarginSetting();
+  }, []);
+
+  const handleStepAction = async (stepId: string, action: string, params?: any) => {
+    setActionLoading(stepId);
     try {
       const { data: result, error } = await supabase.functions.invoke("update-workflow-step", {
         body: { step_id: stepId, action, ...params },
@@ -1557,13 +1231,12 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
       if (error) throw error;
       if (result?.error) throw new Error(result.error);
       toast.success("Step updated");
-      setSelectedStep(null);
       await fetchWorkflow();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to update step";
       toast.error(message);
     }
-    setActionLoading(false);
+    setActionLoading(null);
   };
 
   if (loading) {
@@ -1591,7 +1264,18 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
         <WorkflowPipeline
           workflow={data.workflow}
           steps={data.steps}
-          onStepClick={setSelectedStep}
+          onStepClick={() => {}}
+          expandedStepId={expandedStepId}
+          onToggleExpand={(id) => setExpandedStepId(expandedStepId === id ? null : id)}
+          orderFinancials={orderFinancials}
+          totalVendorCost={totalVendorCost}
+          onAssignVendor={(step) => setVendorPickerStep(step)}
+          handleStepAction={handleStepAction}
+          actionLoading={actionLoading}
+          revisionStepId={revisionStepId}
+          revisionReason={revisionReason}
+          onSetRevisionStepId={setRevisionStepId}
+          onSetRevisionReason={setRevisionReason}
         />
       ) : (
         <TemplateSelector
@@ -1601,13 +1285,22 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
         />
       )}
 
-      {/* Step Detail Modal */}
-      {selectedStep && (
-        <StepDetailPanel
-          step={selectedStep}
-          onClose={() => setSelectedStep(null)}
-          onAction={handleStepAction}
-          actionLoading={actionLoading}
+      {vendorPickerStep && (
+        <VendorPickerModal
+          isOpen={!!vendorPickerStep}
+          onClose={() => setVendorPickerStep(null)}
+          onAssign={async (params) => {
+            await handleStepAction(vendorPickerStep.id, "assign_vendor", params);
+            setVendorPickerStep(null);
+          }}
+          stepId={vendorPickerStep.id}
+          stepName={vendorPickerStep.name}
+          stepNumber={vendorPickerStep.step_number}
+          serviceName={vendorPickerStep.service_name}
+          sourceLanguage={vendorPickerStep.source_language}
+          targetLanguage={vendorPickerStep.target_language}
+          orderFinancials={orderFinancials}
+          offerCount={vendorPickerStep.offer_count}
         />
       )}
     </div>
