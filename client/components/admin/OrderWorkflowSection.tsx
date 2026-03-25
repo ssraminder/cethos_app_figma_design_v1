@@ -15,6 +15,12 @@ import {
   ArrowRight,
   Zap,
 } from "lucide-react";
+import OrderFinancialSummary, {
+  type VendorFinancials,
+  type MarginData,
+  type StepPayable,
+  type FinancialStep,
+} from "./OrderFinancialSummary";
 
 // ── Types ──
 
@@ -68,6 +74,7 @@ interface WorkflowStep {
     declined_reason: string | null;
     responded_at: string | null;
   }> | null;
+  payable: StepPayable | null;
   created_at: string;
   updated_at: string;
 }
@@ -76,6 +83,7 @@ interface OrderFinancials {
   service_id: string | null;
   subtotal: number;
   pre_tax: number;
+  tax: number;
   total: number;
 }
 
@@ -2014,6 +2022,8 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
   const [orderFinancials, setOrderFinancials] = useState<OrderFinancials | null>(null);
   const [totalVendorCost, setTotalVendorCost] = useState(0);
   const [minMarginPercent, setMinMarginPercent] = useState(30);
+  const [vendorFinancials, setVendorFinancials] = useState<VendorFinancials | null>(null);
+  const [marginData, setMarginData] = useState<MarginData | null>(null);
   const [showAddStepModal, setShowAddStepModal] = useState(false);
   const [availableServices, setAvailableServices] = useState<any[]>([]);
   const [servicesLoaded, setServicesLoaded] = useState(false);
@@ -2026,12 +2036,19 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
         body: { order_id: orderId },
       });
       if (error) throw error;
-      const wfData = result as WorkflowData & { order_financials?: OrderFinancials; total_vendor_cost?: number };
+      const wfData = result as WorkflowData & {
+        order_financials?: OrderFinancials;
+        total_vendor_cost?: number;
+        vendor_financials?: VendorFinancials;
+        margin?: MarginData;
+      };
       setData(wfData);
       if (wfData.order_financials) {
         setOrderFinancials(wfData.order_financials);
       }
       setTotalVendorCost(wfData.total_vendor_cost || 0);
+      setVendorFinancials(wfData.vendor_financials || null);
+      setMarginData(wfData.margin || null);
     } catch (err: unknown) {
       console.error("Failed to load workflow:", err);
       setData({ success: true, has_workflow: false, workflow: null, steps: [], available_templates: [] });
@@ -2119,27 +2136,50 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
       </h2>
 
       {data?.has_workflow && data.workflow ? (
-        <WorkflowPipeline
-          workflow={data.workflow}
-          steps={data.steps}
-          onStepClick={() => {}}
-          expandedStepId={expandedStepId}
-          onToggleExpand={(id) => setExpandedStepId(expandedStepId === id ? null : id)}
-          orderFinancials={orderFinancials}
-          totalVendorCost={totalVendorCost}
-          onFindVendor={(step) => setFinderStep(step)}
-          handleStepAction={handleStepAction}
-          actionLoading={actionLoading}
-          revisionStepId={revisionStepId}
-          revisionReason={revisionReason}
-          onSetRevisionStepId={setRevisionStepId}
-          onSetRevisionReason={setRevisionReason}
-          handleManageSteps={handleManageSteps}
-          onAddStepAt={(pos) => {
-            setAddStepAfter(pos);
-            setShowAddStepModal(true);
-          }}
-        />
+        <>
+          <WorkflowPipeline
+            workflow={data.workflow}
+            steps={data.steps}
+            onStepClick={() => {}}
+            expandedStepId={expandedStepId}
+            onToggleExpand={(id) => setExpandedStepId(expandedStepId === id ? null : id)}
+            orderFinancials={orderFinancials}
+            totalVendorCost={totalVendorCost}
+            onFindVendor={(step) => setFinderStep(step)}
+            handleStepAction={handleStepAction}
+            actionLoading={actionLoading}
+            revisionStepId={revisionStepId}
+            revisionReason={revisionReason}
+            onSetRevisionStepId={setRevisionStepId}
+            onSetRevisionReason={setRevisionReason}
+            handleManageSteps={handleManageSteps}
+            onAddStepAt={(pos) => {
+              setAddStepAfter(pos);
+              setShowAddStepModal(true);
+            }}
+          />
+          <OrderFinancialSummary
+            orderFinancials={orderFinancials ? {
+              subtotal: orderFinancials.subtotal,
+              pre_tax: orderFinancials.pre_tax,
+              tax: orderFinancials.tax ?? 0,
+              total: orderFinancials.total,
+            } : null}
+            vendorFinancials={vendorFinancials}
+            margin={marginData}
+            steps={(data.steps || []).map((s) => ({
+              step_number: s.step_number,
+              name: s.name,
+              actor_type: s.actor_type,
+              vendor_name: s.vendor_name,
+              service_name: s.service_name,
+              vendor_total: s.vendor_total,
+              payable: s.payable || null,
+            }))}
+            minMarginPercent={minMarginPercent}
+            onRefresh={fetchWorkflow}
+          />
+        </>
       ) : (
         <TemplateSelector
           templates={data?.available_templates ?? []}
