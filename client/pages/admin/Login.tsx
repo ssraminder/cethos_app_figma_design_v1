@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useStaffAuth } from "../../context/StaffAuthContext";
-import { Eye, EyeOff, ArrowLeft, Loader2 } from "lucide-react";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
   const { session, staffUser, loading: authLoading } = useStaffAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -24,6 +22,7 @@ export default function AdminLogin() {
     };
   }, []);
 
+  // Safety timeout: never show "Checking authentication..." for more than 5 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
       setAuthCheckTimedOut(true);
@@ -32,30 +31,44 @@ export default function AdminLogin() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Check if already logged in
   useEffect(() => {
     let mounted = true;
 
     const checkExistingSession = async () => {
-      if (authLoading) return;
+      // If auth context is still loading, wait (timeout useEffect will bail us out)
+      if (authLoading) {
+        return;
+      }
 
       try {
+        // If already authenticated with valid staff user, redirect
         if (session && staffUser) {
-          navigate("/admin/dashboard", { replace: true });
+          console.log(
+            "AdminLogin: Already authenticated as staff, redirecting...",
+          );
+          navigate("/admin/dashboard", { replace: true }); // DEPRECATED: was /admin/hitl
           return;
         }
 
+        // If authenticated but not staff, sign out
         if (session && !staffUser) {
+          console.log("AdminLogin: Authenticated but not staff, signing out...");
           await supabase.auth.signOut();
           if (!mounted) return;
           localStorage.removeItem("staffSession");
-          setError("Access denied. Your account is not authorized for admin access.");
+          setError(
+            "Access denied. Your account is not authorized for admin access.",
+          );
         }
 
+        // No session — clear any stale staffSession from localStorage
         if (!session) {
           localStorage.removeItem("staffSession");
         }
       } catch (err) {
         console.error("Auth check failed:", err);
+        // Clear potentially stale session data
         localStorage.removeItem("staffSession");
       } finally {
         if (mounted) {
@@ -76,9 +89,12 @@ export default function AdminLogin() {
     setError("");
     setLoading(true);
 
+    console.log("=== LOGIN START ===");
+
     try {
       const normalizedEmail = email.trim().toLowerCase();
 
+      // Step 1: Sign in with Supabase Auth
       const { data: authData, error: authError } =
         await supabase.auth.signInWithPassword({
           email: normalizedEmail,
@@ -86,6 +102,8 @@ export default function AdminLogin() {
         });
 
       if (!isMountedRef.current) return;
+
+      console.log("Auth response:", { authData, authError });
 
       if (authError) {
         throw new Error(
@@ -95,9 +113,16 @@ export default function AdminLogin() {
         );
       }
 
+      console.log("Auth error check passed");
+
       if (!authData.session) {
         throw new Error("Failed to establish session. Please try again.");
       }
+
+      console.log("Session exists:", authData.session ? "YES" : "NO");
+
+      // Step 2: Verify user is in staff_users table and active
+      console.log("Querying staff_users for email:", normalizedEmail);
 
       const { data: staffData, error: staffError } = await supabase
         .from("staff_users")
@@ -105,17 +130,29 @@ export default function AdminLogin() {
         .eq("email", normalizedEmail)
         .single();
 
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) {
+        console.warn(
+          "Login: Component unmounted after staff query, aborting...",
+        );
+        return;
+      }
+
+      console.log("Staff query result:", { staffData, staffError });
 
       if (staffError || !staffData) {
         await supabase.auth.signOut();
-        throw new Error("Access denied. Your account is not authorized for admin access.");
+        throw new Error(
+          "Access denied. Your account is not authorized for admin access.",
+        );
       }
 
       if (!staffData.is_active) {
         await supabase.auth.signOut();
         throw new Error("Your account has been deactivated.");
       }
+
+      // Step 3: Store staff info in localStorage to keep UI helpers in sync
+      console.log("Setting staffSession in localStorage");
 
       const staffSession = {
         staffId: staffData.id,
@@ -128,12 +165,19 @@ export default function AdminLogin() {
       };
       localStorage.setItem("staffSession", JSON.stringify(staffSession));
 
+      // Step 4: Redirect to admin dashboard
+      console.log("Navigating to /admin/dashboard"); // DEPRECATED: was /admin/hitl
       navigate("/admin/dashboard");
     } catch (err: any) {
-      if (err?.name === "AbortError") return;
+      if (err?.name === "AbortError") {
+        console.warn("Login aborted due to unmount.");
+        return;
+      }
       if (!isMountedRef.current) return;
+      console.error("LOGIN ERROR:", err);
       setError(err.message || "Failed to sign in. Please try again.");
     } finally {
+      console.log("=== LOGIN END ===");
       if (isMountedRef.current) {
         setLoading(false);
       }
@@ -165,238 +209,282 @@ export default function AdminLogin() {
 
       setResetEmailSent(true);
     } catch (err: any) {
+      console.error("Password reset error:", err);
       setError(err.message || "Failed to send reset email");
     } finally {
       setLoading(false);
     }
   };
 
-  // Loading state
+  // Show loading spinner while checking auth state (timeout overrides both)
   if ((authLoading || checkingAuth) && !authCheckTimedOut) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0d9488] to-[#0f766e]">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-white animate-spin mx-auto mb-4" />
-          <p className="text-white/80">Checking authentication...</p>
+          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Checking authentication...</p>
         </div>
       </div>
     );
   }
 
-  // Redirecting state
+  // If session exists, show redirecting message
   if (session) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0d9488] to-[#0f766e]">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-white animate-spin mx-auto mb-4" />
-          <p className="text-lg font-medium text-white">Redirecting to dashboard...</p>
+          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-8 h-8 text-white animate-pulse"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 7l5 5m0 0l-5 5m5-5H6"
+              />
+            </svg>
+          </div>
+          <p className="text-lg font-medium text-gray-900">
+            Redirecting to dashboard...
+          </p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen flex">
-      {/* Left Panel - Branding (hidden on mobile) */}
-      <div className="hidden md:flex md:w-[40%] bg-gradient-to-br from-[#0d9488] to-[#0f766e] flex-col justify-between p-10 relative overflow-hidden">
-        {/* Decorative shapes */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/3 translate-x-1/3" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/3 -translate-x-1/3" />
-        <div className="absolute top-1/2 right-10 w-24 h-24 bg-white/5 rounded-lg rotate-45" />
-        <div className="absolute bottom-1/3 left-1/4 w-16 h-16 bg-white/5 rounded-full" />
+  // Forgot Password View
+  if (showForgotPassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg
+                className="w-8 h-8 text-blue-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Reset Password</h1>
+            <p className="text-gray-600 mt-2">
+              Enter your email and we'll send you a link to reset your password.
+            </p>
+          </div>
 
-        {/* Logo */}
-        <div className="relative z-10">
-          <span className="font-bold text-2xl text-white tracking-tight">CETHOS</span>
+          {resetEmailSent ? (
+            <div className="text-center">
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg mb-6">
+                <svg
+                  className="w-12 h-12 text-green-500 mx-auto mb-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+                <p className="text-green-800 font-medium">Check your email</p>
+                <p className="text-green-700 text-sm mt-1">
+                  We've sent a password reset link to {email}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setResetEmailSent(false);
+                }}
+                className="text-blue-600 hover:text-blue-700 font-medium"
+              >
+                ← Back to login
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleForgotPassword} className="space-y-6">
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              )}
+
+              <div>
+                <label
+                  htmlFor="reset-email"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Email Address
+                </label>
+                <input
+                  id="reset-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="you@company.com"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? "Sending..." : "Send Reset Link"}
+              </button>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setError("");
+                  }}
+                  className="text-gray-600 hover:text-gray-700 text-sm"
+                >
+                  ← Back to login
+                </button>
+              </div>
+            </form>
+          )}
         </div>
+      </div>
+    );
+  }
 
-        {/* Center content */}
-        <div className="relative z-10">
-          <h1 className="text-3xl font-bold text-white leading-tight">
-            Manage your content with confidence
-          </h1>
-          <p className="mt-4 text-white/80 text-lg leading-relaxed">
-            The Cethos marketing hub &mdash; blog, SEO, and analytics in one place.
+  // Main Login View
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-8 h-8 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">Admin Login</h1>
+          <p className="text-gray-600 mt-2">
+            Sign in to access the admin panel
           </p>
         </div>
 
-        {/* Footer */}
-        <div className="relative z-10">
-          <p className="text-white/50 text-sm">&copy; 2026 Cethos Solutions Inc.</p>
-        </div>
-      </div>
-
-      {/* Right Panel - Login Form */}
-      <div className="flex-1 flex items-center justify-center bg-white px-6 py-12">
-        <div className="w-full max-w-md">
-          {/* Logo for mobile */}
-          <div className="mb-8 text-center md:text-left">
-            <span className="font-bold text-2xl text-[#0f172a] tracking-tight">CETHOS</span>
-          </div>
-
-          {showForgotPassword ? (
-            // Forgot Password View
-            <div>
-              <h1 className="text-2xl font-bold text-[#0f172a]">Reset password</h1>
-              <p className="mt-2 text-[#64748b]">
-                Enter your email and we'll send you a reset link.
-              </p>
-
-              {resetEmailSent ? (
-                <div className="mt-8">
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <p className="text-green-800 font-medium">Check your email</p>
-                    <p className="text-green-700 text-sm mt-1">
-                      We've sent a password reset link to <strong>{email}</strong>
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => { setShowForgotPassword(false); setResetEmailSent(false); }}
-                    className="mt-6 flex items-center gap-2 text-[#0d9488] hover:text-[#0f766e] font-medium text-sm"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back to login
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleForgotPassword} className="mt-8 space-y-5">
-                  {error && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-sm text-[#dc2626]">{error}</p>
-                    </div>
-                  )}
-
-                  <div>
-                    <label htmlFor="reset-email" className="block text-sm font-medium text-[#0f172a] mb-1.5">
-                      Email address
-                    </label>
-                    <input
-                      id="reset-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      className="w-full px-3.5 py-2.5 border border-[#e2e8f0] rounded-md focus:ring-2 focus:ring-[#0d9488] focus:border-[#0d9488] outline-none transition-colors text-[#0f172a] placeholder-[#94a3b8]"
-                      placeholder="you@cethos.com"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-2.5 px-4 bg-[#0d9488] text-white font-medium rounded-md hover:bg-[#0f766e] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {loading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Sending...
-                      </span>
-                    ) : (
-                      "Send reset link"
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => { setShowForgotPassword(false); setError(""); }}
-                    className="flex items-center gap-2 text-[#64748b] hover:text-[#0f172a] text-sm mx-auto"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back to login
-                  </button>
-                </form>
-              )}
-            </div>
-          ) : (
-            // Main Login View
-            <div>
-              <h1 className="text-2xl font-bold text-[#0f172a]">Welcome back</h1>
-              <p className="mt-2 text-[#64748b]">Sign in to your admin account</p>
-
-              <form onSubmit={handleLogin} className="mt-8 space-y-5">
-                {error && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-[#dc2626]">{error}</p>
-                  </div>
-                )}
-
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-[#0f172a] mb-1.5">
-                    Email
-                  </label>
-                  <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoComplete="email"
-                    className="w-full px-3.5 py-2.5 border border-[#e2e8f0] rounded-md focus:ring-2 focus:ring-[#0d9488] focus:border-[#0d9488] outline-none transition-colors text-[#0f172a] placeholder-[#94a3b8]"
-                    placeholder="you@cethos.com"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-[#0f172a] mb-1.5">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      autoComplete="current-password"
-                      className="w-full px-3.5 py-2.5 pr-10 border border-[#e2e8f0] rounded-md focus:ring-2 focus:ring-[#0d9488] focus:border-[#0d9488] outline-none transition-colors text-[#0f172a] placeholder-[#94a3b8]"
-                      placeholder="Enter your password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94a3b8] hover:text-[#64748b] transition-colors"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <div className="flex justify-end mt-1.5">
-                    <button
-                      type="button"
-                      onClick={() => { setShowForgotPassword(true); setError(""); }}
-                      className="text-sm text-[#0d9488] hover:text-[#0f766e] transition-colors"
-                    >
-                      Forgot your password?
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2.5 px-4 bg-[#0d9488] text-white font-medium rounded-md hover:bg-[#0f766e] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Signing in...
-                    </span>
-                  ) : (
-                    "Sign In"
-                  )}
-                </button>
-              </form>
-
-              <div className="mt-8 text-center">
-                <a
-                  href="https://cethos.com"
-                  className="flex items-center justify-center gap-1.5 text-sm text-[#64748b] hover:text-[#0f172a] transition-colors"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  Back to cethos.com
-                </a>
-              </div>
+        <form onSubmit={handleLogin} className="space-y-6">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
+
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="you@company.com"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                Signing in...
+              </span>
+            ) : (
+              "Sign In"
+            )}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => {
+              setShowForgotPassword(true);
+              setError("");
+            }}
+            className="text-sm text-blue-600 hover:text-blue-700"
+          >
+            Forgot your password?
+          </button>
+        </div>
+
+        <div className="mt-8 pt-6 border-t border-gray-200 text-center">
+          <p className="text-xs text-gray-500">
+            Protected area. Authorized personnel only.
+          </p>
         </div>
       </div>
     </div>
