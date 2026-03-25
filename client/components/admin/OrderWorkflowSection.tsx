@@ -1022,95 +1022,308 @@ function TemplateSelector({
 
 // ── WorkflowPipeline (main visible component) ──
 
+interface WorkflowPipelineProps {
+  workflow: Workflow;
+  steps: WorkflowStep[];
+  onStepClick: (step: WorkflowStep) => void;
+  expandedStepId?: string | null;
+  onToggleExpand?: (stepId: string) => void;
+  orderFinancials?: OrderFinancials | null;
+  totalVendorCost?: number;
+}
+
 function WorkflowPipeline({
   workflow,
   steps,
   onStepClick,
-}: {
-  workflow: Workflow;
-  steps: WorkflowStep[];
-  onStepClick: (step: WorkflowStep) => void;
-}) {
-  const wfStyle = WORKFLOW_STATUS_STYLES[workflow.status] ?? WORKFLOW_STATUS_STYLES.not_started;
-
+  expandedStepId = null,
+  onToggleExpand = () => {},
+  orderFinancials = null,
+  totalVendorCost = 0,
+}: WorkflowPipelineProps) {
   return (
     <div className="space-y-4">
-      {/* Header row: template + status + progress */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs font-medium capitalize">
-          {workflow.template_code.replace(/_/g, " ")}
-        </span>
-        <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${wfStyle.bg} ${wfStyle.text}`}>
-          {workflow.status.replace(/_/g, " ")}
-        </span>
-        <div className="flex-1 min-w-[120px]">
+      {/* Workflow header */}
+      <div className="bg-white border rounded-lg p-4 mb-4">
+        {/* Row 1: Template name + status */}
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-indigo-500 rounded-full transition-all"
-                style={{ width: `${workflow.progress.percent}%` }}
-              />
-            </div>
-            <span className="text-xs text-gray-500 tabular-nums">{workflow.progress.percent}%</span>
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                workflow.status === "completed"
+                  ? "bg-green-500"
+                  : workflow.status === "in_progress"
+                    ? "bg-blue-500"
+                    : "bg-gray-400"
+              }`}
+            />
+            <span className="font-semibold text-gray-900 capitalize">
+              {workflow.template_code.replace(/_/g, " ")}
+            </span>
           </div>
+          <StepStatusBadge status={workflow.status} />
         </div>
-        <span className="text-xs text-gray-400">
-          {workflow.progress.completed}/{workflow.progress.total} steps
-        </span>
+
+        {/* Row 2: Progress bar */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-green-500 h-2 rounded-full transition-all"
+              style={{ width: `${workflow.progress?.percent || 0}%` }}
+            />
+          </div>
+          <span className="text-sm text-gray-600 whitespace-nowrap">
+            {workflow.progress?.completed || 0}/{workflow.progress?.total || 0} steps (
+            {workflow.progress?.percent || 0}%)
+          </span>
+        </div>
+
+        {/* Row 3: Financial summary */}
+        {orderFinancials && orderFinancials.subtotal > 0 && (
+          <div className="mt-2 pt-2 border-t text-sm text-gray-600">
+            <span>
+              Customer subtotal: <strong>${orderFinancials.subtotal.toFixed(2)}</strong>
+            </span>
+            <span className="mx-2">·</span>
+            <span>
+              Vendor cost: <strong>${totalVendorCost.toFixed(2)}</strong>
+            </span>
+            <span className="mx-2">·</span>
+            {(() => {
+              const margin =
+                ((orderFinancials.subtotal - totalVendorCost) / orderFinancials.subtotal) * 100;
+              const color =
+                margin >= 50
+                  ? "text-green-600"
+                  : margin >= 30
+                    ? "text-yellow-600"
+                    : "text-red-600";
+              return <span className={color}>Margin: {margin.toFixed(1)}%</span>;
+            })()}
+          </div>
+        )}
       </div>
 
-      {/* Pipeline — horizontal on desktop, vertical on mobile */}
-      <div className="flex flex-col md:flex-row md:items-start gap-2 md:gap-0">
-        {steps.map((step, i) => {
-          const isActive = step.step_number === workflow.current_step_number;
+      {/* Vertical pipeline */}
+      <div className="relative ml-4">
+        {/* Vertical connecting line */}
+        <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-gray-200" />
+
+        {steps.map((step) => {
+          const isActive = [
+            "offered",
+            "accepted",
+            "in_progress",
+            "delivered",
+            "revision_requested",
+          ].includes(step.status);
+          const isApproved = step.status === "approved";
+          const isSkipped = step.status === "skipped" || step.status === "cancelled";
+          const isExpanded = expandedStepId === step.id;
+
+          const dotClass = isApproved
+            ? "border-green-500 bg-green-500"
+            : isActive
+              ? "border-blue-500 bg-blue-500"
+              : isSkipped
+                ? "border-gray-300 bg-gray-100"
+                : "border-gray-300 bg-white";
+
+          const cardClass = isApproved
+            ? "border-green-200 bg-green-50"
+            : isActive
+              ? "border-blue-200 bg-blue-50"
+              : isSkipped
+                ? "border-gray-200 bg-gray-50 opacity-60"
+                : "border-gray-200 bg-white";
+
           return (
-            <div key={step.id} className="flex items-start md:items-center gap-0">
+            <div key={step.id} className="relative flex items-start mb-3">
+              {/* Dot on the vertical line */}
+              <div
+                className={`absolute left-1.5 top-4 w-3 h-3 rounded-full border-2 ${dotClass} z-10`}
+              />
+
               {/* Step card */}
-              <button
-                onClick={() => onStepClick(step)}
-                className={`shrink-0 w-full md:w-[140px] rounded-lg border p-3 text-left transition-all hover:shadow-md cursor-pointer ${
-                  isActive
-                    ? "border-indigo-400 bg-indigo-50/50 ring-1 ring-indigo-200"
-                    : step.status === "approved"
-                    ? "border-green-200 bg-green-50/30"
-                    : step.status === "skipped" || step.status === "cancelled"
-                    ? "border-gray-200 bg-gray-50 opacity-60"
-                    : "border-gray-200 bg-white hover:border-gray-300"
-                }`}
-              >
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className="text-[10px] font-bold text-gray-400">{step.step_number}</span>
-                  <ActorIcon type={step.actor_type} className="w-3.5 h-3.5 text-gray-400" />
+              <div className={`ml-10 flex-1 border rounded-lg p-3 ${cardClass}`}>
+                {/* Line 1: Header row (clickable) */}
+                <div
+                  className="flex items-center justify-between cursor-pointer"
+                  onClick={() => onToggleExpand(step.id)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span>{STEP_STATUS_ICONS[step.status] || "⏳"}</span>
+                    <span className="font-medium text-sm">
+                      Step {step.step_number}: {step.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StepStatusBadge status={step.status} />
+                    <span className="text-gray-400 text-xs">{isExpanded ? "▼" : "▶"}</span>
+                  </div>
                 </div>
-                <p className="text-xs font-medium text-gray-800 leading-tight mb-1.5 line-clamp-2">
-                  {step.name}
-                </p>
-                <StepStatusBadge status={step.status} />
-                {step.vendor_name && (
-                  <p className="text-[10px] text-gray-500 mt-1 truncate">{step.vendor_name}</p>
-                )}
-                {step.deadline && (
-                  <p className="text-[10px] text-gray-400 mt-0.5">
-                    {format(new Date(step.deadline), "MMM d")}
-                  </p>
-                )}
-                {step.delivered_at && (
-                  <p className="text-[10px] text-orange-500 mt-0.5">
-                    Delivered {format(new Date(step.delivered_at), "MMM d")}
-                  </p>
-                )}
-                {step.revision_count > 0 && (
-                  <span className="inline-block mt-1 px-1 py-0.5 bg-red-100 text-red-600 text-[10px] font-medium rounded">
-                    Rev {step.revision_count}
+
+                {/* Line 2: Actor + assignment */}
+                <div className="flex items-center gap-2 mt-1">
+                  <ActorTypeBadge actorType={step.actor_type} />
+                  <span className="text-sm text-gray-600">
+                    {step.vendor_name ||
+                      (step.assigned_staff_id ? (
+                        "Staff assigned"
+                      ) : (
+                        <span className="italic text-gray-400">Not assigned</span>
+                      ))}
                   </span>
-                )}
-              </button>
-              {/* Connector */}
-              {i < steps.length - 1 && (
-                <div className="hidden md:flex items-center px-1">
-                  <ChevronRight className="w-4 h-4 text-gray-300" />
                 </div>
-              )}
+
+                {/* Line 3: Rate info (vendor steps with rate) */}
+                {step.actor_type === "vendor" && step.vendor_rate && (
+                  <div className="text-sm text-gray-500 mt-1">
+                    ${step.vendor_rate}/{step.vendor_rate_unit} · {step.vendor_currency} $
+                    {step.vendor_total?.toFixed(2)}
+                  </div>
+                )}
+
+                {/* Line 4: Language pair */}
+                {step.source_language && step.target_language && (
+                  <div className="text-sm text-gray-500 mt-1">
+                    {step.source_language} → {step.target_language}
+                  </div>
+                )}
+
+                {/* Line 5: Key dates */}
+                {(step.deadline || step.delivered_at || step.approved_at) && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    {step.deadline && (
+                      <span>
+                        Deadline:{" "}
+                        {new Date(step.deadline).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                        {(() => {
+                          const diff = Math.ceil(
+                            (new Date(step.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                          );
+                          if (diff > 0)
+                            return <span className="text-gray-500"> (in {diff}d)</span>;
+                          if (diff < 0)
+                            return (
+                              <span className="text-red-500"> (overdue {Math.abs(diff)}d)</span>
+                            );
+                          return <span className="text-yellow-600"> (today)</span>;
+                        })()}
+                      </span>
+                    )}
+                    {step.delivered_at && (
+                      <span>
+                        {" "}
+                        · Delivered:{" "}
+                        {new Date(step.delivered_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    )}
+                    {step.approved_at && (
+                      <span>
+                        {" "}
+                        · Approved:{" "}
+                        {new Date(step.approved_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Line 6: Offer count */}
+                {step.offer_count > 0 && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    Offers: {step.offer_count} attempt(s)
+                  </div>
+                )}
+
+                {/* Expanded section */}
+                {isExpanded && (
+                  <div className="mt-3 pt-3 border-t border-gray-200 space-y-2 text-sm">
+                    {step.instructions && (
+                      <div>
+                        <span className="font-medium text-gray-600">Instructions:</span>
+                        <div className="mt-1 bg-gray-100 rounded p-2 text-gray-700 text-xs">
+                          {step.instructions}
+                        </div>
+                      </div>
+                    )}
+                    {step.notes_from_vendor && (
+                      <div>
+                        <span className="font-medium text-blue-600">Vendor notes:</span>
+                        <div className="mt-1 bg-blue-50 rounded p-2 text-blue-800 text-xs">
+                          {step.notes_from_vendor}
+                        </div>
+                      </div>
+                    )}
+                    {step.rejection_reason && (
+                      <div>
+                        <span className="font-medium text-amber-600">Revision reason:</span>
+                        <div className="mt-1 bg-amber-50 rounded p-2 text-amber-800 text-xs">
+                          {step.rejection_reason}
+                        </div>
+                      </div>
+                    )}
+                    {step.source_file_paths && step.source_file_paths.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-600">Source files:</span>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {step.source_file_paths.map((p, i) => (
+                            <div key={i}>{p.split("/").pop()}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {step.delivered_file_paths && step.delivered_file_paths.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-600">Delivered files:</span>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {step.delivered_file_paths.map((p, i) => (
+                            <div key={i}>{p.split("/").pop()}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {step.revision_count > 0 && (
+                      <div className="text-xs text-gray-500">
+                        Revisions: {step.revision_count}
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-400 space-y-0.5">
+                      {step.created_at && (
+                        <div>Created: {new Date(step.created_at).toLocaleString()}</div>
+                      )}
+                      {step.offered_at && (
+                        <div>Offered: {new Date(step.offered_at).toLocaleString()}</div>
+                      )}
+                      {step.accepted_at && (
+                        <div>Accepted: {new Date(step.accepted_at).toLocaleString()}</div>
+                      )}
+                      {step.started_at && (
+                        <div>Started: {new Date(step.started_at).toLocaleString()}</div>
+                      )}
+                      {step.delivered_at && (
+                        <div>Delivered: {new Date(step.delivered_at).toLocaleString()}</div>
+                      )}
+                      {step.approved_at && (
+                        <div>Approved: {new Date(step.approved_at).toLocaleString()}</div>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      Mode: {step.assignment_mode}
+                      {step.auto_assign_rule ? ` (${step.auto_assign_rule})` : ""}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
