@@ -88,6 +88,7 @@ interface StaffUser {
 interface Workflow {
   id: string;
   template_code: string;
+  template_name: string | null;
   status: string;
   current_step_number: number;
   total_steps: number;
@@ -653,6 +654,7 @@ interface VendorAssignModalProps {
   serviceName: string | null;
   orderFinancials: OrderFinancials | null;
   totalVendorCost: number;
+  minMarginPercent: number;
 }
 
 function VendorAssignModal({
@@ -668,6 +670,7 @@ function VendorAssignModal({
   serviceName,
   orderFinancials,
   totalVendorCost,
+  minMarginPercent,
 }: VendorAssignModalProps) {
   const [vendorRate, setVendorRate] = useState<string>("");
   const [vendorRateUnit, setVendorRateUnit] = useState("per_word");
@@ -731,7 +734,7 @@ function VendorAssignModal({
       : null;
 
   const marginColor =
-    margin === null ? "gray" : margin >= 50 ? "green" : margin >= 30 ? "yellow" : "red";
+    margin === null ? "gray" : margin >= 50 ? "green" : margin >= minMarginPercent ? "yellow" : "red";
 
   const canSubmit = vendorRate !== "" && vendorRateUnit && vendorTotal !== "";
 
@@ -917,9 +920,9 @@ function VendorAssignModal({
                 </span>
                 <span className="text-gray-700">Step margin: {margin !== null ? `${margin.toFixed(1)}%` : "N/A"}</span>
               </div>
-              {margin !== null && margin < 30 && (
+              {margin !== null && margin < minMarginPercent && (
                 <div className="bg-amber-50 border border-amber-200 text-amber-800 p-2 rounded text-sm mt-2">
-                  Warning: Margin below minimum threshold (30%). Proceed with caution.
+                  Warning: Margin below minimum threshold ({minMarginPercent}%). Proceed with caution.
                 </div>
               )}
             </div>
@@ -1394,7 +1397,7 @@ function WorkflowPipeline({
               }`}
             />
             <span className="font-semibold text-gray-900 capitalize">
-              {workflow.template_code.replace(/_/g, " ")}
+              {workflow.template_name || workflow.template_code.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1439,7 +1442,7 @@ function WorkflowPipeline({
               const color =
                 margin >= 50
                   ? "text-green-600"
-                  : margin >= 30
+                  : margin >= minMarginPercent
                     ? "text-yellow-600"
                     : "text-red-600";
               return <span className={color}>Margin: {margin.toFixed(1)}%</span>;
@@ -1593,22 +1596,28 @@ function WorkflowPipeline({
                               {o.vendor_name}
                               {o.expires_at &&
                                 (() => {
-                                  const hrs = Math.round(
-                                    (new Date(o.expires_at).getTime() - Date.now()) / 3600000
-                                  );
-                                  return hrs > 0 ? (
-                                    <span className="ml-1 text-blue-400">({hrs}h left)</span>
-                                  ) : (
-                                    <span className="ml-1 text-red-500">(expired)</span>
-                                  );
+                                  const diffMs = new Date(o.expires_at).getTime() - Date.now();
+                                  if (diffMs <= 0) return <span className="ml-1 text-red-500">(expired)</span>;
+                                  const hrs = Math.floor(diffMs / 3600000);
+                                  const mins = Math.floor((diffMs % 3600000) / 60000);
+                                  if (hrs > 0) return <span className="ml-1 text-blue-400">({hrs}h {mins}m left)</span>;
+                                  return <span className="ml-1 text-amber-500">({mins}m left)</span>;
                                 })()}
                             </span>
                           ))}
                       </div>
                     )}
                     {step.offers.filter((o) => o.status === "declined").length > 0 && (
-                      <div className="text-xs text-gray-400">
-                        {step.offers.filter((o) => o.status === "declined").length} declined
+                      <div className="text-xs text-gray-400 space-y-0.5">
+                        <span>{step.offers.filter((o) => o.status === "declined").length} declined:</span>
+                        {step.offers.filter((o) => o.status === "declined").map((o) => (
+                          <div key={o.id} className="ml-2">
+                            <span className="text-gray-500">{o.vendor_name}</span>
+                            {o.declined_reason && (
+                              <span className="text-gray-400 italic"> — &ldquo;{o.declined_reason}&rdquo;</span>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -1709,7 +1718,7 @@ function WorkflowPipeline({
                   {step.status === "pending" && step.actor_type === "internal" && !step.assigned_staff_id && (
                     <StaffPickerDropdown
                       onSelect={(staffId) =>
-                        handleStepAction(step.id, "assign_vendor", { vendor_id: staffId })
+                        handleStepAction(step.id, "direct_assign", { vendor_id: staffId })
                       }
                     />
                   )}
@@ -2134,6 +2143,7 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
           serviceName={finderStep.service_name}
           orderFinancials={orderFinancials}
           totalVendorCost={totalVendorCost}
+          minMarginPercent={minMarginPercent}
         />
       )}
 
