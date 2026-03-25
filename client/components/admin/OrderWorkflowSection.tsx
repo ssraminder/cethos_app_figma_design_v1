@@ -6,21 +6,15 @@ import {
   X,
   CheckCircle,
   XCircle,
-  Clock,
   User,
   Building,
   Cog,
   Users,
-  ChevronRight,
   Search,
   Star,
-  SkipForward,
-  Play,
-  RotateCcw,
   ArrowRight,
   Zap,
 } from "lucide-react";
-import { format } from "date-fns";
 
 // ── Types ──
 
@@ -200,29 +194,79 @@ function ActorTypeBadge({ actorType }: { actorType: string }) {
 
 // ── VendorPickerModal ──
 
+interface VendorPickerModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onAssign: (params: {
+    vendor_id: string;
+    vendor_rate: number;
+    vendor_rate_unit: string;
+    vendor_total: number;
+    vendor_currency: string;
+    deadline: string | null;
+    instructions: string | null;
+  }) => void;
+  stepId: string;
+  stepName: string;
+  stepNumber: number;
+  serviceName: string | null;
+  sourceLanguage: string | null;
+  targetLanguage: string | null;
+  orderFinancials: OrderFinancials | null;
+  offerCount: number;
+}
+
 function VendorPickerModal({
   isOpen,
   onClose,
-  onSelect,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onSelect: (vendorId: string, vendorName: string) => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [results, setResults] = useState<VendorSearchResult[]>([]);
+  onAssign,
+  stepId,
+  stepName,
+  stepNumber,
+  serviceName,
+  sourceLanguage,
+  targetLanguage,
+  orderFinancials,
+  offerCount,
+}: VendorPickerModalProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  const [selectedVendor, setSelectedVendor] = useState<{ id: string; name: string } | null>(null);
+  const [suggestedRate, setSuggestedRate] = useState<{ rate: number; calculation_unit: string; currency: string } | null>(null);
+  const [lookingUpRate, setLookingUpRate] = useState(false);
+  const [vendorRate, setVendorRate] = useState<string>("");
+  const [vendorRateUnit, setVendorRateUnit] = useState("per_word");
+  const [vendorTotal, setVendorTotal] = useState<string>("");
+  const [vendorCurrency, setVendorCurrency] = useState("CAD");
+  const [deadline, setDeadline] = useState("");
+  const [instructions, setInstructions] = useState("");
+
+  const resetState = useCallback(() => {
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearching(false);
+    setSelectedVendor(null);
+    setSuggestedRate(null);
+    setLookingUpRate(false);
+    setVendorRate("");
+    setVendorRateUnit("per_word");
+    setVendorTotal("");
+    setVendorCurrency("CAD");
+    setDeadline("");
+    setInstructions("");
+  }, []);
 
   useEffect(() => {
-    if (!isOpen) {
-      setSearch("");
-      setResults([]);
+    if (isOpen) {
+      resetState();
     }
-  }, [isOpen]);
+  }, [isOpen, resetState]);
 
+  // Debounced vendor search
   useEffect(() => {
-    if (!search || search.length < 2) {
-      setResults([]);
+    if (!searchQuery || searchQuery.length < 2) {
+      setSearchResults([]);
       return;
     }
     const timer = setTimeout(async () => {
@@ -231,395 +275,299 @@ function VendorPickerModal({
         .from("vendors")
         .select("id, full_name, email, rating")
         .eq("status", "active")
-        .or(`full_name.ilike.%${search}%,email.ilike.%${search}%`)
+        .or(`full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
         .limit(10);
-      setResults((data as VendorSearchResult[]) ?? []);
+      setSearchResults(data ?? []);
       setSearching(false);
     }, 300);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [searchQuery]);
+
+  const lookupRate = async (vendorId: string) => {
+    setLookingUpRate(true);
+    setSuggestedRate(null);
+    try {
+      const { data } = await supabase.functions.invoke("update-workflow-step", {
+        body: { step_id: stepId, action: "lookup_vendor_rate", vendor_id: vendorId },
+      });
+      if (data?.suggested_rate) {
+        setSuggestedRate(data.suggested_rate);
+        setVendorRate(String(data.suggested_rate.rate));
+        setVendorRateUnit(data.suggested_rate.calculation_unit);
+        setVendorCurrency(data.suggested_rate.currency);
+      }
+    } catch (err) {
+      console.error("Rate lookup failed:", err);
+    } finally {
+      setLookingUpRate(false);
+    }
+  };
+
+  const handleSelectVendor = (vendor: { id: string; full_name: string }) => {
+    setSelectedVendor({ id: vendor.id, name: vendor.full_name });
+    setSearchResults([]);
+    setSearchQuery("");
+    lookupRate(vendor.id);
+  };
+
+  const handleDeselectVendor = () => {
+    setSelectedVendor(null);
+    setSuggestedRate(null);
+    setVendorRate("");
+    setVendorRateUnit("per_word");
+    setVendorTotal("");
+    setVendorCurrency("CAD");
+  };
+
+  const canSubmit = selectedVendor && vendorRate !== "" && vendorRateUnit && vendorTotal !== "";
+
+  const handleSubmit = () => {
+    if (!canSubmit || !selectedVendor) return;
+    onAssign({
+      vendor_id: selectedVendor.id,
+      vendor_rate: parseFloat(vendorRate),
+      vendor_rate_unit: vendorRateUnit,
+      vendor_total: parseFloat(vendorTotal),
+      vendor_currency: vendorCurrency,
+      deadline: deadline || null,
+      instructions: instructions || null,
+    });
+  };
+
+  const margin =
+    orderFinancials && orderFinancials.subtotal > 0 && vendorTotal
+      ? ((orderFinancials.subtotal - parseFloat(vendorTotal)) / orderFinancials.subtotal) * 100
+      : null;
+
+  const marginColor =
+    margin === null ? "gray" : margin >= 50 ? "green" : margin >= 30 ? "yellow" : "red";
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-lg max-w-md w-full mx-4">
+      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-base font-semibold text-gray-900">Assign Vendor</h2>
+          <h2 className="text-base font-semibold text-gray-900">
+            Assign Vendor — Step {stepNumber}: {stepName}
+          </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-4">
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or email..."
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              autoFocus
-            />
+
+        <div className="p-4 space-y-4">
+          {/* Info bar */}
+          <div className="bg-gray-50 rounded px-3 py-2 text-sm text-gray-600">
+            <div>Service: {serviceName || "N/A"} · LP: {sourceLanguage && targetLanguage ? `${sourceLanguage} → ${targetLanguage}` : "Not set"}</div>
+            <div>Offer attempt #{offerCount + 1}</div>
           </div>
-          <div className="max-h-64 overflow-y-auto">
-            {searching ? (
-              <div className="text-center py-6 text-gray-400">
-                <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1" />
-                <p className="text-xs">Searching...</p>
-              </div>
-            ) : results.length === 0 ? (
-              <p className="text-center py-6 text-sm text-gray-400">
-                {search.length < 2 ? "Type to search vendors" : "No vendors found"}
-              </p>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {results.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => onSelect(v.id, v.full_name)}
-                    className="w-full text-left px-3 py-2.5 hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{v.full_name}</p>
-                        <p className="text-xs text-gray-500">{v.email}</p>
-                      </div>
-                      {v.rating != null && (
-                        <div className="flex items-center gap-0.5 text-xs text-gray-500">
-                          <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                          {v.rating}
-                        </div>
-                      )}
-                    </div>
+
+          {/* Vendor search section */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+            {selectedVendor ? (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium">
+                  {selectedVendor.name}
+                  <button onClick={handleDeselectVendor} className="ml-1 hover:text-indigo-900">
+                    <X className="w-3 h-3" />
                   </button>
-                ))}
+                </span>
+                {lookingUpRate && (
+                  <span className="flex items-center gap-1 text-xs text-gray-400">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Looking up rate...
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by name or email..."
+                    className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    autoFocus
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto mt-1">
+                  {searching ? (
+                    <div className="text-center py-4 text-gray-400">
+                      <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1" />
+                      <p className="text-xs">Searching...</p>
+                    </div>
+                  ) : searchResults.length === 0 ? (
+                    <p className="text-center py-4 text-sm text-gray-400">
+                      {searchQuery.length < 2 ? "Type to search vendors" : "No vendors found"}
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-gray-50 border border-gray-100 rounded-lg">
+                      {searchResults.map((v: any) => (
+                        <button
+                          key={v.id}
+                          onClick={() => handleSelectVendor(v)}
+                          className="w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{v.full_name}</p>
+                              <p className="text-xs text-gray-500">{v.email}</p>
+                            </div>
+                            {v.rating != null && (
+                              <div className="flex items-center gap-0.5 text-xs text-gray-500">
+                                <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                                {v.rating}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// ── StepDetailPanel (modal) ──
-
-function StepDetailPanel({
-  step,
-  onClose,
-  onAction,
-  actionLoading,
-}: {
-  step: WorkflowStep;
-  onClose: () => void;
-  onAction: (stepId: string, action: string, params?: Record<string, unknown>) => Promise<void>;
-  actionLoading: boolean;
-}) {
-  const [showVendorPicker, setShowVendorPicker] = useState(false);
-  const [revisionReason, setRevisionReason] = useState("");
-  const [showRevisionInput, setShowRevisionInput] = useState(false);
-  const [assignmentMode, setAssignmentMode] = useState(step.assignment_mode);
-  const [autoAdvance, setAutoAdvance] = useState(step.auto_advance);
-  const [deadline, setDeadline] = useState(step.deadline?.slice(0, 10) ?? "");
-  const [vendorRate, setVendorRate] = useState(step.vendor_rate?.toString() ?? "");
-  const [vendorRateUnit, setVendorRateUnit] = useState(step.vendor_rate_unit ?? "per_page");
-
-  const style = STEP_STATUS_STYLES[step.status] ?? STEP_STATUS_STYLES.pending;
-
-  const handleAssignVendor = async (vendorId: string, _vendorName: string) => {
-    setShowVendorPicker(false);
-    const params: Record<string, unknown> = { vendor_id: vendorId };
-    if (vendorRate) params.vendor_rate = parseFloat(vendorRate);
-    if (vendorRateUnit) params.vendor_rate_unit = vendorRateUnit;
-    if (deadline) params.deadline = deadline;
-    await onAction(step.id, "assign_vendor", params);
-  };
-
-  const handleUpdateConfig = async () => {
-    await onAction(step.id, "update_config", {
-      assignment_mode: assignmentMode,
-      auto_advance: autoAdvance,
-    });
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-lg max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">
-                Step {step.step_number}: {step.name}
-              </h2>
-              <div className="mt-1">
-                <StepStatusBadge status={step.status} />
-              </div>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="p-4 space-y-5">
-            {/* Info section */}
-            <div className="space-y-2">
-              <h3 className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Details</h3>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="text-gray-500">Actor</span>
-                  <div className="flex items-center gap-1.5 mt-0.5 text-gray-800 capitalize">
-                    <ActorIcon type={step.actor_type} className="w-3.5 h-3.5 text-gray-400" />
-                    {step.actor_type}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-gray-500">Service</span>
-                  <p className="mt-0.5 text-gray-800">{step.service_name}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Assignment Mode</span>
-                  <select
-                    value={assignmentMode}
-                    onChange={(e) => setAssignmentMode(e.target.value as "manual" | "auto" | "auto_offer")}
-                    className="mt-0.5 w-full px-2 py-1 border border-gray-200 rounded text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="manual">Manual</option>
-                    <option value="auto">Auto</option>
-                    <option value="auto_offer">Auto Offer</option>
-                  </select>
-                </div>
-                <div>
-                  <span className="text-gray-500">Auto-Advance</span>
-                  <div className="mt-1">
-                    <label className="inline-flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={autoAdvance}
-                        onChange={(e) => setAutoAdvance(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-sm text-gray-700">{autoAdvance ? "Yes" : "No"}</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-              {(assignmentMode !== step.assignment_mode || autoAdvance !== step.auto_advance) && (
-                <button
-                  onClick={handleUpdateConfig}
-                  disabled={actionLoading}
-                  className="mt-2 px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors disabled:opacity-50"
-                >
-                  Save Config
-                </button>
-              )}
-            </div>
-
-            {/* Vendor section (for vendor steps) */}
-            {step.actor_type === "vendor" && (
-              <div className="space-y-2">
-                <h3 className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Vendor</h3>
-                {step.vendor_id ? (
-                  <div className="bg-gray-50 rounded-lg p-3 space-y-1.5 text-sm">
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-gray-400" />
-                      <span className="font-medium text-gray-900">{step.vendor_name}</span>
-                    </div>
-                    {step.vendor_rate != null && (
-                      <p className="text-gray-600">
-                        Rate: ${step.vendor_rate.toFixed(2)}/{step.vendor_rate_unit?.replace("per_", "") ?? "unit"}
-                      </p>
-                    )}
-                    {step.offered_at && (
-                      <p className="text-xs text-gray-500">Offered: {format(new Date(step.offered_at), "MMM d, h:mm a")}</p>
-                    )}
-                    {step.accepted_at && (
-                      <p className="text-xs text-gray-500">Accepted: {format(new Date(step.accepted_at), "MMM d, h:mm a")}</p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs text-gray-500">Rate</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={vendorRate}
-                          onChange={(e) => setVendorRate(e.target.value)}
-                          placeholder="25.00"
-                          className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500">Unit</label>
-                        <select
-                          value={vendorRateUnit}
-                          onChange={(e) => setVendorRateUnit(e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-200 rounded text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                          <option value="per_page">Per Page</option>
-                          <option value="per_word">Per Word</option>
-                          <option value="per_hour">Per Hour</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Deadline</label>
-                      <input
-                        type="date"
-                        value={deadline}
-                        onChange={(e) => setDeadline(e.target.value)}
-                        className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-                    <button
-                      onClick={() => setShowVendorPicker(true)}
-                      disabled={actionLoading}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                    >
-                      <User className="w-3.5 h-3.5" />
-                      Assign Vendor
-                    </button>
-                  </div>
-                )}
-                {step.deadline && (
-                  <p className="text-xs text-gray-500">
-                    Deadline: {format(new Date(step.deadline), "MMM d, yyyy")}
+          {/* Rate section */}
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Rate</label>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={vendorRate}
+                  onChange={(e) => setVendorRate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="0.00"
+                />
+                {suggestedRate && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Vendor&apos;s rate: ${suggestedRate.rate}/{suggestedRate.calculation_unit} {suggestedRate.currency}
                   </p>
                 )}
               </div>
-            )}
-
-            {/* Timestamps */}
-            {(step.delivered_at || step.approved_at) && (
-              <div className="space-y-1 text-xs text-gray-500">
-                {step.delivered_at && <p>Delivered: {format(new Date(step.delivered_at), "MMM d, h:mm a")}</p>}
-                {step.approved_at && <p>Approved: {format(new Date(step.approved_at), "MMM d, h:mm a")}</p>}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Rate Unit</label>
+                <select
+                  value={vendorRateUnit}
+                  onChange={(e) => setVendorRateUnit(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="per_word">Per Word</option>
+                  <option value="per_page">Per Page</option>
+                  <option value="per_hour">Per Hour</option>
+                  <option value="flat">Flat</option>
+                </select>
               </div>
-            )}
-
-            {/* Actions based on status */}
-            <div className="space-y-2">
-              <h3 className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Actions</h3>
-              <div className="flex flex-wrap gap-2">
-                {/* pending + vendor → assign vendor already shown above */}
-                {step.status === "pending" && step.actor_type !== "vendor" && (
-                  <button
-                    onClick={() => onAction(step.id, "change_status", { status: "in_progress" })}
-                    disabled={actionLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    Start
-                  </button>
-                )}
-                {step.status === "offered" && (
-                  <button
-                    onClick={() => onAction(step.id, "change_status", { status: "pending" })}
-                    disabled={actionLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    Retract Offer
-                  </button>
-                )}
-                {step.status === "delivered" && (
-                  <>
-                    <button
-                      onClick={() => onAction(step.id, "change_status", { status: "approved" })}
-                      disabled={actionLoading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                    >
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      Approve
-                    </button>
-                    {showRevisionInput ? (
-                      <div className="w-full space-y-2">
-                        <textarea
-                          value={revisionReason}
-                          onChange={(e) => setRevisionReason(e.target.value)}
-                          placeholder="Revision reason..."
-                          rows={2}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-y"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              onAction(step.id, "change_status", {
-                                status: "revision_requested",
-                                reason: revisionReason,
-                              });
-                              setShowRevisionInput(false);
-                              setRevisionReason("");
-                            }}
-                            disabled={actionLoading || !revisionReason.trim()}
-                            className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                          >
-                            Request Revision
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowRevisionInput(false);
-                              setRevisionReason("");
-                            }}
-                            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowRevisionInput(true)}
-                        disabled={actionLoading}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        Request Revision
-                      </button>
-                    )}
-                  </>
-                )}
-                {step.status === "revision_requested" && (
-                  <button
-                    onClick={() => onAction(step.id, "change_status", { status: "in_progress" })}
-                    disabled={actionLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    Mark In Progress
-                  </button>
-                )}
-                {/* Skip always available for non-terminal states */}
-                {!["approved", "skipped", "cancelled"].includes(step.status) && (
-                  <button
-                    onClick={() => onAction(step.id, "skip_step")}
-                    disabled={actionLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    <SkipForward className="w-3.5 h-3.5" />
-                    Skip
-                  </button>
-                )}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Total</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={vendorTotal}
+                  onChange={(e) => setVendorTotal(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="0.00"
+                />
               </div>
-              {actionLoading && (
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Processing...
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
+                <select
+                  value={vendorCurrency}
+                  onChange={(e) => setVendorCurrency(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="CAD">CAD</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="GBP">GBP</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Margin indicator */}
+          {vendorTotal && orderFinancials && orderFinancials.subtotal > 0 ? (
+            <div className="border rounded p-3 text-sm">
+              <div className="text-gray-600">Customer subtotal: ${orderFinancials.subtotal.toFixed(2)}</div>
+              <div className="text-gray-600">This step cost: ${vendorTotal}</div>
+              <div className="flex items-center gap-1">
+                <span
+                  className={
+                    marginColor === "green"
+                      ? "text-green-600"
+                      : marginColor === "yellow"
+                        ? "text-yellow-600"
+                        : "text-red-600"
+                  }
+                >
+                  ●
+                </span>
+                <span className="text-gray-700">Step margin: {margin !== null ? `${margin.toFixed(1)}%` : "N/A"}</span>
+              </div>
+              {margin !== null && margin < 30 && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 p-2 rounded text-sm mt-2">
+                  ⚠️ Margin below minimum threshold (30%). Proceed with caution.
                 </div>
               )}
             </div>
+          ) : vendorTotal ? (
+            <p className="text-xs text-gray-400">Margin unavailable — order has no pricing data.</p>
+          ) : null}
+
+          {/* Deadline */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Deadline</label>
+            <input
+              type="datetime-local"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Instructions */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Instructions for vendor</label>
+            <textarea
+              rows={3}
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="Special instructions, reference materials, glossary links..."
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            />
           </div>
         </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 p-4 border-t">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className={`px-4 py-2 rounded-lg text-sm font-medium text-white ${
+              canSubmit
+                ? "bg-indigo-600 hover:bg-indigo-700"
+                : "bg-indigo-600 opacity-50 cursor-not-allowed"
+            }`}
+          >
+            Assign & Offer
+          </button>
+        </div>
       </div>
-      <VendorPickerModal
-        isOpen={showVendorPicker}
-        onClose={() => setShowVendorPicker(false)}
-        onSelect={handleAssignVendor}
-      />
-    </>
+    </div>
   );
 }
 
@@ -634,11 +582,16 @@ function TemplateSelector({
   orderId: string;
   onAssigned: () => void;
 }) {
-  const suggested = templates.find((t) => t.is_suggested);
-  const [selectedCode, setSelectedCode] = useState(suggested?.code ?? templates[0]?.code ?? "");
+  const sortedTemplates = [...templates].sort((a, b) => {
+    if (a.is_suggested && !b.is_suggested) return -1;
+    if (!a.is_suggested && b.is_suggested) return 1;
+    return 0;
+  });
+  const suggested = sortedTemplates.find((t) => t.is_suggested);
+  const [selectedCode, setSelectedCode] = useState(suggested?.code ?? sortedTemplates[0]?.code ?? "");
   const [assigning, setAssigning] = useState(false);
 
-  const selectedTemplate = templates.find((t) => t.code === selectedCode);
+  const selectedTemplate = sortedTemplates.find((t) => t.code === selectedCode);
 
   const handleAssign = async () => {
     if (!selectedCode) return;
@@ -675,9 +628,9 @@ function TemplateSelector({
           onChange={(e) => setSelectedCode(e.target.value)}
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
-          {templates.map((t) => (
+          {sortedTemplates.map((t) => (
             <option key={t.code} value={t.code}>
-              {t.name} ({t.step_count} steps){t.is_suggested ? " — Suggested" : ""}
+              {t.is_suggested ? "★ " : ""}{t.name} ({t.step_count} steps)
             </option>
           ))}
         </select>
@@ -719,97 +672,498 @@ function TemplateSelector({
   );
 }
 
+// ── StaffPickerDropdown ──
+
+function StaffPickerDropdown({ onSelect }: { onSelect: (staffId: string) => void }) {
+  const [staff, setStaff] = useState<StaffUser[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStaff = async () => {
+      const { data } = await supabase
+        .from("staff_users")
+        .select("id, full_name, email")
+        .eq("is_active", true)
+        .order("full_name");
+      setStaff(data || []);
+      setLoading(false);
+    };
+    fetchStaff();
+  }, []);
+
+  return (
+    <select
+      className="text-sm border border-gray-300 rounded px-2 py-1"
+      defaultValue=""
+      onChange={(e) => e.target.value && onSelect(e.target.value)}
+      disabled={loading}
+    >
+      <option value="" disabled>
+        {loading ? "Loading..." : "Select staff member..."}
+      </option>
+      {staff.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.full_name || s.email}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 // ── WorkflowPipeline (main visible component) ──
+
+interface WorkflowPipelineProps {
+  workflow: Workflow;
+  steps: WorkflowStep[];
+  onStepClick: (step: WorkflowStep) => void;
+  expandedStepId?: string | null;
+  onToggleExpand?: (stepId: string) => void;
+  orderFinancials?: OrderFinancials | null;
+  totalVendorCost?: number;
+  onAssignVendor?: (step: WorkflowStep) => void;
+  handleStepAction?: (stepId: string, action: string, params: any) => Promise<void>;
+  actionLoading?: string | null;
+  revisionStepId?: string | null;
+  revisionReason?: string;
+  onSetRevisionStepId?: (id: string | null) => void;
+  onSetRevisionReason?: (text: string) => void;
+}
 
 function WorkflowPipeline({
   workflow,
   steps,
   onStepClick,
-}: {
-  workflow: Workflow;
-  steps: WorkflowStep[];
-  onStepClick: (step: WorkflowStep) => void;
-}) {
-  const wfStyle = WORKFLOW_STATUS_STYLES[workflow.status] ?? WORKFLOW_STATUS_STYLES.not_started;
-
+  expandedStepId = null,
+  onToggleExpand = () => {},
+  orderFinancials = null,
+  totalVendorCost = 0,
+  onAssignVendor = () => {},
+  handleStepAction = async () => {},
+  actionLoading = null,
+  revisionStepId = null,
+  revisionReason = "",
+  onSetRevisionStepId = () => {},
+  onSetRevisionReason = () => {},
+}: WorkflowPipelineProps) {
   return (
     <div className="space-y-4">
-      {/* Header row: template + status + progress */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs font-medium capitalize">
-          {workflow.template_code.replace(/_/g, " ")}
-        </span>
-        <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${wfStyle.bg} ${wfStyle.text}`}>
-          {workflow.status.replace(/_/g, " ")}
-        </span>
-        <div className="flex-1 min-w-[120px]">
+      {/* Workflow header */}
+      <div className="bg-white border rounded-lg p-4 mb-4">
+        {/* Row 1: Template name + status */}
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-indigo-500 rounded-full transition-all"
-                style={{ width: `${workflow.progress.percent}%` }}
-              />
-            </div>
-            <span className="text-xs text-gray-500 tabular-nums">{workflow.progress.percent}%</span>
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                workflow.status === "completed"
+                  ? "bg-green-500"
+                  : workflow.status === "in_progress"
+                    ? "bg-blue-500"
+                    : "bg-gray-400"
+              }`}
+            />
+            <span className="font-semibold text-gray-900 capitalize">
+              {workflow.template_code.replace(/_/g, " ")}
+            </span>
           </div>
+          <StepStatusBadge status={workflow.status} />
         </div>
-        <span className="text-xs text-gray-400">
-          {workflow.progress.completed}/{workflow.progress.total} steps
-        </span>
+
+        {/* Row 2: Progress bar */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-green-500 h-2 rounded-full transition-all"
+              style={{ width: `${workflow.progress?.percent || 0}%` }}
+            />
+          </div>
+          <span className="text-sm text-gray-600 whitespace-nowrap">
+            {workflow.progress?.completed || 0}/{workflow.progress?.total || 0} steps (
+            {workflow.progress?.percent || 0}%)
+          </span>
+        </div>
+
+        {/* Row 3: Financial summary */}
+        {orderFinancials && orderFinancials.subtotal > 0 && (
+          <div className="mt-2 pt-2 border-t text-sm text-gray-600">
+            <span>
+              Customer subtotal: <strong>${orderFinancials.subtotal.toFixed(2)}</strong>
+            </span>
+            <span className="mx-2">·</span>
+            <span>
+              Vendor cost: <strong>${totalVendorCost.toFixed(2)}</strong>
+            </span>
+            <span className="mx-2">·</span>
+            {(() => {
+              const margin =
+                ((orderFinancials.subtotal - totalVendorCost) / orderFinancials.subtotal) * 100;
+              const color =
+                margin >= 50
+                  ? "text-green-600"
+                  : margin >= 30
+                    ? "text-yellow-600"
+                    : "text-red-600";
+              return <span className={color}>Margin: {margin.toFixed(1)}%</span>;
+            })()}
+          </div>
+        )}
       </div>
 
-      {/* Pipeline — horizontal on desktop, vertical on mobile */}
-      <div className="flex flex-col md:flex-row md:items-start gap-2 md:gap-0">
-        {steps.map((step, i) => {
-          const isActive = step.step_number === workflow.current_step_number;
+      {/* Vertical pipeline */}
+      <div className="relative ml-4">
+        {/* Vertical connecting line */}
+        <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-gray-200" />
+
+        {steps.map((step) => {
+          const isActive = [
+            "offered",
+            "accepted",
+            "in_progress",
+            "delivered",
+            "revision_requested",
+          ].includes(step.status);
+          const isApproved = step.status === "approved";
+          const isSkipped = step.status === "skipped" || step.status === "cancelled";
+          const isExpanded = expandedStepId === step.id;
+
+          const dotClass = isApproved
+            ? "border-green-500 bg-green-500"
+            : isActive
+              ? "border-blue-500 bg-blue-500"
+              : isSkipped
+                ? "border-gray-300 bg-gray-100"
+                : "border-gray-300 bg-white";
+
+          const cardClass = isApproved
+            ? "border-green-200 bg-green-50"
+            : isActive
+              ? "border-blue-200 bg-blue-50"
+              : isSkipped
+                ? "border-gray-200 bg-gray-50 opacity-60"
+                : "border-gray-200 bg-white";
+
           return (
-            <div key={step.id} className="flex items-start md:items-center gap-0">
+            <div key={step.id} className="relative flex items-start mb-3">
+              {/* Dot on the vertical line */}
+              <div
+                className={`absolute left-1.5 top-4 w-3 h-3 rounded-full border-2 ${dotClass} z-10`}
+              />
+
               {/* Step card */}
-              <button
-                onClick={() => onStepClick(step)}
-                className={`shrink-0 w-full md:w-[140px] rounded-lg border p-3 text-left transition-all hover:shadow-md cursor-pointer ${
-                  isActive
-                    ? "border-indigo-400 bg-indigo-50/50 ring-1 ring-indigo-200"
-                    : step.status === "approved"
-                    ? "border-green-200 bg-green-50/30"
-                    : step.status === "skipped" || step.status === "cancelled"
-                    ? "border-gray-200 bg-gray-50 opacity-60"
-                    : "border-gray-200 bg-white hover:border-gray-300"
-                }`}
-              >
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className="text-[10px] font-bold text-gray-400">{step.step_number}</span>
-                  <ActorIcon type={step.actor_type} className="w-3.5 h-3.5 text-gray-400" />
+              <div className={`ml-10 flex-1 border rounded-lg p-3 ${cardClass}`}>
+                {/* Line 1: Header row (clickable) */}
+                <div
+                  className="flex items-center justify-between cursor-pointer"
+                  onClick={() => onToggleExpand(step.id)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span>{STEP_STATUS_ICONS[step.status] || "⏳"}</span>
+                    <span className="font-medium text-sm">
+                      Step {step.step_number}: {step.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StepStatusBadge status={step.status} />
+                    <span className="text-gray-400 text-xs">{isExpanded ? "▼" : "▶"}</span>
+                  </div>
                 </div>
-                <p className="text-xs font-medium text-gray-800 leading-tight mb-1.5 line-clamp-2">
-                  {step.name}
-                </p>
-                <StepStatusBadge status={step.status} />
-                {step.vendor_name && (
-                  <p className="text-[10px] text-gray-500 mt-1 truncate">{step.vendor_name}</p>
-                )}
-                {step.deadline && (
-                  <p className="text-[10px] text-gray-400 mt-0.5">
-                    {format(new Date(step.deadline), "MMM d")}
-                  </p>
-                )}
-                {step.delivered_at && (
-                  <p className="text-[10px] text-orange-500 mt-0.5">
-                    Delivered {format(new Date(step.delivered_at), "MMM d")}
-                  </p>
-                )}
-                {step.revision_count > 0 && (
-                  <span className="inline-block mt-1 px-1 py-0.5 bg-red-100 text-red-600 text-[10px] font-medium rounded">
-                    Rev {step.revision_count}
+
+                {/* Line 2: Actor + assignment */}
+                <div className="flex items-center gap-2 mt-1">
+                  <ActorTypeBadge actorType={step.actor_type} />
+                  <span className="text-sm text-gray-600">
+                    {step.vendor_name ||
+                      (step.assigned_staff_id ? (
+                        "Staff assigned"
+                      ) : (
+                        <span className="italic text-gray-400">Not assigned</span>
+                      ))}
                   </span>
-                )}
-              </button>
-              {/* Connector */}
-              {i < steps.length - 1 && (
-                <div className="hidden md:flex items-center px-1">
-                  <ChevronRight className="w-4 h-4 text-gray-300" />
                 </div>
-              )}
+
+                {/* Line 3: Rate info (vendor steps with rate) */}
+                {step.actor_type === "vendor" && step.vendor_rate && (
+                  <div className="text-sm text-gray-500 mt-1">
+                    ${step.vendor_rate}/{step.vendor_rate_unit} · {step.vendor_currency} $
+                    {step.vendor_total?.toFixed(2)}
+                  </div>
+                )}
+
+                {/* Line 4: Language pair */}
+                {step.source_language && step.target_language && (
+                  <div className="text-sm text-gray-500 mt-1">
+                    {step.source_language} → {step.target_language}
+                  </div>
+                )}
+
+                {/* Line 5: Key dates */}
+                {(step.deadline || step.delivered_at || step.approved_at) && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    {step.deadline && (
+                      <span>
+                        Deadline:{" "}
+                        {new Date(step.deadline).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                        {(() => {
+                          const diff = Math.ceil(
+                            (new Date(step.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                          );
+                          if (diff > 0)
+                            return <span className="text-gray-500"> (in {diff}d)</span>;
+                          if (diff < 0)
+                            return (
+                              <span className="text-red-500"> (overdue {Math.abs(diff)}d)</span>
+                            );
+                          return <span className="text-yellow-600"> (today)</span>;
+                        })()}
+                      </span>
+                    )}
+                    {step.delivered_at && (
+                      <span>
+                        {" "}
+                        · Delivered:{" "}
+                        {new Date(step.delivered_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    )}
+                    {step.approved_at && (
+                      <span>
+                        {" "}
+                        · Approved:{" "}
+                        {new Date(step.approved_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Line 6: Offer count */}
+                {step.offer_count > 0 && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    Offers: {step.offer_count} attempt(s)
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  {/* Assign Vendor: pending + vendor + no vendor_id */}
+                  {step.status === "pending" && step.actor_type === "vendor" && !step.vendor_id && (
+                    <button
+                      className="text-xs px-3 py-1 border border-blue-400 text-blue-600 rounded hover:bg-blue-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAssignVendor(step);
+                      }}
+                    >
+                      Assign Vendor
+                    </button>
+                  )}
+
+                  {/* Assign Staff: pending + internal + no assigned_staff_id */}
+                  {step.status === "pending" && step.actor_type === "internal" && !step.assigned_staff_id && (
+                    <StaffPickerDropdown
+                      onSelect={(staffId) =>
+                        handleStepAction(step.id, "assign_vendor", { vendor_id: staffId })
+                      }
+                    />
+                  )}
+
+                  {/* Retract Offer: offered */}
+                  {step.status === "offered" && (
+                    <button
+                      className="text-xs px-3 py-1 border border-red-400 text-red-600 rounded hover:bg-red-50"
+                      disabled={actionLoading === step.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm("Retract this offer? The vendor will be unassigned.")) {
+                          handleStepAction(step.id, "change_status", { status: "pending" });
+                        }
+                      }}
+                    >
+                      {actionLoading === step.id ? "..." : "Retract Offer"}
+                    </button>
+                  )}
+
+                  {/* Mark In Progress: accepted */}
+                  {step.status === "accepted" && (
+                    <button
+                      className="text-xs px-3 py-1 border border-blue-400 text-blue-600 rounded hover:bg-blue-50"
+                      disabled={actionLoading === step.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStepAction(step.id, "change_status", { status: "in_progress" });
+                      }}
+                    >
+                      {actionLoading === step.id ? "..." : "Mark In Progress"}
+                    </button>
+                  )}
+
+                  {/* Approve + Request Revision: delivered */}
+                  {step.status === "delivered" && (
+                    <>
+                      <button
+                        className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                        disabled={actionLoading === step.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm("Approve this deliverable?")) {
+                            handleStepAction(step.id, "change_status", { status: "approved" });
+                          }
+                        }}
+                      >
+                        {actionLoading === step.id ? "..." : "Approve"}
+                      </button>
+                      <button
+                        className="text-xs px-3 py-1 border border-amber-400 text-amber-600 rounded hover:bg-amber-50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSetRevisionStepId(step.id);
+                        }}
+                      >
+                        Request Revision
+                      </button>
+                    </>
+                  )}
+
+                  {/* Skip Step: optional + not terminal */}
+                  {step.is_optional && !["approved", "skipped", "cancelled"].includes(step.status) && (
+                    <button
+                      className="text-xs px-3 py-1 border border-gray-400 text-gray-600 rounded hover:bg-gray-50"
+                      disabled={actionLoading === step.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm("Skip this optional step?")) {
+                          handleStepAction(step.id, "skip_step", {});
+                        }
+                      }}
+                    >
+                      {actionLoading === step.id ? "..." : "Skip Step"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Inline revision request */}
+                {revisionStepId === step.id && (
+                  <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+                    <textarea
+                      className="w-full text-sm border border-amber-300 rounded p-2"
+                      rows={3}
+                      placeholder="Reason for revision..."
+                      value={revisionReason}
+                      onChange={(e) => onSetRevisionReason(e.target.value)}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        className="text-xs px-3 py-1 border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+                        onClick={() => {
+                          onSetRevisionStepId(null);
+                          onSetRevisionReason("");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="text-xs px-3 py-1 bg-amber-500 text-white rounded hover:bg-amber-600"
+                        disabled={!revisionReason.trim() || actionLoading === step.id}
+                        onClick={() => {
+                          handleStepAction(step.id, "change_status", {
+                            status: "revision_requested",
+                            rejection_reason: revisionReason.trim(),
+                          });
+                          onSetRevisionStepId(null);
+                          onSetRevisionReason("");
+                        }}
+                      >
+                        {actionLoading === step.id ? "Sending..." : "Send Revision Request"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Expanded section */}
+                {isExpanded && (
+                  <div className="mt-3 pt-3 border-t border-gray-200 space-y-2 text-sm">
+                    {step.instructions && (
+                      <div>
+                        <span className="font-medium text-gray-600">Instructions:</span>
+                        <div className="mt-1 bg-gray-100 rounded p-2 text-gray-700 text-xs">
+                          {step.instructions}
+                        </div>
+                      </div>
+                    )}
+                    {step.notes_from_vendor && (
+                      <div>
+                        <span className="font-medium text-blue-600">Vendor notes:</span>
+                        <div className="mt-1 bg-blue-50 rounded p-2 text-blue-800 text-xs">
+                          {step.notes_from_vendor}
+                        </div>
+                      </div>
+                    )}
+                    {step.rejection_reason && (
+                      <div>
+                        <span className="font-medium text-amber-600">Revision reason:</span>
+                        <div className="mt-1 bg-amber-50 rounded p-2 text-amber-800 text-xs">
+                          {step.rejection_reason}
+                        </div>
+                      </div>
+                    )}
+                    {step.source_file_paths && step.source_file_paths.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-600">Source files:</span>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {step.source_file_paths.map((p, i) => (
+                            <div key={i}>{p.split("/").pop()}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {step.delivered_file_paths && step.delivered_file_paths.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-600">Delivered files:</span>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {step.delivered_file_paths.map((p, i) => (
+                            <div key={i}>{p.split("/").pop()}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {step.revision_count > 0 && (
+                      <div className="text-xs text-gray-500">
+                        Revisions: {step.revision_count}
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-400 space-y-0.5">
+                      {step.created_at && (
+                        <div>Created: {new Date(step.created_at).toLocaleString()}</div>
+                      )}
+                      {step.offered_at && (
+                        <div>Offered: {new Date(step.offered_at).toLocaleString()}</div>
+                      )}
+                      {step.accepted_at && (
+                        <div>Accepted: {new Date(step.accepted_at).toLocaleString()}</div>
+                      )}
+                      {step.started_at && (
+                        <div>Started: {new Date(step.started_at).toLocaleString()}</div>
+                      )}
+                      {step.delivered_at && (
+                        <div>Delivered: {new Date(step.delivered_at).toLocaleString()}</div>
+                      )}
+                      {step.approved_at && (
+                        <div>Approved: {new Date(step.approved_at).toLocaleString()}</div>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      Mode: {step.assignment_mode}
+                      {step.auto_assign_rule ? ` (${step.auto_assign_rule})` : ""}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
@@ -823,8 +1177,14 @@ function WorkflowPipeline({
 export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
   const [data, setData] = useState<WorkflowData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [vendorPickerStep, setVendorPickerStep] = useState<WorkflowStep | null>(null);
+  const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
+  const [revisionStepId, setRevisionStepId] = useState<string | null>(null);
+  const [revisionReason, setRevisionReason] = useState("");
+  const [orderFinancials, setOrderFinancials] = useState<OrderFinancials | null>(null);
+  const [totalVendorCost, setTotalVendorCost] = useState(0);
+  const [minMarginPercent, setMinMarginPercent] = useState(30);
 
   const fetchWorkflow = useCallback(async () => {
     setLoading(true);
@@ -833,10 +1193,14 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
         body: { order_id: orderId },
       });
       if (error) throw error;
-      setData(result as WorkflowData);
+      const wfData = result as WorkflowData & { order_financials?: OrderFinancials; total_vendor_cost?: number };
+      setData(wfData);
+      if (wfData.order_financials) {
+        setOrderFinancials(wfData.order_financials);
+      }
+      setTotalVendorCost(wfData.total_vendor_cost || 0);
     } catch (err: unknown) {
       console.error("Failed to load workflow:", err);
-      // Don't toast on initial load — workflow may just not exist
       setData({ success: true, has_workflow: false, workflow: null, steps: [], available_templates: [] });
     }
     setLoading(false);
@@ -846,8 +1210,20 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
     fetchWorkflow();
   }, [fetchWorkflow]);
 
-  const handleStepAction = async (stepId: string, action: string, params?: Record<string, unknown>) => {
-    setActionLoading(true);
+  useEffect(() => {
+    const fetchMarginSetting = async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("setting_value")
+        .eq("setting_key", "min_vendor_margin_percent")
+        .single();
+      if (data) setMinMarginPercent(parseFloat(data.setting_value || "30"));
+    };
+    fetchMarginSetting();
+  }, []);
+
+  const handleStepAction = async (stepId: string, action: string, params?: any) => {
+    setActionLoading(stepId);
     try {
       const { data: result, error } = await supabase.functions.invoke("update-workflow-step", {
         body: { step_id: stepId, action, ...params },
@@ -855,13 +1231,12 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
       if (error) throw error;
       if (result?.error) throw new Error(result.error);
       toast.success("Step updated");
-      setSelectedStep(null);
       await fetchWorkflow();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to update step";
       toast.error(message);
     }
-    setActionLoading(false);
+    setActionLoading(null);
   };
 
   if (loading) {
@@ -889,7 +1264,18 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
         <WorkflowPipeline
           workflow={data.workflow}
           steps={data.steps}
-          onStepClick={setSelectedStep}
+          onStepClick={() => {}}
+          expandedStepId={expandedStepId}
+          onToggleExpand={(id) => setExpandedStepId(expandedStepId === id ? null : id)}
+          orderFinancials={orderFinancials}
+          totalVendorCost={totalVendorCost}
+          onAssignVendor={(step) => setVendorPickerStep(step)}
+          handleStepAction={handleStepAction}
+          actionLoading={actionLoading}
+          revisionStepId={revisionStepId}
+          revisionReason={revisionReason}
+          onSetRevisionStepId={setRevisionStepId}
+          onSetRevisionReason={setRevisionReason}
         />
       ) : (
         <TemplateSelector
@@ -899,13 +1285,22 @@ export default function OrderWorkflowSection({ orderId }: { orderId: string }) {
         />
       )}
 
-      {/* Step Detail Modal */}
-      {selectedStep && (
-        <StepDetailPanel
-          step={selectedStep}
-          onClose={() => setSelectedStep(null)}
-          onAction={handleStepAction}
-          actionLoading={actionLoading}
+      {vendorPickerStep && (
+        <VendorPickerModal
+          isOpen={!!vendorPickerStep}
+          onClose={() => setVendorPickerStep(null)}
+          onAssign={async (params) => {
+            await handleStepAction(vendorPickerStep.id, "assign_vendor", params);
+            setVendorPickerStep(null);
+          }}
+          stepId={vendorPickerStep.id}
+          stepName={vendorPickerStep.name}
+          stepNumber={vendorPickerStep.step_number}
+          serviceName={vendorPickerStep.service_name}
+          sourceLanguage={vendorPickerStep.source_language}
+          targetLanguage={vendorPickerStep.target_language}
+          orderFinancials={orderFinancials}
+          offerCount={vendorPickerStep.offer_count}
         />
       )}
     </div>
