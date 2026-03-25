@@ -28,21 +28,55 @@ interface WorkflowStep {
   id: string;
   step_number: number;
   name: string;
-  actor_type: "vendor" | "customer" | "internal" | "automated";
+  actor_type: 'vendor' | 'internal' | 'customer' | 'automated';
   status: string;
-  assignment_mode: "manual" | "auto" | "auto_offer";
+  assignment_mode: string;
+  auto_assign_rule: string | null;
   auto_advance: boolean;
+  is_optional: boolean;
+  requires_file_upload: boolean;
   vendor_id: string | null;
   vendor_name: string | null;
-  service_name: string;
-  vendor_rate: number | null;
-  vendor_rate_unit: string | null;
-  deadline: string | null;
+  assigned_staff_id: string | null;
+  assigned_by: string | null;
+  preferred_vendor_id: string | null;
   offered_at: string | null;
   accepted_at: string | null;
+  started_at: string | null;
+  deadline: string | null;
   delivered_at: string | null;
   approved_at: string | null;
+  vendor_rate: number | null;
+  vendor_rate_unit: string | null;
+  vendor_total: number | null;
+  vendor_currency: string;
+  source_file_paths: string[] | null;
+  delivered_file_paths: string[] | null;
+  instructions: string | null;
+  notes_from_vendor: string | null;
+  rejection_reason: string | null;
   revision_count: number;
+  source_language: string | null;
+  target_language: string | null;
+  service_id: string | null;
+  service_name: string | null;
+  order_document_id: string | null;
+  offer_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface OrderFinancials {
+  service_id: string | null;
+  subtotal: number;
+  pre_tax: number;
+  total: number;
+}
+
+interface StaffUser {
+  id: string;
+  full_name: string;
+  email: string;
 }
 
 interface Workflow {
@@ -107,6 +141,18 @@ const WORKFLOW_STATUS_STYLES: Record<string, { bg: string; text: string }> = {
   cancelled: { bg: "bg-gray-100", text: "text-gray-400" },
 };
 
+const STEP_STATUS_ICONS: Record<string, string> = {
+  pending: "⏳",
+  offered: "📩",
+  accepted: "🔵",
+  in_progress: "🔵",
+  delivered: "📦",
+  revision_requested: "🔄",
+  approved: "✅",
+  skipped: "⏭️",
+  cancelled: "❌",
+};
+
 function StepStatusBadge({ status }: { status: string }) {
   const style = STEP_STATUS_STYLES[status] ?? STEP_STATUS_STYLES.pending;
   const isInProgress = status === "in_progress";
@@ -117,7 +163,7 @@ function StepStatusBadge({ status }: { status: string }) {
     >
       {status === "approved" && <CheckCircle className="w-3 h-3" />}
       {status === "cancelled" && <XCircle className="w-3 h-3" />}
-      {style.label}
+      {STEP_STATUS_ICONS[status] ?? ""} {style.label}
     </span>
   );
 }
@@ -135,6 +181,21 @@ function ActorIcon({ type, className = "w-4 h-4" }: { type: string; className?: 
     default:
       return <User className={className} />;
   }
+}
+
+function ActorTypeBadge({ actorType }: { actorType: string }) {
+  const config: Record<string, { label: string; bg: string; text: string }> = {
+    vendor: { label: "Vendor", bg: "bg-blue-100", text: "text-blue-700" },
+    internal: { label: "Internal", bg: "bg-purple-100", text: "text-purple-700" },
+    customer: { label: "Customer", bg: "bg-green-100", text: "text-green-700" },
+    automated: { label: "Auto", bg: "bg-gray-100", text: "text-gray-600" },
+  };
+  const c = config[actorType] || config.automated;
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${c.bg} ${c.text}`}>
+      {c.label}
+    </span>
+  );
 }
 
 // ── VendorPickerModal ──
