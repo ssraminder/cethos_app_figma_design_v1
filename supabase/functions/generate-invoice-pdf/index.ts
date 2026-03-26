@@ -91,16 +91,18 @@ serve(async (req: Request) => {
       .eq("id", invoice.order_id)
       .single();
 
-    // Get customer details (including payment method preferences)
+    // Get customer details (including payment method preferences and invoicing branch)
     const { data: customer } = await supabase
       .from("customers")
-      .select("id, full_name, email, phone, company_name, preferred_payment_method_id, backup_payment_method_id")
+      .select("id, full_name, email, phone, company_name, preferred_payment_method_id, backup_payment_method_id, invoicing_branch_id")
       .eq("id", invoice.customer_id)
       .single();
 
-    // Resolve payment method names
-    let preferredPaymentMethod: string | null = null;
-    let backupPaymentMethod: string | null = null;
+    // Resolve payment method display instructions from branch_payment_methods
+    let preferredMethodName: string | null = null;
+    let preferredMethodInstructions: string | null = null;
+    let backupMethodName: string | null = null;
+    let backupMethodInstructions: string | null = null;
 
     const paymentMethodIds = [
       customer?.preferred_payment_method_id,
@@ -108,18 +110,36 @@ serve(async (req: Request) => {
     ].filter(Boolean);
 
     if (paymentMethodIds.length > 0) {
+      // Get method names
       const { data: methods } = await supabase
         .from("payment_methods")
-        .select("id, name")
+        .select("id, name, code")
         .in("id", paymentMethodIds);
+
+      // Get branch-specific display instructions if the customer has an invoicing branch
+      let branchMethods: any[] = [];
+      if (customer?.invoicing_branch_id) {
+        const { data: bpm } = await supabase
+          .from("branch_payment_methods")
+          .select("payment_method_id, display_instructions, is_enabled")
+          .eq("branch_id", customer.invoicing_branch_id)
+          .in("payment_method_id", paymentMethodIds)
+          .eq("is_enabled", true);
+        branchMethods = bpm || [];
+      }
 
       if (methods) {
         for (const m of methods) {
+          const bpm = branchMethods.find((b: any) => b.payment_method_id === m.id);
+          const instructions = bpm?.display_instructions || null;
+
           if (m.id === customer?.preferred_payment_method_id) {
-            preferredPaymentMethod = m.name;
+            preferredMethodName = m.name;
+            preferredMethodInstructions = instructions;
           }
           if (m.id === customer?.backup_payment_method_id) {
-            backupPaymentMethod = m.name;
+            backupMethodName = m.name;
+            backupMethodInstructions = instructions;
           }
         }
       }
@@ -139,8 +159,10 @@ serve(async (req: Request) => {
 
     // Build PDF content as a simple text-based PDF
     const pdfBytes = buildInvoicePdf(invoice, order, customer, quoteFiles, {
-      preferredPaymentMethod,
-      backupPaymentMethod,
+      preferredMethodName,
+      preferredMethodInstructions,
+      backupMethodName,
+      backupMethodInstructions,
     });
 
     // Upload to storage
@@ -198,12 +220,33 @@ serve(async (req: Request) => {
 // Uses raw PDF operators for cross-platform compatibility on Deno edge.
 // ============================================================================
 
+function wrapText(text: string, maxChars: number): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if (current.length + word.length + 1 > maxChars && current.length > 0) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? current + " " + word : word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 function buildInvoicePdf(
   invoice: any,
   order: any,
   customer: any,
   lineItems: any[],
-  paymentInfo: { preferredPaymentMethod: string | null; backupPaymentMethod: string | null },
+  paymentInfo: {
+    preferredMethodName: string | null;
+    preferredMethodInstructions: string | null;
+    backupMethodName: string | null;
+    backupMethodInstructions: string | null;
+  },
 ): Uint8Array {
   const lines: string[] = [];
   let yPos = 750;
@@ -486,17 +529,32 @@ function buildInvoicePdf(
   }
 
   // ---- Payment Method ----
-  if (paymentInfo.preferredPaymentMethod || paymentInfo.backupPaymentMethod) {
+  if (paymentInfo.preferredMethodName || paymentInfo.backupMethodName) {
     yPos -= 20;
     addText(leftMargin, yPos, "Payment Method:", 10, "F2");
     yPos -= 15;
-    if (paymentInfo.preferredPaymentMethod) {
-      addText(leftMargin, yPos, `Preferred: ${paymentInfo.preferredPaymentMethod}`, 9);
+    if (paymentInfo.preferredMethodName) {
+      addText(leftMargin, yPos, `Preferred: ${paymentInfo.preferredMethodName}`, 9, "F2");
       yPos -= 14;
+      if (paymentInfo.preferredMethodInstructions) {
+        // Wrap long instructions across multiple lines (max ~75 chars per line)
+        const instrLines = wrapText(paymentInfo.preferredMethodInstructions, 75);
+        for (const line of instrLines) {
+          addText(leftMargin + 10, yPos, line, 8);
+          yPos -= 12;
+        }
+      }
     }
-    if (paymentInfo.backupPaymentMethod) {
-      addText(leftMargin, yPos, `Backup: ${paymentInfo.backupPaymentMethod}`, 9);
+    if (paymentInfo.backupMethodName) {
+      addText(leftMargin, yPos, `Backup: ${paymentInfo.backupMethodName}`, 9, "F2");
       yPos -= 14;
+      if (paymentInfo.backupMethodInstructions) {
+        const instrLines = wrapText(paymentInfo.backupMethodInstructions, 75);
+        for (const line of instrLines) {
+          addText(leftMargin + 10, yPos, line, 8);
+          yPos -= 12;
+        }
+      }
     }
   }
 
