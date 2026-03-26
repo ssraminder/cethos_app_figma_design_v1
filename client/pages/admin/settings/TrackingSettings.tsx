@@ -332,6 +332,126 @@ export default function TrackingSettings() {
           </div>
         </SettingsCard>
       </div>
+
+      {/* Quote Conversion Tracking Info */}
+      <div className="mt-8">
+        <SettingsCard
+          title="Quote Conversion Tracking"
+          description="Automatic conversion events fired on the quote wizard flow via GTM dataLayer"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              When tracking is enabled and a GTM Container ID is configured, the
+              portal automatically fires these conversion events on quote wizard
+              pages. Admin and dashboard routes are excluded from tracking.
+            </p>
+
+            <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">
+                      Event Name
+                    </th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">
+                      When Fired
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  <tr>
+                    <td className="px-4 py-2 font-mono text-xs text-blue-700">
+                      portal_entry
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">
+                      User arrives at quote wizard (captures referral source)
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-2 font-mono text-xs text-blue-700">
+                      quote_step_view
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">
+                      Each wizard step is viewed (step 1-4)
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-2 font-mono text-xs text-blue-700">
+                      quote_file_upload
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">
+                      Files are uploaded in step 1
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-2 font-mono text-xs text-blue-700">
+                      quote_submission_complete
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">
+                      Quote submitted (payment or HITL review) — primary
+                      conversion
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-2 font-mono text-xs text-blue-700">
+                      quote_saved
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">
+                      Quote saved and emailed to customer
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-2 font-mono text-xs text-blue-700">
+                      quote_abandoned
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">
+                      User closes browser mid-wizard (beforeunload)
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-2 font-mono text-xs text-blue-700">
+                      virtualPageview
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">
+                      SPA route change within quote flow
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="text-sm font-medium text-blue-800 mb-1">
+                Route Coverage
+              </h4>
+              <p className="text-sm text-blue-700">
+                Tracking is active on{" "}
+                <code className="bg-blue-100 px-1 rounded">/quote</code>,{" "}
+                <code className="bg-blue-100 px-1 rounded">
+                  /quote/confirmation
+                </code>
+                ,{" "}
+                <code className="bg-blue-100 px-1 rounded">/order/success</code>
+                , and related quote pages. Admin, dashboard, and login routes
+                are excluded.
+              </p>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <h4 className="text-sm font-medium text-amber-800 mb-1">
+                Cross-Domain Tracking
+              </h4>
+              <p className="text-sm text-amber-700">
+                For cross-domain tracking between cethos.com and
+                portal.cethos.com, use the same GTM container on both sites and
+                configure cross-domain measurement in GA4 Admin &rarr; Data
+                Streams &rarr; Configure tag settings &rarr; Configure your
+                domains.
+              </p>
+            </div>
+          </div>
+        </SettingsCard>
+      </div>
     </AdminSettingsLayout>
   );
 }

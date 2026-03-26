@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { CheckCircle, Info } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { handleStartNewQuote } from "@/utils/navigationHelpers";
+import { trackQuoteSubmission, getReferralSource } from "@/lib/tracking";
 
 export default function QuoteConfirmationPage() {
   const [searchParams] = useSearchParams();
@@ -15,6 +16,7 @@ export default function QuoteConfirmationPage() {
   const [customerEmail, setCustomerEmail] = useState<string>("");
   const [customerName, setCustomerName] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const conversionTracked = useRef(false);
 
   useEffect(() => {
     const fetchQuoteInfo = async () => {
@@ -34,6 +36,18 @@ export default function QuoteConfirmationPage() {
           setQuoteNumber(quote.quote_number || "");
           setCustomerEmail(quote.customer?.email || "");
           setCustomerName(quote.customer?.full_name || "");
+        }
+
+        // Fire conversion event once (HITL review submission = conversion)
+        if (!conversionTracked.current) {
+          conversionTracked.current = true;
+          const referral = getReferralSource();
+          trackQuoteSubmission({
+            quoteId,
+            serviceType: "review_required",
+            sourceUrl: referral?.sourceUrl || "",
+            sourceLocation: referral?.sourceLocation || "",
+          });
         }
       } catch (error) {
         console.error("Error fetching quote:", error);

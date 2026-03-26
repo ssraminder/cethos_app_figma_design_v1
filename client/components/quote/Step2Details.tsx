@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 import { supabase } from "@/lib/supabase";
@@ -6,6 +6,7 @@ import StartOverLink from "@/components/quote/StartOverLink";
 import { ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
 import SearchableSelectUI from "@/components/ui/SearchableSelect";
 import SearchableSelect from "@/components/shared/SearchableSelect";
+import { trackQuoteStep } from "@/lib/tracking";
 
 export default function Step2Details() {
   const { state, updateState, goToNextStep, goToPreviousStep, resetQuote } =
@@ -14,6 +15,10 @@ export default function Step2Details() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    trackQuoteStep(2, "translation_details", state.quoteId);
+  }, []);
 
   // ── Dropdown options ──────────────────────────────────────────────────────
 
