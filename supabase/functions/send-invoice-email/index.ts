@@ -79,16 +79,23 @@ serve(async (req: Request) => {
       throw new Error("Customer does not have an email address on file");
     }
 
-    // Generate a signed URL for the PDF (valid for 7 days)
-    const { data: signedUrlData, error: urlError } = await supabase.storage
+    // Download the PDF from storage for attachment
+    const { data: pdfData, error: dlError } = await supabase.storage
       .from("invoices")
-      .createSignedUrl(invoice.pdf_storage_path, 60 * 60 * 24 * 7);
+      .download(invoice.pdf_storage_path);
 
-    if (urlError || !signedUrlData?.signedUrl) {
-      throw new Error("Failed to generate PDF download link");
+    if (dlError || !pdfData) {
+      throw new Error("Failed to download invoice PDF from storage");
     }
 
-    const pdfUrl = signedUrlData.signedUrl;
+    // Convert PDF blob to base64 for Brevo attachment
+    const pdfArrayBuffer = await pdfData.arrayBuffer();
+    const pdfBytes = new Uint8Array(pdfArrayBuffer);
+    let binary = "";
+    for (let i = 0; i < pdfBytes.length; i++) {
+      binary += String.fromCharCode(pdfBytes[i]);
+    }
+    const pdfBase64 = btoa(binary);
 
     // Format currency
     const currency = invoice.currency || "CAD";
@@ -177,10 +184,8 @@ serve(async (req: Request) => {
         </table>
       </div>
 
-      <a href="${pdfUrl}" class="btn">Download Invoice PDF</a>
-
-      <p style="margin-top: 24px; font-size: 13px; color: #64748b;">
-        If you have any questions about this invoice, please don't hesitate to contact us.
+      <p style="margin-top: 8px; font-size: 13px; color: #64748b;">
+        A PDF copy of this invoice is attached to this email. If you have any questions, please don't hesitate to contact us.
       </p>
     </div>
     <div class="footer">
@@ -199,6 +204,12 @@ serve(async (req: Request) => {
       },
       subject: `Invoice ${invoice.invoice_number} from Cethos Translation Services`,
       htmlContent,
+      attachment: [
+        {
+          content: pdfBase64,
+          name: `${invoice.invoice_number}.pdf`,
+        },
+      ],
     };
 
     console.log(`Sending invoice ${invoice.invoice_number} to ${customer.email}`);
