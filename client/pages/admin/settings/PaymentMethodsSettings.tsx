@@ -258,6 +258,15 @@ export default function PaymentMethodsSettings() {
           setBranchPayments((prev) => [...prev, ...newRows]);
         }
       }
+
+      // Auto-expand methods that have branch-specific detail fields
+      const autoExpand = new Set<string>();
+      for (const pm of methods) {
+        if (getDetailFields(pm.code).length > 0) {
+          autoExpand.add(pm.id);
+        }
+      }
+      setExpandedMethods(autoExpand);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error("Failed to load payment methods");
@@ -876,8 +885,16 @@ export default function PaymentMethodsSettings() {
                 )}
 
                 {/* PHASE 1: Branch-specific receiving details (expandable) */}
-                {isExpanded && editingId !== method.id && (
-                  <div className="border-t border-gray-100 bg-gray-50">
+                {isExpanded && (
+                  <div className="border-t-2 border-indigo-100 bg-gray-50">
+                    <div className="px-4 pt-3 pb-1">
+                      <h4 className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">
+                        Branch Receiving Details
+                      </h4>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Configure payment details per branch — these appear on customer invoices
+                      </p>
+                    </div>
                     {branches.length === 0 ? (
                       <div className="p-4 text-sm text-gray-500">
                         No active branches found.
