@@ -1,0 +1,609 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/lib/supabase";
+import { useAdminAuthContext } from "@/context/AdminAuthContext";
+import {
+  Search,
+  Loader2,
+  AlertTriangle,
+  Check,
+  Building2,
+  Mail,
+  FileText,
+} from "lucide-react";
+import { toast } from "sonner";
+
+// ── Types ────────────────────────────────────────────────────────────
+interface CustomerResult {
+  id: string;
+  full_name: string;
+  email: string;
+  company_name: string | null;
+  customer_type: string;
+  requires_po: boolean;
+  requires_client_project_number: boolean;
+  payment_terms: string | null;
+  invoicing_branch_id: number | null;
+  invoicing_branch?: { legal_name: string } | null;
+  stats?: { unbilled_orders: number };
+}
+
+interface UnbilledOrder {
+  id: string;
+  order_number: string;
+  total_amount: string;
+  subtotal: string;
+  certification_total: string;
+  rush_fee: string;
+  delivery_fee: string;
+  discount_total: string;
+  surcharge_total: string;
+  tax_rate: string;
+  tax_amount: string;
+  po_number: string | null;
+  client_project_number: string | null;
+  invoice_status: string;
+  paid_at: string | null;
+  po_missing: boolean;
+  project_number_missing: boolean;
+  selectable: boolean;
+}
+
+interface CustomLine {
+  id: string;
+  description: string;
+  amount: number;
+}
+
+// ── Step Indicator ───────────────────────────────────────────────────
+const STEPS = ["Select Customer", "Select Orders", "Review & Generate"];
+
+function StepIndicator({ currentStep }: { currentStep: number }) {
+  return (
+    <div className="flex items-center justify-center gap-2 mb-8">
+      {STEPS.map((label, i) => {
+        const stepNum = i + 1;
+        const isCompleted = stepNum < currentStep;
+        const isActive = stepNum === currentStep;
+        const isUpcoming = stepNum > currentStep;
+
+        return (
+          <div key={label} className="flex items-center gap-2">
+            {i > 0 && (
+              <div
+                className={`w-12 h-0.5 ${
+                  isCompleted || isActive ? "bg-blue-400" : "bg-gray-300"
+                }`}
+              />
+            )}
+            <div className="flex items-center gap-1.5">
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                  isCompleted
+                    ? "bg-green-500 text-white"
+                    : isActive
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-300 text-gray-500"
+                }`}
+              >
+                {isCompleted ? <Check className="w-3.5 h-3.5" /> : stepNum}
+              </div>
+              <span
+                className={`text-sm font-medium ${
+                  isActive
+                    ? "text-blue-600"
+                    : isCompleted
+                      ? "text-green-600"
+                      : "text-gray-400"
+                }`}
+              >
+                {label}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Main Component ───────────────────────────────────────────────────
+export default function CreateInvoice() {
+  const navigate = useNavigate();
+  const { session } = useAdminAuthContext();
+  const [currentStep, setCurrentStep] = useState(1);
+
+  // Step 1 state
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<CustomerResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [recentCustomers, setRecentCustomers] = useState<CustomerResult[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(true);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(null);
+  const [checkingReadiness, setCheckingReadiness] = useState(false);
+  const [readinessError, setReadinessError] = useState<{ message: string; customerId: string } | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Step 2 state
+  const [orders, setOrders] = useState<UnbilledOrder[]>([]);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [customLines, setCustomLines] = useState<CustomLine[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [poFilter, setPoFilter] = useState("");
+  const [orderNumberFilter, setOrderNumberFilter] = useState("");
+  const [newLineDesc, setNewLineDesc] = useState("");
+  const [newLineAmount, setNewLineAmount] = useState("");
+  const [ordersResponse, setOrdersResponse] = useState<{
+    total_count: number;
+    selectable_count: number;
+    requires_po: boolean;
+    requires_client_project_number: boolean;
+  } | null>(null);
+
+  // Step 3 state
+  const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dueDate, setDueDate] = useState("");
+  const [poNumber, setPoNumber] = useState("");
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // ── Load recent customers with unbilled orders ──
+  useEffect(() => {
+    (async () => {
+      try {
+        // Get unique customer_ids with unbilled orders
+        const { data: orderRows, error: ordErr } = await supabase
+          .from("orders")
+          .select("customer_id")
+          .eq("invoice_status", "unbilled")
+          .not("customer_id", "is", null);
+
+        if (ordErr || !orderRows) {
+          setLoadingRecent(false);
+          return;
+        }
+
+        const uniqueIds = [...new Set(orderRows.map((r) => r.customer_id))].slice(0, 10);
+        if (uniqueIds.length === 0) {
+          setLoadingRecent(false);
+          return;
+        }
+
+        const { data: customers } = await supabase
+          .from("customers")
+          .select("id, full_name, email, company_name, customer_type, requires_po, requires_client_project_number, payment_terms, invoicing_branch_id")
+          .in("id", uniqueIds);
+
+        if (customers) {
+          // Count unbilled orders per customer
+          const countMap: Record<string, number> = {};
+          for (const r of orderRows) {
+            countMap[r.customer_id] = (countMap[r.customer_id] || 0) + 1;
+          }
+
+          // Load branch names
+          const branchIds = [...new Set(customers.map(c => c.invoicing_branch_id).filter(Boolean))];
+          let branchMap: Record<number, string> = {};
+          if (branchIds.length > 0) {
+            const { data: branches } = await supabase
+              .from("branches")
+              .select("id, legal_name")
+              .in("id", branchIds);
+            if (branches) {
+              branchMap = Object.fromEntries(branches.map(b => [b.id, b.legal_name]));
+            }
+          }
+
+          setRecentCustomers(
+            customers.map((c) => ({
+              ...c,
+              invoicing_branch: c.invoicing_branch_id
+                ? { legal_name: branchMap[c.invoicing_branch_id] || "Unknown" }
+                : null,
+              stats: { unbilled_orders: countMap[c.id] || 0 },
+            }))
+          );
+        }
+      } catch {
+        // Silently fail for recent customers
+      }
+      setLoadingRecent(false);
+    })();
+  }, []);
+
+  // ── Search customers ──
+  const searchCustomers = useCallback(async (term: string) => {
+    if (term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const { data, error } = await supabase
+        .from("customers")
+        .select("id, full_name, email, company_name, customer_type, requires_po, requires_client_project_number, payment_terms, invoicing_branch_id")
+        .or(`full_name.ilike.%${term}%,email.ilike.%${term}%,company_name.ilike.%${term}%`)
+        .limit(10);
+
+      if (error) {
+        toast.error("Search failed");
+        return;
+      }
+      if (data) {
+        // Count unbilled orders for each
+        const ids = data.map(c => c.id);
+        const { data: orderRows } = await supabase
+          .from("orders")
+          .select("customer_id")
+          .eq("invoice_status", "unbilled")
+          .in("customer_id", ids);
+
+        const countMap: Record<string, number> = {};
+        if (orderRows) {
+          for (const r of orderRows) {
+            countMap[r.customer_id] = (countMap[r.customer_id] || 0) + 1;
+          }
+        }
+
+        // Load branch names
+        const branchIds = [...new Set(data.map(c => c.invoicing_branch_id).filter(Boolean))];
+        let branchMap: Record<number, string> = {};
+        if (branchIds.length > 0) {
+          const { data: branches } = await supabase
+            .from("branches")
+            .select("id, legal_name")
+            .in("id", branchIds);
+          if (branches) {
+            branchMap = Object.fromEntries(branches.map(b => [b.id, b.legal_name]));
+          }
+        }
+
+        setSearchResults(
+          data.map((c) => ({
+            ...c,
+            invoicing_branch: c.invoicing_branch_id
+              ? { legal_name: branchMap[c.invoicing_branch_id] || "Unknown" }
+              : null,
+            stats: { unbilled_orders: countMap[c.id] || 0 },
+          }))
+        );
+      }
+    } catch {
+      toast.error("Search failed");
+    }
+    setSearching(false);
+  }, []);
+
+  // Debounced search
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      searchCustomers(searchTerm);
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchTerm, searchCustomers]);
+
+  // ── Check invoice readiness ──
+  const handleSelectCustomer = async (customer: CustomerResult) => {
+    setReadinessError(null);
+    setCheckingReadiness(true);
+    try {
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-manage-customer`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authSession?.access_token}`,
+          },
+          body: JSON.stringify({
+            action: "check_invoice_readiness",
+            customer_id: customer.id,
+          }),
+        }
+      );
+      const result = await resp.json();
+
+      if (!result.ready) {
+        const missing = Array.isArray(result.missing) ? result.missing.join(", ") : "unknown fields";
+        setReadinessError({
+          message: `Cannot create invoice — missing: ${missing}.`,
+          customerId: customer.id,
+        });
+        setCheckingReadiness(false);
+        return;
+      }
+
+      // Fetch full customer data via get action for payment_terms, branch etc.
+      const custResp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-manage-customer`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authSession?.access_token}`,
+          },
+          body: JSON.stringify({
+            action: "get",
+            customer_id: customer.id,
+          }),
+        }
+      );
+      const custData = await custResp.json();
+      const enrichedCustomer = {
+        ...customer,
+        ...custData,
+        stats: customer.stats,
+      };
+
+      setSelectedCustomer(enrichedCustomer);
+      setCurrentStep(2);
+    } catch {
+      toast.error("Failed to check invoice readiness");
+    }
+    setCheckingReadiness(false);
+  };
+
+  // ── Load unbilled orders (Step 2) ──
+  const loadOrders = useCallback(async () => {
+    if (!selectedCustomer) return;
+    setLoadingOrders(true);
+    try {
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const body: Record<string, unknown> = {
+        action: "get_unbilled_orders",
+        customer_id: selectedCustomer.id,
+      };
+      if (dateFrom) body.date_from = dateFrom;
+      if (dateTo) body.date_to = dateTo;
+      if (poFilter) body.po_number = poFilter;
+
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-manage-customer`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authSession?.access_token}`,
+          },
+          body: JSON.stringify(body),
+        }
+      );
+      const result = await resp.json();
+      setOrders(result.orders || []);
+      setOrdersResponse({
+        total_count: result.total_count || 0,
+        selectable_count: result.selectable_count || 0,
+        requires_po: result.requires_po || false,
+        requires_client_project_number: result.requires_client_project_number || false,
+      });
+    } catch {
+      toast.error("Failed to load unbilled orders");
+    }
+    setLoadingOrders(false);
+  }, [selectedCustomer, dateFrom, dateTo, poFilter]);
+
+  useEffect(() => {
+    if (currentStep === 2) {
+      loadOrders();
+    }
+  }, [currentStep, loadOrders]);
+
+  // ── Auto-calculate due date when step 3 activates ──
+  useEffect(() => {
+    if (currentStep === 3 && selectedCustomer) {
+      const terms = selectedCustomer.payment_terms || "net_30";
+      const days = parseInt(terms.replace(/\D/g, ""), 10) || 30;
+      const due = new Date();
+      due.setDate(due.getDate() + days);
+      setDueDate(due.toISOString().split("T")[0]);
+
+      // Auto-fill PO if all selected orders share the same PO
+      const selectedOrds = orders.filter((o) => selectedOrderIds.has(o.id));
+      const pos = [...new Set(selectedOrds.map((o) => o.po_number).filter(Boolean))];
+      if (pos.length === 1) setPoNumber(pos[0]!);
+    }
+  }, [currentStep]);
+
+  // ── Helpers ──
+  const selectedOrders = orders.filter((o) => selectedOrderIds.has(o.id));
+  const ordersSubtotal = selectedOrders.reduce((sum, o) => sum + parseFloat(o.total_amount), 0);
+  const customLinesTotal = customLines.reduce((sum, cl) => sum + cl.amount, 0);
+  const preTaxSubtotal = selectedOrders.reduce((sum, o) => sum + parseFloat(o.subtotal), 0) + customLinesTotal;
+  const taxRate = selectedOrders.length > 0 ? parseFloat(selectedOrders[0].tax_rate) : 0.05;
+  const taxOnCustomLines = customLinesTotal * taxRate;
+  const orderTaxTotal = selectedOrders.reduce((sum, o) => sum + parseFloat(o.tax_amount), 0);
+  const totalTax = orderTaxTotal + taxOnCustomLines;
+  const grandTotal = ordersSubtotal + customLinesTotal + taxOnCustomLines;
+  const amountPaid = ordersSubtotal; // orders are already paid
+  const balanceDue = Math.max(grandTotal - amountPaid, 0);
+
+  // ── Customer Card Component ──
+  const renderCustomerCard = (customer: CustomerResult, isSelected = false) => (
+    <button
+      key={customer.id}
+      onClick={() => handleSelectCustomer(customer)}
+      disabled={checkingReadiness}
+      className={`w-full text-left bg-white border rounded-lg p-4 cursor-pointer hover:border-blue-400 hover:shadow-sm transition ${
+        isSelected ? "border-blue-500 bg-blue-50" : "border-gray-200"
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-medium text-gray-900 truncate">
+              {customer.company_name || customer.full_name}
+            </span>
+            {customer.company_name && (
+              <span className="text-gray-500 text-sm truncate">
+                · {customer.full_name}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap text-sm text-gray-500">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+              {customer.customer_type}
+            </span>
+            <span className="flex items-center gap-1">
+              <Mail className="w-3 h-3" />
+              {customer.email}
+            </span>
+            {(customer.requires_po || customer.requires_client_project_number) && (
+              <span className="flex items-center gap-1 text-amber-600">
+                <AlertTriangle className="w-3 h-3" />
+                {customer.requires_po && "Requires PO"}
+                {customer.requires_po && customer.requires_client_project_number && " · "}
+                {customer.requires_client_project_number && "Requires Project #"}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
+            {customer.invoicing_branch && (
+              <span className="flex items-center gap-1">
+                <Building2 className="w-3 h-3" />
+                Branch: {customer.invoicing_branch.legal_name}
+              </span>
+            )}
+            {(customer.stats?.unbilled_orders ?? 0) > 0 && (
+              <span className="flex items-center gap-1">
+                <FileText className="w-3 h-3" />
+                {customer.stats!.unbilled_orders} unbilled order{customer.stats!.unbilled_orders !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+
+  // ── Render Step 1 ──
+  const renderStep1 = () => (
+    <div>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Customer</h2>
+
+      {/* Search input */}
+      <div className="relative mb-6">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search customer by name, email, or company…"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg p-3 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        />
+        {searching && (
+          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-gray-400" />
+        )}
+      </div>
+
+      {/* Readiness error */}
+      {readinessError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-sm text-amber-800 mb-4 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <div>
+            <p>{readinessError.message}</p>
+            <a
+              href={`/admin/customers/${readinessError.customerId}`}
+              className="text-amber-900 underline hover:no-underline text-xs font-medium mt-1 inline-block"
+            >
+              Edit Customer Profile →
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Checking readiness spinner */}
+      {checkingReadiness && (
+        <div className="flex items-center gap-2 text-gray-500 text-sm mb-4">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Checking invoice readiness…
+        </div>
+      )}
+
+      {/* Search results */}
+      {searchTerm.length >= 2 && searchResults.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-sm font-medium text-gray-500 mb-2">
+            Search Results ({searchResults.length})
+          </h3>
+          <div className="space-y-2">
+            {searchResults.map((c) => renderCustomerCard(c))}
+          </div>
+        </div>
+      )}
+
+      {searchTerm.length >= 2 && !searching && searchResults.length === 0 && (
+        <p className="text-sm text-gray-500 mb-6">No customers found.</p>
+      )}
+
+      {/* Recent customers with unbilled orders */}
+      <div>
+        <h3 className="text-sm font-medium text-gray-500 mb-2">
+          Customers with Unbilled Orders
+        </h3>
+        {loadingRecent ? (
+          <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading…
+          </div>
+        ) : recentCustomers.length === 0 ? (
+          <p className="text-sm text-gray-500">No customers with unbilled orders.</p>
+        ) : (
+          <div className="space-y-2">
+            {recentCustomers.map((c) => renderCustomerCard(c))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ── Render Step 2 (placeholder for Phase 2) ──
+  const renderStep2 = () => (
+    <div>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Orders</h2>
+      <p className="text-sm text-gray-500">
+        Selected customer: <strong>{selectedCustomer?.company_name || selectedCustomer?.full_name}</strong>
+      </p>
+      <p className="text-sm text-gray-400 mt-2">Step 2 — coming in Phase 2</p>
+      <div className="flex justify-between mt-6">
+        <button
+          onClick={() => setCurrentStep(1)}
+          className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition"
+        >
+          ← Back
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── Render Step 3 (placeholder for Phase 3) ──
+  const renderStep3 = () => (
+    <div>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Review & Generate</h2>
+      <p className="text-sm text-gray-400">Step 3 — coming in Phase 3</p>
+      <div className="flex justify-between mt-6">
+        <button
+          onClick={() => setCurrentStep(2)}
+          className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition"
+        >
+          ← Back
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto">
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Create Invoice</h1>
+      <StepIndicator currentStep={currentStep} />
+      {currentStep === 1 && renderStep1()}
+      {currentStep === 2 && renderStep2()}
+      {currentStep === 3 && renderStep3()}
+    </div>
+  );
+}
