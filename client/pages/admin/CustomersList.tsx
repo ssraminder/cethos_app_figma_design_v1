@@ -26,7 +26,7 @@ interface Customer {
   email: string;
   full_name: string;
   phone: string | null;
-  customer_type: "individual" | "business";
+  customer_type: string;
   company_name: string | null;
   invoicing_branch_id: number | null;
   created_at: string;
@@ -438,8 +438,9 @@ export default function CustomersList() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
               >
                 <option value="">All Types</option>
-                <option value="individual">Individual</option>
-                <option value="business">Business</option>
+                {Object.entries(CUSTOMER_TYPE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -557,7 +558,12 @@ export default function CustomersList() {
                       {(() => {
                         const branch = branches.find(b => b.id === customer.invoicing_branch_id);
                         return branch ? (
-                          <span className="text-sm text-gray-700">{branch.legal_name}</span>
+                          <div>
+                            <span className="text-sm text-gray-700">{branch.legal_name}</span>
+                            {branch.division && (
+                              <span className="block text-xs text-gray-500">{branch.division}</span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-sm text-gray-400">—</span>
                         );
@@ -663,19 +669,46 @@ export default function CustomersList() {
 }
 
 // Customer Type Badge
-function CustomerTypeBadge({ type }: { type: "individual" | "business" }) {
-  if (type === "business") {
-    return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-700">
-        <Building2 className="w-3 h-3" />
-        Business
-      </span>
-    );
-  }
+const CUSTOMER_TYPE_LABELS: Record<string, string> = {
+  individual: "Individual",
+  business: "Business",
+  corporate: "Corporate",
+  sme: "Small/Medium Business",
+  lsp: "Language Service Provider",
+  legal: "Law Firm / Legal",
+  immigration: "Immigration Consultant",
+  government_federal: "Government (Federal)",
+  government_provincial: "Government (Provincial)",
+  government_municipal: "Government (Municipal)",
+  non_profit: "Non-Profit Organization",
+  educational: "Educational Institution",
+  registry: "Registry / Vital Stats",
+};
+
+const CUSTOMER_TYPE_STYLES: Record<string, string> = {
+  individual: "bg-blue-100 text-blue-700",
+  business: "bg-purple-100 text-purple-700",
+  corporate: "bg-purple-100 text-purple-700",
+  sme: "bg-purple-100 text-purple-700",
+  lsp: "bg-indigo-100 text-indigo-700",
+  legal: "bg-violet-100 text-violet-700",
+  immigration: "bg-violet-100 text-violet-700",
+  government_federal: "bg-amber-100 text-amber-700",
+  government_provincial: "bg-amber-100 text-amber-700",
+  government_municipal: "bg-amber-100 text-amber-700",
+  non_profit: "bg-emerald-100 text-emerald-700",
+  educational: "bg-emerald-100 text-emerald-700",
+  registry: "bg-emerald-100 text-emerald-700",
+};
+
+function CustomerTypeBadge({ type }: { type: string }) {
+  const label = CUSTOMER_TYPE_LABELS[type] || type;
+  const style = CUSTOMER_TYPE_STYLES[type] || "bg-gray-100 text-gray-700";
+  const Icon = type === "individual" ? User : Building2;
   return (
-    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
-      <User className="w-3 h-3" />
-      Individual
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${style}`}>
+      <Icon className="w-3 h-3" />
+      {label}
     </span>
   );
 }
