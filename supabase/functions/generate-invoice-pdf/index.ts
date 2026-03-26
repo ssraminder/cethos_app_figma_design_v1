@@ -91,12 +91,39 @@ serve(async (req: Request) => {
       .eq("id", invoice.order_id)
       .single();
 
-    // Get customer details
+    // Get customer details (including payment method preferences)
     const { data: customer } = await supabase
       .from("customers")
-      .select("id, full_name, email, phone, company_name")
+      .select("id, full_name, email, phone, company_name, preferred_payment_method_id, backup_payment_method_id")
       .eq("id", invoice.customer_id)
       .single();
+
+    // Resolve payment method names
+    let preferredPaymentMethod: string | null = null;
+    let backupPaymentMethod: string | null = null;
+
+    const paymentMethodIds = [
+      customer?.preferred_payment_method_id,
+      customer?.backup_payment_method_id,
+    ].filter(Boolean);
+
+    if (paymentMethodIds.length > 0) {
+      const { data: methods } = await supabase
+        .from("payment_methods")
+        .select("id, name")
+        .in("id", paymentMethodIds);
+
+      if (methods) {
+        for (const m of methods) {
+          if (m.id === customer?.preferred_payment_method_id) {
+            preferredPaymentMethod = m.name;
+          }
+          if (m.id === customer?.backup_payment_method_id) {
+            backupPaymentMethod = m.name;
+          }
+        }
+      }
+    }
 
     // Get quote details for line items
     let quoteFiles: any[] = [];
@@ -111,7 +138,10 @@ serve(async (req: Request) => {
     }
 
     // Build PDF content as a simple text-based PDF
-    const pdfBytes = buildInvoicePdf(invoice, order, customer, quoteFiles);
+    const pdfBytes = buildInvoicePdf(invoice, order, customer, quoteFiles, {
+      preferredPaymentMethod,
+      backupPaymentMethod,
+    });
 
     // Upload to storage
     const storagePath = `${invoice.customer_id}/${invoice.invoice_number}.pdf`;
@@ -173,6 +203,7 @@ function buildInvoicePdf(
   order: any,
   customer: any,
   lineItems: any[],
+  paymentInfo: { preferredPaymentMethod: string | null; backupPaymentMethod: string | null },
 ): Uint8Array {
   const lines: string[] = [];
   let yPos = 750;
@@ -452,6 +483,21 @@ function buildInvoicePdf(
       "F2",
     );
     yPos -= 16;
+  }
+
+  // ---- Payment Method ----
+  if (paymentInfo.preferredPaymentMethod || paymentInfo.backupPaymentMethod) {
+    yPos -= 20;
+    addText(leftMargin, yPos, "Payment Method:", 10, "F2");
+    yPos -= 15;
+    if (paymentInfo.preferredPaymentMethod) {
+      addText(leftMargin, yPos, `Preferred: ${paymentInfo.preferredPaymentMethod}`, 9);
+      yPos -= 14;
+    }
+    if (paymentInfo.backupPaymentMethod) {
+      addText(leftMargin, yPos, `Backup: ${paymentInfo.backupPaymentMethod}`, 9);
+      yPos -= 14;
+    }
   }
 
   // ---- Notes ----
