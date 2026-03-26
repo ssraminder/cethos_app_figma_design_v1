@@ -558,7 +558,12 @@ export default function CustomersList() {
                       {(() => {
                         const branch = branches.find(b => b.id === customer.invoicing_branch_id);
                         return branch ? (
-                          <span className="text-sm text-gray-700">{branch.legal_name}</span>
+                          <div>
+                            <span className="text-sm text-gray-700">{branch.legal_name}</span>
+                            {branch.division && (
+                              <span className="block text-xs text-gray-500">{branch.division}</span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-sm text-gray-400">—</span>
                         );
