@@ -562,20 +562,273 @@ export default function CreateInvoice() {
     </div>
   );
 
-  // ── Render Step 2 (placeholder for Phase 2) ──
+  // ── Step 2: Toggle order selection ──
+  const toggleOrder = (orderId: string) => {
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+
+  const selectableOrders = orders.filter((o) => o.selectable);
+  const allSelectableSelected = selectableOrders.length > 0 && selectableOrders.every((o) => selectedOrderIds.has(o.id));
+
+  const toggleSelectAll = () => {
+    if (allSelectableSelected) {
+      setSelectedOrderIds(new Set());
+    } else {
+      setSelectedOrderIds(new Set(selectableOrders.map((o) => o.id)));
+    }
+  };
+
+  // Client-side order number filter
+  const filteredOrders = orderNumberFilter
+    ? orders.filter((o) => o.order_number.toLowerCase().includes(orderNumberFilter.toLowerCase()))
+    : orders;
+
+  const addCustomLine = () => {
+    const desc = newLineDesc.trim();
+    const amt = parseFloat(newLineAmount);
+    if (!desc || isNaN(amt) || amt === 0) {
+      toast.error("Enter a description and non-zero amount");
+      return;
+    }
+    setCustomLines((prev) => [...prev, { id: crypto.randomUUID(), description: desc, amount: amt }]);
+    setNewLineDesc("");
+    setNewLineAmount("");
+  };
+
+  const removeCustomLine = (id: string) => {
+    setCustomLines((prev) => prev.filter((cl) => cl.id !== id));
+  };
+
+  const fmtMoney = (val: number) =>
+    val.toLocaleString("en-CA", { style: "currency", currency: "CAD", minimumFractionDigits: 2 });
+
+  // ── Render Step 2 ──
   const renderStep2 = () => (
     <div>
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Orders</h2>
-      <p className="text-sm text-gray-500">
-        Selected customer: <strong>{selectedCustomer?.company_name || selectedCustomer?.full_name}</strong>
+      <h2 className="text-lg font-semibold text-gray-900 mb-1">Select Orders</h2>
+      <p className="text-sm text-gray-500 mb-4">
+        Customer: <strong>{selectedCustomer?.company_name || selectedCustomer?.full_name}</strong>
       </p>
-      <p className="text-sm text-gray-400 mt-2">Step 2 — coming in Phase 2</p>
-      <div className="flex justify-between mt-6">
+
+      {/* Filters */}
+      <div className="flex gap-3 mb-4 flex-wrap">
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Date from</label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Date to</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">PO #</label>
+          <input
+            type="text"
+            value={poFilter}
+            onChange={(e) => setPoFilter(e.target.value)}
+            placeholder="PO number"
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-36"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Order #</label>
+          <input
+            type="text"
+            value={orderNumberFilter}
+            onChange={(e) => setOrderNumberFilter(e.target.value)}
+            placeholder="Filter by order #"
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-40"
+          />
+        </div>
+      </div>
+
+      {/* Order list */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-medium text-gray-700">
+            Unbilled Orders ({ordersResponse?.selectable_count ?? 0} available)
+          </h3>
+          <div className="text-sm text-gray-600">
+            Selected: {selectedOrderIds.size} order{selectedOrderIds.size !== 1 ? "s" : ""} ·{" "}
+            Subtotal: {fmtMoney(ordersSubtotal)}
+          </div>
+        </div>
+
+        {loadingOrders ? (
+          <div className="flex items-center gap-2 text-gray-400 text-sm py-8 justify-center">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading orders…
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <p className="text-sm text-gray-500 py-4 text-center">No unbilled orders found.</p>
+        ) : (
+          <div className="space-y-1">
+            {/* Select all header */}
+            <div className="flex items-center gap-3 px-3 py-2 bg-gray-100 rounded-lg text-sm">
+              <input
+                type="checkbox"
+                checked={allSelectableSelected}
+                onChange={toggleSelectAll}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="font-medium text-gray-600">Select all</span>
+            </div>
+
+            {filteredOrders.map((order) => {
+              const isSelected = selectedOrderIds.has(order.id);
+              const disabled = !order.selectable;
+              const paidDate = order.paid_at ? new Date(order.paid_at).toLocaleDateString("en-CA", { month: "short", day: "numeric" }) : "";
+
+              return (
+                <div
+                  key={order.id}
+                  className={`bg-white border rounded-lg p-3 flex items-center gap-3 ${
+                    disabled ? "opacity-50 bg-gray-50" : isSelected ? "border-blue-400 bg-blue-50" : "border-gray-200"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    disabled={disabled}
+                    onChange={() => toggleOrder(order.id)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm text-gray-900">{order.order_number}</span>
+                      {paidDate && <span className="text-xs text-gray-500">{paidDate}</span>}
+                      <span className="text-sm font-medium text-gray-900">{fmtMoney(parseFloat(order.total_amount))}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500 flex-wrap">
+                      {order.po_number && <span>PO: {order.po_number}</span>}
+                      {order.client_project_number && <span>Project: {order.client_project_number}</span>}
+                      {disabled && (
+                        <span className="text-amber-600 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          {order.po_missing && "Missing PO"}
+                          {order.po_missing && order.project_number_missing && " · "}
+                          {order.project_number_missing && "Missing Project #"}
+                          {" — cannot include"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Custom line items */}
+      <div className="mb-6">
+        <h3 className="text-sm font-medium text-gray-700 mb-2">Custom Line Items (optional)</h3>
+
+        {customLines.length > 0 && (
+          <div className="space-y-1 mb-3">
+            {customLines.map((cl, idx) => (
+              <div key={cl.id} className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-2 text-sm">
+                <span className="text-gray-400 w-6 text-right">{idx + 1}.</span>
+                <span className="flex-1 text-gray-900">{cl.description}</span>
+                <span className={`font-medium ${cl.amount < 0 ? "text-red-600" : "text-gray-900"}`}>
+                  {cl.amount < 0 ? "-" : ""}{fmtMoney(Math.abs(cl.amount))}
+                </span>
+                <button
+                  onClick={() => removeCustomLine(cl.id)}
+                  className="text-gray-400 hover:text-red-500 text-lg leading-none px-1"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-2 items-center">
+          <input
+            type="text"
+            value={newLineDesc}
+            onChange={(e) => setNewLineDesc(e.target.value)}
+            placeholder="Description"
+            className="flex-1 border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+          />
+          <div className="relative">
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+            <input
+              type="number"
+              step="0.01"
+              value={newLineAmount}
+              onChange={(e) => setNewLineAmount(e.target.value)}
+              placeholder="0.00"
+              className="w-28 border border-gray-300 rounded-md pl-6 pr-2 py-1.5 text-sm"
+            />
+          </div>
+          <button
+            onClick={addCustomLine}
+            className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
+          >
+            Add
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">Negative amounts for credits/discounts</p>
+      </div>
+
+      {/* Summary */}
+      <div className="bg-gray-50 rounded-lg p-4 mb-6">
+        <h3 className="text-sm font-medium text-gray-700 mb-2">Summary</h3>
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-600">Orders subtotal:</span>
+            <span className="font-medium">{fmtMoney(ordersSubtotal)}</span>
+          </div>
+          {customLines.length > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Custom lines:</span>
+              <span className={`font-medium ${customLinesTotal < 0 ? "text-red-600" : ""}`}>
+                {fmtMoney(customLinesTotal)}
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between border-t border-gray-200 pt-1">
+            <span className="text-gray-800 font-medium">Pre-tax total:</span>
+            <span className="font-semibold">{fmtMoney(ordersSubtotal + customLinesTotal)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <div className="flex justify-between">
         <button
-          onClick={() => setCurrentStep(1)}
+          onClick={() => {
+            setCurrentStep(1);
+            setSelectedOrderIds(new Set());
+            setOrders([]);
+          }}
           className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition"
         >
           ← Back
+        </button>
+        <button
+          onClick={() => setCurrentStep(3)}
+          disabled={selectedOrderIds.size === 0 && customLines.length === 0}
+          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+          Continue to Review →
         </button>
       </div>
     </div>
