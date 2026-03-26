@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Zap,
   UserMinus,
+  Pencil,
 } from "lucide-react";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import OrderFinancialSummary, {
@@ -1796,6 +1797,8 @@ interface WorkflowPipelineProps {
   onSetRejectReason?: (text: string) => void;
   counterLoadingId?: string | null;
   onUnassignVendor?: (step: WorkflowStep) => void;
+  onExtendDeadline?: (stepId: string, newDeadline: string, reason: string) => Promise<void>;
+  onAdjustPayable?: (step: WorkflowStep, newRate: number | undefined, newSubtotal: number | undefined, reason: string) => Promise<void>;
 }
 
 function WorkflowPipeline({
@@ -1823,7 +1826,19 @@ function WorkflowPipeline({
   onSetRejectReason = () => {},
   counterLoadingId = null,
   onUnassignVendor = () => {},
+  onExtendDeadline,
+  onAdjustPayable,
 }: WorkflowPipelineProps) {
+  const [editDeadlineStepId, setEditDeadlineStepId] = useState<string | null>(null);
+  const [editDeadlineValue, setEditDeadlineValue] = useState('');
+  const [editDeadlineReason, setEditDeadlineReason] = useState('');
+  const [editDeadlineLoading, setEditDeadlineLoading] = useState(false);
+
+  const [adjustPayableStepId, setAdjustPayableStepId] = useState<string | null>(null);
+  const [adjustPayableRate, setAdjustPayableRate] = useState('');
+  const [adjustPayableTotal, setAdjustPayableTotal] = useState('');
+  const [adjustPayableReason, setAdjustPayableReason] = useState('');
+  const [adjustPayableLoading, setAdjustPayableLoading] = useState(false);
   return (
     <div className="space-y-4">
       {/* Workflow header */}
@@ -2273,6 +2288,110 @@ function WorkflowPipeline({
                   <div className="text-sm text-gray-500 mt-1">
                     ${step.vendor_rate}/{step.vendor_rate_unit} · {step.vendor_currency} $
                     {step.vendor_total?.toFixed(2)}
+                    {/* Adjust payable link */}
+                    {step.payable && !['paid', 'cancelled'].includes(step.payable.status) && onAdjustPayable && (
+                      <button
+                        className="ml-2 text-gray-400 hover:text-blue-600 cursor-pointer text-xs"
+                        title="Adjust payable"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAdjustPayableRate(step.payable!.rate?.toString() || '');
+                          setAdjustPayableTotal(step.payable!.subtotal?.toString() || '');
+                          setAdjustPayableReason('');
+                          setAdjustPayableStepId(step.id);
+                        }}
+                      >
+                        Adjust
+                      </button>
+                    )}
+                    {step.payable?.original_subtotal != null && step.payable.original_subtotal !== step.payable.subtotal && (
+                      <span className="ml-2 text-xs text-amber-600">
+                        Previously adjusted from ${step.payable.original_subtotal.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Adjust Payable Popover */}
+                {adjustPayableStepId === step.id && step.payable && (
+                  <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="text-sm font-medium text-gray-700 mb-3">Adjust Payable</div>
+                    <div className="text-xs text-gray-500 mb-2">
+                      Current: ${step.payable.subtotal?.toFixed(2)} {step.payable.currency} ({step.payable.rate_unit === 'flat' ? 'flat rate' : step.payable.rate_unit})
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-xs text-gray-600">New rate</label>
+                        <div className="relative mt-0.5">
+                          <span className="absolute left-2 top-1.5 text-sm text-gray-400">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="text-sm border border-gray-300 rounded px-3 py-1.5 w-full pl-6"
+                            value={adjustPayableRate}
+                            onChange={(e) => {
+                              setAdjustPayableRate(e.target.value);
+                              if (step.payable!.rate_unit === 'flat') {
+                                setAdjustPayableTotal(e.target.value);
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                      {step.payable.rate_unit !== 'flat' && (
+                        <div>
+                          <label className="text-xs text-gray-600">New total <span className="text-gray-400">(auto-calc or manual override)</span></label>
+                          <div className="relative mt-0.5">
+                            <span className="absolute left-2 top-1.5 text-sm text-gray-400">$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="text-sm border border-gray-300 rounded px-3 py-1.5 w-full pl-6"
+                              value={adjustPayableTotal}
+                              onChange={(e) => setAdjustPayableTotal(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-xs text-gray-600">Reason <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          className="text-sm border border-gray-300 rounded px-3 py-1.5 w-full mt-0.5"
+                          placeholder="e.g. Scope increased — additional 2 pages"
+                          value={adjustPayableReason}
+                          onChange={(e) => setAdjustPayableReason(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          className="text-xs px-3 py-1.5 border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+                          onClick={() => setAdjustPayableStepId(null)}
+                          disabled={adjustPayableLoading}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1"
+                          disabled={!adjustPayableReason.trim() || adjustPayableLoading}
+                          onClick={async () => {
+                            setAdjustPayableLoading(true);
+                            try {
+                              const newRate = adjustPayableRate ? parseFloat(adjustPayableRate) : undefined;
+                              const newSubtotal = adjustPayableTotal ? parseFloat(adjustPayableTotal) : undefined;
+                              await onAdjustPayable!(step, newRate, newSubtotal, adjustPayableReason.trim());
+                              setAdjustPayableStepId(null);
+                            } catch {
+                              // error handled by parent
+                            }
+                            setAdjustPayableLoading(false);
+                          }}
+                        >
+                          {adjustPayableLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+                          Adjust Amount
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -2305,6 +2424,23 @@ function WorkflowPipeline({
                             );
                           return <span className="text-yellow-600"> (today)</span>;
                         })()}
+                        {/* Edit deadline pencil icon */}
+                        {step.vendor_id && !['approved', 'skipped', 'cancelled'].includes(step.status) && onExtendDeadline && (
+                          <button
+                            className="ml-1 text-gray-400 hover:text-blue-600 cursor-pointer inline-flex items-center"
+                            title="Edit deadline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const dt = new Date(step.deadline!);
+                              const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                              setEditDeadlineValue(local);
+                              setEditDeadlineReason('');
+                              setEditDeadlineStepId(step.id);
+                            }}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        )}
                       </span>
                     )}
                     {step.delivered_at && (
@@ -2327,6 +2463,65 @@ function WorkflowPipeline({
                         })}
                       </span>
                     )}
+                  </div>
+                )}
+
+                {/* Edit Deadline Popover */}
+                {editDeadlineStepId === step.id && (
+                  <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="text-sm font-medium text-gray-700 mb-3">Edit Deadline</div>
+                    <div className="text-xs text-gray-500 mb-2">
+                      Current: {new Date(step.deadline!).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}{" "}
+                      {new Date(step.deadline!).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-xs text-gray-600">New deadline</label>
+                        <input
+                          type="datetime-local"
+                          className="text-sm border border-gray-300 rounded px-3 py-1.5 w-full mt-0.5"
+                          value={editDeadlineValue}
+                          onChange={(e) => setEditDeadlineValue(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">Reason <span className="text-gray-400">(optional but recommended)</span></label>
+                        <input
+                          type="text"
+                          className="text-sm border border-gray-300 rounded px-3 py-1.5 w-full mt-0.5"
+                          placeholder="e.g. Client added 2 more pages"
+                          value={editDeadlineReason}
+                          onChange={(e) => setEditDeadlineReason(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          className="text-xs px-3 py-1.5 border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+                          onClick={() => setEditDeadlineStepId(null)}
+                          disabled={editDeadlineLoading}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1"
+                          disabled={!editDeadlineValue || editDeadlineLoading}
+                          onClick={async () => {
+                            setEditDeadlineLoading(true);
+                            try {
+                              const isoDeadline = new Date(editDeadlineValue).toISOString();
+                              await onExtendDeadline!(step.id, isoDeadline, editDeadlineReason);
+                              setEditDeadlineStepId(null);
+                            } catch {
+                              // error handled by parent
+                            }
+                            setEditDeadlineLoading(false);
+                          }}
+                        >
+                          {editDeadlineLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+                          Update Deadline
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -3048,6 +3243,42 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
     }
   };
 
+  const handleExtendDeadline = async (stepId: string, newDeadline: string, reason: string) => {
+    const { data: result, error } = await supabase.functions.invoke('update-workflow-step', {
+      body: {
+        step_id: stepId,
+        action: 'extend_deadline',
+        staff_id: currentStaff?.staffId,
+        new_deadline: newDeadline,
+        reason: reason || undefined,
+      },
+    });
+    if (error) { toast.error(error.message || 'Failed to update deadline'); throw error; }
+    if (result?.error) { toast.error(result.error); throw new Error(result.error); }
+    toast.success('Deadline updated');
+    await fetchWorkflow();
+  };
+
+  const handleAdjustPayable = async (step: WorkflowStep, newRate: number | undefined, newSubtotal: number | undefined, reason: string) => {
+    if (!step.payable) return;
+    const previousTotal = step.payable.subtotal;
+    const { data: result, error } = await supabase.functions.invoke('manage-vendor-payables', {
+      body: {
+        action: 'adjust_payable',
+        payable_id: step.payable.id,
+        new_rate: newRate,
+        new_subtotal: newSubtotal,
+        adjustment_reason: reason,
+        staff_id: currentStaff?.staffId,
+      },
+    });
+    if (error) { toast.error(error.message || 'Failed to adjust payable'); throw error; }
+    if (result?.error) { toast.error(result.error); throw new Error(result.error); }
+    const newTotal = result?.current?.subtotal ?? newSubtotal ?? newRate;
+    toast.success(`Payable adjusted — $${previousTotal.toFixed(2)} → $${(newTotal as number)?.toFixed?.(2) ?? newTotal}`);
+    await fetchWorkflow();
+  };
+
   const handleAssignSubmit = async (params: any) => {
     if (!finderStep) return;
     await handleStepAction(finderStep.id, params.action, params);
@@ -3108,6 +3339,8 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
             onSetRejectReason={setRejectReason}
             counterLoadingId={counterLoadingId}
             onUnassignVendor={(step) => setUnassignStep(step)}
+            onExtendDeadline={handleExtendDeadline}
+            onAdjustPayable={handleAdjustPayable}
           />
           {data.steps.some(s => s.has_pending_counter) && (
             <div className="text-xs text-orange-600 mt-1">

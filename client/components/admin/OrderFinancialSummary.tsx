@@ -19,6 +19,8 @@ export interface StepPayable {
   vendor_invoice_number: string | null;
   approved_at: string | null;
   paid_at: string | null;
+  original_subtotal: number | null;
+  original_total: number | null;
 }
 
 export interface VendorFinancials {
