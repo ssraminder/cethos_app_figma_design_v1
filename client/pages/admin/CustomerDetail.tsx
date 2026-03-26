@@ -38,8 +38,10 @@ interface Customer {
   email: string;
   full_name: string;
   phone: string | null;
-  customer_type: "individual" | "business";
+  customer_type: string;
   company_name: string | null;
+  requires_po: boolean;
+  requires_client_project_number: boolean;
   billing_address_line1: string | null;
   billing_address_line2: string | null;
   billing_city: string | null;
@@ -69,6 +71,12 @@ interface Customer {
   backup_payment_method?: PaymentMethodOption | null;
   invoice_ready?: boolean;
   invoice_missing?: string[];
+}
+
+interface CustomerTypeOption {
+  value: string;
+  label: string;
+  group: string;
 }
 
 interface Branch {
@@ -148,6 +156,7 @@ export default function CustomerDetail() {
   const originalDataRef = useRef<Partial<Customer>>({});
 
   // Invoicing state
+  const [customerTypes, setCustomerTypes] = useState<CustomerTypeOption[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [invoiceReadiness, setInvoiceReadiness] = useState<InvoiceReadiness | null>(null);
@@ -209,6 +218,16 @@ export default function CustomerDetail() {
       console.error("Error fetching customer:", error);
       toast.error("Failed to load customer");
       navigate("/admin/customers");
+    }
+  };
+
+  // Fetch customer types for dropdown
+  const fetchCustomerTypes = async () => {
+    try {
+      const data = await callAdminManageCustomer({ action: "list_customer_types" });
+      setCustomerTypes(data.customer_types || []);
+    } catch (error) {
+      console.error("Error fetching customer types:", error);
     }
   };
 
@@ -386,6 +405,7 @@ export default function CustomerDetail() {
       fetchPayments(),
       fetchBranches(),
       fetchPaymentMethods(),
+      fetchCustomerTypes(),
       fetchInvoiceReadiness(),
     ]);
     setLoading(false);
@@ -417,6 +437,7 @@ export default function CustomerDetail() {
         "backup_payment_method_id", "preferred_currency", "payment_terms",
         "is_ar_customer", "ar_contact_email", "accounting_contact_name",
         "accounting_contact_phone", "credit_limit", "ar_notes",
+        "requires_po", "requires_client_project_number",
       ] as const;
 
       const changes: Record<string, unknown> = {};
@@ -689,15 +710,38 @@ export default function CustomerDetail() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Customer Type</label>
                       {editing ? (
-                        <select name="customer_type" value={formData.customer_type || "individual"} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500">
-                          <option value="individual">Individual</option>
-                          <option value="business">Business</option>
-                        </select>
+                        <>
+                          <select name="customer_type" value={formData.customer_type || "individual"} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500">
+                            {/* Keep legacy "business" as fallback if current value is "business" */}
+                            {formData.customer_type === "business" && (
+                              <option value="business">Business (legacy — select a specific type)</option>
+                            )}
+                            {(() => {
+                              const groups = customerTypes.reduce<Record<string, CustomerTypeOption[]>>((acc, ct) => {
+                                if (!acc[ct.group]) acc[ct.group] = [];
+                                acc[ct.group].push(ct);
+                                return acc;
+                              }, {});
+                              return Object.entries(groups).map(([group, types]) => (
+                                <optgroup key={group} label={group}>
+                                  {types.map((ct) => (
+                                    <option key={ct.value} value={ct.value}>{ct.label}</option>
+                                  ))}
+                                </optgroup>
+                              ));
+                            })()}
+                          </select>
+                          {(formData.customer_type === "lsp" || formData.customer_type?.startsWith("government_")) && (
+                            <p className="text-xs text-amber-600 mt-1">
+                              This customer type typically requires PO numbers. Enable below in Invoicing Requirements.
+                            </p>
+                          )}
+                        </>
                       ) : (
                         <CustomerTypeBadge type={customer.customer_type} />
                       )}
                     </div>
-                    {(editing || customer.customer_type === "business") && (
+                    {(editing ? formData.customer_type !== "individual" : customer.customer_type !== "individual") && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
                         {editing ? (
@@ -811,6 +855,53 @@ export default function CustomerDetail() {
                   Invoicing & Accounting
                 </h3>
 
+                {/* Invoicing Requirements subsection */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-semibold text-gray-600 border-b border-gray-100 pb-1 mb-3">Invoicing Requirements</h4>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      {editing ? (
+                        <input
+                          type="checkbox"
+                          checked={!!formData.requires_po}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, requires_po: e.target.checked }))}
+                          className="mt-0.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                        />
+                      ) : (
+                        <span className={`mt-0.5 text-sm ${customer.requires_po ? "text-teal-600" : "text-gray-400"}`}>
+                          {customer.requires_po ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                        </span>
+                      )}
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Requires Purchase Order (PO) on all orders</label>
+                        <p className="text-xs text-gray-500 ml-0">
+                          When enabled, orders without a PO number cannot be included on invoices for this customer.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      {editing ? (
+                        <input
+                          type="checkbox"
+                          checked={!!formData.requires_client_project_number}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, requires_client_project_number: e.target.checked }))}
+                          className="mt-0.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                        />
+                      ) : (
+                        <span className={`mt-0.5 text-sm ${customer.requires_client_project_number ? "text-teal-600" : "text-gray-400"}`}>
+                          {customer.requires_client_project_number ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                        </span>
+                      )}
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Requires Client Project Number on all orders</label>
+                        <p className="text-xs text-gray-500 ml-0">
+                          When enabled, orders without a client project number cannot be included on invoices for this customer.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Left column */}
                   <div className="space-y-4">
@@ -863,12 +954,12 @@ export default function CustomerDetail() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Tax Number
-                        {customer.customer_type === "business" && <span className="text-red-500 ml-1">*</span>}
+                        {customer.customer_type !== "individual" && <span className="text-red-500 ml-1">*</span>}
                       </label>
                       {editing ? (
-                        <input type="text" name="tax_number" value={formData.tax_number || ""} onChange={handleChange} placeholder="e.g. 123456789 RT0001" className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500 ${customer.customer_type === "business" ? "ring-1 ring-amber-200" : ""}`} />
+                        <input type="text" name="tax_number" value={formData.tax_number || ""} onChange={handleChange} placeholder="e.g. 123456789 RT0001" className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500 ${customer.customer_type !== "individual" ? "ring-1 ring-amber-200" : ""}`} />
                       ) : (
-                        <p className={`text-gray-900 ${customer.customer_type === "business" && !customer.tax_number ? "text-amber-600" : ""}`}>
+                        <p className={`text-gray-900 ${customer.customer_type !== "individual" && !customer.tax_number ? "text-amber-600" : ""}`}>
                           {customer.tax_number || "—"}
                         </p>
                       )}
@@ -1506,19 +1597,46 @@ export default function CustomerDetail() {
 }
 
 // Badge Components
-function CustomerTypeBadge({ type }: { type: "individual" | "business" }) {
-  if (type === "business") {
-    return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-700">
-        <Building2 className="w-3 h-3" />
-        Business
-      </span>
-    );
-  }
+const CUSTOMER_TYPE_LABELS: Record<string, string> = {
+  individual: "Individual",
+  business: "Business",
+  corporate: "Corporate",
+  sme: "Small/Medium Business",
+  lsp: "Language Service Provider",
+  legal: "Law Firm / Legal",
+  immigration: "Immigration Consultant",
+  government_federal: "Government (Federal)",
+  government_provincial: "Government (Provincial)",
+  government_municipal: "Government (Municipal)",
+  non_profit: "Non-Profit Organization",
+  educational: "Educational Institution",
+  registry: "Registry / Vital Stats",
+};
+
+const CUSTOMER_TYPE_STYLES: Record<string, string> = {
+  individual: "bg-blue-100 text-blue-700",
+  business: "bg-purple-100 text-purple-700",
+  corporate: "bg-purple-100 text-purple-700",
+  sme: "bg-purple-100 text-purple-700",
+  lsp: "bg-indigo-100 text-indigo-700",
+  legal: "bg-violet-100 text-violet-700",
+  immigration: "bg-violet-100 text-violet-700",
+  government_federal: "bg-amber-100 text-amber-700",
+  government_provincial: "bg-amber-100 text-amber-700",
+  government_municipal: "bg-amber-100 text-amber-700",
+  non_profit: "bg-emerald-100 text-emerald-700",
+  educational: "bg-emerald-100 text-emerald-700",
+  registry: "bg-emerald-100 text-emerald-700",
+};
+
+function CustomerTypeBadge({ type }: { type: string }) {
+  const label = CUSTOMER_TYPE_LABELS[type] || type;
+  const style = CUSTOMER_TYPE_STYLES[type] || "bg-gray-100 text-gray-700";
+  const Icon = type === "individual" ? User : Building2;
   return (
-    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
-      <User className="w-3 h-3" />
-      Individual
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${style}`}>
+      <Icon className="w-3 h-3" />
+      {label}
     </span>
   );
 }
