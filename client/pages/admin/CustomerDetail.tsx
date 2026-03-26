@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
@@ -25,6 +25,10 @@ import {
   TrendingUp,
   Zap,
   Loader2,
+  AlertTriangle,
+  Link2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -45,6 +49,46 @@ interface Customer {
   created_at: string;
   updated_at: string;
   last_login_at: string | null;
+  // Invoicing fields
+  xtrf_customer_id: number | null;
+  invoicing_branch_id: number | null;
+  tax_number: string | null;
+  preferred_payment_method_id: string | null;
+  backup_payment_method_id: string | null;
+  preferred_currency: string | null;
+  payment_terms: string | null;
+  is_ar_customer: boolean;
+  ar_contact_email: string | null;
+  accounting_contact_name: string | null;
+  accounting_contact_phone: string | null;
+  credit_limit: number | null;
+  ar_notes: string | null;
+  // Enriched objects from edge function
+  invoicing_branch?: Branch | null;
+  preferred_payment_method?: PaymentMethodOption | null;
+  backup_payment_method?: PaymentMethodOption | null;
+  invoice_ready?: boolean;
+  invoice_missing?: string[];
+}
+
+interface Branch {
+  id: number;
+  code: string;
+  legal_name: string;
+  division: string | null;
+  is_default: boolean;
+}
+
+interface PaymentMethodOption {
+  id: string;
+  name: string;
+  code: string;
+  is_online: boolean;
+}
+
+interface InvoiceReadiness {
+  ready: boolean;
+  missing: string[];
 }
 
 interface Quote {
@@ -101,6 +145,15 @@ export default function CustomerDetail() {
   const [editing, setEditing] = useState(false);
 
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const originalDataRef = useRef<Partial<Customer>>({});
+
+  // Invoicing state
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+  const [invoiceReadiness, setInvoiceReadiness] = useState<InvoiceReadiness | null>(null);
+  const [xtrfSyncing, setXtrfSyncing] = useState(false);
+  const [xtrfSyncResult, setXtrfSyncResult] = useState<string[] | null>(null);
+  const [arExpanded, setArExpanded] = useState(false);
 
   // Deposit modal state
   const [depositModalOpen, setDepositModalOpen] = useState(false);
@@ -123,25 +176,106 @@ export default function CustomerDetail() {
     lastOrderDate: null,
   });
 
-  // Fetch customer profile
+  // Helper to call admin-manage-customer edge function
+  const callAdminManageCustomer = async (body: Record<string, unknown>) => {
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-manage-customer`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Edge function error");
+    return data;
+  };
+
+  // Fetch customer profile via edge function
   const fetchCustomer = async () => {
     if (!id) return;
 
     try {
-      const { data, error } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("id", id)
-        .single();
-
-      if (error) throw error;
-
-      setCustomer(data);
-      setFormData(data);
+      const data = await callAdminManageCustomer({ action: "get", customer_id: id });
+      const cust = data.customer || data;
+      setCustomer(cust);
+      setFormData(cust);
+      originalDataRef.current = { ...cust };
+      if (cust.is_ar_customer) setArExpanded(true);
     } catch (error) {
       console.error("Error fetching customer:", error);
       toast.error("Failed to load customer");
       navigate("/admin/customers");
+    }
+  };
+
+  // Fetch branches for dropdown
+  const fetchBranches = async () => {
+    try {
+      const data = await callAdminManageCustomer({ action: "list_branches" });
+      setBranches(data.branches || []);
+    } catch (error) {
+      console.error("Error fetching branches:", error);
+    }
+  };
+
+  // Fetch payment methods for dropdown
+  const fetchPaymentMethods = async () => {
+    try {
+      const data = await callAdminManageCustomer({ action: "list_payment_methods" });
+      setPaymentMethods(data.payment_methods || []);
+    } catch (error) {
+      console.error("Error fetching payment methods:", error);
+    }
+  };
+
+  // Check invoice readiness
+  const fetchInvoiceReadiness = async () => {
+    if (!id) return;
+    try {
+      const data = await callAdminManageCustomer({ action: "check_invoice_readiness", customer_id: id });
+      setInvoiceReadiness({ ready: data.ready, missing: data.missing || [] });
+    } catch (error) {
+      console.error("Error checking invoice readiness:", error);
+    }
+  };
+
+  // XTRF Sync
+  const handleXtrfSync = async () => {
+    if (!id || !customer?.xtrf_customer_id) return;
+    setXtrfSyncing(true);
+    setXtrfSyncResult(null);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/xtrf-sync-customers`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ mode: "sync_single", customer_id: id }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Sync failed");
+      const synced = data.synced_fields || [];
+      setXtrfSyncResult(synced);
+      if (synced.length > 0) {
+        toast.success(`Synced: ${synced.join(", ")}`);
+        await fetchCustomer();
+        await fetchInvoiceReadiness();
+      } else {
+        toast.info("No new data found in XTRF");
+      }
+    } catch (error: any) {
+      console.error("XTRF sync error:", error);
+      toast.error(error.message || "Failed to sync from XTRF");
+    } finally {
+      setXtrfSyncing(false);
     }
   };
 
@@ -245,7 +379,15 @@ export default function CustomerDetail() {
 
   const fetchAllData = async () => {
     setLoading(true);
-    await Promise.all([fetchCustomer(), fetchQuotes(), fetchOrders(), fetchPayments()]);
+    await Promise.all([
+      fetchCustomer(),
+      fetchQuotes(),
+      fetchOrders(),
+      fetchPayments(),
+      fetchBranches(),
+      fetchPaymentMethods(),
+      fetchInvoiceReadiness(),
+    ]);
     setLoading(false);
   };
 
@@ -261,35 +403,48 @@ export default function CustomerDetail() {
     setFormData((prev) => ({ ...prev, [name]: value || null }));
   };
 
-  // Save customer profile
+  // Save customer profile — only send changed fields
   const handleSave = async () => {
     if (!id || !formData) return;
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("customers")
-        .update({
-          full_name: formData.full_name,
-          email: formData.email,
-          phone: formData.phone,
-          customer_type: formData.customer_type,
-          company_name: formData.company_name,
-          billing_address_line1: formData.billing_address_line1,
-          billing_address_line2: formData.billing_address_line2,
-          billing_city: formData.billing_city,
-          billing_state: formData.billing_state,
-          billing_postal_code: formData.billing_postal_code,
-          billing_country: formData.billing_country,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id);
+      const updatableFields = [
+        "full_name", "email", "phone", "customer_type", "company_name",
+        "billing_address_line1", "billing_address_line2", "billing_city",
+        "billing_state", "billing_postal_code", "billing_country",
+        "invoicing_branch_id", "tax_number", "preferred_payment_method_id",
+        "backup_payment_method_id", "preferred_currency", "payment_terms",
+        "is_ar_customer", "ar_contact_email", "accounting_contact_name",
+        "accounting_contact_phone", "credit_limit", "ar_notes",
+      ] as const;
 
-      if (error) throw error;
+      const changes: Record<string, unknown> = {};
+      for (const field of updatableFields) {
+        const newVal = (formData as any)[field] ?? null;
+        const oldVal = (originalDataRef.current as any)[field] ?? null;
+        if (newVal !== oldVal) {
+          changes[field] = newVal;
+        }
+      }
 
-      toast.success("Customer updated successfully");
+      if (Object.keys(changes).length === 0) {
+        toast.info("No changes to save");
+        setEditing(false);
+        setSaving(false);
+        return;
+      }
+
+      await callAdminManageCustomer({
+        action: "update",
+        customer_id: id,
+        ...changes,
+      });
+
+      toast.success("Customer updated");
       setEditing(false);
-      fetchCustomer();
+      await fetchCustomer();
+      await fetchInvoiceReadiness();
     } catch (error: any) {
       console.error("Error saving customer:", error);
       toast.error(error.message || "Failed to save customer");
@@ -492,262 +647,462 @@ export default function CustomerDetail() {
         <div className="p-6">
           {/* Profile Tab */}
           {activeTab === "profile" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Contact Information */}
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  Contact Information
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Full Name *
-                    </label>
-                    {editing ? (
-                      <input
-                        type="text"
-                        name="full_name"
-                        value={formData.full_name || ""}
-                        onChange={handleChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                      />
-                    ) : (
-                      <p className="text-gray-900">{customer.full_name || "—"}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email *
-                    </label>
-                    {editing ? (
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email || ""}
-                        onChange={handleChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                      />
-                    ) : (
-                      <a
-                        href={`mailto:${customer.email}`}
-                        className="flex items-center gap-2 text-teal-600 hover:text-teal-700"
-                      >
-                        <Mail className="w-4 h-4" />
-                        {customer.email}
-                      </a>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Phone
-                    </label>
-                    {editing ? (
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone || ""}
-                        onChange={handleChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                      />
-                    ) : customer.phone ? (
-                      <a
-                        href={`tel:${customer.phone}`}
-                        className="flex items-center gap-2 text-teal-600 hover:text-teal-700"
-                      >
-                        <Phone className="w-4 h-4" />
-                        {customer.phone}
-                      </a>
-                    ) : (
-                      <p className="text-gray-400">—</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Customer Type
-                    </label>
-                    {editing ? (
-                      <select
-                        name="customer_type"
-                        value={formData.customer_type || "individual"}
-                        onChange={handleChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                      >
-                        <option value="individual">Individual</option>
-                        <option value="business">Business</option>
-                      </select>
-                    ) : (
-                      <CustomerTypeBadge type={customer.customer_type} />
-                    )}
-                  </div>
-                  {(editing || customer.customer_type === "business") && (
+            <div className="space-y-8">
+              {/* Section 1: Customer Info + Billing Address (2-col) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Contact Information */}
+                <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                  <h3 className="text-base font-semibold text-gray-800 mb-4">
+                    Contact Information
+                  </h3>
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Company Name
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
                       {editing ? (
-                        <input
-                          type="text"
-                          name="company_name"
-                          value={formData.company_name || ""}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                        />
+                        <input type="text" name="full_name" value={formData.full_name || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
                       ) : (
-                        <div className="flex items-center gap-2 text-gray-900">
-                          <Building2 className="w-4 h-4 text-gray-400" />
-                          {customer.company_name || "—"}
-                        </div>
+                        <p className="text-gray-900">{customer.full_name || "—"}</p>
                       )}
                     </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                      {editing ? (
+                        <input type="email" name="email" value={formData.email || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                      ) : (
+                        <a href={`mailto:${customer.email}`} className="flex items-center gap-2 text-teal-600 hover:text-teal-700">
+                          <Mail className="w-4 h-4" />{customer.email}
+                        </a>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      {editing ? (
+                        <input type="tel" name="phone" value={formData.phone || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                      ) : customer.phone ? (
+                        <a href={`tel:${customer.phone}`} className="flex items-center gap-2 text-teal-600 hover:text-teal-700">
+                          <Phone className="w-4 h-4" />{customer.phone}
+                        </a>
+                      ) : (
+                        <p className="text-gray-400">—</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Customer Type</label>
+                      {editing ? (
+                        <select name="customer_type" value={formData.customer_type || "individual"} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500">
+                          <option value="individual">Individual</option>
+                          <option value="business">Business</option>
+                        </select>
+                      ) : (
+                        <CustomerTypeBadge type={customer.customer_type} />
+                      )}
+                    </div>
+                    {(editing || customer.customer_type === "business") && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
+                        {editing ? (
+                          <input type="text" name="company_name" value={formData.company_name || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                        ) : (
+                          <div className="flex items-center gap-2 text-gray-900">
+                            <Building2 className="w-4 h-4 text-gray-400" />
+                            {customer.company_name || "—"}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Account Info */}
+                    <div className="pt-4 mt-4 border-t border-gray-100">
+                      <h4 className="text-sm font-medium text-gray-500 mb-2">Account Info</h4>
+                      <div className="space-y-1.5 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Created</span>
+                          <span className="text-gray-900">{format(parseISO(customer.created_at), "MMM d, yyyy h:mm a")}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Last Updated</span>
+                          <span className="text-gray-900">{format(parseISO(customer.updated_at), "MMM d, yyyy h:mm a")}</span>
+                        </div>
+                        {customer.last_login_at && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Last Login</span>
+                            <span className="text-gray-900">{format(parseISO(customer.last_login_at), "MMM d, yyyy h:mm a")}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Billing Address */}
+                <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                  <h3 className="text-base font-semibold text-gray-800 mb-4">
+                    <MapPin className="w-4 h-4 inline mr-2" />
+                    Billing Address
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 1</label>
+                      {editing ? (
+                        <input type="text" name="billing_address_line1" value={formData.billing_address_line1 || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                      ) : (
+                        <p className="text-gray-900">{customer.billing_address_line1 || "—"}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 2</label>
+                      {editing ? (
+                        <input type="text" name="billing_address_line2" value={formData.billing_address_line2 || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                      ) : (
+                        <p className="text-gray-900">{customer.billing_address_line2 || "—"}</p>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                        {editing ? (
+                          <input type="text" name="billing_city" value={formData.billing_city || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                        ) : (
+                          <p className="text-gray-900">{customer.billing_city || "—"}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Province/State</label>
+                        {editing ? (
+                          <input type="text" name="billing_state" value={formData.billing_state || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                        ) : (
+                          <p className="text-gray-900">{customer.billing_state || "—"}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
+                        {editing ? (
+                          <input type="text" name="billing_postal_code" value={formData.billing_postal_code || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                        ) : (
+                          <p className="text-gray-900">{customer.billing_postal_code || "—"}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                        {editing ? (
+                          <select name="billing_country" value={formData.billing_country || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500">
+                            <option value="">Select country</option>
+                            <option value="Canada">Canada</option>
+                            <option value="United States">United States</option>
+                            <option value="United Kingdom">United Kingdom</option>
+                            <option value="Australia">Australia</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        ) : (
+                          <p className="text-gray-900">{customer.billing_country || "—"}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Invoicing & Accounting */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                <h3 className="text-base font-semibold text-gray-800 mb-4">
+                  <FileText className="w-4 h-4 inline mr-2" />
+                  Invoicing & Accounting
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Left column */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Invoicing Branch *
+                      </label>
+                      {editing ? (
+                        <select
+                          name="invoicing_branch_id"
+                          value={formData.invoicing_branch_id ?? ""}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, invoicing_branch_id: e.target.value ? Number(e.target.value) : null }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500"
+                        >
+                          <option value="">Select branch</option>
+                          {branches.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.legal_name}{b.division ? ` — ${b.division}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-gray-900">
+                          {customer.invoicing_branch?.legal_name || "Not set"}
+                          {customer.invoicing_branch?.division && (
+                            <span className="block text-xs text-gray-500">{customer.invoicing_branch.division}</span>
+                          )}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500 italic mt-1">
+                        All quote-flow orders are invoiced under 12537494 Canada Inc. regardless of this setting.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+                      {editing ? (
+                        <select name="preferred_currency" value={formData.preferred_currency || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500">
+                          <option value="">Select currency</option>
+                          <option value="CAD">CAD</option>
+                          <option value="USD">USD</option>
+                          <option value="EUR">EUR</option>
+                          <option value="GBP">GBP</option>
+                        </select>
+                      ) : (
+                        <p className="text-gray-900">{customer.preferred_currency || "—"}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Tax Number
+                        {customer.customer_type === "business" && <span className="text-red-500 ml-1">*</span>}
+                      </label>
+                      {editing ? (
+                        <input type="text" name="tax_number" value={formData.tax_number || ""} onChange={handleChange} placeholder="e.g. 123456789 RT0001" className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500 ${customer.customer_type === "business" ? "ring-1 ring-amber-200" : ""}`} />
+                      ) : (
+                        <p className={`text-gray-900 ${customer.customer_type === "business" && !customer.tax_number ? "text-amber-600" : ""}`}>
+                          {customer.tax_number || "—"}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-0.5">GST/HST registration</p>
+                    </div>
+                  </div>
+
+                  {/* Right column — Payment */}
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-semibold text-gray-600 border-b border-gray-100 pb-1">Payment</h4>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Preferred Method</label>
+                      {editing ? (
+                        <select
+                          name="preferred_payment_method_id"
+                          value={formData.preferred_payment_method_id || ""}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500"
+                        >
+                          <option value="">Select method</option>
+                          {paymentMethods.map((pm) => (
+                            <option key={pm.id} value={pm.id}>{pm.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-gray-900">{customer.preferred_payment_method?.name || "—"}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Backup Method</label>
+                      {editing ? (
+                        <select
+                          name="backup_payment_method_id"
+                          value={formData.backup_payment_method_id || ""}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500"
+                        >
+                          <option value="">Select method</option>
+                          {paymentMethods.map((pm) => (
+                            <option key={pm.id} value={pm.id}>{pm.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-gray-900">{customer.backup_payment_method?.name || "—"}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+                      {editing ? (
+                        <select name="payment_terms" value={formData.payment_terms || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500">
+                          <option value="">Select terms</option>
+                          <option value="due_on_receipt">Due on Receipt</option>
+                          <option value="net_15">Net 15</option>
+                          <option value="net_30">Net 30</option>
+                          <option value="net_45">Net 45</option>
+                          <option value="net_60">Net 60</option>
+                        </select>
+                      ) : (
+                        <p className="text-gray-900">
+                          {customer.payment_terms ? customer.payment_terms.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "—"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* AR Account section — collapsible */}
+                <div className="mt-6 border-t border-gray-100 pt-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    {editing ? (
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!formData.is_ar_customer}
+                          onChange={(e) => {
+                            setFormData((prev) => ({ ...prev, is_ar_customer: e.target.checked }));
+                            setArExpanded(e.target.checked);
+                          }}
+                          className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                        />
+                        <span className="text-sm font-semibold text-gray-700">Accounts Receivable Customer</span>
+                      </label>
+                    ) : (
+                      <button
+                        onClick={() => setArExpanded(!arExpanded)}
+                        className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900"
+                      >
+                        {arExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        AR Account
+                        {customer.is_ar_customer && (
+                          <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Active</span>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {arExpanded && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-0 md:pl-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">AR Contact Email</label>
+                        {editing ? (
+                          <input type="email" name="ar_contact_email" value={formData.ar_contact_email || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                        ) : (
+                          <p className="text-gray-900">{customer.ar_contact_email || "—"}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Accounting Contact</label>
+                        {editing ? (
+                          <input type="text" name="accounting_contact_name" value={formData.accounting_contact_name || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                        ) : (
+                          <p className="text-gray-900">{customer.accounting_contact_name || "—"}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Accounting Phone</label>
+                        {editing ? (
+                          <input type="tel" name="accounting_contact_phone" value={formData.accounting_contact_phone || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
+                        ) : (
+                          <p className="text-gray-900">{customer.accounting_contact_phone || "—"}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Credit Limit</label>
+                        {editing ? (
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-gray-400 text-sm">$</span>
+                            <input
+                              type="number"
+                              name="credit_limit"
+                              value={formData.credit_limit ?? ""}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, credit_limit: e.target.value ? Number(e.target.value) : null }))}
+                              className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500"
+                            />
+                          </div>
+                        ) : (
+                          <p className="text-gray-900">{customer.credit_limit != null ? `$${customer.credit_limit.toLocaleString()}` : "—"}</p>
+                        )}
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">AR Notes</label>
+                        {editing ? (
+                          <textarea name="ar_notes" value={formData.ar_notes || ""} onChange={handleChange} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500 resize-none" />
+                        ) : (
+                          <p className="text-gray-900 whitespace-pre-wrap">{customer.ar_notes || "—"}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Invoice Readiness */}
+                <div className="mt-6 border-t border-gray-100 pt-4">
+                  <h4 className="text-sm font-semibold text-gray-600 mb-2">Invoice Readiness</h4>
+                  {invoiceReadiness ? (
+                    invoiceReadiness.ready ? (
+                      <div className="flex items-center gap-2 text-green-700 bg-green-50 rounded-lg px-3 py-2 text-sm">
+                        <CheckCircle className="w-4 h-4" />
+                        Ready for invoicing
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-2 text-amber-700 bg-amber-50 rounded-lg px-3 py-2 text-sm">
+                        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium">Missing:</span>{" "}
+                          {invoiceReadiness.missing.map((f) => f.replace(/_/g, " ")).join(", ")}
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <p className="text-sm text-gray-400">Checking...</p>
                   )}
                 </div>
               </div>
 
-              {/* Billing Address */}
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  Billing Address
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Address Line 1
-                    </label>
-                    {editing ? (
-                      <input
-                        type="text"
-                        name="billing_address_line1"
-                        value={formData.billing_address_line1 || ""}
-                        onChange={handleChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                      />
-                    ) : (
-                      <p className="text-gray-900">
-                        {customer.billing_address_line1 || "—"}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Address Line 2
-                    </label>
-                    {editing ? (
-                      <input
-                        type="text"
-                        name="billing_address_line2"
-                        value={formData.billing_address_line2 || ""}
-                        onChange={handleChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                      />
-                    ) : (
-                      <p className="text-gray-900">
-                        {customer.billing_address_line2 || "—"}
-                      </p>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        City
-                      </label>
-                      {editing ? (
-                        <input
-                          type="text"
-                          name="billing_city"
-                          value={formData.billing_city || ""}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                        />
-                      ) : (
-                        <p className="text-gray-900">{customer.billing_city || "—"}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        State/Province
-                      </label>
-                      {editing ? (
-                        <input
-                          type="text"
-                          name="billing_state"
-                          value={formData.billing_state || ""}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                        />
-                      ) : (
-                        <p className="text-gray-900">{customer.billing_state || "—"}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Postal Code
-                      </label>
-                      {editing ? (
-                        <input
-                          type="text"
-                          name="billing_postal_code"
-                          value={formData.billing_postal_code || ""}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                        />
-                      ) : (
-                        <p className="text-gray-900">
-                          {customer.billing_postal_code || "—"}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Country
-                      </label>
-                      {editing ? (
-                        <input
-                          type="text"
-                          name="billing_country"
-                          value={formData.billing_country || ""}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                        />
-                      ) : (
-                        <p className="text-gray-900">
-                          {customer.billing_country || "—"}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Account Info */}
-                <div className="mt-8">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">
-                    Account Info
+              {/* Section 4: XTRF Sync — only if customer has xtrf_customer_id */}
+              {customer.xtrf_customer_id && (
+                <div className="bg-blue-50 rounded-lg border border-blue-200 p-6 shadow-sm">
+                  <h3 className="text-base font-semibold text-gray-800 mb-4">
+                    <Link2 className="w-4 h-4 inline mr-2" />
+                    XTRF Integration
                   </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Created</span>
-                      <span className="text-gray-900">
-                        {format(parseISO(customer.created_at), "MMM d, yyyy h:mm a")}
-                      </span>
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="text-sm text-gray-700">
+                      <span className="font-medium">XTRF Customer ID:</span> {customer.xtrf_customer_id}
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Last Updated</span>
-                      <span className="text-gray-900">
-                        {format(parseISO(customer.updated_at), "MMM d, yyyy h:mm a")}
-                      </span>
-                    </div>
-                    {customer.last_login_at && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Last Login</span>
-                        <span className="text-gray-900">
-                          {format(parseISO(customer.last_login_at), "MMM d, yyyy h:mm a")}
-                        </span>
-                      </div>
-                    )}
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">
+                      <CheckCircle className="w-3 h-3" /> Linked
+                    </span>
                   </div>
+                  <button
+                    onClick={handleXtrfSync}
+                    disabled={xtrfSyncing}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
+                  >
+                    {xtrfSyncing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4" />
+                    )}
+                    Sync from XTRF
+                  </button>
+                  {xtrfSyncResult && (
+                    <p className="text-sm text-gray-600 mt-3">
+                      {xtrfSyncResult.length > 0
+                        ? `Last synced fields: ${xtrfSyncResult.join(", ")}`
+                        : "No new data found in XTRF"}
+                    </p>
+                  )}
                 </div>
-              </div>
+              )}
+
+              {/* Save Button */}
+              {editing && (
+                <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 -mx-6 -mb-6 px-6 py-4 flex justify-end gap-3 rounded-b-xl">
+                  <button
+                    onClick={handleCancel}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                  >
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save Changes
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
