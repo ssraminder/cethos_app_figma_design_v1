@@ -926,10 +926,18 @@ export default function CustomerDetail() {
                         </select>
                       ) : (
                         <p className="text-gray-900">
-                          {customer.invoicing_branch?.legal_name || "Not set"}
-                          {customer.invoicing_branch?.division && (
-                            <span className="block text-xs text-gray-500">{customer.invoicing_branch.division}</span>
-                          )}
+                          {(() => {
+                            const branch = customer.invoicing_branch || branches.find(b => b.id === customer.invoicing_branch_id);
+                            if (!branch) return "Not set";
+                            return (
+                              <>
+                                {branch.legal_name}
+                                {branch.division && (
+                                  <span className="block text-xs text-gray-500">{branch.division}</span>
+                                )}
+                              </>
+                            );
+                          })()}
                         </p>
                       )}
                       <p className="text-xs text-gray-500 italic mt-1">
@@ -955,12 +963,11 @@ export default function CustomerDetail() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Tax Number
-                        {customer.customer_type !== "individual" && <span className="text-red-500 ml-1">*</span>}
                       </label>
                       {editing ? (
-                        <input type="text" name="tax_number" value={formData.tax_number || ""} onChange={handleChange} placeholder="e.g. 123456789 RT0001" className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500 ${customer.customer_type !== "individual" ? "ring-1 ring-amber-200" : ""}`} />
+                        <input type="text" name="tax_number" value={formData.tax_number || ""} onChange={handleChange} placeholder="e.g. 123456789 RT0001" className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500" />
                       ) : (
-                        <p className={`text-gray-900 ${customer.customer_type !== "individual" && !customer.tax_number ? "text-amber-600" : ""}`}>
+                        <p className="text-gray-900">
                           {customer.tax_number || "—"}
                         </p>
                       )}
@@ -981,8 +988,8 @@ export default function CustomerDetail() {
                           onChange={handleChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500"
                         >
-                          <option value="">Select method</option>
-                          {paymentMethods.map((pm) => (
+                          <option value="">Not set</option>
+                          {paymentMethods.filter(pm => !['stripe', 'online'].includes(pm.code)).map((pm) => (
                             <option key={pm.id} value={pm.id}>{pm.name}</option>
                           ))}
                         </select>
@@ -1000,8 +1007,8 @@ export default function CustomerDetail() {
                           onChange={handleChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500"
                         >
-                          <option value="">Select method</option>
-                          {paymentMethods.map((pm) => (
+                          <option value="">Not set</option>
+                          {paymentMethods.filter(pm => !['stripe', 'online'].includes(pm.code)).map((pm) => (
                             <option key={pm.id} value={pm.id}>{pm.name}</option>
                           ))}
                         </select>
