@@ -5,6 +5,9 @@ export interface TrackingSettings {
   tracking_enabled: boolean;
   google_analytics_id: string;
   google_tag_manager_id: string;
+  google_ads_conversion_id: string;
+  google_ads_lead_label: string;
+  google_ads_purchase_label: string;
   custom_head_scripts: Array<{
     id: string;
     src?: string;
@@ -16,6 +19,9 @@ const TRACKING_KEYS = [
   "tracking_enabled",
   "google_analytics_id",
   "google_tag_manager_id",
+  "google_ads_conversion_id",
+  "google_ads_lead_label",
+  "google_ads_purchase_label",
   "custom_head_scripts",
 ] as const;
 
@@ -23,6 +29,9 @@ const DEFAULT_SETTINGS: TrackingSettings = {
   tracking_enabled: false,
   google_analytics_id: "",
   google_tag_manager_id: "",
+  google_ads_conversion_id: "",
+  google_ads_lead_label: "",
+  google_ads_purchase_label: "",
   custom_head_scripts: [],
 };
 
@@ -58,6 +67,15 @@ export function useTrackingSettings() {
               break;
             case "google_tag_manager_id":
               parsed.google_tag_manager_id = row.setting_value || "";
+              break;
+            case "google_ads_conversion_id":
+              parsed.google_ads_conversion_id = row.setting_value || "";
+              break;
+            case "google_ads_lead_label":
+              parsed.google_ads_lead_label = row.setting_value || "";
+              break;
+            case "google_ads_purchase_label":
+              parsed.google_ads_purchase_label = row.setting_value || "";
               break;
             case "custom_head_scripts":
               try {

@@ -3,7 +3,8 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { CheckCircle, Info } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { handleStartNewQuote } from "@/utils/navigationHelpers";
-import { trackQuoteSubmission, getReferralSource } from "@/lib/tracking";
+import { trackQuoteSubmission, trackGoogleAdsConversion, getReferralSource } from "@/lib/tracking";
+import { useTrackingSettings } from "@/hooks/useTrackingSettings";
 
 export default function QuoteConfirmationPage() {
   const [searchParams] = useSearchParams();
@@ -17,6 +18,7 @@ export default function QuoteConfirmationPage() {
   const [customerName, setCustomerName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const conversionTracked = useRef(false);
+  const { settings: trackingSettings } = useTrackingSettings();
 
   useEffect(() => {
     const fetchQuoteInfo = async () => {
@@ -38,7 +40,7 @@ export default function QuoteConfirmationPage() {
           setCustomerName(quote.customer?.full_name || "");
         }
 
-        // Fire conversion event once (HITL review submission = conversion)
+        // Fire conversion events once (HITL review submission = lead conversion)
         if (!conversionTracked.current) {
           conversionTracked.current = true;
           const referral = getReferralSource();
@@ -48,6 +50,13 @@ export default function QuoteConfirmationPage() {
             sourceUrl: referral?.sourceUrl || "",
             sourceLocation: referral?.sourceLocation || "",
           });
+
+          // Google Ads lead conversion
+          if (trackingSettings.google_ads_conversion_id && trackingSettings.google_ads_lead_label) {
+            trackGoogleAdsConversion({
+              sendTo: `${trackingSettings.google_ads_conversion_id}/${trackingSettings.google_ads_lead_label}`,
+            });
+          }
         }
       } catch (error) {
         console.error("Error fetching quote:", error);

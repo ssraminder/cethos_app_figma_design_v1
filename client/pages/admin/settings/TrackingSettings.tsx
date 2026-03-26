@@ -10,6 +10,9 @@ interface TrackingFormValues {
   tracking_enabled: boolean;
   google_analytics_id: string;
   google_tag_manager_id: string;
+  google_ads_conversion_id: string;
+  google_ads_lead_label: string;
+  google_ads_purchase_label: string;
   custom_head_scripts: string; // Raw JSON string for editing
 }
 
@@ -17,6 +20,9 @@ const TRACKING_KEYS = [
   "tracking_enabled",
   "google_analytics_id",
   "google_tag_manager_id",
+  "google_ads_conversion_id",
+  "google_ads_lead_label",
+  "google_ads_purchase_label",
   "custom_head_scripts",
 ];
 
@@ -24,6 +30,9 @@ const DEFAULT_VALUES: TrackingFormValues = {
   tracking_enabled: false,
   google_analytics_id: "",
   google_tag_manager_id: "",
+  google_ads_conversion_id: "",
+  google_ads_lead_label: "",
+  google_ads_purchase_label: "",
   custom_head_scripts: "[]",
 };
 
@@ -74,6 +83,9 @@ export default function TrackingSettings() {
           settings.tracking_enabled === "1",
         google_analytics_id: settings.google_analytics_id || "",
         google_tag_manager_id: settings.google_tag_manager_id || "",
+        google_ads_conversion_id: settings.google_ads_conversion_id || "",
+        google_ads_lead_label: settings.google_ads_lead_label || "",
+        google_ads_purchase_label: settings.google_ads_purchase_label || "",
         custom_head_scripts: settings.custom_head_scripts || "[]",
       };
 
@@ -98,6 +110,11 @@ export default function TrackingSettings() {
     const gtmId = values.google_tag_manager_id.trim();
     if (gtmId && !/^GTM-[A-Z0-9]+$/i.test(gtmId)) {
       return "Google Tag Manager ID must match format GTM-XXXXXXX";
+    }
+
+    const adsId = values.google_ads_conversion_id.trim();
+    if (adsId && !/^AW-[0-9]+$/i.test(adsId)) {
+      return "Google Ads Conversion ID must match format AW-XXXXXXXXX";
     }
 
     try {
@@ -135,6 +152,18 @@ export default function TrackingSettings() {
         {
           key: "google_tag_manager_id",
           value: values.google_tag_manager_id.trim(),
+        },
+        {
+          key: "google_ads_conversion_id",
+          value: values.google_ads_conversion_id.trim(),
+        },
+        {
+          key: "google_ads_lead_label",
+          value: values.google_ads_lead_label.trim(),
+        },
+        {
+          key: "google_ads_purchase_label",
+          value: values.google_ads_purchase_label.trim(),
         },
         { key: "custom_head_scripts", value: values.custom_head_scripts },
       ];
@@ -298,6 +327,54 @@ export default function TrackingSettings() {
                 </p>
               </div>
             )}
+          </div>
+        </SettingsCard>
+      </div>
+
+      {/* Google Ads Conversions */}
+      <div className="mt-6">
+        <SettingsCard
+          title="Google Ads Conversions"
+          description="Track lead submissions and purchases as Google Ads conversions"
+        >
+          <div className="space-y-4">
+            <SettingsInput
+              label="Conversion ID"
+              value={values.google_ads_conversion_id}
+              onChange={(val) =>
+                setValues({ ...values, google_ads_conversion_id: val })
+              }
+              placeholder="AW-366617885"
+              helperText="Find this in Google Ads > Tools > Conversions > Settings"
+            />
+            <SettingsInput
+              label="Lead Conversion Label"
+              value={values.google_ads_lead_label}
+              onChange={(val) =>
+                setValues({ ...values, google_ads_lead_label: val })
+              }
+              placeholder="cyEuCOe_y48CEJ3K6K4B"
+              helperText="Fires on /quote/confirmation when quote requires manual review (HITL)"
+            />
+            <SettingsInput
+              label="Purchase Conversion Label"
+              value={values.google_ads_purchase_label}
+              onChange={(val) =>
+                setValues({ ...values, google_ads_purchase_label: val })
+              }
+              placeholder="tw7MCOq_y48CEJ3K6K4B"
+              helperText="Fires on /order/success after Stripe payment (includes value in CAD)"
+            />
+            {values.google_ads_conversion_id &&
+              !values.google_analytics_id && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                  <p className="text-sm text-blue-800">
+                    Google Ads tracking will load its own gtag.js script since no
+                    GA4 ID is configured. If you add a GA4 ID, both will share
+                    the same script.
+                  </p>
+                </div>
+              )}
           </div>
         </SettingsCard>
       </div>

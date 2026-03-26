@@ -199,3 +199,23 @@ export const STEP_NAMES: Record<number, string> = {
   3: "contact_info",
   4: "review_checkout",
 };
+
+/**
+ * Fire a Google Ads conversion event via gtag.
+ * Silently no-ops if gtag isn't loaded.
+ */
+export function trackGoogleAdsConversion(params: {
+  sendTo: string;
+  value?: number;
+  currency?: string;
+  transactionId?: string;
+}) {
+  const w = window as any;
+  if (typeof w.gtag !== "function") return;
+  w.gtag("event", "conversion", {
+    send_to: params.sendTo,
+    value: params.value,
+    currency: params.currency || "CAD",
+    transaction_id: params.transactionId,
+  });
+}

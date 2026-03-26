@@ -78,13 +78,36 @@ export default function GoogleTagManager() {
 
       const gaInit = document.createElement("script");
       gaInit.id = "ga4-init";
+      // Configure GA4 + Google Ads (if conversion ID is set)
+      const adsConfigLine = settings.google_ads_conversion_id
+        ? `\n        gtag('config', '${settings.google_ads_conversion_id}');`
+        : "";
       gaInit.textContent = `
         window.dataLayer = window.dataLayer || [];
         function gtag(){dataLayer.push(arguments);}
         gtag('js', new Date());
-        gtag('config', '${gaId}', { send_page_view: false });
+        gtag('config', '${gaId}', { send_page_view: false });${adsConfigLine}
       `;
       document.head.appendChild(gaInit);
+    }
+
+    // --- Google Ads (standalone, when no GA4 script loaded gtag yet) ---
+    if (settings.google_ads_conversion_id && !settings.google_analytics_id) {
+      const adsScript = document.createElement("script");
+      adsScript.id = "gads-script";
+      adsScript.async = true;
+      adsScript.src = `https://www.googletagmanager.com/gtag/js?id=${settings.google_ads_conversion_id}`;
+      document.head.appendChild(adsScript);
+
+      const adsInit = document.createElement("script");
+      adsInit.id = "gads-init";
+      adsInit.textContent = `
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', '${settings.google_ads_conversion_id}');
+      `;
+      document.head.appendChild(adsInit);
     }
 
     // --- Custom head scripts ---
@@ -108,6 +131,8 @@ export default function GoogleTagManager() {
         "gtm-body",
         "ga4-script",
         "ga4-init",
+        "gads-script",
+        "gads-init",
         ...settings.custom_head_scripts.map((s) => `custom-script-${s.id}`),
       ]) {
         document.getElementById(id)?.remove();
