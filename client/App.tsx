@@ -84,6 +84,7 @@ import AdminVendorNew from "./pages/admin/AdminVendorNew";
 import FastQuoteCreate from "./pages/admin/FastQuoteCreate";
 import VendorInvoices from "./pages/admin/invoices/VendorInvoices";
 import CustomerInvoices from "./pages/admin/invoices/CustomerInvoices";
+import CreateInvoice from "./pages/admin/invoices/CreateInvoice";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
 
@@ -344,6 +345,7 @@ const App = () => (
                     <Route path="quick-payment/history" element={<AdminPaymentHistory />} />
                     <Route path="invoices/vendor" element={<VendorInvoices />} />
                     <Route path="invoices/customer" element={<CustomerInvoices />} />
+                    <Route path="invoices/create" element={<CreateInvoice />} />
 
                     {/* Admin Settings screens */}
                     <Route
