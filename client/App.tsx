@@ -320,7 +320,6 @@ const App = () => (
                     <Route path="orders/:id" element={<AdminOrderDetail />} />
                     <Route path="partners" element={<AdminPartners />} />
                     <Route path="settings" element={<AdminSettings />} />
-                    <Route path="settings/*" element={<AdminSettings />} />
                     <Route
                       path="settings/purge-quotes"
                       element={<PurgeDraftQuotes />}
