@@ -54,13 +54,35 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     const checkAuth = async () => {
       console.log("StaffAuthContext: Checking auth...");
 
-      // First, check localStorage
+      // First, check localStorage for cached staff session
       const storedSession = localStorage.getItem("staffSession");
       if (storedSession) {
         try {
           const parsed = JSON.parse(storedSession);
           if (parsed.staffId && parsed.loggedIn) {
-            console.log("StaffAuthContext: Found valid localStorage session");
+            console.log("StaffAuthContext: Found localStorage session, validating with Supabase...");
+
+            // IMPORTANT: Validate the Supabase session FIRST before trusting localStorage
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
+            if (!isMounted) return;
+
+            if (!session) {
+              // Supabase session is expired/invalid - clear stale localStorage
+              console.log("StaffAuthContext: Supabase session expired, clearing stale localStorage");
+              localStorage.removeItem("staffSession");
+              setStaffUser(null);
+              setUser(null);
+              setSession(null);
+              setLoading(false);
+              return;
+            }
+
+            // Supabase session is valid - trust the cached staff data
+            console.log("StaffAuthContext: Supabase session valid, using cached staff data");
+            setSession(session);
+            setUser(session.user);
             setStaffUser({
               id: parsed.staffId,
               email: parsed.staffEmail,
@@ -68,14 +90,6 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
               role: parsed.staffRole,
               is_active: parsed.isActive,
             });
-
-            // Also get the Supabase session for completeness
-            const {
-              data: { session },
-            } = await supabase.auth.getSession();
-            if (!isMounted) return;
-            setSession(session);
-            setUser(session?.user ?? null);
 
             setLoading(false);
             return;
