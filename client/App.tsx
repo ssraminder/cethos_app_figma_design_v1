@@ -109,6 +109,7 @@ import FileCategoriesSettings from "./pages/admin/settings/FileCategoriesSetting
 import TrackingSettings from "./pages/admin/settings/TrackingSettings";
 import ServicesSettings from "./pages/admin/settings/ServicesSettings";
 import WorkflowTemplatesSettings from "./pages/admin/settings/WorkflowTemplatesSettings";
+import BranchesSettings from "./pages/admin/settings/BranchesSettings";
 import GoogleTagManager from "./components/shared/GoogleTagManager";
 import QuoteTrackingLayout from "./components/layouts/QuoteTrackingLayout";
 
@@ -422,6 +423,10 @@ const App = () => (
                     <Route
                       path="settings/workflows"
                       element={<WorkflowTemplatesSettings />}
+                    />
+                    <Route
+                      path="settings/branches"
+                      element={<BranchesSettings />}
                     />
                   </Route>
 
