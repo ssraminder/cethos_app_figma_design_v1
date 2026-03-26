@@ -1,88 +1,72 @@
-import { useState, useEffect, useCallback, useRef, Fragment } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { Link } from "react-router-dom";
 import {
   Search,
-  Filter,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Download,
-  RefreshCw,
-  X,
-  BarChart3,
+  FileText,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import InvoiceDateFilter from "./components/InvoiceDateFilter";
-import ColumnToggle, { type ColumnDef } from "./components/ColumnToggle";
-import SummaryPanel, { type SummaryData } from "./components/SummaryPanel";
 
 // ── Types ──────────────────────────────────────────────────────────
 interface CustomerInvoice {
-  id: number;
+  id: string;
   invoice_number: string | null;
-  customer_id: number | null;
-  customer_name: string | null;
-  currency_id: number | null;
-  total_gross: number | null;
-  total_netto: number | null;
-  tax_cad: number | null;
+  order_id: string | null;
+  customer_id: string | null;
+  subtotal: number | null;
+  total_amount: number | null;
+  amount_paid: number | null;
+  balance_due: number | null;
   status: string | null;
-  payment_status: string | null;
-  payment_method_id: number | null;
-  type: string | null;
-  draft_date: string | null;
-  final_date: string | null;
   invoice_date: string | null;
-  payment_due_date: string | null;
-  last_payment_date: string | null;
-  project_numbers: string[] | null;
-  payments: any[] | null;
-  branch: string | null;
-  synced_at: string | null;
+  due_date: string | null;
+  currency: string | null;
+  pdf_storage_path: string | null;
+  pdf_generated_at: string | null;
+  invoicing_branch_id: string | null;
+  customers: { full_name: string | null; email: string | null; company_name: string | null } | null;
+  orders: { order_number: string | null } | null;
 }
 
-interface PaymentMethod {
-  id: number;
-  name: string;
+interface BranchInfo {
+  id: string;
+  legal_name: string;
+  code: string;
 }
 
-// ── Column definitions ─────────────────────────────────────────────
-const COLUMNS: ColumnDef[] = [
-  { key: "invoice_number", label: "Invoice No.", defaultVisible: true },
-  { key: "customer_name", label: "Customer Name", defaultVisible: true },
-  { key: "project_numbers", label: "Project(s)", defaultVisible: true },
-  { key: "branch", label: "Branch", defaultVisible: true },
-  { key: "status", label: "Status", defaultVisible: true },
-  { key: "payment_status", label: "Payment", defaultVisible: true },
-  { key: "payment_method_id", label: "Pay Method", defaultVisible: true },
-  { key: "final_date", label: "Final Date", defaultVisible: true },
-  { key: "payment_due_date", label: "Due Date", defaultVisible: true },
-  { key: "last_payment_date", label: "Last Payment", defaultVisible: true },
-  { key: "total_gross", label: "Gross (CAD)", defaultVisible: true },
-  { key: "total_netto", label: "Net (CAD)", defaultVisible: true },
-  { key: "tax_cad", label: "Tax (CAD)", defaultVisible: true },
-  { key: "invoice_date", label: "Invoice Date", defaultVisible: false },
-  { key: "draft_date", label: "Draft Date", defaultVisible: false },
-  { key: "customer_id", label: "Customer ID", defaultVisible: false },
-  { key: "type", label: "Type", defaultVisible: false },
+// ── Constants ──────────────────────────────────────────────────────
+const PAGE_SIZE = 20;
+
+const STATUS_OPTIONS = [
+  { value: "", label: "All Statuses" },
+  { value: "issued", label: "Issued" },
+  { value: "sent", label: "Sent" },
+  { value: "paid", label: "Paid" },
+  { value: "overdue", label: "Overdue" },
+  { value: "void", label: "Void" },
+  { value: "draft", label: "Draft" },
+  { value: "partial", label: "Partial" },
+  { value: "cancelled", label: "Cancelled" },
 ];
 
-const STORAGE_KEY = "cethos_customer_invoice_columns";
-const PAGE_SIZE = 50;
-
-// ── Date field options ─────────────────────────────────────────────
-const DATE_FIELD_OPTIONS = [
-  { value: "final_date", label: "Final Date" },
-  { value: "invoice_date", label: "Invoice Date" },
-  { value: "draft_date", label: "Draft Date" },
-  { value: "payment_due_date", label: "Payment Due Date" },
-  { value: "last_payment_date", label: "Last Payment Date" },
-];
+const STATUS_STYLES: Record<string, string> = {
+  issued: "bg-blue-100 text-blue-700",
+  sent: "bg-indigo-100 text-indigo-700",
+  paid: "bg-green-100 text-green-700",
+  overdue: "bg-red-100 text-red-700",
+  void: "bg-gray-100 text-gray-500",
+  draft: "bg-gray-100 text-gray-600",
+  partial: "bg-amber-100 text-amber-700",
+  cancelled: "bg-gray-100 text-gray-500",
+};
 
 // ── Helpers ────────────────────────────────────────────────────────
 function fmtCurrency(val: number | null): string {
-  if (val == null) return "--";
+  if (val == null) return "—";
   return val.toLocaleString("en-CA", {
     style: "currency",
     currency: "CAD",
@@ -91,184 +75,52 @@ function fmtCurrency(val: number | null): string {
 }
 
 function fmtDate(val: string | null): string {
-  if (!val) return "--";
+  if (!val) return "—";
   try {
-    return format(new Date(val + "T00:00:00"), "MMM dd, yyyy");
+    return format(new Date(val), "MMM d, yyyy");
   } catch {
     return val;
   }
 }
 
-function branchLabel(branch: string | null): string {
-  if (!branch) return "\u2014";
-  if (branch.startsWith("Cethos")) return "Cethos";
-  if (branch.startsWith("12537494")) return "12537494";
-  return branch;
-}
-
-function defaultDateRange(): { from: string; to: string } {
-  const today = new Date();
-  const d30 = new Date(today);
-  d30.setDate(d30.getDate() - 30);
-  return {
-    from: d30.toISOString().split("T")[0],
-    to: today.toISOString().split("T")[0],
-  };
-}
-
-function loadVisibleColumns(): Set<string> {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return new Set<string>(JSON.parse(stored));
-  } catch {}
-  return new Set(COLUMNS.filter((c) => c.defaultVisible).map((c) => c.key));
-}
-
-function saveVisibleColumns(cols: Set<string>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...cols]));
-}
-
 // ── Component ──────────────────────────────────────────────────────
 export default function CustomerInvoices() {
-  // Data state
   const [invoices, setInvoices] = useState<CustomerInvoice[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [branches, setBranches] = useState<BranchInfo[]>([]);
 
   // Pagination
   const [page, setPage] = useState(1);
 
   // Filters
-  const [branch, setBranch] = useState("all");
-  const [dateField, setDateField] = useState("final_date");
-  const [dateRange, setDateRange] = useState("last_30");
-  const defDates = defaultDateRange();
-  const [dateFrom, setDateFrom] = useState(defDates.from);
-  const [dateTo, setDateTo] = useState(defDates.to);
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
-  const [statuses, setStatuses] = useState<string[]>([]);
-  const [paymentStatuses, setPaymentStatuses] = useState<string[]>([]);
-  const [paymentMethods, setPaymentMethods] = useState<number[]>([]);
-  const [amountMin, setAmountMin] = useState("");
-  const [amountMax, setAmountMax] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [branchFilter, setBranchFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
-  // Filter UI
-  const [showFilters, setShowFilters] = useState(false);
+  // Summary stats
+  const [stats, setStats] = useState({
+    totalInvoiced: 0,
+    totalPaid: 0,
+    totalOutstanding: 0,
+    count: 0,
+  });
 
-  // Column visibility
-  const [visibleColumns, setVisibleColumns] = useState(loadVisibleColumns);
-
-  // Expanded row
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-
-  // Summary
-  const [summaryOpen, setSummaryOpen] = useState(false);
-  const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(false);
-
-  // Payment method options (loaded from xtrf_payment_methods)
-  const [paymentMethodOptions, setPaymentMethodOptions] = useState<
-    PaymentMethod[]
-  >([]);
-  const paymentMethodMap = useRef<Record<number, string>>({});
-
-  // Page jump input
-  const [jumpPage, setJumpPage] = useState("");
-
-  // Debounce ref for search
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Load payment method options once
+  // Load branches once
   useEffect(() => {
     supabase
-      .from("xtrf_payment_methods")
-      .select("id, name")
-      .order("name")
+      .from("branches")
+      .select("id, legal_name, code")
+      .eq("is_active", true)
       .then(({ data }) => {
-        if (data) {
-          setPaymentMethodOptions(data as PaymentMethod[]);
-          const map: Record<number, string> = {};
-          for (const m of data) map[m.id] = m.name;
-          paymentMethodMap.current = map;
-        }
+        if (data) setBranches(data);
       });
   }, []);
-
-  const resolvePaymentMethod = (id: number | null): string => {
-    if (id == null) return "\u2014";
-    return paymentMethodMap.current[id] || "\u2014";
-  };
-
-  // Build the Supabase query with current filters
-  const applyFilters = useCallback(
-    (query: any) => {
-      if (branch && branch !== "all") {
-        if (branch === "unassigned") query = query.is("branch", null);
-        else query = query.eq("branch", branch);
-      }
-      if (dateFrom) query = query.gte(dateField, dateFrom);
-      if (dateTo) query = query.lte(dateField, dateTo);
-      if (statuses.length) query = query.in("status", statuses);
-      if (paymentStatuses.length)
-        query = query.in("payment_status", paymentStatuses);
-      if (paymentMethods.length)
-        query = query.in("payment_method_id", paymentMethods);
-      if (amountMin) query = query.gte("total_gross", parseFloat(amountMin));
-      if (amountMax) query = query.lte("total_gross", parseFloat(amountMax));
-      if (search) {
-        query = query.or(
-          `invoice_number.ilike.%${search}%,customer_name.ilike.%${search}%,project_numbers.cs.{"${search}"}`,
-        );
-      }
-      return query;
-    },
-    [
-      branch,
-      dateField,
-      dateFrom,
-      dateTo,
-      statuses,
-      paymentStatuses,
-      paymentMethods,
-      amountMin,
-      amountMax,
-      search,
-    ],
-  );
-
-  // Fetch invoices
-  const fetchInvoices = useCallback(async () => {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from("xtrf_customer_invoice_cache")
-        .select("*", { count: "exact" })
-        .order("final_date", { ascending: false });
-
-      query = applyFilters(query);
-
-      const from = (page - 1) * PAGE_SIZE;
-      query = query.range(from, from + PAGE_SIZE - 1);
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-
-      setInvoices((data as CustomerInvoice[]) || []);
-      setTotalCount(count || 0);
-    } catch (err) {
-      console.error("Failed to fetch customer invoices:", err);
-      toast.error("Failed to load invoices");
-    } finally {
-      setLoading(false);
-    }
-  }, [page, applyFilters]);
-
-  useEffect(() => {
-    fetchInvoices();
-  }, [fetchInvoices]);
 
   // Debounced search
   useEffect(() => {
@@ -282,599 +134,313 @@ export default function CustomerInvoices() {
     };
   }, [searchInput]);
 
-  // Fetch summary
-  const fetchSummary = useCallback(async () => {
-    setSummaryLoading(true);
-    try {
-      let query = supabase
-        .from("xtrf_customer_invoice_cache")
-        .select("total_gross, total_netto, tax_cad, payment_status");
-      query = applyFilters(query);
+  // Load summary stats (all invoices, no pagination)
+  const fetchStats = useCallback(async () => {
+    const { data } = await supabase
+      .from("customer_invoices")
+      .select("total_amount, amount_paid, balance_due");
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const rows = data || [];
-      const result: SummaryData = {
-        totalInvoices: rows.length,
-        fullyPaid: { gross: 0, net: 0, tax: 0 },
-        partiallyPaid: { gross: 0, net: 0, tax: 0 },
-        unpaid: { gross: 0, net: 0, tax: 0 },
-      };
-
-      for (const r of rows) {
-        const bucket =
-          r.payment_status === "FULLY_PAID"
-            ? result.fullyPaid
-            : r.payment_status === "PARTIALLY_PAID"
-              ? result.partiallyPaid
-              : result.unpaid;
-        bucket.gross += Number(r.total_gross) || 0;
-        bucket.net += Number(r.total_netto) || 0;
-        bucket.tax += Number(r.tax_cad) || 0;
-      }
-
-      setSummaryData(result);
-    } catch (err) {
-      console.error("Failed to fetch summary:", err);
-      toast.error("Failed to load summary");
-    } finally {
-      setSummaryLoading(false);
+    if (data) {
+      const totalInvoiced = data.reduce((s, r) => s + (r.total_amount || 0), 0);
+      const totalPaid = data.reduce((s, r) => s + (r.amount_paid || 0), 0);
+      const totalOutstanding = data.reduce((s, r) => s + (r.balance_due || 0), 0);
+      setStats({ totalInvoiced, totalPaid, totalOutstanding, count: data.length });
     }
-  }, [applyFilters]);
+  }, []);
 
   useEffect(() => {
-    if (summaryOpen) fetchSummary();
-  }, [summaryOpen, fetchSummary]);
+    fetchStats();
+  }, [fetchStats]);
 
-  // Column toggle handlers
-  const toggleColumn = (key: string) => {
-    setVisibleColumns((prev) => {
-      const next = new Set<string>(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      saveVisibleColumns(next);
-      return next;
-    });
-  };
+  // Fetch invoices with filters and pagination
+  const fetchInvoices = useCallback(async () => {
+    setLoading(true);
+    const offset = (page - 1) * PAGE_SIZE;
 
-  const showAllColumns = () => {
-    const all = new Set(COLUMNS.map((c) => c.key));
-    setVisibleColumns(all);
-    saveVisibleColumns(all);
-  };
+    let query = supabase
+      .from("customer_invoices")
+      .select(
+        `
+        id, invoice_number, order_id, customer_id,
+        subtotal, total_amount, amount_paid, balance_due,
+        status, invoice_date, due_date, currency,
+        pdf_storage_path, pdf_generated_at, invoicing_branch_id,
+        customers(full_name, email, company_name),
+        orders(order_number)
+      `,
+        { count: "exact" }
+      )
+      .order("invoice_date", { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1);
 
-  const resetColumns = () => {
-    const defaults = new Set(
-      COLUMNS.filter((c) => c.defaultVisible).map((c) => c.key),
-    );
-    setVisibleColumns(defaults);
-    saveVisibleColumns(defaults);
-  };
-
-  // Multi-select toggle helper
-  function toggleMulti<T>(arr: T[], val: T): T[] {
-    return arr.includes(val) ? arr.filter((v) => v !== val) : [...arr, val];
-  }
-
-  // CSV Export
-  const exportCSV = async () => {
-    toast.info("Preparing CSV export...");
-    try {
-      let query = supabase
-        .from("xtrf_customer_invoice_cache")
-        .select("*")
-        .order("final_date", { ascending: false });
-      query = applyFilters(query);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const rows = data || [];
-      const visCols = COLUMNS.filter((c) => visibleColumns.has(c.key));
-      const header = visCols.map((c) => c.label).join(",");
-      const csvRows = rows.map((row: any) =>
-        visCols
-          .map((c) => {
-            let val = row[c.key];
-            if (c.key === "project_numbers") {
-              return (val ?? []).join('; ');
-            }
-            if (c.key === "payment_method_id" && val != null) {
-              val = paymentMethodMap.current[val] || val;
-            }
-            if (val == null) return "";
-            const str = String(val);
-            return str.includes(",") || str.includes('"') || str.includes("\n")
-              ? `"${str.replace(/"/g, '""')}"`
-              : str;
-          })
-          .join(","),
+    if (search) {
+      query = query.or(
+        `invoice_number.ilike.%${search}%,customers.full_name.ilike.%${search}%`
       );
-      const csv = [header, ...csvRows].join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `customer-invoices-${new Date().toISOString().split("T")[0]}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success("CSV exported");
-    } catch (err) {
-      console.error("CSV export failed:", err);
-      toast.error("Export failed");
     }
-  };
+    if (statusFilter) {
+      query = query.eq("status", statusFilter);
+    }
+    if (branchFilter) {
+      query = query.eq("invoicing_branch_id", branchFilter);
+    }
+    if (dateFrom) {
+      query = query.gte("invoice_date", dateFrom);
+    }
+    if (dateTo) {
+      query = query.lte("invoice_date", dateTo);
+    }
 
-  // Clear filters
-  const clearFilters = () => {
-    setBranch("all");
-    setDateField("final_date");
-    setDateRange("last_30");
-    const d = defaultDateRange();
-    setDateFrom(d.from);
-    setDateTo(d.to);
-    setCustomFrom("");
-    setCustomTo("");
-    setStatuses([]);
-    setPaymentStatuses([]);
-    setPaymentMethods([]);
-    setAmountMin("");
-    setAmountMax("");
-    setSearchInput("");
-    setSearch("");
-    setPage(1);
-  };
+    const { data, count, error } = await query;
+    if (error) {
+      console.error("Error fetching invoices:", error);
+      toast.error("Failed to load invoices");
+    }
+    setInvoices((data as CustomerInvoice[]) || []);
+    setTotalCount(count || 0);
+    setLoading(false);
+  }, [page, search, statusFilter, branchFilter, dateFrom, dateTo]);
 
-  const hasActiveFilters =
-    branch !== "all" ||
-    statuses.length > 0 ||
-    paymentStatuses.length > 0 ||
-    paymentMethods.length > 0 ||
-    amountMin !== "" ||
-    amountMax !== "" ||
-    search !== "";
+  useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices]);
 
+  const branchMap = new Map(branches.map((b) => [b.id, b.legal_name]));
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const showFrom = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const showTo = Math.min(page * PAGE_SIZE, totalCount);
 
-  // Cell renderer
-  const renderCell = (invoice: CustomerInvoice, key: string) => {
-    const val = (invoice as any)[key];
-    switch (key) {
-      case "total_gross":
-      case "total_netto":
-      case "tax_cad":
-        return (
-          <span className="tabular-nums">{fmtCurrency(val as number)}</span>
-        );
-      case "payment_status":
-        return <PaymentBadge status={val} />;
-      case "status":
-        return <CustomerStatusBadge status={val} />;
-      case "branch":
-        return <span>{branchLabel(val)}</span>;
-      case "project_numbers": {
-        const arr = val as string[] | null;
-        if (!arr || arr.length === 0) return <span className="text-gray-400">{"\u2014"}</span>;
-        if (arr.length <= 3) {
-          return <span className="text-xs font-mono text-gray-700">{arr.join(', ')}</span>;
-        }
-        return (
-          <span className="text-xs font-mono text-gray-700">
-            {arr.slice(0, 3).join(', ')} <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[10px] font-sans">+{arr.length - 3}</span>
-          </span>
-        );
+  const handleDownloadPdf = async (pdfPath: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from("invoices")
+        .createSignedUrl(pdfPath, 3600);
+      if (error || !data?.signedUrl) {
+        toast.error("Failed to get download URL");
+        return;
       }
-      case "payment_method_id":
-        return <span>{resolvePaymentMethod(val)}</span>;
-      case "final_date":
-      case "draft_date":
-      case "payment_due_date":
-      case "invoice_date":
-      case "last_payment_date":
-        return <span>{fmtDate(val)}</span>;
-      default:
-        return <span>{val != null ? String(val) : "\u2014"}</span>;
+      window.open(data.signedUrl, "_blank");
+    } catch {
+      toast.error("Failed to download PDF");
     }
+  };
+
+  const customerDisplay = (inv: CustomerInvoice) => {
+    if (inv.customers?.company_name) return inv.customers.company_name;
+    return inv.customers?.full_name || "—";
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto px-6 py-6">
+    <div className="p-6 max-w-[1400px] mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
-            Customer Invoices
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {totalCount.toLocaleString()} total invoices
-          </p>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Customer Invoices</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Browse and manage customer invoices generated from orders.
+        </p>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Invoiced</p>
+          <p className="text-xl font-bold text-gray-900 mt-1">{fmtCurrency(stats.totalInvoiced)}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setSummaryOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <BarChart3 className="w-4 h-4" />
-            Summary
-          </button>
-          <button
-            onClick={exportCSV}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            CSV
-          </button>
-          <button
-            onClick={() => toast.info("XLSX export coming soon")}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            XLSX
-          </button>
-          <button
-            onClick={() => fetchInvoices()}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Paid</p>
+          <p className="text-xl font-bold text-green-700 mt-1">{fmtCurrency(stats.totalPaid)}</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Outstanding</p>
+          <p className="text-xl font-bold text-red-700 mt-1">{fmtCurrency(stats.totalOutstanding)}</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Count</p>
+          <p className="text-xl font-bold text-gray-900 mt-1">{stats.count}</p>
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
-        <div className="flex flex-col md:flex-row gap-3 items-start">
+      {/* Filters */}
+      <div className="bg-white rounded-lg border p-4 mb-4">
+        <div className="flex flex-wrap gap-3 items-end">
           {/* Search */}
-          <div className="flex-1 md:max-w-sm">
+          <div className="flex-1 min-w-[200px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
+                placeholder="Search invoice# or customer…"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search invoices, customers..."
-                className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
           </div>
 
-          {/* Date filter */}
-          <InvoiceDateFilter
-            dateField={dateField}
-            dateFieldOptions={DATE_FIELD_OPTIONS}
-            onDateFieldChange={(f) => {
-              setDateField(f);
-              setPage(1);
-            }}
-            selectedRange={dateRange}
-            onRangeChange={(range, from, to) => {
-              setDateRange(range);
-              if (range !== "custom") {
-                setDateFrom(from);
-                setDateTo(to);
-              }
-              setPage(1);
-            }}
-            customFrom={customFrom}
-            customTo={customTo}
-            onCustomFromChange={(val) => {
-              setCustomFrom(val);
-              setDateFrom(val);
-              setPage(1);
-            }}
-            onCustomToChange={(val) => {
-              setCustomTo(val);
-              setDateTo(val);
-              setPage(1);
-            }}
-          />
-
-          {/* Filter toggle */}
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-4 py-2 border rounded-lg transition-colors text-sm ${
-              hasActiveFilters
-                ? "border-teal-300 bg-teal-50 text-teal-700"
-                : "border-gray-300 text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            <Filter className="w-4 h-4" />
-            Filters
-            {hasActiveFilters && (
-              <span className="w-5 h-5 bg-teal-600 text-white text-xs rounded-full flex items-center justify-center">
-                {
-                  [
-                    branch !== "all",
-                    statuses.length > 0,
-                    paymentStatuses.length > 0,
-                    paymentMethods.length > 0,
-                    amountMin !== "",
-                    amountMax !== "",
-                  ].filter(Boolean).length
-                }
-              </span>
-            )}
-            <ChevronDown
-              className={`w-4 h-4 transition-transform ${showFilters ? "rotate-180" : ""}`}
-            />
-          </button>
-
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="flex items-center gap-1 px-3 py-2 text-sm text-gray-500 hover:text-gray-700"
+          {/* Status filter */}
+          <div>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+              className="text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <X className="w-4 h-4" />
-              Clear
-            </button>
-          )}
-        </div>
-
-        {/* Expanded filters */}
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-            {/* Branch */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Branch
-              </label>
-              <select
-                value={branch}
-                onChange={(e) => {
-                  setBranch(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
-              >
-                <option value="all">All</option>
-                <option value="Cethos Solutions Inc.">
-                  Cethos Solutions Inc.
+              {STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
                 </option>
-                <option value="12537494 Canada Inc.">
-                  12537494 Canada Inc.
-                </option>
-                <option value="unassigned">Unassigned</option>
-              </select>
-            </div>
-
-            {/* Invoice Status */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Invoice Status
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { value: "READY", label: "Ready" },
-                  { value: "NOT_READY", label: "Draft" },
-                  { value: "SENT", label: "Sent" },
-                ].map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => {
-                      setStatuses(toggleMulti(statuses, opt.value));
-                      setPage(1);
-                    }}
-                    className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-                      statuses.includes(opt.value)
-                        ? "bg-teal-50 border-teal-300 text-teal-700"
-                        : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Payment Status */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Payment Status
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  {
-                    value: "FULLY_PAID",
-                    label: "Fully Paid",
-                    color: "bg-green-50 border-green-300 text-green-700",
-                  },
-                  {
-                    value: "PARTIALLY_PAID",
-                    label: "Partial",
-                    color: "bg-yellow-50 border-yellow-300 text-yellow-700",
-                  },
-                  {
-                    value: "NOT_PAID",
-                    label: "Unpaid",
-                    color: "bg-red-50 border-red-300 text-red-700",
-                  },
-                ].map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => {
-                      setPaymentStatuses(
-                        toggleMulti(paymentStatuses, opt.value),
-                      );
-                      setPage(1);
-                    }}
-                    className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-                      paymentStatuses.includes(opt.value)
-                        ? opt.color
-                        : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Payment Method */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Payment Method
-              </label>
-              <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-                {paymentMethodOptions.map((pm) => (
-                  <button
-                    key={pm.id}
-                    type="button"
-                    onClick={() => {
-                      setPaymentMethods(toggleMulti(paymentMethods, pm.id));
-                      setPage(1);
-                    }}
-                    className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-                      paymentMethods.includes(pm.id)
-                        ? "bg-teal-50 border-teal-300 text-teal-700"
-                        : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {pm.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Amount Range */}
-            <div className="xl:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Gross CAD Range
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={amountMin}
-                  onChange={(e) => {
-                    setAmountMin(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder="Min"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
-                />
-                <span className="text-sm text-gray-400">-</span>
-                <input
-                  type="number"
-                  value={amountMax}
-                  onChange={(e) => {
-                    setAmountMax(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder="Max"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-            </div>
+              ))}
+            </select>
           </div>
-        )}
+
+          {/* Branch filter */}
+          <div>
+            <select
+              value={branchFilter}
+              onChange={(e) => {
+                setBranchFilter(e.target.value);
+                setPage(1);
+              }}
+              className="text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">All Branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.legal_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date range */}
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setPage(1);
+              }}
+              className="text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="From"
+            />
+            <span className="text-gray-400 text-sm">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setPage(1);
+              }}
+              className="text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="To"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-          <p className="text-xs text-gray-500">
-            {totalCount > 0
-              ? `Showing ${(page - 1) * PAGE_SIZE + 1}\u2013${Math.min(page * PAGE_SIZE, totalCount)} of ${totalCount.toLocaleString()} invoices`
-              : "No invoices found"}
-          </p>
-          <ColumnToggle
-            columns={COLUMNS}
-            visibleColumns={visibleColumns}
-            onToggle={toggleColumn}
-            onShowAll={showAllColumns}
-            onReset={resetColumns}
-          />
-        </div>
-
+      <div className="bg-white rounded-lg border overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                {COLUMNS.filter((c) => visibleColumns.has(c.key)).map((col) => (
-                  <th
-                    key={col.key}
-                    className={`px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap ${
-                      ["total_gross", "total_netto", "tax_cad"].includes(
-                        col.key,
-                      )
-                        ? "text-right"
-                        : "text-left"
-                    }`}
-                  >
-                    {col.label}
-                  </th>
-                ))}
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b text-left">
+                <th className="px-4 py-3 font-medium text-gray-600">Invoice #</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Customer</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Order</th>
+                <th className="px-4 py-3 font-medium text-gray-600 text-right">Total</th>
+                <th className="px-4 py-3 font-medium text-gray-600 text-right">Balance</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Status</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Date</th>
+                <th className="px-4 py-3 font-medium text-gray-600 text-center">PDF</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td
-                    colSpan={
-                      COLUMNS.filter((c) => visibleColumns.has(c.key)).length
-                    }
-                    className="px-6 py-12 text-center"
-                  >
-                    <RefreshCw className="w-5 h-5 animate-spin text-gray-400 mx-auto" />
+                  <td colSpan={8} className="px-4 py-12 text-center">
+                    <div className="flex items-center justify-center gap-2 text-gray-400">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Loading invoices…</span>
+                    </div>
                   </td>
                 </tr>
               ) : invoices.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={
-                      COLUMNS.filter((c) => visibleColumns.has(c.key)).length
-                    }
-                    className="px-6 py-12 text-center text-gray-500"
-                  >
-                    No invoices found
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                    No invoices found matching your criteria.
                   </td>
                 </tr>
               ) : (
                 invoices.map((inv) => (
-                  <Fragment key={inv.id}>
-                    <tr
-                      onClick={() =>
-                        setExpandedId(expandedId === inv.id ? null : inv.id)
-                      }
-                      className="hover:bg-gray-50 cursor-pointer transition-colors"
-                    >
-                      {COLUMNS.filter((c) => visibleColumns.has(c.key)).map(
-                        (col) => (
-                          <td
-                            key={col.key}
-                            className={`px-4 py-3 text-sm whitespace-nowrap ${
-                              [
-                                "total_gross",
-                                "total_netto",
-                                "tax_cad",
-                              ].includes(col.key)
-                                ? "text-right"
-                                : "text-left"
-                            }`}
-                          >
-                            {renderCell(inv, col.key)}
-                          </td>
-                        ),
-                      )}
-                    </tr>
-                    {expandedId === inv.id && (
-                      <tr>
-                        <td
-                          colSpan={
-                            COLUMNS.filter((c) => visibleColumns.has(c.key))
-                              .length
-                          }
-                          className="bg-gray-50 px-6 py-4"
+                  <tr key={inv.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      {inv.order_id ? (
+                        <Link
+                          to={`/admin/orders/${inv.order_id}`}
+                          className="text-blue-600 hover:text-blue-800 font-medium"
                         >
-                          <ExpandedRow
-                            invoice={inv}
-                            resolveMethod={resolvePaymentMethod}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
+                          {inv.invoice_number || "—"}
+                        </Link>
+                      ) : (
+                        <span className="font-medium text-gray-900">{inv.invoice_number || "—"}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700 max-w-[180px] truncate" title={customerDisplay(inv)}>
+                      {customerDisplay(inv)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {inv.order_id ? (
+                        <Link
+                          to={`/admin/orders/${inv.order_id}`}
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          {inv.orders?.order_number || "—"}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-900">
+                      {fmtCurrency(inv.total_amount)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span
+                        className={`font-medium ${
+                          (inv.balance_due || 0) > 0 ? "text-red-600" : "text-green-600"
+                        }`}
+                      >
+                        {fmtCurrency(inv.balance_due)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                          STATUS_STYLES[inv.status || ""] || "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {inv.status
+                          ? inv.status.charAt(0).toUpperCase() + inv.status.slice(1)
+                          : "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{fmtDate(inv.invoice_date)}</td>
+                    <td className="px-4 py-3 text-center">
+                      {inv.pdf_storage_path ? (
+                        <button
+                          onClick={() => handleDownloadPdf(inv.pdf_storage_path!)}
+                          className="text-blue-600 hover:text-blue-800 cursor-pointer"
+                          title="Download PDF"
+                        >
+                          <FileText className="w-4 h-4 inline" />
+                        </button>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>
@@ -882,157 +448,35 @@ export default function CustomerInvoices() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
-              Page {page} of {totalPages.toLocaleString()}
+        {totalCount > 0 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+            <p className="text-sm text-gray-600">
+              Showing {showFrom}–{showTo} of {totalCount}
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setPage(Math.max(1, page - 1))}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1"
               >
                 <ChevronLeft className="w-4 h-4" />
+                Previous
               </button>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const p = parseInt(jumpPage, 10);
-                  if (p >= 1 && p <= totalPages) setPage(p);
-                  setJumpPage("");
-                }}
-                className="flex items-center gap-1"
-              >
-                <input
-                  type="number"
-                  min={1}
-                  max={totalPages}
-                  value={jumpPage}
-                  onChange={(e) => setJumpPage(e.target.value)}
-                  placeholder={String(page)}
-                  className="w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-teal-500"
-                />
-              </form>
+              <span className="text-sm text-gray-600">
+                Page {page} of {totalPages}
+              </span>
               <button
-                onClick={() => setPage(Math.min(totalPages, page + 1))}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1"
               >
+                Next
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
         )}
       </div>
-
-      {/* Summary Panel */}
-      <SummaryPanel
-        open={summaryOpen}
-        onClose={() => setSummaryOpen(false)}
-        data={summaryData}
-        loading={summaryLoading}
-      />
-    </div>
-  );
-}
-
-// ── Sub-components ─────────────────────────────────────────────────
-
-function PaymentBadge({ status }: { status: string | null }) {
-  const config: Record<string, { style: string; label: string }> = {
-    FULLY_PAID: {
-      style: "bg-green-100 text-green-700",
-      label: "Fully Paid",
-    },
-    PARTIALLY_PAID: {
-      style: "bg-yellow-100 text-yellow-700",
-      label: "Partial",
-    },
-    NOT_PAID: { style: "bg-red-100 text-red-700", label: "Unpaid" },
-  };
-  const c = config[status || ""] || {
-    style: "bg-gray-100 text-gray-600",
-    label: status || "\u2014",
-  };
-  return (
-    <span
-      className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${c.style}`}
-    >
-      {c.label}
-    </span>
-  );
-}
-
-function CustomerStatusBadge({ status }: { status: string | null }) {
-  const config: Record<string, { style: string; label: string }> = {
-    READY: { style: "bg-blue-100 text-blue-700", label: "Ready" },
-    NOT_READY: { style: "bg-gray-100 text-gray-600", label: "Draft" },
-    SENT: { style: "bg-green-100 text-green-700", label: "Sent" },
-  };
-  const c = config[status || ""] || {
-    style: "bg-gray-100 text-gray-600",
-    label: status || "\u2014",
-  };
-  return (
-    <span
-      className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${c.style}`}
-    >
-      {c.label}
-    </span>
-  );
-}
-
-function ExpandedRow({
-  invoice,
-  resolveMethod,
-}: {
-  invoice: CustomerInvoice;
-  resolveMethod: (id: number | null) => string;
-}) {
-  const payments = Array.isArray(invoice.payments) ? invoice.payments : [];
-
-  return (
-    <div>
-      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-        Payments ({payments.length})
-      </h4>
-      {payments.length === 0 ? (
-        <p className="text-sm text-gray-400">No payments recorded</p>
-      ) : (
-        <table className="w-full max-w-lg text-sm">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-1.5 pr-4 font-medium text-gray-500">
-                Amount
-              </th>
-              <th className="text-left py-1.5 pr-4 font-medium text-gray-500">
-                Date
-              </th>
-              <th className="text-left py-1.5 pr-4 font-medium text-gray-500">
-                Method
-              </th>
-              <th className="text-left py-1.5 font-medium text-gray-500">
-                Notes
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {payments.map((p: any, idx: number) => (
-              <tr key={idx} className="border-b border-gray-100">
-                <td className="py-1.5 pr-4 tabular-nums">
-                  {fmtCurrency(p.amount)}
-                </td>
-                <td className="py-1.5 pr-4">{fmtDate(p.payment_date)}</td>
-                <td className="py-1.5 pr-4">
-                  {resolveMethod(p.payment_method_id)}
-                </td>
-                <td className="py-1.5">{p.notes || "\u2014"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
     </div>
   );
 }
