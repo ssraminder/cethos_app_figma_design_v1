@@ -121,7 +121,7 @@ serve(async (req: Request) => {
       if (customer?.invoicing_branch_id) {
         const { data: bpm } = await supabase
           .from("branch_payment_methods")
-          .select("payment_method_id, display_instructions, is_enabled")
+          .select("payment_method_id, display_instructions, details, is_enabled")
           .eq("branch_id", customer.invoicing_branch_id)
           .in("payment_method_id", paymentMethodIds)
           .eq("is_enabled", true);
@@ -131,7 +131,9 @@ serve(async (req: Request) => {
       if (methods) {
         for (const m of methods) {
           const bpm = branchMethods.find((b: any) => b.payment_method_id === m.id);
-          const instructions = bpm?.display_instructions || null;
+          const instructions = bpm
+            ? resolvePaymentInstructions(m.code, bpm.display_instructions, bpm.details)
+            : null;
 
           if (m.id === customer?.preferred_payment_method_id) {
             preferredMethodName = m.name;
@@ -219,6 +221,65 @@ serve(async (req: Request) => {
 // Builds a minimal but valid PDF document without external dependencies.
 // Uses raw PDF operators for cross-platform compatibility on Deno edge.
 // ============================================================================
+
+/**
+ * Resolves placeholder tokens like [EMAIL], [ADDRESS] in display_instructions
+ * using the details JSON from branch_payment_methods.
+ * If instructions still contain unresolved placeholders or are empty,
+ * falls back to generating instructions from the details directly.
+ */
+function resolvePaymentInstructions(
+  code: string,
+  displayInstructions: string | null,
+  details: Record<string, string> | null,
+): string | null {
+  const d = details || {};
+
+  // If display_instructions exist, replace placeholders with actual values
+  if (displayInstructions) {
+    let resolved = displayInstructions
+      .replace(/\[EMAIL\]/g, d.email || "")
+      .replace(/\[ADDRESS\]/g, d.address || "")
+      .replace(/\[BANK\]/g, d.bank_name || "")
+      .replace(/\[TRANSIT\]/g, d.transit || "")
+      .replace(/\[ACCOUNT\]/g, d.account || "")
+      .replace(/\[SWIFT\]/g, d.swift || "")
+      .replace(/\[INSTITUTION\]/g, d.institution || "")
+      .replace(/\[PAYABLE_TO\]/g, d.payable_to || "");
+
+    // If after resolving there are no empty bracket remnants, return it
+    if (!resolved.includes("[]") && resolved.trim()) {
+      return resolved;
+    }
+  }
+
+  // Fallback: generate instructions from details (same logic as frontend)
+  switch (code) {
+    case "etransfer":
+      return d.email ? `Send Interac e-Transfer to: ${d.email}` : null;
+    case "wire":
+      return d.bank_name
+        ? `Wire Transfer — ${d.bank_name}, Transit: ${d.transit}, Account: ${d.account}${d.swift ? ", SWIFT: " + d.swift : ""}`
+        : null;
+    case "cheque":
+      return d.payable_to
+        ? `Make cheque payable to ${d.payable_to}${d.address ? " and mail to: " + d.address : ""}`
+        : null;
+    case "direct_deposit":
+      return d.bank_name
+        ? `Direct Deposit — ${d.bank_name}, Transit: ${d.transit}, Account: ${d.account}`
+        : null;
+    case "paypal":
+      return d.email ? `Send PayPal payment to: ${d.email}` : null;
+    case "cash":
+      return "Cash payment accepted at our office.";
+    case "stripe":
+    case "online":
+      return "Pay online via credit/debit card at portal.cethos.com";
+    default:
+      return null;
+  }
+}
 
 function wrapText(text: string, maxChars: number): string[] {
   const words = text.split(" ");
