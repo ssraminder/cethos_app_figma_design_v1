@@ -3,6 +3,7 @@ import { useQuote } from "@/context/QuoteContext";
 import { supabase } from "@/lib/supabase";
 import StartOverLink from "@/components/quote/StartOverLink";
 import { ChevronRight, ChevronLeft, Loader2, Lock } from "lucide-react";
+import { trackQuoteStep } from "@/lib/tracking";
 
 export default function Step3Contact() {
   const { state, updateState, goToPreviousStep } = useQuote();
@@ -22,6 +23,10 @@ export default function Step3Contact() {
     };
     fetchQuoteNumber();
   }, [state.quoteId, state.quoteNumber]);
+
+  useEffect(() => {
+    trackQuoteStep(3, "contact_info", state.quoteId);
+  }, []);
 
   // Local state for first/last name — combined into fullName for QuoteContext
   const [firstName, setFirstName] = useState(() => {

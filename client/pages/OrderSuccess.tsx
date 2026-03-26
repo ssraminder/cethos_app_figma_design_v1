@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { CheckCircle2, Mail, Loader2, AlertCircle } from "lucide-react";
+import { trackQuoteSubmission, getReferralSource } from "@/lib/tracking";
 
 interface OrderDetails {
   order_number: string;
@@ -18,6 +19,7 @@ export default function OrderSuccess() {
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const conversionTracked = useRef(false);
 
   useEffect(() => {
     if (sessionId) {
@@ -92,6 +94,19 @@ export default function OrderSuccess() {
       estimated_delivery_date: orderData.estimated_delivery_date,
       customer_email: (orderData.customer as any)?.email || "",
     });
+
+    // Fire conversion event once (Stripe payment completed = primary conversion)
+    if (!conversionTracked.current) {
+      conversionTracked.current = true;
+      const referral = getReferralSource();
+      trackQuoteSubmission({
+        quoteId: orderId,
+        serviceType: "payment_completed",
+        totalAmount: orderData.total_amount,
+        sourceUrl: referral?.sourceUrl || "",
+        sourceLocation: referral?.sourceLocation || "",
+      });
+    }
   };
 
   if (loading) {

@@ -5,6 +5,7 @@ import StartOverLink from "@/components/quote/StartOverLink";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { ChevronRight, X, Loader2, CheckCircle, XCircle, Paperclip } from "lucide-react";
 import { compressPdfIfNeeded, needsCompression } from "@/utils/compressPdf";
+import { trackQuoteStep, trackFileUpload } from "@/lib/tracking";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -667,7 +668,12 @@ export default function Step1Upload() {
       });
       // Do NOT await — fire and forget
 
-      // 4. Navigate to Step 2
+      // 4. Track file upload conversion event
+      const totalSizeMB = localFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024);
+      trackFileUpload(localFiles.length, totalSizeMB);
+      trackQuoteStep(1, "file_upload", quoteId);
+
+      // 5. Navigate to Step 2
       goToNextStep();
     } catch (err: any) {
       console.error("Error in Step 1 Continue:", err);

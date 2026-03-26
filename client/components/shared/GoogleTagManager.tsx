@@ -2,6 +2,15 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useTrackingSettings } from "@/hooks/useTrackingSettings";
 
+/** Route prefixes where tracking scripts should NOT be loaded */
+const EXCLUDED_PREFIXES = ["/admin", "/dashboard", "/settings"];
+
+function isExcludedRoute(pathname: string): boolean {
+  return EXCLUDED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix + "/"),
+  );
+}
+
 /**
  * Database-driven Google Tag Manager / Analytics component.
  *
@@ -10,6 +19,9 @@ import { useTrackingSettings } from "@/hooks/useTrackingSettings";
  * route changes for GA4. Also supports custom <script> injection
  * via the `custom_head_scripts` setting.
  *
+ * Skips script injection on admin, dashboard, and settings routes
+ * to keep internal pages free of third-party tracking.
+ *
  * Mount once at the app root (inside BrowserRouter).
  */
 export default function GoogleTagManager() {
@@ -17,10 +29,11 @@ export default function GoogleTagManager() {
   const location = useLocation();
   const injectedRef = useRef(false);
 
-  // Inject scripts once when settings load
+  // Inject scripts once when settings load (only on public routes)
   useEffect(() => {
     if (loading || injectedRef.current) return;
     if (!settings.tracking_enabled) return;
+    if (isExcludedRoute(location.pathname)) return;
 
     injectedRef.current = true;
 
@@ -103,9 +116,10 @@ export default function GoogleTagManager() {
     };
   }, [loading, settings]);
 
-  // Send page_view on route changes for GA4
+  // Send page_view on route changes for GA4 (skip admin/dashboard routes)
   useEffect(() => {
     if (!settings.tracking_enabled || !settings.google_analytics_id) return;
+    if (isExcludedRoute(location.pathname)) return;
 
     const w = window as any;
     if (typeof w.gtag === "function") {

@@ -110,6 +110,7 @@ import TrackingSettings from "./pages/admin/settings/TrackingSettings";
 import ServicesSettings from "./pages/admin/settings/ServicesSettings";
 import WorkflowTemplatesSettings from "./pages/admin/settings/WorkflowTemplatesSettings";
 import GoogleTagManager from "./components/shared/GoogleTagManager";
+import QuoteTrackingLayout from "./components/layouts/QuoteTrackingLayout";
 
 const queryClient = new QueryClient();
 
@@ -136,39 +137,43 @@ const App = () => (
                     <Route path="/" element={<Login />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/login/verify" element={<LoginVerify />} />
-                    <Route path="/quote" element={<Index />} />
-                    <Route path="/success" element={<Success />} />
-                    <Route
-                      path="/quote/:quoteId/checkout"
-                      element={<Checkout />}
-                    />
-                    <Route
-                      path="/quote/recover"
-                      element={<QuoteRecoverPage />}
-                    />
-                    <Route
-                      path="/quote/:quoteId/review"
-                      element={<QuoteReviewPage />}
-                    />
-                    <Route
-                      path="/quote/:quoteId/revision"
-                      element={<QuoteRevisionPage />}
-                    />
-                    <Route
-                      path="/quote/confirmation"
-                      element={<QuoteConfirmationPage />}
-                    />
-                    <Route path="/quote/saved" element={<QuoteSavedPage />} />
-                    <Route
-                      path="/quote/expired"
-                      element={<QuoteExpiredPage />}
-                    />
-                    <Route
-                      path="/quote/:quoteId/continue"
-                      element={<QuoteContinuePage />}
-                    />
-                    <Route path="/order/success" element={<OrderSuccess />} />
-                    <Route path="/payment/cancel" element={<PaymentCancel />} />
+
+                    {/* Quote wizard routes — wrapped with conversion tracking */}
+                    <Route element={<QuoteTrackingLayout />}>
+                      <Route path="/quote" element={<Index />} />
+                      <Route path="/success" element={<Success />} />
+                      <Route
+                        path="/quote/:quoteId/checkout"
+                        element={<Checkout />}
+                      />
+                      <Route
+                        path="/quote/recover"
+                        element={<QuoteRecoverPage />}
+                      />
+                      <Route
+                        path="/quote/:quoteId/review"
+                        element={<QuoteReviewPage />}
+                      />
+                      <Route
+                        path="/quote/:quoteId/revision"
+                        element={<QuoteRevisionPage />}
+                      />
+                      <Route
+                        path="/quote/confirmation"
+                        element={<QuoteConfirmationPage />}
+                      />
+                      <Route path="/quote/saved" element={<QuoteSavedPage />} />
+                      <Route
+                        path="/quote/expired"
+                        element={<QuoteExpiredPage />}
+                      />
+                      <Route
+                        path="/quote/:quoteId/continue"
+                        element={<QuoteContinuePage />}
+                      />
+                      <Route path="/order/success" element={<OrderSuccess />} />
+                      <Route path="/payment/cancel" element={<PaymentCancel />} />
+                    </Route>
 
                     {/* E-Transfer Payment Routes */}
                     <Route

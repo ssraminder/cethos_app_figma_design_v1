@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import StartOverLink from "@/components/StartOverLink";
 import { toast } from "sonner";
+import { trackQuoteStep, trackQuoteSubmission, trackQuoteSaved, getReferralSource } from "@/lib/tracking";
 
 // Canadian Provinces Data Check
 const CANADIAN_PROVINCES = [
@@ -180,6 +181,11 @@ interface GeoLocationData {
 export default function Step4ReviewCheckout() {
   const { state, updateState, goToPreviousStep } = useQuote();
   const navigate = useNavigate();
+
+  // Track step 4 mount
+  useEffect(() => {
+    trackQuoteStep(4, "review_checkout", state.quoteId);
+  }, []);
 
   // === STATE FROM STEP 4 (Review & Rush) ===
 
@@ -1715,7 +1721,18 @@ export default function Step4ReviewCheckout() {
       if (fnError) throw new Error(fnError.message || "Failed to create checkout session");
       if (!data?.success || !data?.checkoutUrl) throw new Error(data?.error || "Failed to create checkout session");
 
-      // 6. Redirect to Stripe
+      // 6. Track payment initiation (conversion fires on /order/success after Stripe)
+      const referral = getReferralSource();
+      trackQuoteSubmission({
+        quoteId,
+        serviceType: "payment_initiated",
+        fileCount: state.files?.length || 0,
+        totalAmount: pricing.finalTotal,
+        sourceUrl: referral?.sourceUrl || "",
+        sourceLocation: referral?.sourceLocation || "",
+      });
+
+      // 7. Redirect to Stripe
       window.location.href = data.checkoutUrl;
 
     } catch (err: any) {
@@ -1798,6 +1815,10 @@ export default function Step4ReviewCheckout() {
         .eq("id", quoteId);
 
       await supabase.functions.invoke("send-quote-link-email", { body: { quoteId } });
+
+      // Track quote saved event
+      trackQuoteSaved(quoteId);
+
       navigate(`/quote/saved?quote_id=${quoteId}`);
     } catch (err: any) {
       console.error("Save and email error:", err);
@@ -1843,6 +1864,16 @@ export default function Step4ReviewCheckout() {
       ).catch((err) =>
         console.warn("Staff notification failed (non-blocking):", err),
       );
+
+      // Track review request as a conversion (quote submitted for manual review)
+      const referral = getReferralSource();
+      trackQuoteSubmission({
+        quoteId: state.quoteId,
+        serviceType: "review_requested",
+        fileCount: state.files?.length || 0,
+        sourceUrl: referral?.sourceUrl || "",
+        sourceLocation: referral?.sourceLocation || "",
+      });
 
       // Close request modal, show success modal
       setShowHitlModal(false);
