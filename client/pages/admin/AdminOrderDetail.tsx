@@ -149,6 +149,9 @@ interface OrderDetail {
   refund_amount: number;
   refund_status: string | null;
   overpayment_credit: number | null;
+  invoice_status: string | null;
+  po_number: string | null;
+  client_project_number: string | null;
 }
 
 interface InvoiceRecord {
@@ -2482,6 +2485,35 @@ export default function AdminOrderDetail() {
                 <div className="flex items-end pb-1">
                   <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
                     Delivery Hold
+                  </span>
+                </div>
+              )}
+
+              {/* Invoice Status Badge */}
+              {order.invoice_status && (
+                <div className="flex items-end pb-1">
+                  <span
+                    className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
+                      order.invoice_status === "paid"
+                        ? "bg-green-100 text-green-700"
+                        : order.invoice_status === "invoiced"
+                        ? "bg-blue-100 text-blue-700"
+                        : order.invoice_status === "draft"
+                        ? "bg-yellow-100 text-yellow-700"
+                        : order.invoice_status === "unbilled"
+                        ? "bg-gray-100 text-gray-600"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {order.invoice_status === "paid"
+                      ? "Invoice Paid"
+                      : order.invoice_status === "invoiced"
+                      ? "Invoiced"
+                      : order.invoice_status === "draft"
+                      ? "Invoice Draft"
+                      : order.invoice_status === "unbilled"
+                      ? "Unbilled"
+                      : order.invoice_status.charAt(0).toUpperCase() + order.invoice_status.slice(1)}
                   </span>
                 </div>
               )}
