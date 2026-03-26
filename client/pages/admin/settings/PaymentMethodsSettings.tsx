@@ -294,11 +294,19 @@ export default function PaymentMethodsSettings() {
     bpmId: string,
     bpm: BranchPaymentMethod,
     patch: Partial<{ details: Record<string, string>; display_instructions: string; is_enabled: boolean }>,
+    methodCode?: string,
   ) => {
     const current = getBpmEdit(bpm);
+    const updated = { ...current, ...patch };
+
+    // Auto-regenerate display instructions when detail fields change
+    if (patch.details && methodCode) {
+      updated.display_instructions = generateInstructions(methodCode, patch.details);
+    }
+
     setBpmEdits((prev) => ({
       ...prev,
-      [bpmId]: { ...current, ...patch },
+      [bpmId]: updated,
     }));
   };
 
@@ -567,9 +575,14 @@ export default function PaymentMethodsSettings() {
   const getBranchConfigStatus = (methodId: string) => {
     const bpms = branchPayments.filter((bp) => bp.payment_method_id === methodId);
     const configured = bpms.filter((bp) => {
-      const instructions = bp.display_instructions || "";
+      // Use local edit state if available, otherwise use saved data
+      const edit = bpmEdits[bp.id];
+      const isEnabled = edit ? edit.is_enabled : bp.is_enabled;
+      const instructions = edit
+        ? edit.display_instructions || ""
+        : bp.display_instructions || "";
       return (
-        bp.is_enabled &&
+        isEnabled &&
         instructions.length > 0 &&
         !hasPlaceholderBrackets(instructions)
       );
@@ -975,7 +988,7 @@ export default function PaymentMethodsSettings() {
                                             };
                                             updateBpmEdit(bpm.id, bpm, {
                                               details: newDetails,
-                                            });
+                                            }, method.code);
                                           }}
                                           rows={2}
                                           className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm"
@@ -992,7 +1005,7 @@ export default function PaymentMethodsSettings() {
                                             };
                                             updateBpmEdit(bpm.id, bpm, {
                                               details: newDetails,
-                                            });
+                                            }, method.code);
                                           }}
                                           className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm"
                                           placeholder={field.placeholder}
