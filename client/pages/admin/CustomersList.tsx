@@ -28,11 +28,20 @@ interface Customer {
   phone: string | null;
   customer_type: "individual" | "business";
   company_name: string | null;
+  invoicing_branch_id: number | null;
   created_at: string;
   last_login_at: string | null;
   total_orders: number;
   total_spent: number;
   last_order_date: string | null;
+}
+
+interface Branch {
+  id: number;
+  code: string;
+  legal_name: string;
+  division: string | null;
+  is_active: boolean;
 }
 
 interface SummaryStats {
@@ -52,6 +61,7 @@ export default function CustomersList() {
   const page = parseInt(searchParams.get("page") || "1", 10);
   const search = searchParams.get("search") || "";
   const customerType = searchParams.get("type") || "";
+  const branchFilter = searchParams.get("branch") || "";
   const sortField = (searchParams.get("sort") as SortField) || "created_at";
   const sortDir = (searchParams.get("dir") as SortDirection) || "desc";
 
@@ -69,6 +79,7 @@ export default function CustomersList() {
     newThisMonth: 0,
   });
 
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   // Fetch summary stats
@@ -104,6 +115,20 @@ export default function CustomersList() {
     }
   };
 
+  // Fetch branches for display and filtering
+  const fetchBranches = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("branches")
+        .select("id, code, legal_name, division, is_active")
+        .eq("is_active", true)
+        .order("legal_name");
+      if (!error && data) setBranches(data);
+    } catch (error) {
+      console.error("Error fetching branches:", error);
+    }
+  };
+
   // Fetch customers with order aggregation
   const fetchCustomers = async () => {
     setLoading(true);
@@ -120,6 +145,7 @@ export default function CustomersList() {
         phone,
         customer_type,
         company_name,
+        invoicing_branch_id,
         created_at,
         last_login_at
       `,
@@ -136,6 +162,11 @@ export default function CustomersList() {
       // Apply type filter
       if (customerType) {
         query = query.eq("customer_type", customerType);
+      }
+
+      // Apply branch filter
+      if (branchFilter) {
+        query = query.eq("invoicing_branch_id", Number(branchFilter));
       }
 
       // Apply sorting
@@ -228,11 +259,12 @@ export default function CustomersList() {
 
   useEffect(() => {
     fetchStats();
+    fetchBranches();
   }, []);
 
   useEffect(() => {
     fetchCustomers();
-  }, [page, search, customerType, sortField, sortDir]);
+  }, [page, search, customerType, branchFilter, sortField, sortDir]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -270,7 +302,7 @@ export default function CustomersList() {
     setSearchInput("");
   };
 
-  const hasActiveFilters = search || customerType;
+  const hasActiveFilters = search || customerType || branchFilter;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const SortHeader = ({
@@ -374,7 +406,7 @@ export default function CustomersList() {
             Filters
             {hasActiveFilters && (
               <span className="w-5 h-5 bg-teal-600 text-white text-xs rounded-full flex items-center justify-center">
-                {[search, customerType].filter(Boolean).length}
+                {[search, customerType, branchFilter].filter(Boolean).length}
               </span>
             )}
             <ChevronDown
@@ -410,6 +442,23 @@ export default function CustomersList() {
                 <option value="business">Business</option>
               </select>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Branch
+              </label>
+              <select
+                value={branchFilter}
+                onChange={(e) => updateFilter("branch", e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">All Branches</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.legal_name}{b.division ? ` — ${b.division}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
       </div>
@@ -432,6 +481,9 @@ export default function CustomersList() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Type
                 </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Branch
+                </th>
                 <th className="px-4 py-3 text-right">
                   <SortHeader field="total_orders">Orders</SortHeader>
                 </th>
@@ -449,14 +501,14 @@ export default function CustomersList() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center">
+                  <td colSpan={9} className="px-6 py-12 text-center">
                     <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     <p className="text-gray-500 mt-2">Loading...</p>
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                     No customers found
                   </td>
                 </tr>
@@ -500,6 +552,16 @@ export default function CustomersList() {
                     </td>
                     <td className="px-4 py-3">
                       <CustomerTypeBadge type={customer.customer_type} />
+                    </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const branch = branches.find(b => b.id === customer.invoicing_branch_id);
+                        return branch ? (
+                          <span className="text-sm text-gray-700">{branch.legal_name}</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <p className="text-sm font-medium text-gray-900 tabular-nums">
