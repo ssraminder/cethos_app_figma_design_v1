@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import {
@@ -110,8 +110,12 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
 // ── Main Component ───────────────────────────────────────────────────
 export default function CreateInvoice() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { session } = useAdminAuthContext();
   const [currentStep, setCurrentStep] = useState(1);
+  const presetCustomerId = searchParams.get("customer_id");
+  const preselectOrderId = searchParams.get("preselect");
+  const didAutoLoad = useRef(false);
 
   // Step 1 state
   const [searchTerm, setSearchTerm] = useState("");
@@ -212,6 +216,33 @@ export default function CreateInvoice() {
       setLoadingRecent(false);
     })();
   }, []);
+
+  // ── Auto-load customer from URL params ──
+  useEffect(() => {
+    if (!presetCustomerId || didAutoLoad.current) return;
+    didAutoLoad.current = true;
+
+    (async () => {
+      try {
+        const { data: customer } = await supabase
+          .from("customers")
+          .select("id, full_name, email, company_name, customer_type, requires_po, requires_client_project_number, payment_terms, invoicing_branch_id")
+          .eq("id", presetCustomerId)
+          .single();
+
+        if (customer) {
+          // Wrap in the same flow as handleSelectCustomer but skip readiness check UI
+          const customerResult: CustomerResult = {
+            ...customer,
+            stats: { unbilled_orders: 0 },
+          };
+          handleSelectCustomer(customerResult);
+        }
+      } catch {
+        // Silently fail — user can still search manually
+      }
+    })();
+  }, [presetCustomerId]);
 
   // ── Search customers ──
   const searchCustomers = useCallback(async (term: string) => {
@@ -375,18 +406,27 @@ export default function CreateInvoice() {
         }
       );
       const result = await resp.json();
-      setOrders(result.orders || []);
+      const loadedOrders: UnbilledOrder[] = result.orders || [];
+      setOrders(loadedOrders);
       setOrdersResponse({
         total_count: result.total_count || 0,
         selectable_count: result.selectable_count || 0,
         requires_po: result.requires_po || false,
         requires_client_project_number: result.requires_client_project_number || false,
       });
+
+      // Auto-preselect order from URL params
+      if (preselectOrderId) {
+        const match = loadedOrders.find((o) => o.id === preselectOrderId);
+        if (match && match.selectable) {
+          setSelectedOrderIds((prev) => new Set(prev).add(preselectOrderId));
+        }
+      }
     } catch {
       toast.error("Failed to load unbilled orders");
     }
     setLoadingOrders(false);
-  }, [selectedCustomer, dateFrom, dateTo, poFilter]);
+  }, [selectedCustomer, dateFrom, dateTo, poFilter, preselectOrderId]);
 
   useEffect(() => {
     if (currentStep === 2) {
