@@ -267,6 +267,48 @@ export default function PaymentMethodsSettings() {
         }
       }
       setExpandedMethods(autoExpand);
+
+      // Auto-fix BPMs that have filled details but stale placeholder instructions
+      const fixedEdits: Record<string, { details: Record<string, string>; display_instructions: string; is_enabled: boolean }> = {};
+
+      // We need the final bpm list including any newly inserted rows
+      // Re-fetch if we inserted, otherwise use bpmList
+      let finalBpms = bpmList;
+      if (rowsToInsert.length > 0) {
+        const { data: refreshed } = await supabase
+          .from("branch_payment_methods")
+          .select("*")
+          .order("sort_order");
+        if (refreshed) {
+          finalBpms = refreshed;
+          setBranchPayments(refreshed);
+        }
+      }
+
+      for (const bpm of finalBpms) {
+        const pm = methods.find((m) => m.id === bpm.payment_method_id);
+        if (!pm) continue;
+
+        const details = parseDetails(bpm.details);
+        const instructions = bpm.display_instructions || "";
+        const hasValues = Object.values(details).some((v) => v && v.trim().length > 0);
+
+        // If details have real values but instructions still have placeholders, auto-generate
+        if (hasValues && hasPlaceholderBrackets(instructions)) {
+          const generated = generateInstructions(pm.code, details);
+          if (generated) {
+            fixedEdits[bpm.id] = {
+              details,
+              display_instructions: generated,
+              is_enabled: bpm.is_enabled,
+            };
+          }
+        }
+      }
+
+      if (Object.keys(fixedEdits).length > 0) {
+        setBpmEdits(fixedEdits);
+      }
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error("Failed to load payment methods");
