@@ -149,6 +149,9 @@ interface OrderDetail {
   refund_amount: number;
   refund_status: string | null;
   overpayment_credit: number | null;
+  invoice_status: string | null;
+  po_number: string | null;
+  client_project_number: string | null;
 }
 
 interface InvoiceRecord {
@@ -402,6 +405,14 @@ export default function AdminOrderDetail() {
 
   // File delete state
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+
+  // PO / Project Number inline edit
+  const [editingPO, setEditingPO] = useState(false);
+  const [editingProject, setEditingProject] = useState(false);
+  const [poValue, setPoValue] = useState("");
+  const [projectValue, setProjectValue] = useState("");
+  const [savingPO, setSavingPO] = useState(false);
+  const [savingProject, setSavingProject] = useState(false);
   const [deleteModal, setDeleteModal] = useState<{ fileId: string; filename: string } | null>(null);
 
   // Inline chat state
@@ -2429,6 +2440,36 @@ export default function AdminOrderDetail() {
   const hasOverpayment = overpaymentAmount > 0.01;
   const hasUnderpayment = underpaymentAmount > 0.01;
 
+  const handleSavePO = async () => {
+    if (!id) return;
+    setSavingPO(true);
+    try {
+      const { error: err } = await supabase.from("orders").update({ po_number: poValue || null }).eq("id", id);
+      if (err) throw err;
+      setOrder((prev) => prev ? { ...prev, po_number: poValue || null } : prev);
+      setEditingPO(false);
+      toast.success("PO number updated");
+    } catch {
+      toast.error("Failed to update PO number");
+    }
+    setSavingPO(false);
+  };
+
+  const handleSaveProject = async () => {
+    if (!id) return;
+    setSavingProject(true);
+    try {
+      const { error: err } = await supabase.from("orders").update({ client_project_number: projectValue || null }).eq("id", id);
+      if (err) throw err;
+      setOrder((prev) => prev ? { ...prev, client_project_number: projectValue || null } : prev);
+      setEditingProject(false);
+      toast.success("Project number updated");
+    } catch {
+      toast.error("Failed to update project number");
+    }
+    setSavingProject(false);
+  };
+
   return (
     <div className="px-4 sm:px-6 py-6 max-w-6xl mx-auto">
       <div className="mb-6">
@@ -2482,6 +2523,35 @@ export default function AdminOrderDetail() {
                 <div className="flex items-end pb-1">
                   <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
                     Delivery Hold
+                  </span>
+                </div>
+              )}
+
+              {/* Invoice Status Badge */}
+              {order.invoice_status && (
+                <div className="flex items-end pb-1">
+                  <span
+                    className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
+                      order.invoice_status === "paid"
+                        ? "bg-green-100 text-green-700"
+                        : order.invoice_status === "invoiced"
+                        ? "bg-blue-100 text-blue-700"
+                        : order.invoice_status === "draft"
+                        ? "bg-yellow-100 text-yellow-700"
+                        : order.invoice_status === "unbilled"
+                        ? "bg-gray-100 text-gray-600"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {order.invoice_status === "paid"
+                      ? "Invoice Paid"
+                      : order.invoice_status === "invoiced"
+                      ? "Invoiced"
+                      : order.invoice_status === "draft"
+                      ? "Invoice Draft"
+                      : order.invoice_status === "unbilled"
+                      ? "Unbilled"
+                      : order.invoice_status.charAt(0).toUpperCase() + order.invoice_status.slice(1)}
                   </span>
                 </div>
               )}
@@ -3006,6 +3076,122 @@ export default function AdminOrderDetail() {
             ) : (
               <p className="text-gray-500">No customer information</p>
             )}
+          </div>
+
+          {/* PO & Project Number */}
+          <div className="bg-white rounded-lg border p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-gray-400" />
+              PO & Project Reference
+            </h2>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* PO Number */}
+              <div>
+                <p className="text-sm text-gray-500 mb-1">PO Number</p>
+                {editingPO ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={poValue}
+                      onChange={(e) => setPoValue(e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1 text-sm flex-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder="Enter PO number"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleSavePO}
+                      disabled={savingPO}
+                      className="text-green-600 hover:text-green-800 text-sm font-medium"
+                    >
+                      {savingPO ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+                    </button>
+                    <button
+                      onClick={() => setEditingPO(false)}
+                      className="text-gray-400 hover:text-gray-600 text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {order.po_number ? (
+                      <p className="font-medium">{order.po_number}</p>
+                    ) : (order.customer as any)?.requires_po ? (
+                      <span className="text-amber-600 text-sm flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        PO required for invoicing
+                      </span>
+                    ) : (
+                      <p className="text-gray-400 text-sm">Not set</p>
+                    )}
+                    <button
+                      onClick={() => {
+                        setPoValue(order.po_number || "");
+                        setEditingPO(true);
+                      }}
+                      className="text-gray-400 hover:text-gray-600"
+                      title="Edit PO number"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Project Number */}
+              <div>
+                <p className="text-sm text-gray-500 mb-1">Project #</p>
+                {editingProject ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={projectValue}
+                      onChange={(e) => setProjectValue(e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1 text-sm flex-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder="Enter project number"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleSaveProject}
+                      disabled={savingProject}
+                      className="text-green-600 hover:text-green-800 text-sm font-medium"
+                    >
+                      {savingProject ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+                    </button>
+                    <button
+                      onClick={() => setEditingProject(false)}
+                      className="text-gray-400 hover:text-gray-600 text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {order.client_project_number ? (
+                      <p className="font-medium">{order.client_project_number}</p>
+                    ) : (order.customer as any)?.requires_client_project_number ? (
+                      <span className="text-amber-600 text-sm flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Project # required for invoicing
+                      </span>
+                    ) : (
+                      <p className="text-gray-400 text-sm">Not set</p>
+                    )}
+                    <button
+                      onClick={() => {
+                        setProjectValue(order.client_project_number || "");
+                        setEditingProject(true);
+                      }}
+                      className="text-gray-400 hover:text-gray-600"
+                      title="Edit project number"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Translation Details */}
