@@ -9,6 +9,7 @@ import {
   CheckCircle,
   XCircle,
   ClipboardList,
+  Mail,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -89,6 +90,7 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
   const [regenerating, setRegenerating] = useState(false);
   const [issuing, setIssuing] = useState(false);
   const [voiding, setVoiding] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState<{ message: string; missing?: string[] } | null>(null);
 
   const fetchInvoice = useCallback(async () => {
@@ -310,6 +312,37 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
     }
   };
 
+  const handleSendEmail = async () => {
+    if (!invoice) return;
+    if (!window.confirm("Send this invoice to the customer by email?")) return;
+    setSending(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-invoice-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ invoice_id: invoice.id }),
+        }
+      );
+      const result = await resp.json();
+      if (!resp.ok || !result.success) {
+        toast.error(result.error || "Failed to send invoice email");
+        return;
+      }
+      toast.success(`Invoice emailed to ${result.sent_to || "customer"}`);
+      await fetchInvoice();
+    } catch {
+      toast.error("Failed to send invoice email");
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
@@ -329,6 +362,7 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
   const canIssue = status === "draft";
   const canVoid = ["draft", "issued", "sent"].includes(status);
   const canRegenerate = ["draft", "issued", "paid"].includes(status);
+  const canSendEmail = ["issued", "sent"].includes(status) && invoice?.pdf_storage_path;
 
   // ── State 1: No invoice ──
   if (!invoice) {
@@ -522,6 +556,21 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
             </button>
           )}
 
+          {canSendEmail && (
+            <button
+              onClick={handleSendEmail}
+              disabled={sending}
+              className="bg-indigo-50 text-indigo-700 text-sm px-3 py-1.5 rounded-md hover:bg-indigo-100 inline-flex items-center gap-1.5"
+            >
+              {sending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Mail className="w-3.5 h-3.5" />
+              )}
+              Send by Email
+            </button>
+          )}
+
           {canVoid && (
             <button
               onClick={handleVoid}
@@ -536,6 +585,74 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
               Void
             </button>
           )}
+        </div>
+      )}
+
+      {/* Generate new invoice after voiding */}
+      {isVoid && (
+        <div className="border-t border-gray-200 pt-4 mt-4">
+          <p className="text-sm text-gray-600 mb-3">
+            This invoice has been voided. You can generate a replacement invoice.
+          </p>
+
+          {error && (
+            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-sm text-amber-800 mb-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p>{error.message}</p>
+                  {error.missing && (
+                    <div className="mt-2 flex gap-3">
+                      <Link
+                        to={`/admin/customers/${customerId}`}
+                        className="text-amber-900 underline hover:no-underline text-xs font-medium"
+                      >
+                        Edit Customer Profile →
+                      </Link>
+                      <Link
+                        to="/admin/settings/branches"
+                        className="text-amber-900 underline hover:no-underline text-xs font-medium"
+                      >
+                        Branch Settings →
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleQuickInvoice}
+              disabled={generating}
+              className="bg-blue-600 text-white text-sm px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-2"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <FileText className="w-4 h-4" />
+                  Generate New Invoice
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() =>
+                navigate(
+                  `/admin/invoices/create?customer_id=${customerId}&preselect=${orderId}`
+                )
+              }
+              className="text-blue-600 text-sm hover:underline inline-flex items-center gap-1"
+            >
+              <ClipboardList className="w-4 h-4" />
+              Add to Multi-Order Invoice →
+            </button>
+          </div>
         </div>
       )}
     </div>
