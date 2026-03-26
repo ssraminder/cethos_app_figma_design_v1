@@ -31,16 +31,16 @@ export default function AdminLogin() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Safety net: if session exists but no redirect has happened after 3s,
+  // Safety net: if fully authenticated but no redirect has happened after 3s,
   // force navigation to dashboard (covers race conditions in auth state changes)
   useEffect(() => {
-    if (session && !authLoading) {
+    if (session && staffUser && !authLoading) {
       const fallbackTimer = setTimeout(() => {
         navigate("/admin/dashboard", { replace: true });
       }, 3000);
       return () => clearTimeout(fallbackTimer);
     }
-  }, [session, authLoading, navigate]);
+  }, [session, staffUser, authLoading, navigate]);
 
   // Check if already logged in
   useEffect(() => {
@@ -230,8 +230,8 @@ export default function AdminLogin() {
     );
   }
 
-  // If session exists, show redirecting message
-  if (session) {
+  // If fully authenticated (session + verified staff user), show redirecting message
+  if (session && staffUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
