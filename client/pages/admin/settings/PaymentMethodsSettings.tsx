@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Plus,
@@ -10,8 +10,15 @@ import {
   ChevronDown,
   CreditCard,
   Check,
+  ChevronRight,
+  AlertTriangle,
+  CheckCircle2,
+  Wand2,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface PaymentMethod {
   id: string;
@@ -27,14 +34,145 @@ interface PaymentMethod {
   updated_at: string;
 }
 
+interface Branch {
+  id: number;
+  legal_name: string;
+  code: string;
+}
+
+interface BranchPaymentMethod {
+  id: string;
+  branch_id: number;
+  payment_method_id: string;
+  is_enabled: boolean;
+  details: Record<string, string>;
+  display_instructions: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Detail field definitions per method code ───────────────────────────────
+
+const DETAIL_FIELDS: Record<
+  string,
+  { key: string; label: string; placeholder: string; type?: string }[]
+> = {
+  etransfer: [
+    { key: "email", label: "E-Transfer Email", placeholder: "payments@cethos.com" },
+  ],
+  wire: [
+    { key: "bank_name", label: "Bank Name", placeholder: "TD Canada Trust" },
+    { key: "institution", label: "Institution #", placeholder: "004" },
+    { key: "transit", label: "Transit #", placeholder: "12345" },
+    { key: "account", label: "Account #", placeholder: "1234567" },
+    { key: "swift", label: "SWIFT Code", placeholder: "TDOMCATTTOR" },
+  ],
+  cheque: [
+    { key: "payable_to", label: "Payable To", placeholder: "Cethos Solutions Inc." },
+    {
+      key: "address",
+      label: "Mailing Address",
+      placeholder: "123 Main St, Calgary AB T2P 1J9",
+      type: "textarea",
+    },
+  ],
+  direct_deposit: [
+    { key: "bank_name", label: "Bank Name", placeholder: "TD Canada Trust" },
+    { key: "institution", label: "Institution #", placeholder: "004" },
+    { key: "transit", label: "Transit #", placeholder: "12345" },
+    { key: "account", label: "Account #", placeholder: "1234567" },
+  ],
+  paypal: [
+    { key: "email", label: "PayPal Email", placeholder: "paypal@cethos.com" },
+  ],
+  cash: [],
+  stripe: [],
+  online: [],
+  terminal: [],
+  account: [],
+};
+
+// ── Auto-generate display instructions from details ────────────────────────
+
+function generateInstructions(
+  code: string,
+  details: Record<string, string>,
+): string {
+  switch (code) {
+    case "etransfer":
+      return details.email
+        ? `Send Interac e-Transfer to: ${details.email}`
+        : "";
+    case "wire":
+      return details.bank_name
+        ? `Wire Transfer — ${details.bank_name}, Transit: ${details.transit}, Account: ${details.account}${details.swift ? ", SWIFT: " + details.swift : ""}`
+        : "";
+    case "cheque":
+      return details.payable_to
+        ? `Make cheque payable to ${details.payable_to}${details.address ? " and mail to: " + details.address : ""}`
+        : "";
+    case "direct_deposit":
+      return details.bank_name
+        ? `Direct Deposit — ${details.bank_name}, Transit: ${details.transit}, Account: ${details.account}`
+        : "";
+    case "paypal":
+      return details.email ? `Send PayPal payment to: ${details.email}` : "";
+    case "cash":
+      return "Cash payment accepted at our office.";
+    case "stripe":
+    case "online":
+      return "Pay online via credit/debit card at portal.cethos.com";
+    default:
+      return "";
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function hasPlaceholderBrackets(text: string): boolean {
+  return /\[[A-Z_]+\]/.test(text || "");
+}
+
+function getDetailFields(code: string) {
+  return DETAIL_FIELDS[code] || [];
+}
+
+function parseDetails(raw: unknown): Record<string, string> {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return raw as Record<string, string>;
+}
+
+// ── Component ──────────────────────────────────────────────────────────────
+
 export default function PaymentMethodsSettings() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchPayments, setBranchPayments] = useState<BranchPaymentMethod[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [expandedMethods, setExpandedMethods] = useState<Set<string>>(
+    new Set(),
+  );
+  const [savingBpmId, setSavingBpmId] = useState<string | null>(null);
 
-  // Form state for editing/adding
+  // Local edits for branch payment methods (keyed by bpm id)
+  const [bpmEdits, setBpmEdits] = useState<
+    Record<string, { details: Record<string, string>; display_instructions: string; is_enabled: boolean }>
+  >({});
+
+  // Form state for editing/adding base payment methods
   const [formData, setFormData] = useState<Partial<PaymentMethod>>({
     name: "",
     code: "",
@@ -45,28 +183,167 @@ export default function PaymentMethodsSettings() {
     icon: "credit-card",
   });
 
-  useEffect(() => {
-    loadPaymentMethods();
-  }, []);
+  // ── Data loading ──────────────────────────────────────────────────────
 
-  const loadPaymentMethods = async () => {
+  const loadData = useCallback(async () => {
     if (!supabase) return;
 
     try {
-      const { data, error } = await supabase
-        .from("payment_methods")
-        .select("*")
-        .order("display_order");
+      const [pmResult, branchResult, bpmResult] = await Promise.all([
+        supabase
+          .from("payment_methods")
+          .select("*")
+          .order("display_order"),
+        supabase
+          .from("branches")
+          .select("id, legal_name, code")
+          .eq("is_active", true)
+          .order("id"),
+        supabase
+          .from("branch_payment_methods")
+          .select("*")
+          .order("sort_order"),
+      ]);
 
-      if (error) throw error;
-      setPaymentMethods(data || []);
+      if (pmResult.error) throw pmResult.error;
+      if (branchResult.error) throw branchResult.error;
+      if (bpmResult.error) throw bpmResult.error;
+
+      const methods = pmResult.data || [];
+      const branchList = branchResult.data || [];
+      const bpmList = bpmResult.data || [];
+
+      setPaymentMethods(methods);
+      setBranches(branchList);
+      setBranchPayments(bpmList);
+
+      // PHASE 2: Auto-create missing branch_payment_methods rows
+      const rowsToInsert: {
+        branch_id: number;
+        payment_method_id: string;
+        is_enabled: boolean;
+        details: Record<string, string>;
+        display_instructions: string;
+        sort_order: number;
+      }[] = [];
+
+      for (const pm of methods) {
+        for (const branch of branchList) {
+          const exists = bpmList.some(
+            (bp) =>
+              bp.payment_method_id === pm.id && bp.branch_id === branch.id,
+          );
+          if (!exists) {
+            rowsToInsert.push({
+              branch_id: branch.id,
+              payment_method_id: pm.id,
+              is_enabled: false,
+              details: {},
+              display_instructions: "",
+              sort_order: pm.display_order || 0,
+            });
+          }
+        }
+      }
+
+      if (rowsToInsert.length > 0) {
+        const { data: newRows, error: insertError } = await supabase
+          .from("branch_payment_methods")
+          .insert(rowsToInsert)
+          .select("*");
+
+        if (insertError) {
+          console.error("Error auto-creating branch payment rows:", insertError);
+        } else if (newRows) {
+          setBranchPayments((prev) => [...prev, ...newRows]);
+        }
+      }
     } catch (error) {
-      console.error("Error loading payment methods:", error);
+      console.error("Error loading data:", error);
       toast.error("Failed to load payment methods");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // ── Initialize local edit state for a BPM row ────────────────────────
+
+  const getBpmEdit = (bpm: BranchPaymentMethod) => {
+    if (bpmEdits[bpm.id]) return bpmEdits[bpm.id];
+    return {
+      details: parseDetails(bpm.details),
+      display_instructions: bpm.display_instructions || "",
+      is_enabled: bpm.is_enabled,
+    };
   };
+
+  const updateBpmEdit = (
+    bpmId: string,
+    bpm: BranchPaymentMethod,
+    patch: Partial<{ details: Record<string, string>; display_instructions: string; is_enabled: boolean }>,
+  ) => {
+    const current = getBpmEdit(bpm);
+    setBpmEdits((prev) => ({
+      ...prev,
+      [bpmId]: { ...current, ...patch },
+    }));
+  };
+
+  // ── Save a single branch payment method ──────────────────────────────
+
+  const saveBranchPaymentMethod = async (bpm: BranchPaymentMethod) => {
+    if (!supabase) return;
+    const edit = getBpmEdit(bpm);
+
+    setSavingBpmId(bpm.id);
+    try {
+      const { error } = await supabase
+        .from("branch_payment_methods")
+        .update({
+          is_enabled: edit.is_enabled,
+          details: edit.details,
+          display_instructions: edit.display_instructions,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", bpm.id);
+
+      if (error) {
+        toast.error("Save failed: " + error.message);
+      } else {
+        toast.success("Payment method details saved");
+        // Update local state
+        setBranchPayments((prev) =>
+          prev.map((bp) =>
+            bp.id === bpm.id
+              ? {
+                  ...bp,
+                  is_enabled: edit.is_enabled,
+                  details: edit.details,
+                  display_instructions: edit.display_instructions,
+                }
+              : bp,
+          ),
+        );
+        // Clear edit state for this row
+        setBpmEdits((prev) => {
+          const next = { ...prev };
+          delete next[bpm.id];
+          return next;
+        });
+      }
+    } catch (error) {
+      console.error("Error saving branch payment method:", error);
+      toast.error("Failed to save");
+    } finally {
+      setSavingBpmId(null);
+    }
+  };
+
+  // ── Base payment method CRUD (existing) ──────────────────────────────
 
   const startEdit = (method: PaymentMethod) => {
     setEditingId(method.id);
@@ -101,7 +378,6 @@ export default function PaymentMethodsSettings() {
     }
 
     setIsSaving(true);
-
     try {
       const { error } = await supabase
         .from("payment_methods")
@@ -118,9 +394,8 @@ export default function PaymentMethodsSettings() {
         .eq("id", methodId);
 
       if (error) throw error;
-
       toast.success("Payment method updated");
-      loadPaymentMethods();
+      loadData();
       cancelEdit();
     } catch (error) {
       console.error("Error updating payment method:", error);
@@ -137,9 +412,7 @@ export default function PaymentMethodsSettings() {
     }
 
     setIsSaving(true);
-
     try {
-      // Get max display_order
       const maxOrder = paymentMethods.reduce(
         (max, method) => Math.max(max, method.display_order),
         0,
@@ -157,9 +430,8 @@ export default function PaymentMethodsSettings() {
       });
 
       if (error) throw error;
-
       toast.success("Payment method added");
-      loadPaymentMethods();
+      loadData();
       setShowAddModal(false);
       cancelEdit();
     } catch (error) {
@@ -172,7 +444,6 @@ export default function PaymentMethodsSettings() {
 
   const toggleActive = async (methodId: string, currentStatus: boolean) => {
     if (!supabase) return;
-
     try {
       const { error } = await supabase
         .from("payment_methods")
@@ -183,13 +454,10 @@ export default function PaymentMethodsSettings() {
         .eq("id", methodId);
 
       if (error) throw error;
-
       toast.success(
-        currentStatus
-          ? "Payment method deactivated"
-          : "Payment method activated",
+        currentStatus ? "Payment method deactivated" : "Payment method activated",
       );
-      loadPaymentMethods();
+      loadData();
     } catch (error) {
       console.error("Error toggling payment method:", error);
       toast.error("Failed to update payment method");
@@ -198,7 +466,6 @@ export default function PaymentMethodsSettings() {
 
   const deleteMethod = async (methodId: string) => {
     if (!supabase) return;
-
     if (
       !confirm(
         "Are you sure you want to delete this payment method? This cannot be undone.",
@@ -214,9 +481,8 @@ export default function PaymentMethodsSettings() {
         .eq("id", methodId);
 
       if (error) throw error;
-
       toast.success("Payment method deleted");
-      loadPaymentMethods();
+      loadData();
     } catch (error) {
       console.error("Error deleting payment method:", error);
       toast.error("Failed to delete payment method");
@@ -225,14 +491,11 @@ export default function PaymentMethodsSettings() {
 
   const moveUp = async (method: PaymentMethod) => {
     if (!supabase) return;
-
     const currentIndex = paymentMethods.findIndex((m) => m.id === method.id);
     if (currentIndex === 0) return;
-
     const previousMethod = paymentMethods[currentIndex - 1];
 
     try {
-      // Swap display orders
       await Promise.all([
         supabase
           .from("payment_methods")
@@ -243,9 +506,8 @@ export default function PaymentMethodsSettings() {
           .update({ display_order: method.display_order })
           .eq("id", previousMethod.id),
       ]);
-
       toast.success("Order updated");
-      loadPaymentMethods();
+      loadData();
     } catch (error) {
       console.error("Error updating order:", error);
       toast.error("Failed to update order");
@@ -254,14 +516,11 @@ export default function PaymentMethodsSettings() {
 
   const moveDown = async (method: PaymentMethod) => {
     if (!supabase) return;
-
     const currentIndex = paymentMethods.findIndex((m) => m.id === method.id);
     if (currentIndex === paymentMethods.length - 1) return;
-
     const nextMethod = paymentMethods[currentIndex + 1];
 
     try {
-      // Swap display orders
       await Promise.all([
         supabase
           .from("payment_methods")
@@ -272,14 +531,44 @@ export default function PaymentMethodsSettings() {
           .update({ display_order: method.display_order })
           .eq("id", nextMethod.id),
       ]);
-
       toast.success("Order updated");
-      loadPaymentMethods();
+      loadData();
     } catch (error) {
       console.error("Error updating order:", error);
       toast.error("Failed to update order");
     }
   };
+
+  // ── Expand/collapse ──────────────────────────────────────────────────
+
+  const toggleExpand = (methodId: string) => {
+    setExpandedMethods((prev) => {
+      const next = new Set(prev);
+      if (next.has(methodId)) {
+        next.delete(methodId);
+      } else {
+        next.add(methodId);
+      }
+      return next;
+    });
+  };
+
+  // ── Branch config status per method ──────────────────────────────────
+
+  const getBranchConfigStatus = (methodId: string) => {
+    const bpms = branchPayments.filter((bp) => bp.payment_method_id === methodId);
+    const configured = bpms.filter((bp) => {
+      const instructions = bp.display_instructions || "";
+      return (
+        bp.is_enabled &&
+        instructions.length > 0 &&
+        !hasPlaceholderBrackets(instructions)
+      );
+    });
+    return { total: bpms.length, configured: configured.length };
+  };
+
+  // ── Render ───────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -299,7 +588,8 @@ export default function PaymentMethodsSettings() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Payment Methods</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Manage available payment methods for quotes and orders
+            Manage available payment methods and branch-specific receiving
+            details
           </p>
         </div>
         <button
@@ -315,9 +605,9 @@ export default function PaymentMethodsSettings() {
       </div>
 
       {/* Payment Methods List */}
-      <div className="bg-white border border-gray-200 rounded-lg divide-y">
+      <div className="space-y-3">
         {paymentMethods.length === 0 ? (
-          <div className="p-8 text-center">
+          <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
             <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-sm text-gray-600">
               No payment methods configured
@@ -330,219 +620,435 @@ export default function PaymentMethodsSettings() {
             </button>
           </div>
         ) : (
-          paymentMethods.map((method, index) => (
-            <div
-              key={method.id}
-              className={`p-4 ${!method.is_active ? "bg-gray-50" : ""}`}
-            >
-              {editingId === method.id ? (
-                /* Edit Mode */
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        onChange={(e) =>
-                          setFormData({ ...formData, name: e.target.value })
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                        placeholder="Credit Card"
-                      />
+          paymentMethods.map((method, index) => {
+            const isExpanded = expandedMethods.has(method.id);
+            const methodBpms = branchPayments.filter(
+              (bp) => bp.payment_method_id === method.id,
+            );
+            const hasDetailFields = getDetailFields(method.code).length > 0;
+            const status = getBranchConfigStatus(method.id);
+
+            return (
+              <div
+                key={method.id}
+                className={`bg-white border rounded-lg overflow-hidden ${
+                  !method.is_active
+                    ? "border-gray-200 opacity-60"
+                    : "border-gray-200"
+                }`}
+              >
+                {/* Method header */}
+                {editingId === method.id ? (
+                  <div className="p-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.name}
+                          onChange={(e) =>
+                            setFormData({ ...formData, name: e.target.value })
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                          placeholder="Credit Card"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Code *
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.code}
+                          onChange={(e) =>
+                            setFormData({ ...formData, code: e.target.value })
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                          placeholder="credit_card"
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Code *
+                        Description
                       </label>
-                      <input
-                        type="text"
-                        value={formData.code}
+                      <textarea
+                        value={formData.description}
                         onChange={(e) =>
-                          setFormData({ ...formData, code: e.target.value })
+                          setFormData({
+                            ...formData,
+                            description: e.target.value,
+                          })
                         }
+                        rows={2}
                         className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                        placeholder="credit_card"
+                        placeholder="Pay securely online with credit or debit card"
                       />
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Description
-                    </label>
-                    <textarea
-                      value={formData.description}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          description: e.target.value,
-                        })
-                      }
-                      rows={2}
-                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                      placeholder="Pay securely online with credit or debit card"
-                    />
-                  </div>
-
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.is_online}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            is_online: e.target.checked,
-                          })
-                        }
-                        className="rounded"
-                      />
-                      <span className="text-sm text-gray-700">
-                        Online Payment
-                      </span>
-                    </label>
-
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.requires_staff_confirmation}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            requires_staff_confirmation: e.target.checked,
-                          })
-                        }
-                        className="rounded"
-                      />
-                      <span className="text-sm text-gray-700">
-                        Requires Staff Confirmation
-                      </span>
-                    </label>
-
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.is_active}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            is_active: e.target.checked,
-                          })
-                        }
-                        className="rounded"
-                      />
-                      <span className="text-sm text-gray-700">Active</span>
-                    </label>
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      onClick={() => saveEdit(method.id)}
-                      disabled={isSaving}
-                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
-                    >
-                      <Save className="w-4 h-4" />
-                      {isSaving ? "Saving..." : "Save"}
-                    </button>
-                    <button
-                      onClick={cancelEdit}
-                      className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* View Mode */
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-base font-semibold text-gray-900">
-                        {method.name}
-                      </h3>
-                      <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                        {method.code}
-                      </span>
-                      {method.is_online && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                          Online
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.is_online}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              is_online: e.target.checked,
+                            })
+                          }
+                          className="rounded"
+                        />
+                        <span className="text-sm text-gray-700">
+                          Online Payment
                         </span>
-                      )}
-                      {method.requires_staff_confirmation && (
-                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
-                          Needs Confirmation
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.requires_staff_confirmation}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              requires_staff_confirmation: e.target.checked,
+                            })
+                          }
+                          className="rounded"
+                        />
+                        <span className="text-sm text-gray-700">
+                          Requires Staff Confirmation
                         </span>
-                      )}
-                      {!method.is_active && (
-                        <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
-                          Inactive
-                        </span>
-                      )}
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.is_active}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              is_active: e.target.checked,
+                            })
+                          }
+                          className="rounded"
+                        />
+                        <span className="text-sm text-gray-700">Active</span>
+                      </label>
                     </div>
-                    <p className="text-sm text-gray-600">
-                      {method.description}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 ml-4">
-                    {/* Reorder buttons */}
-                    <div className="flex flex-col">
+                    <div className="flex gap-2 pt-2">
                       <button
-                        onClick={() => moveUp(method)}
-                        disabled={index === 0}
-                        className="p-1 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                        title="Move up"
+                        onClick={() => saveEdit(method.id)}
+                        disabled={isSaving}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
                       >
-                        <ChevronUp className="w-4 h-4 text-gray-600" />
+                        <Save className="w-4 h-4" />
+                        {isSaving ? "Saving..." : "Save"}
                       </button>
                       <button
-                        onClick={() => moveDown(method)}
-                        disabled={index === paymentMethods.length - 1}
-                        className="p-1 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                        title="Move down"
+                        onClick={cancelEdit}
+                        className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
                       >
-                        <ChevronDown className="w-4 h-4 text-gray-600" />
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
-
-                    {/* Active toggle */}
-                    <button
-                      onClick={() => toggleActive(method.id, method.is_active)}
-                      className={`p-2 rounded transition-colors ${
-                        method.is_active
-                          ? "bg-green-100 text-green-700 hover:bg-green-200"
-                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                      }`}
-                      title={method.is_active ? "Deactivate" : "Activate"}
-                    >
-                      <Check className="w-4 h-4" />
-                    </button>
-
-                    {/* Edit button */}
-                    <button
-                      onClick={() => startEdit(method)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded"
-                      title="Edit"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-
-                    {/* Delete button */}
-                    <button
-                      onClick={() => deleteMethod(method.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
-                </div>
-              )}
-            </div>
-          ))
+                ) : (
+                  <div className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-1">
+                          {/* Expand/collapse toggle */}
+                          <button
+                            onClick={() => toggleExpand(method.id)}
+                            className="p-0.5 hover:bg-gray-100 rounded transition-transform"
+                          >
+                            <ChevronRight
+                              className={`w-4 h-4 text-gray-400 transition-transform ${
+                                isExpanded ? "rotate-90" : ""
+                              }`}
+                            />
+                          </button>
+
+                          <h3 className="text-base font-semibold text-gray-900">
+                            {method.name}
+                          </h3>
+                          <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                            {method.code}
+                          </span>
+                          {method.is_online && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                              Online
+                            </span>
+                          )}
+                          {method.requires_staff_confirmation && (
+                            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
+                              Needs Confirmation
+                            </span>
+                          )}
+                          {!method.is_active && (
+                            <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
+                              Inactive
+                            </span>
+                          )}
+
+                          {/* PHASE 3: Config status indicator */}
+                          {status.total > 0 && (
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                                status.configured === status.total
+                                  ? "bg-green-100 text-green-700"
+                                  : status.configured > 0
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-red-50 text-red-600"
+                              }`}
+                            >
+                              {status.configured === status.total ? (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Configured for {status.total} branches
+                                </>
+                              ) : (
+                                <>
+                                  <AlertTriangle className="w-3 h-3" />
+                                  {status.configured}/{status.total} branches
+                                  configured
+                                </>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                        {method.description && (
+                          <p className="text-sm text-gray-600 ml-7">
+                            {method.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 ml-4">
+                        <div className="flex flex-col">
+                          <button
+                            onClick={() => moveUp(method)}
+                            disabled={index === 0}
+                            className="p-1 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move up"
+                          >
+                            <ChevronUp className="w-4 h-4 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={() => moveDown(method)}
+                            disabled={index === paymentMethods.length - 1}
+                            className="p-1 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move down"
+                          >
+                            <ChevronDown className="w-4 h-4 text-gray-600" />
+                          </button>
+                        </div>
+                        <button
+                          onClick={() =>
+                            toggleActive(method.id, method.is_active)
+                          }
+                          className={`p-2 rounded transition-colors ${
+                            method.is_active
+                              ? "bg-green-100 text-green-700 hover:bg-green-200"
+                              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                          }`}
+                          title={method.is_active ? "Deactivate" : "Activate"}
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => startEdit(method)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteMethod(method.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* PHASE 1: Branch-specific receiving details (expandable) */}
+                {isExpanded && editingId !== method.id && (
+                  <div className="border-t border-gray-100 bg-gray-50">
+                    {branches.length === 0 ? (
+                      <div className="p-4 text-sm text-gray-500">
+                        No active branches found.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-200">
+                        {branches.map((branch) => {
+                          const bpm = methodBpms.find(
+                            (bp) => bp.branch_id === branch.id,
+                          );
+                          if (!bpm) return null;
+
+                          const edit = getBpmEdit(bpm);
+                          const fields = getDetailFields(method.code);
+                          const showWarning = hasPlaceholderBrackets(
+                            edit.display_instructions,
+                          );
+                          const isSavingThis = savingBpmId === bpm.id;
+
+                          return (
+                            <div key={branch.id} className="p-4 space-y-3">
+                              {/* Branch header */}
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-semibold text-gray-800">
+                                  {branch.legal_name}
+                                  <span className="ml-1.5 text-xs font-normal text-gray-500">
+                                    ({branch.code})
+                                  </span>
+                                </h4>
+                                {showWarning && (
+                                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Placeholder
+                                  </span>
+                                )}
+                                {!showWarning &&
+                                  edit.is_enabled &&
+                                  edit.display_instructions.length > 0 && (
+                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      Ready
+                                    </span>
+                                  )}
+                              </div>
+
+                              {/* Enabled toggle */}
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={edit.is_enabled}
+                                  onChange={(e) =>
+                                    updateBpmEdit(bpm.id, bpm, {
+                                      is_enabled: e.target.checked,
+                                    })
+                                  }
+                                  className="rounded"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  Enabled for this branch
+                                </span>
+                              </label>
+
+                              {/* Detail input fields */}
+                              {fields.length > 0 && (
+                                <div className="space-y-2">
+                                  {fields.map((field) => (
+                                    <div key={field.key}>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                                        {field.label}
+                                      </label>
+                                      {field.type === "textarea" ? (
+                                        <textarea
+                                          value={edit.details[field.key] || ""}
+                                          onChange={(e) => {
+                                            const newDetails = {
+                                              ...edit.details,
+                                              [field.key]: e.target.value,
+                                            };
+                                            updateBpmEdit(bpm.id, bpm, {
+                                              details: newDetails,
+                                            });
+                                          }}
+                                          rows={2}
+                                          className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm"
+                                          placeholder={field.placeholder}
+                                        />
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          value={edit.details[field.key] || ""}
+                                          onChange={(e) => {
+                                            const newDetails = {
+                                              ...edit.details,
+                                              [field.key]: e.target.value,
+                                            };
+                                            updateBpmEdit(bpm.id, bpm, {
+                                              details: newDetails,
+                                            });
+                                          }}
+                                          className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm"
+                                          placeholder={field.placeholder}
+                                        />
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Display instructions */}
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  Invoice Display Text
+                                </label>
+                                <textarea
+                                  value={edit.display_instructions}
+                                  onChange={(e) =>
+                                    updateBpmEdit(bpm.id, bpm, {
+                                      display_instructions: e.target.value,
+                                    })
+                                  }
+                                  rows={2}
+                                  className={`w-full px-3 py-1.5 border rounded text-sm ${
+                                    showWarning
+                                      ? "border-amber-300 bg-amber-50"
+                                      : "border-gray-300"
+                                  }`}
+                                  placeholder="Text that appears on customer invoices"
+                                />
+                              </div>
+
+                              {/* Action buttons */}
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    const generated = generateInstructions(
+                                      method.code,
+                                      edit.details,
+                                    );
+                                    updateBpmEdit(bpm.id, bpm, {
+                                      display_instructions: generated,
+                                    });
+                                  }}
+                                  className="flex items-center gap-1 px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                                  title="Generate invoice text from detail fields"
+                                >
+                                  <Wand2 className="w-3 h-3" />
+                                  Auto-generate
+                                </button>
+                                <button
+                                  onClick={() => saveBranchPaymentMethod(bpm)}
+                                  disabled={isSavingThis}
+                                  className="flex items-center gap-1 px-3 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                                >
+                                  {isSavingThis ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Save className="w-3 h-3" />
+                                  )}
+                                  {isSavingThis ? "Saving..." : "Save"}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
@@ -551,7 +1057,6 @@ export default function PaymentMethodsSettings() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
             <h3 className="text-lg font-semibold mb-4">Add Payment Method</h3>
-
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -583,7 +1088,6 @@ export default function PaymentMethodsSettings() {
                   />
                 </div>
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
                   Description
@@ -598,7 +1102,6 @@ export default function PaymentMethodsSettings() {
                   placeholder="Pay securely online with credit or debit card"
                 />
               </div>
-
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -611,7 +1114,6 @@ export default function PaymentMethodsSettings() {
                   />
                   <span className="text-sm text-gray-700">Online Payment</span>
                 </label>
-
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -628,7 +1130,6 @@ export default function PaymentMethodsSettings() {
                     Requires Staff Confirmation
                   </span>
                 </label>
-
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -641,7 +1142,6 @@ export default function PaymentMethodsSettings() {
                   <span className="text-sm text-gray-700">Active</span>
                 </label>
               </div>
-
               <div className="flex gap-2 pt-4">
                 <button
                   onClick={addNewMethod}
