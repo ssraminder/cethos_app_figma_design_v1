@@ -834,21 +834,246 @@ export default function CreateInvoice() {
     </div>
   );
 
-  // ── Render Step 3 (placeholder for Phase 3) ──
-  const renderStep3 = () => (
-    <div>
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">Review & Generate</h2>
-      <p className="text-sm text-gray-400">Step 3 — coming in Phase 3</p>
-      <div className="flex justify-between mt-6">
-        <button
-          onClick={() => setCurrentStep(2)}
-          className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition"
-        >
-          ← Back
-        </button>
+  // ── Submit invoice ──
+  const handleSubmit = async (isDraft: boolean) => {
+    // Validation
+    if (selectedOrderIds.size === 0 && customLines.length === 0) {
+      toast.error("At least one line item is required");
+      return;
+    }
+
+    if (selectedCustomer?.requires_po) {
+      const missingPo = selectedOrders.some((o) => !o.po_number);
+      if (missingPo) {
+        toast.error("All selected orders must have a PO number");
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    try {
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const payload = {
+        action: "create_invoice" as const,
+        customer_id: selectedCustomer!.id,
+        order_ids: selectedOrders.map((o) => o.id),
+        custom_lines: customLines.map((cl) => ({
+          description: cl.description,
+          amount: cl.amount,
+        })),
+        as_draft: isDraft,
+        staff_id: session?.staffId,
+        notes: notes || undefined,
+        po_number: poNumber || undefined,
+      };
+
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-customer-invoice`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authSession?.access_token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+      const result = await resp.json();
+
+      if (!resp.ok || !result.success) {
+        toast.error(result.error || "Failed to create invoice");
+        setSubmitting(false);
+        return;
+      }
+
+      const action = isDraft ? "Draft invoice" : "Invoice";
+      toast.success(`${action} ${result.invoice_number} ${isDraft ? "created" : "issued"}`);
+      navigate("/admin/invoices/customer");
+    } catch {
+      toast.error("Network error creating invoice");
+    }
+    setSubmitting(false);
+  };
+
+  // ── Render Step 3 ──
+  const renderStep3 = () => {
+    const taxPct = (taxRate * 100).toFixed(taxRate * 100 % 1 === 0 ? 0 : 1);
+
+    return (
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Review & Generate</h2>
+
+        {/* Invoice details */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Invoice Details</h3>
+          <div className="grid grid-cols-2 gap-y-2 gap-x-6 text-sm mb-4">
+            <div>
+              <span className="text-gray-500">Customer:</span>{" "}
+              <span className="font-medium text-gray-900">
+                {selectedCustomer?.company_name || selectedCustomer?.full_name}
+                {selectedCustomer?.company_name && ` · ${selectedCustomer?.full_name}`}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-500">Branch:</span>{" "}
+              <span className="font-medium text-gray-900">
+                {selectedCustomer?.invoicing_branch?.legal_name || "—"}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-500">Invoice #:</span>{" "}
+              <span className="text-gray-400 italic">Auto-generated on save</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Payment Terms:</span>{" "}
+              <span className="font-medium text-gray-900">
+                {selectedCustomer?.payment_terms?.replace("_", " ") || "Net 30"}
+              </span>
+            </div>
+          </div>
+
+          {/* Editable fields */}
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <label className="block text-gray-500 mb-1">Invoice Date</label>
+              <input
+                type="date"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-500 mb-1">Due Date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-500 mb-1">PO Number</label>
+              <input
+                type="text"
+                value={poNumber}
+                onChange={(e) => setPoNumber(e.target.value)}
+                placeholder="PO number"
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-gray-500 mb-1">Notes</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optional notes for this invoice…"
+                rows={2}
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm resize-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Line items table */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Line Items</h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500 border-b border-gray-200">
+                <th className="pb-2 w-8">#</th>
+                <th className="pb-2">Description</th>
+                <th className="pb-2">PO</th>
+                <th className="pb-2 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedOrders.map((order, idx) => (
+                <tr key={order.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                  <td className="py-2 text-gray-400">{idx + 1}</td>
+                  <td className="py-2 text-gray-900">Order {order.order_number}</td>
+                  <td className="py-2 text-gray-600">{order.po_number || "—"}</td>
+                  <td className="py-2 text-right font-medium text-gray-900">
+                    {fmtMoney(parseFloat(order.total_amount))}
+                  </td>
+                </tr>
+              ))}
+              {customLines.map((cl, idx) => (
+                <tr
+                  key={cl.id}
+                  className={(selectedOrders.length + idx) % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                >
+                  <td className="py-2 text-gray-400">{selectedOrders.length + idx + 1}</td>
+                  <td className="py-2 text-gray-900">{cl.description}</td>
+                  <td className="py-2 text-gray-400">—</td>
+                  <td className={`py-2 text-right font-medium ${cl.amount < 0 ? "text-red-600" : "text-gray-900"}`}>
+                    {cl.amount < 0 ? "-" : ""}{fmtMoney(Math.abs(cl.amount))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Totals */}
+        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+          <div className="space-y-1 text-sm max-w-xs ml-auto">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Subtotal:</span>
+              <span className="font-medium">{fmtMoney(ordersSubtotal + customLinesTotal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">GST ({taxPct}%):</span>
+              <span className="font-medium">{fmtMoney(totalTax)}</span>
+            </div>
+            <div className="flex justify-between border-t border-gray-300 pt-1">
+              <span className="text-gray-800 font-semibold">Total:</span>
+              <span className="font-bold">{fmtMoney(grandTotal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Amount Paid:</span>
+              <span className="font-medium">{fmtMoney(amountPaid)}</span>
+            </div>
+            <div className="flex justify-between border-t border-gray-300 pt-1">
+              <span className="text-gray-800 font-semibold">Balance Due:</span>
+              <span className={`font-bold ${balanceDue <= 0 ? "text-green-600" : "text-red-600"}`}>
+                {balanceDue <= 0 ? "$0.00 — PAID" : fmtMoney(balanceDue)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex justify-between items-center">
+          <button
+            onClick={() => setCurrentStep(2)}
+            disabled={submitting}
+            className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 disabled:opacity-50 transition"
+          >
+            ← Back
+          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleSubmit(true)}
+              disabled={submitting}
+              className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 disabled:opacity-50 transition inline-flex items-center gap-2"
+            >
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              Save as Draft
+            </button>
+            <button
+              onClick={() => handleSubmit(false)}
+              disabled={submitting}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition inline-flex items-center gap-2"
+            >
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              Create & Issue Invoice
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
