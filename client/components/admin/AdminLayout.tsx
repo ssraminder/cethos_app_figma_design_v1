@@ -128,7 +128,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     label: "Customer Invoices",
     path: "/admin/invoices/customer",
-    icon: FileSpreadsheet,
+    icon: FileText,
     section: "Management",
     isChild: true,
   },

@@ -55,6 +55,7 @@ import { syncOrderFromQuote } from "../../utils/syncOrderFromQuote";
 import OrderWorkflowSection from "@/components/admin/OrderWorkflowSection";
 import OrderFinanceSection from "@/components/admin/OrderFinanceSection";
 import OrderFinanceTab from "@/components/admin/OrderFinanceTab";
+import OrderInvoiceCard from "@/components/admin/OrderInvoiceCard";
 
 interface OrderDetail {
   id: string;
@@ -3731,7 +3732,18 @@ export default function AdminOrderDetail() {
 
           {/* Tab Content: Finance */}
           {activeMainTab === "finance" && (
-            <OrderFinanceTab workflowData={workflowData} />
+            <>
+              <OrderFinanceTab workflowData={workflowData} />
+              {id && order?.customer_id && currentStaff?.staffId && (
+                <div className="mt-4">
+                  <OrderInvoiceCard
+                    orderId={id}
+                    customerId={order.customer_id}
+                    staffId={currentStaff.staffId}
+                  />
+                </div>
+              )}
+            </>
           )}
 
           {/* Tab Content: Workflow (also renders when finance tab is active but hidden, to keep data loaded) */}
