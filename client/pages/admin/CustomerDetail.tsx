@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
+import CustomerARSummary from "@/components/admin/CustomerARSummary";
 
 interface Customer {
   id: string;
@@ -1137,6 +1138,9 @@ export default function CustomerDetail() {
                   )}
                 </div>
               </div>
+
+              {/* Section: Accounts Receivable Summary */}
+              <CustomerARSummary customerId={customer.id} customerName={customer.full_name} />
 
               {/* Section 4: XTRF Sync — only if customer has xtrf_customer_id */}
               {customer.xtrf_customer_id && (

@@ -2529,7 +2529,7 @@ export default function AdminOrderDetail() {
 
               {/* Invoice Status Badge */}
               {order.invoice_status && (
-                <div className="flex items-end pb-1">
+                <div className="flex items-center gap-2 pb-1">
                   <span
                     className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
                       order.invoice_status === "paid"
@@ -2553,6 +2553,19 @@ export default function AdminOrderDetail() {
                       ? "Unbilled"
                       : order.invoice_status.charAt(0).toUpperCase() + order.invoice_status.slice(1)}
                   </span>
+                  {order.invoice_status !== "paid" && order.invoice_status !== "unbilled" && order.invoice_status !== "draft" && order.balance_due > 0 && (
+                    <span className="text-xs text-amber-700 font-medium">
+                      Balance: ${order.balance_due.toFixed(2)}
+                    </span>
+                  )}
+                  {order.invoice_status !== "paid" && order.invoice_status !== "unbilled" && order.invoice_status !== "draft" && order.balance_due > 0 && (
+                    <Link
+                      to={`/admin/payments?search=${encodeURIComponent(order.customer?.full_name || "")}`}
+                      className="text-xs text-teal-600 hover:text-teal-700 font-medium"
+                    >
+                      Record Payment
+                    </Link>
+                  )}
                 </div>
               )}
             </div>

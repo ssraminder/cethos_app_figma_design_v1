@@ -78,6 +78,9 @@ import RecruitmentList from "./pages/admin/RecruitmentList";
 import RecruitmentDetail from "./pages/admin/RecruitmentDetail";
 import AdminQuickPayment from "./pages/admin/AdminQuickPayment";
 import AdminPaymentHistory from "./pages/admin/AdminPaymentHistory";
+import PaymentsList from "./pages/admin/PaymentsList";
+import PaymentDetail from "./pages/admin/PaymentDetail";
+import ARAgingReport from "./pages/admin/ARAgingReport";
 import AdminVendorsList from "./pages/admin/AdminVendorsList";
 import AdminVendorDetail from "./pages/admin/AdminVendorDetail";
 import AdminVendorNew from "./pages/admin/AdminVendorNew";
@@ -343,6 +346,9 @@ const App = () => (
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
                     <Route path="quick-payment" element={<AdminQuickPayment />} />
                     <Route path="quick-payment/history" element={<AdminPaymentHistory />} />
+                    <Route path="payments" element={<PaymentsList />} />
+                    <Route path="payments/:id" element={<PaymentDetail />} />
+                    <Route path="reports/aging" element={<ARAgingReport />} />
                     <Route path="invoices/vendor" element={<VendorInvoices />} />
                     <Route path="invoices/customer" element={<CustomerInvoices />} />
                     <Route path="invoices/create" element={<CreateInvoice />} />

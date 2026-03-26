@@ -13,6 +13,9 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
+import { DollarSign } from "lucide-react";
+import { callPaymentApi, formatCurrency as fmtPayCurrency, formatDate as fmtPayDate } from "@/lib/payment-api";
+import RecordPaymentModal from "./RecordPaymentModal";
 
 interface InvoiceData {
   id: string;
@@ -462,6 +465,15 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
         </p>
       )}
 
+      {/* Invoice Payment Allocations */}
+      {invoice && !isVoid && (
+        <InvoicePaymentsSection
+          invoiceId={invoice.id}
+          balanceDue={invoice.balance_due}
+          customerId={customerId}
+        />
+      )}
+
       {/* Actions */}
       {!isVoid && (
         <div className="flex flex-wrap gap-2">
@@ -525,6 +537,134 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
             </button>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Invoice Payments sub-section ──────────────────────────────── */
+
+interface PaymentAllocationRow {
+  id: string;
+  allocated_amount: number;
+  created_at: string;
+  payment: {
+    id: string;
+    payment_date: string;
+    amount: number;
+    payment_method_name: string | null;
+    reference_number: string | null;
+  };
+}
+
+function InvoicePaymentsSection({
+  invoiceId,
+  balanceDue,
+  customerId,
+}: {
+  invoiceId: string;
+  balanceDue: number;
+  customerId: string;
+}) {
+  const [allocations, setAllocations] = useState<PaymentAllocationRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showPayModal, setShowPayModal] = useState(false);
+
+  useEffect(() => {
+    const fetch = async () => {
+      setLoading(true);
+      try {
+        const { data } = await supabase
+          .from("customer_payment_allocations")
+          .select(
+            "id, allocated_amount, created_at, payment:customer_payments(id, payment_date, amount, payment_method_name, reference_number)"
+          )
+          .eq("invoice_id", invoiceId)
+          .order("created_at", { ascending: false });
+        setAllocations((data as any) || []);
+      } catch {
+        // silent
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch();
+  }, [invoiceId]);
+
+  if (loading) return null;
+  if (allocations.length === 0 && balanceDue <= 0) return null;
+
+  return (
+    <div className="border-t border-gray-200 pt-3 mt-3 mb-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+          <DollarSign className="w-3 h-3 inline mr-1" />
+          Payments
+        </p>
+        {balanceDue > 0 && (
+          <button
+            onClick={() => setShowPayModal(true)}
+            className="text-xs text-teal-600 hover:text-teal-700 font-medium"
+          >
+            Record Payment
+          </button>
+        )}
+      </div>
+
+      {allocations.length > 0 && (
+        <div className="space-y-1 mb-2">
+          {allocations.map((a) => (
+            <div
+              key={a.id}
+              className="flex items-center justify-between text-xs text-gray-600"
+            >
+              <span>
+                {a.payment?.payment_date
+                  ? fmtPayDate(a.payment.payment_date)
+                  : "—"}
+              </span>
+              <span>{a.payment?.payment_method_name || ""}</span>
+              <span className="text-xs font-mono text-gray-400">
+                {a.payment?.reference_number || ""}
+              </span>
+              <Link
+                to={`/admin/payments/${a.payment?.id}`}
+                className="font-medium text-gray-900 hover:text-teal-600"
+              >
+                {fmtPayCurrency(a.allocated_amount)}
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between text-xs font-medium border-t border-gray-100 pt-1">
+        <span className="text-gray-500">
+          Total Paid:{" "}
+          {fmtPayCurrency(
+            allocations.reduce((s, a) => s + a.allocated_amount, 0)
+          )}
+        </span>
+        <span
+          className={
+            balanceDue > 0 ? "text-red-600" : "text-green-600"
+          }
+        >
+          Balance: {fmtPayCurrency(balanceDue)}
+        </span>
+      </div>
+
+      {showPayModal && (
+        <RecordPaymentModal
+          isOpen={showPayModal}
+          onClose={() => setShowPayModal(false)}
+          onSuccess={() => {
+            setShowPayModal(false);
+            window.location.reload();
+          }}
+          customerId={customerId}
+          preselectedInvoiceId={invoiceId}
+        />
       )}
     </div>
   );
