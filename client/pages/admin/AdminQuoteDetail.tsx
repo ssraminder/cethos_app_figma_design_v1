@@ -45,6 +45,7 @@ import {
   Loader2,
   Cpu,
   Layers,
+  Info,
 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import JSZip from "jszip";
@@ -2577,7 +2578,13 @@ export default function AdminQuoteDetail() {
   const handlePaymentMethodChange = (methodId: string) => {
     setSelectedPaymentMethodId(methodId);
     const method = paymentMethods.find((pm) => pm.id === methodId);
-    setSelectedPaymentMethodCode(method?.code || "");
+    const code = method?.code || "";
+    setSelectedPaymentMethodCode(code);
+    if (code === "account") {
+      setRpAmountPaid("0");
+    } else {
+      setRpAmountPaid(quote?.total?.toFixed(2) || "0.00");
+    }
   };
 
   const handleReceivePayment = async () => {
@@ -2586,17 +2593,20 @@ export default function AdminQuoteDetail() {
       return;
     }
 
-    const parsedAmountPaid = parseFloat(rpAmountPaid) || 0;
+    const isAccountPayment = selectedPaymentMethodCode === "account";
+    const parsedAmountPaid = isAccountPayment ? 0 : (parseFloat(rpAmountPaid) || 0);
     const totalAmount = quote?.total || 0;
 
-    if (parsedAmountPaid < 0) {
-      toast.error("Amount paid cannot be negative");
-      return;
-    }
+    if (!isAccountPayment) {
+      if (parsedAmountPaid < 0) {
+        toast.error("Amount paid cannot be negative");
+        return;
+      }
 
-    if (parsedAmountPaid > totalAmount) {
-      toast.error("Amount paid cannot exceed total amount");
-      return;
+      if (parsedAmountPaid > totalAmount) {
+        toast.error("Amount paid cannot exceed total amount");
+        return;
+      }
     }
 
     if (!currentStaff?.staffId || !id) {
@@ -2606,8 +2616,9 @@ export default function AdminQuoteDetail() {
 
     const methodName = paymentMethods.find((pm) => pm.id === selectedPaymentMethodId)?.name || "Unknown";
 
-    const confirmMessage =
-      `Are you sure? Quote ${quote?.quote_number} will be marked as PAID for $${parsedAmountPaid.toFixed(2)} via ${methodName}. This cannot be undone.`;
+    const confirmMessage = isAccountPayment
+      ? `Are you sure? Quote ${quote?.quote_number} will be converted to an AR order (Net 30) with $${totalAmount.toFixed(2)} balance due. This cannot be undone.`
+      : `Are you sure? Quote ${quote?.quote_number} will be marked as PAID for $${parsedAmountPaid.toFixed(2)} via ${methodName}. This cannot be undone.`;
 
     if (!window.confirm(confirmMessage)) {
       return;
@@ -5344,12 +5355,18 @@ export default function AdminQuoteDetail() {
             </div>
 
             {/* Warning Banner */}
-            <div className="rounded-lg p-3 mb-4 flex items-start gap-2 bg-amber-50 border border-amber-200">
-              <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
-              <div className="text-sm text-amber-800">
+            <div className={`rounded-lg p-3 mb-4 flex items-start gap-2 ${selectedPaymentMethodCode === "account" ? "bg-blue-50 border border-blue-200" : "bg-amber-50 border border-amber-200"}`}>
+              {selectedPaymentMethodCode === "account" ? (
+                <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-blue-600" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
+              )}
+              <div className={`text-sm ${selectedPaymentMethodCode === "account" ? "text-blue-800" : "text-amber-800"}`}>
                 <p className="font-medium mb-1">Important:</p>
                 <p>
-                  This will convert the quote to a paid order. Ensure payment has been received.
+                  {selectedPaymentMethodCode === "account"
+                    ? "This will convert the quote to an AR order (Net 30). No payment is collected upfront — an invoice will be generated with the full balance due."
+                    : "This will convert the quote to a paid order. Ensure payment has been received."}
                 </p>
               </div>
             </div>
@@ -5401,30 +5418,41 @@ export default function AdminQuoteDetail() {
               </select>
             </div>
 
-            {/* Amount Paid */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Amount Paid <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                  $
-                </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={rpAmountPaid}
-                  onChange={(e) => setRpAmountPaid(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
-                  disabled={isProcessingPayment}
-                />
+            {/* Amount Paid — hidden for Account Payment */}
+            {selectedPaymentMethodCode === "account" ? (
+              <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                  <p className="text-sm text-blue-800">
+                    Account Payment creates an AR invoice (Net 30). No payment is collected upfront.
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Amount Paid <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={rpAmountPaid}
+                    onChange={(e) => setRpAmountPaid(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                    disabled={isProcessingPayment}
+                  />
+                </div>
+              </div>
+            )}
 
-            {/* Balance Display */}
-            {(() => {
+            {/* Balance Display — hidden for Account Payment */}
+            {selectedPaymentMethodCode !== "account" && (() => {
               const totalAmount = quote.total || 0;
               const paid = parseFloat(rpAmountPaid) || 0;
               const balanceDue = Math.max(0, totalAmount - paid);
@@ -5479,14 +5507,24 @@ export default function AdminQuoteDetail() {
                 disabled={
                   isProcessingPayment ||
                   !selectedPaymentMethodId ||
-                  rpAmountPaid === "" ||
-                  isNaN(parseFloat(rpAmountPaid)) ||
-                  parseFloat(rpAmountPaid) < 0
+                  (selectedPaymentMethodCode !== "account" && (
+                    rpAmountPaid === "" ||
+                    isNaN(parseFloat(rpAmountPaid)) ||
+                    parseFloat(rpAmountPaid) < 0
+                  ))
                 }
                 className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                <CreditCard className="w-4 h-4" />
-                {isProcessingPayment ? "Processing..." : "Confirm Payment"}
+                {selectedPaymentMethodCode === "account" ? (
+                  <FileText className="w-4 h-4" />
+                ) : (
+                  <CreditCard className="w-4 h-4" />
+                )}
+                {isProcessingPayment
+                  ? "Processing..."
+                  : selectedPaymentMethodCode === "account"
+                    ? "Create AR Order"
+                    : "Confirm Payment"}
               </button>
             </div>
           </div>
