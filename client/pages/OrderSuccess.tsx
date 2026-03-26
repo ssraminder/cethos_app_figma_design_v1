@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { CheckCircle2, Mail, Loader2, AlertCircle } from "lucide-react";
-import { trackQuoteSubmission, getReferralSource } from "@/lib/tracking";
+import { trackQuoteSubmission, trackGoogleAdsConversion, getReferralSource } from "@/lib/tracking";
+import { useTrackingSettings } from "@/hooks/useTrackingSettings";
 
 interface OrderDetails {
   order_number: string;
@@ -20,6 +21,7 @@ export default function OrderSuccess() {
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const conversionTracked = useRef(false);
+  const { settings: trackingSettings } = useTrackingSettings();
 
   useEffect(() => {
     if (sessionId) {
@@ -95,7 +97,7 @@ export default function OrderSuccess() {
       customer_email: (orderData.customer as any)?.email || "",
     });
 
-    // Fire conversion event once (Stripe payment completed = primary conversion)
+    // Fire conversion events once (Stripe payment completed = purchase conversion)
     if (!conversionTracked.current) {
       conversionTracked.current = true;
       const referral = getReferralSource();
@@ -106,6 +108,16 @@ export default function OrderSuccess() {
         sourceUrl: referral?.sourceUrl || "",
         sourceLocation: referral?.sourceLocation || "",
       });
+
+      // Google Ads purchase conversion
+      if (trackingSettings.google_ads_conversion_id && trackingSettings.google_ads_purchase_label) {
+        trackGoogleAdsConversion({
+          sendTo: `${trackingSettings.google_ads_conversion_id}/${trackingSettings.google_ads_purchase_label}`,
+          value: orderData.total_amount,
+          currency: "CAD",
+          transactionId: orderData.order_number,
+        });
+      }
     }
   };
 
