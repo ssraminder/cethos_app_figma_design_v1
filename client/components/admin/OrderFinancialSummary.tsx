@@ -369,7 +369,7 @@ function PayablesDetailTable({
           <tbody className="divide-y">
             {steps.map((step) => {
               const p = step.payable;
-              const hasVendor = step.actor_type === "vendor" && step.vendor_name;
+              const hasVendor = step.actor_type === "external_vendor" && step.vendor_name;
               const showNoPayableNote = hasVendor && !p && step.vendor_total != null;
 
               return (

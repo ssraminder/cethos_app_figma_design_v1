@@ -61,6 +61,8 @@ interface Step {
   service_id: string | null;
   service_name: string | null;
   actor_type: string;
+  default_actor_type?: string;
+  allowed_actor_types?: string[];
   assignment_mode: string;
   auto_assign_rule: string | null;
   auto_advance: boolean;
@@ -82,6 +84,7 @@ interface StepFormData {
   name: string;
   service_id: string;
   actor_type: string;
+  allowed_actor_types: string[];
   assignment_mode: string;
   auto_assign_rule: string;
   auto_advance: boolean;
@@ -103,8 +106,9 @@ interface TemplateFormData {
 // ── Constants ──
 
 const actorTypes = [
-  { value: "vendor", label: "Vendor" },
-  { value: "internal", label: "Internal (Staff)" },
+  { value: "external_vendor", label: "Vendor" },
+  { value: "internal_work", label: "Internal (Work)" },
+  { value: "internal_review", label: "Internal (Review)" },
   { value: "customer", label: "Customer" },
   { value: "automated", label: "Automated" },
 ];
@@ -124,8 +128,9 @@ const autoAssignRules = [
 ];
 
 const actorTypeColors: Record<string, { bg: string; text: string; border: string }> = {
-  vendor: { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-400" },
-  internal: { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-400" },
+  external_vendor: { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-400" },
+  internal_work: { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-400" },
+  internal_review: { bg: "bg-indigo-100", text: "text-indigo-700", border: "border-indigo-400" },
   customer: { bg: "bg-green-100", text: "text-green-700", border: "border-green-400" },
   automated: { bg: "bg-gray-100", text: "text-gray-700", border: "border-gray-400" },
 };
@@ -142,7 +147,8 @@ const categoryLabels: Record<string, string> = {
 const defaultStepForm: StepFormData = {
   name: "",
   service_id: "",
-  actor_type: "vendor",
+  actor_type: "external_vendor",
+  allowed_actor_types: ["external_vendor"],
   assignment_mode: "manual",
   auto_assign_rule: "",
   auto_advance: false,
@@ -260,6 +266,7 @@ export default function WorkflowTemplatesSettings() {
           name: s.name,
           service_id: s.service_id || "",
           actor_type: s.actor_type,
+          allowed_actor_types: s.allowed_actor_types || [s.actor_type],
           assignment_mode: s.assignment_mode,
           auto_assign_rule: s.auto_assign_rule || "",
           auto_advance: s.auto_advance,
@@ -360,6 +367,8 @@ export default function WorkflowTemplatesSettings() {
           name: s.name,
           service_id: s.service_id || null,
           actor_type: s.actor_type,
+          allowed_actor_types: s.allowed_actor_types.length > 0 ? s.allowed_actor_types : [s.actor_type],
+          default_actor_type: s.actor_type,
           assignment_mode: s.assignment_mode,
           auto_assign_rule: s.assignment_mode === "auto" ? (s.auto_assign_rule || null) : null,
           auto_advance: s.auto_advance,
@@ -599,6 +608,11 @@ export default function WorkflowTemplatesSettings() {
                                 {step.name}
                               </span>
                               <ActorBadge type={step.actor_type} />
+                              {step.allowed_actor_types && step.allowed_actor_types.length > 1 && (
+                                <span className="text-xs text-indigo-500" title={`Can switch to: ${step.allowed_actor_types.join(', ')}`}>
+                                  +{step.allowed_actor_types.length - 1} type{step.allowed_actor_types.length - 1 > 1 ? 's' : ''}
+                                </span>
+                              )}
                               <span className="text-gray-500">
                                 {assignmentModes.find(
                                   (m) => m.value === step.assignment_mode
@@ -884,6 +898,37 @@ export default function WorkflowTemplatesSettings() {
                             </option>
                           ))}
                         </select>
+                      </div>
+                    </div>
+
+                    {/* Allowed Actor Types */}
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Allowed Actor Types
+                      </label>
+                      <div className="flex flex-wrap gap-3">
+                        {actorTypes.filter(a => a.value !== 'automated').map((a) => (
+                          <label key={a.value} className="flex items-center gap-1.5 text-xs text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={step.allowed_actor_types.includes(a.value)}
+                              onChange={(e) => {
+                                const current = step.allowed_actor_types;
+                                const updated = e.target.checked
+                                  ? [...current, a.value]
+                                  : current.filter((t: string) => t !== a.value);
+                                // Must have at least one allowed type
+                                if (updated.length === 0) return;
+                                updateStep(index, "allowed_actor_types" as keyof StepFormData, updated);
+                              }}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            {a.label}
+                          </label>
+                        ))}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        Steps with multiple allowed types can be switched at runtime.
                       </div>
                     </div>
 

@@ -16,6 +16,11 @@ import {
   Zap,
   UserMinus,
   Pencil,
+  ChevronDown,
+  ChevronRight,
+  Upload,
+  FileText,
+  Download,
 } from "lucide-react";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import OrderFinancialSummary, {
@@ -31,13 +36,17 @@ interface WorkflowStep {
   id: string;
   step_number: number;
   name: string;
-  actor_type: 'vendor' | 'internal' | 'customer' | 'automated';
+  actor_type: 'external_vendor' | 'internal_work' | 'internal_review' | 'customer' | 'automated';
   status: string;
   assignment_mode: string;
   auto_assign_rule: string | null;
   auto_advance: boolean;
   is_optional: boolean;
   requires_file_upload: boolean;
+  allowed_actor_types?: string[];
+  deliveries?: StepDelivery[];
+  delivery_count?: number;
+  latest_delivery?: StepDelivery | null;
   vendor_id: string | null;
   vendor_name: string | null;
   assigned_staff_id: string | null;
@@ -105,6 +114,23 @@ interface WorkflowStep {
   unassigned_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface StepDelivery {
+  id: string;
+  step_id: string;
+  version: number;
+  actor_type: 'external_vendor' | 'internal_work' | 'customer';
+  delivered_by_id: string | null;
+  delivered_by_name: string | null;
+  delivered_at: string;
+  file_paths: string[] | null;
+  notes: string | null;
+  review_status: 'pending_review' | 'approved' | 'revision_requested';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_feedback: string | null;
+  created_at: string;
 }
 
 interface OrderFinancials {
@@ -220,9 +246,10 @@ function StepStatusBadge({ status }: { status: string }) {
 
 function ActorIcon({ type, className = "w-4 h-4" }: { type: string; className?: string }) {
   switch (type) {
-    case "vendor":
+    case "external_vendor":
       return <User className={className} />;
-    case "internal":
+    case "internal_work":
+    case "internal_review":
       return <Building className={className} />;
     case "customer":
       return <Users className={className} />;
@@ -235,8 +262,9 @@ function ActorIcon({ type, className = "w-4 h-4" }: { type: string; className?: 
 
 function ActorTypeBadge({ actorType }: { actorType: string }) {
   const config: Record<string, { label: string; bg: string; text: string }> = {
-    vendor: { label: "Vendor", bg: "bg-blue-100", text: "text-blue-700" },
-    internal: { label: "Internal", bg: "bg-purple-100", text: "text-purple-700" },
+    external_vendor: { label: "Vendor", bg: "bg-blue-100", text: "text-blue-700" },
+    internal_work: { label: "Internal (Work)", bg: "bg-purple-100", text: "text-purple-700" },
+    internal_review: { label: "Internal (Review)", bg: "bg-indigo-100", text: "text-indigo-700" },
     customer: { label: "Customer", bg: "bg-green-100", text: "text-green-700" },
     automated: { label: "Auto", bg: "bg-gray-100", text: "text-gray-600" },
   };
@@ -1448,7 +1476,7 @@ function AddStepModal({
 }) {
   const [stepName, setStepName] = useState("");
   const [serviceId, setServiceId] = useState("");
-  const [actorType, setActorType] = useState("vendor");
+  const [actorType, setActorType] = useState("external_vendor");
   const [insertAfter, setInsertAfter] = useState(defaultInsertAfter);
   const [autoAdvance, setAutoAdvance] = useState(false);
   const [isOptional, setIsOptional] = useState(false);
@@ -1465,7 +1493,7 @@ function AddStepModal({
     if (isOpen) {
       setStepName("");
       setServiceId("");
-      setActorType("vendor");
+      setActorType("external_vendor");
       setInsertAfter(defaultInsertAfter);
       setAutoAdvance(false);
       setIsOptional(false);
@@ -1550,8 +1578,9 @@ function AddStepModal({
               value={actorType}
               onChange={(e) => setActorType(e.target.value)}
             >
-              <option value="vendor">Vendor (freelancer)</option>
-              <option value="internal">Internal (staff)</option>
+              <option value="external_vendor">Vendor (freelancer)</option>
+              <option value="internal_work">Internal (work)</option>
+              <option value="internal_review">Internal (review)</option>
               <option value="customer">Customer (review)</option>
               <option value="automated">Automated (system)</option>
             </select>
@@ -1799,6 +1828,7 @@ interface WorkflowPipelineProps {
   onUnassignVendor?: (step: WorkflowStep) => void;
   onExtendDeadline?: (stepId: string, newDeadline: string, reason: string) => Promise<void>;
   onAdjustPayable?: (step: WorkflowStep, newRate: number | undefined, newSubtotal: number | undefined, reason: string) => Promise<void>;
+  onRefresh?: () => Promise<void>;
 }
 
 function WorkflowPipeline({
@@ -1828,6 +1858,7 @@ function WorkflowPipeline({
   onUnassignVendor = () => {},
   onExtendDeadline,
   onAdjustPayable,
+  onRefresh,
 }: WorkflowPipelineProps) {
   const [editDeadlineStepId, setEditDeadlineStepId] = useState<string | null>(null);
   const [editDeadlineValue, setEditDeadlineValue] = useState('');
@@ -1839,6 +1870,88 @@ function WorkflowPipeline({
   const [adjustPayableTotal, setAdjustPayableTotal] = useState('');
   const [adjustPayableReason, setAdjustPayableReason] = useState('');
   const [adjustPayableLoading, setAdjustPayableLoading] = useState(false);
+
+  const [deliveryHistoryExpandedSteps, setDeliveryHistoryExpandedSteps] = useState<Set<string>>(new Set());
+  const toggleDeliveryHistory = (stepId: string) => {
+    setDeliveryHistoryExpandedSteps(prev => {
+      const next = new Set(prev);
+      if (next.has(stepId)) next.delete(stepId);
+      else next.add(stepId);
+      return next;
+    });
+  };
+
+  // Staff delivery upload state
+  const [staffDeliveryStepId, setStaffDeliveryStepId] = useState<string | null>(null);
+  const [staffDeliveryFiles, setStaffDeliveryFiles] = useState<File[]>([]);
+  const [staffDeliveryNotes, setStaffDeliveryNotes] = useState('');
+  const [staffDeliveryLoading, setStaffDeliveryLoading] = useState(false);
+  const staffFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Approve/Revise modal state
+  const [approveModalStep, setApproveModalStep] = useState<WorkflowStep | null>(null);
+  const [reviseModalStep, setReviseModalStep] = useState<WorkflowStep | null>(null);
+  const [reviseFeedback, setReviseFeedback] = useState('');
+
+  // Actor type switcher state
+  const [switchingActorStepId, setSwitchingActorStepId] = useState<string | null>(null);
+
+  const { session: currentStaff } = useAdminAuthContext();
+
+  const handleStaffDeliver = async (stepId: string) => {
+    if (staffDeliveryFiles.length === 0) {
+      toast.error('Please select at least one file');
+      return;
+    }
+    setStaffDeliveryLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('step_id', stepId);
+      if (staffDeliveryNotes) formData.append('notes', staffDeliveryNotes);
+      staffDeliveryFiles.forEach(f => formData.append('files', f));
+      if (currentStaff?.id) formData.append('staff_id', currentStaff.id);
+
+      const { data, error } = await supabase.functions.invoke('staff-deliver-step', {
+        body: formData,
+      });
+
+      if (error || !data?.success) {
+        toast.error(data?.error || 'Failed to deliver files');
+        return;
+      }
+
+      toast.success(`Delivered v${data.delivery_version}`);
+      setStaffDeliveryStepId(null);
+      setStaffDeliveryFiles([]);
+      setStaffDeliveryNotes('');
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      toast.error('Failed to deliver files');
+    } finally {
+      setStaffDeliveryLoading(false);
+    }
+  };
+
+  const handleDownloadFile = async (filePath: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('vendor-deliveries')
+        .createSignedUrl(filePath, 3600);
+      if (error || !data?.signedUrl) {
+        toast.error('Failed to generate download link');
+        return;
+      }
+      window.open(data.signedUrl, '_blank');
+    } catch {
+      toast.error('Failed to download file');
+    }
+  };
+
+  const REVIEW_STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+    pending_review: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Pending Review' },
+    approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Approved' },
+    revision_requested: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Revision Requested' },
+  };
   return (
     <div className="space-y-4">
       {/* Workflow header */}
@@ -2284,7 +2397,7 @@ function WorkflowPipeline({
                 )}
 
                 {/* Line 3: Rate info (vendor steps with rate) */}
-                {step.actor_type === "vendor" && step.vendor_rate && (
+                {step.actor_type === "external_vendor" && step.vendor_rate && (
                   <div className="text-sm text-gray-500 mt-1">
                     ${step.vendor_rate}/{step.vendor_rate_unit} · {step.vendor_currency} $
                     {step.vendor_total?.toFixed(2)}
@@ -2557,8 +2670,21 @@ function WorkflowPipeline({
 
                 {/* Action buttons */}
                 <div className="flex flex-wrap items-center gap-2 mt-2">
+                  {/* Actor Type Switcher: pending + multiple allowed types */}
+                  {step.status === "pending" && step.allowed_actor_types && step.allowed_actor_types.length > 1 && (
+                    <button
+                      className="text-xs px-3 py-1 border border-indigo-400 text-indigo-600 rounded hover:bg-indigo-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSwitchingActorStepId(step.id);
+                      }}
+                    >
+                      Switch Type
+                    </button>
+                  )}
+
                   {/* Find Vendor: pending + vendor + no vendor_id */}
-                  {step.status === "pending" && step.actor_type === "vendor" && !step.vendor_id && (
+                  {step.status === "pending" && step.actor_type === "external_vendor" && !step.vendor_id && (
                     <button
                       className="text-xs px-3 py-1 border border-blue-400 text-blue-600 rounded hover:bg-blue-50"
                       onClick={(e) => {
@@ -2571,7 +2697,7 @@ function WorkflowPipeline({
                   )}
 
                   {/* Assign Staff: pending + internal + no assigned_staff_id */}
-                  {step.status === "pending" && step.actor_type === "internal" && !step.assigned_staff_id && (
+                  {step.status === "pending" && ['internal_work', 'internal_review'].includes(step.actor_type) && !step.assigned_staff_id && (
                     <StaffPickerDropdown
                       onSelect={(staffId) =>
                         handleStepAction(step.id, "direct_assign", { vendor_id: staffId })
@@ -2642,9 +2768,7 @@ function WorkflowPipeline({
                         disabled={actionLoading === step.id}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm("Approve this deliverable?")) {
-                            handleStepAction(step.id, "change_status", { status: "approved" });
-                          }
+                          setApproveModalStep(step);
                         }}
                       >
                         {actionLoading === step.id ? "..." : "Approve"}
@@ -2653,7 +2777,8 @@ function WorkflowPipeline({
                         className="text-xs px-3 py-1 border border-amber-400 text-amber-600 rounded hover:bg-amber-50"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onSetRevisionStepId(step.id);
+                          setReviseFeedback('');
+                          setReviseModalStep(step);
                         }}
                       >
                         Request Revision
@@ -2758,11 +2883,211 @@ function WorkflowPipeline({
                         <span className="font-medium text-gray-600">Delivered files:</span>
                         <div className="text-xs text-gray-500 mt-1">
                           {step.delivered_file_paths.map((p, i) => (
-                            <div key={i}>{p.split("/").pop()}</div>
+                            <button
+                              key={i}
+                              className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
+                              onClick={(e) => { e.stopPropagation(); handleDownloadFile(p); }}
+                            >
+                              <Download className="w-3 h-3" />
+                              {p.split("/").pop()}
+                            </button>
                           ))}
                         </div>
                       </div>
                     )}
+
+                    {/* Current Delivery */}
+                    {step.latest_delivery && (
+                      <div className="bg-blue-50 rounded p-2 border border-blue-200">
+                        <div className="flex items-center gap-2 text-xs font-medium text-blue-800">
+                          <span>📦 Current Delivery (v{step.latest_delivery.version})</span>
+                          <span className="text-blue-500">— {new Date(step.latest_delivery.delivered_at).toLocaleString()}</span>
+                          {step.latest_delivery.delivered_by_name && (
+                            <span className="text-blue-500">by {step.latest_delivery.delivered_by_name}</span>
+                          )}
+                          <span className={`ml-auto inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${REVIEW_STATUS_STYLES[step.latest_delivery.review_status]?.bg || 'bg-gray-100'} ${REVIEW_STATUS_STYLES[step.latest_delivery.review_status]?.text || 'text-gray-600'}`}>
+                            {REVIEW_STATUS_STYLES[step.latest_delivery.review_status]?.label || step.latest_delivery.review_status}
+                          </span>
+                        </div>
+                        {step.latest_delivery.file_paths && step.latest_delivery.file_paths.length > 0 && (
+                          <div className="mt-1 text-xs text-blue-600 flex flex-wrap gap-2">
+                            {step.latest_delivery.file_paths.map((p, i) => (
+                              <button
+                                key={i}
+                                className="flex items-center gap-0.5 hover:text-blue-800 hover:underline"
+                                onClick={(e) => { e.stopPropagation(); handleDownloadFile(p); }}
+                              >
+                                <Download className="w-3 h-3" />
+                                {p.split("/").pop()}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {step.latest_delivery.notes && (
+                          <div className="mt-1 text-xs text-blue-700 italic">"{step.latest_delivery.notes}"</div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Delivery Version History */}
+                    {step.deliveries && step.deliveries.length > 0 && (
+                      <div>
+                        <button
+                          className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-800"
+                          onClick={(e) => { e.stopPropagation(); toggleDeliveryHistory(step.id); }}
+                        >
+                          {deliveryHistoryExpandedSteps.has(step.id)
+                            ? <ChevronDown className="w-3 h-3" />
+                            : <ChevronRight className="w-3 h-3" />
+                          }
+                          📋 Version History ({step.delivery_count || step.deliveries.length} version{(step.delivery_count || step.deliveries.length) !== 1 ? 's' : ''})
+                        </button>
+                        {deliveryHistoryExpandedSteps.has(step.id) && (
+                          <div className="mt-1 overflow-x-auto">
+                            <table className="w-full text-xs border border-gray-200 rounded">
+                              <thead>
+                                <tr className="bg-gray-50 text-gray-600">
+                                  <th className="px-2 py-1 text-left font-medium">Ver</th>
+                                  <th className="px-2 py-1 text-left font-medium">Delivered By</th>
+                                  <th className="px-2 py-1 text-left font-medium">Delivered At</th>
+                                  <th className="px-2 py-1 text-left font-medium">Files</th>
+                                  <th className="px-2 py-1 text-left font-medium">Review</th>
+                                  <th className="px-2 py-1 text-left font-medium">Feedback</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {step.deliveries.map((d) => {
+                                  const rs = REVIEW_STATUS_STYLES[d.review_status] || REVIEW_STATUS_STYLES.pending_review;
+                                  return (
+                                    <tr key={d.id} className="hover:bg-gray-50">
+                                      <td className="px-2 py-1 font-medium">v{d.version}</td>
+                                      <td className="px-2 py-1 text-gray-600">{d.delivered_by_name || '—'}</td>
+                                      <td className="px-2 py-1 text-gray-500">{new Date(d.delivered_at).toLocaleString()}</td>
+                                      <td className="px-2 py-1">
+                                        {d.file_paths?.length ? (
+                                          <span className="text-blue-600">📄 x{d.file_paths.length}</span>
+                                        ) : '—'}
+                                      </td>
+                                      <td className="px-2 py-1">
+                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded font-medium ${rs.bg} ${rs.text}`}>
+                                          {d.review_status === 'pending_review' && '⏳'}
+                                          {d.review_status === 'approved' && '✅'}
+                                          {d.review_status === 'revision_requested' && '↺'}
+                                          {' '}{rs.label}
+                                        </span>
+                                      </td>
+                                      <td className="px-2 py-1 text-gray-500 max-w-[200px] truncate">
+                                        {d.review_status === 'revision_requested' && d.review_feedback
+                                          ? `"${d.review_feedback}"`
+                                          : '—'
+                                        }
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Staff Delivery Upload (internal_work steps) */}
+                    {step.actor_type === 'internal_work' && ['in_progress', 'revision_requested'].includes(step.status) && (
+                      <div className="border border-purple-200 rounded p-3 bg-purple-50">
+                        {staffDeliveryStepId === step.id ? (
+                          <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                            <div className="text-xs font-medium text-purple-800">Deliver Files</div>
+                            <div
+                              className="border-2 border-dashed border-purple-300 rounded p-4 text-center cursor-pointer hover:border-purple-400 hover:bg-purple-100 transition-colors"
+                              onClick={() => staffFileInputRef.current?.click()}
+                              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const files = Array.from(e.dataTransfer.files);
+                                setStaffDeliveryFiles(prev => [...prev, ...files]);
+                              }}
+                            >
+                              <Upload className="w-5 h-5 mx-auto text-purple-400 mb-1" />
+                              <div className="text-xs text-purple-600">
+                                Drop files here or click to browse
+                              </div>
+                              <input
+                                ref={staffFileInputRef}
+                                type="file"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => {
+                                  if (e.target.files) {
+                                    setStaffDeliveryFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                                  }
+                                }}
+                              />
+                            </div>
+                            {staffDeliveryFiles.length > 0 && (
+                              <div className="text-xs text-purple-700 space-y-0.5">
+                                {staffDeliveryFiles.map((f, i) => (
+                                  <div key={i} className="flex items-center justify-between">
+                                    <span className="flex items-center gap-1">
+                                      <FileText className="w-3 h-3" /> {f.name}
+                                      <span className="text-purple-400">({(f.size / 1024).toFixed(1)} KB)</span>
+                                    </span>
+                                    <button
+                                      className="text-red-400 hover:text-red-600"
+                                      onClick={() => setStaffDeliveryFiles(prev => prev.filter((_, idx) => idx !== i))}
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <textarea
+                              className="w-full text-sm border border-purple-300 rounded p-2 bg-white"
+                              rows={2}
+                              placeholder="Notes (optional)..."
+                              value={staffDeliveryNotes}
+                              onChange={(e) => setStaffDeliveryNotes(e.target.value)}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                className="text-xs px-3 py-1 border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+                                onClick={() => {
+                                  setStaffDeliveryStepId(null);
+                                  setStaffDeliveryFiles([]);
+                                  setStaffDeliveryNotes('');
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                className="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                                disabled={staffDeliveryFiles.length === 0 || staffDeliveryLoading}
+                                onClick={() => handleStaffDeliver(step.id)}
+                              >
+                                {staffDeliveryLoading ? (
+                                  <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</span>
+                                ) : `Submit Delivery (${staffDeliveryFiles.length} file${staffDeliveryFiles.length !== 1 ? 's' : ''})`}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center gap-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setStaffDeliveryStepId(step.id);
+                              setStaffDeliveryFiles([]);
+                              setStaffDeliveryNotes('');
+                            }}
+                          >
+                            <Upload className="w-3 h-3" /> Deliver Files
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {step.revision_count > 0 && (
                       <div className="text-xs text-gray-500">
                         Revisions: {step.revision_count}
@@ -2814,6 +3139,160 @@ function WorkflowPipeline({
           );
         })}
       </div>
+
+      {/* Approve Confirmation Modal */}
+      {approveModalStep && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setApproveModalStep(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">Approve Delivery</h3>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-sm text-gray-700">
+                Approve delivery{approveModalStep.latest_delivery ? ` v${approveModalStep.latest_delivery.version}` : ''} from{' '}
+                <strong>{approveModalStep.latest_delivery?.delivered_by_name || approveModalStep.vendor_name || 'staff'}</strong>?
+              </p>
+              {approveModalStep.latest_delivery?.file_paths && approveModalStep.latest_delivery.file_paths.length > 0 && (
+                <div className="bg-gray-50 rounded p-2 text-xs text-gray-600">
+                  <div className="font-medium mb-1">Files:</div>
+                  {approveModalStep.latest_delivery.file_paths.map((p, i) => (
+                    <div key={i} className="flex items-center gap-1">
+                      <FileText className="w-3 h-3" /> {p.split('/').pop()}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              <button
+                className="text-xs px-4 py-2 border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+                onClick={() => setApproveModalStep(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="text-xs px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                disabled={actionLoading === approveModalStep.id}
+                onClick={async () => {
+                  await handleStepAction(approveModalStep.id, "change_status", {
+                    status: "approved",
+                    staff_id: currentStaff?.id,
+                  });
+                  setApproveModalStep(null);
+                }}
+              >
+                {actionLoading === approveModalStep.id ? "Approving..." : "Approve"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Request Revision Modal */}
+      {reviseModalStep && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setReviseModalStep(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">
+                Request Revision — {reviseModalStep.name}
+              </h3>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Feedback for {reviseModalStep.actor_type === 'external_vendor' ? 'vendor' : 'staff'} <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  className="w-full text-sm border border-amber-300 rounded p-2"
+                  rows={4}
+                  placeholder="Describe what needs to be revised (min 10 characters)..."
+                  value={reviseFeedback}
+                  onChange={(e) => setReviseFeedback(e.target.value)}
+                />
+                {reviseFeedback.length > 0 && reviseFeedback.length < 10 && (
+                  <div className="text-xs text-red-500 mt-1">
+                    Minimum 10 characters required ({10 - reviseFeedback.length} more)
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              <button
+                className="text-xs px-4 py-2 border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+                onClick={() => setReviseModalStep(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="text-xs px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-50"
+                disabled={reviseFeedback.trim().length < 10 || actionLoading === reviseModalStep.id}
+                onClick={async () => {
+                  await handleStepAction(reviseModalStep.id, "change_status", {
+                    status: "revision_requested",
+                    rejection_reason: reviseFeedback.trim(),
+                    staff_id: currentStaff?.id,
+                  });
+                  setReviseModalStep(null);
+                  setReviseFeedback('');
+                }}
+              >
+                {actionLoading === reviseModalStep.id ? "Sending..." : "Send Revision Request"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Actor Type Switcher Modal */}
+      {switchingActorStepId && (() => {
+        const switchStep = steps.find(s => s.id === switchingActorStepId);
+        if (!switchStep || !switchStep.allowed_actor_types || switchStep.allowed_actor_types.length <= 1) return null;
+        const ACTOR_TYPE_LABELS: Record<string, string> = {
+          external_vendor: 'Vendor',
+          internal_work: 'Internal (Work)',
+          internal_review: 'Internal (Review)',
+          customer: 'Customer',
+          automated: 'Automated',
+        };
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSwitchingActorStepId(null)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+              <div className="p-4 border-b">
+                <h3 className="text-lg font-semibold text-gray-800">Switch Actor Type — {switchStep.name}</h3>
+              </div>
+              <div className="p-4 space-y-2">
+                <p className="text-sm text-gray-600 mb-3">Select the actor type for this step:</p>
+                {switchStep.allowed_actor_types.map(at => (
+                  <button
+                    key={at}
+                    className={`w-full text-left px-3 py-2 rounded border text-sm ${
+                      at === switchStep.actor_type
+                        ? 'border-blue-400 bg-blue-50 text-blue-700 font-medium'
+                        : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                    }`}
+                    disabled={at === switchStep.actor_type || actionLoading === switchStep.id}
+                    onClick={async () => {
+                      await handleStepAction(switchStep.id, 'update_config', { actor_type: at });
+                      setSwitchingActorStepId(null);
+                    }}
+                  >
+                    {ACTOR_TYPE_LABELS[at] || at}
+                    {at === switchStep.actor_type && ' (current)'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-end p-4 border-t">
+                <button
+                  className="text-xs px-4 py-2 border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+                  onClick={() => setSwitchingActorStepId(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -3341,6 +3820,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
             onUnassignVendor={(step) => setUnassignStep(step)}
             onExtendDeadline={handleExtendDeadline}
             onAdjustPayable={handleAdjustPayable}
+            onRefresh={fetchWorkflow}
           />
           {data.steps.some(s => s.has_pending_counter) && (
             <div className="text-xs text-orange-600 mt-1">
