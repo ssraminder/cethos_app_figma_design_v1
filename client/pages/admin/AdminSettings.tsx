@@ -438,6 +438,18 @@ export default function AdminSettings() {
                 Process templates for order workflows
               </p>
             </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/branches")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Branches / Legal Entities
+              </h3>
+              <p className="text-sm text-gray-600">
+                Manage legal entities for customer invoicing
+              </p>
+            </button>
           </div>
         </div>
 

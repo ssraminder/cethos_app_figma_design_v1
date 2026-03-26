@@ -23,6 +23,7 @@ import {
   Receipt,
   FileSpreadsheet,
   ClipboardList,
+  Building2,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -155,6 +156,13 @@ const NAV_ITEMS: NavItem[] = [
     path: "/admin/settings",
     icon: Settings,
     section: "Config",
+  },
+  {
+    label: "Branches",
+    path: "/admin/settings/branches",
+    icon: Building2,
+    section: "Config",
+    isChild: true,
   },
 ];
 
