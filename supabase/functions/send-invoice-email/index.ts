@@ -40,7 +40,7 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { invoice_id } = await req.json();
+    const { invoice_id, custom_message } = await req.json();
     if (!invoice_id) {
       throw new Error("Missing required field: invoice_id");
     }
@@ -151,7 +151,11 @@ serve(async (req: Request) => {
     <div class="body">
       <p>Dear ${customerName},</p>
       <p>Please find below the details of your invoice. A PDF copy is attached for your records.</p>
-
+${custom_message ? `
+      <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+        <p style="margin: 0; font-size: 14px; color: #333; white-space: pre-line;">${custom_message.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+      </div>
+` : ""}
       <div class="invoice-box">
         <table>
           <tr>

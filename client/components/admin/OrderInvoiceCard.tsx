@@ -17,6 +17,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { DollarSign } from "lucide-react";
 import { callPaymentApi, formatCurrency as fmtPayCurrency, formatDate as fmtPayDate } from "@/lib/payment-api";
 import RecordPaymentModal from "./RecordPaymentModal";
+import SendInvoiceEmailModal from "./SendInvoiceEmailModal";
 
 interface InvoiceData {
   id: string;
@@ -91,6 +92,8 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
   const [issuing, setIssuing] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const [sending, setSending] = useState(false);
+  const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+  const [customerEmail, setCustomerEmail] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; missing?: string[] } | null>(null);
 
   const fetchInvoice = useCallback(async () => {
@@ -152,7 +155,15 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
       .then(({ data }) => {
         if (data) setBranches(data);
       });
-  }, [fetchInvoice]);
+    supabase
+      .from("customers")
+      .select("email")
+      .eq("id", customerId)
+      .single()
+      .then(({ data }) => {
+        if (data?.email) setCustomerEmail(data.email);
+      });
+  }, [fetchInvoice, customerId]);
 
   const branchName = invoice?.invoicing_branch_id
     ? branches.find((b) => b.id === invoice.invoicing_branch_id)?.legal_name || "—"
@@ -312,9 +323,8 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
     }
   };
 
-  const handleSendEmail = async () => {
+  const handleSendEmail = async (customMessage: string) => {
     if (!invoice) return;
-    if (!window.confirm("Send this invoice to the customer by email?")) return;
     setSending(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -326,7 +336,10 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
             "Content-Type": "application/json",
             Authorization: `Bearer ${session?.access_token}`,
           },
-          body: JSON.stringify({ invoice_id: invoice.id }),
+          body: JSON.stringify({
+            invoice_id: invoice.id,
+            custom_message: customMessage || undefined,
+          }),
         }
       );
       const result = await resp.json();
@@ -335,6 +348,7 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
         return;
       }
       toast.success(`Invoice emailed to ${result.sent_to || "customer"}`);
+      setShowSendEmailModal(false);
       await fetchInvoice();
     } catch {
       toast.error("Failed to send invoice email");
@@ -558,15 +572,10 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
 
           {canSendEmail && (
             <button
-              onClick={handleSendEmail}
-              disabled={sending}
+              onClick={() => setShowSendEmailModal(true)}
               className="bg-indigo-50 text-indigo-700 text-sm px-3 py-1.5 rounded-md hover:bg-indigo-100 inline-flex items-center gap-1.5"
             >
-              {sending ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Mail className="w-3.5 h-3.5" />
-              )}
+              <Mail className="w-3.5 h-3.5" />
               Send by Email
             </button>
           )}
@@ -586,6 +595,18 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
             </button>
           )}
         </div>
+      )}
+
+      {/* Send Invoice Email Modal */}
+      {invoice && (
+        <SendInvoiceEmailModal
+          isOpen={showSendEmailModal}
+          onClose={() => setShowSendEmailModal(false)}
+          onSend={handleSendEmail}
+          invoiceNumber={invoice.invoice_number}
+          customerEmail={customerEmail || "No email on file"}
+          isSending={sending}
+        />
       )}
 
       {/* Generate new invoice after voiding */}
