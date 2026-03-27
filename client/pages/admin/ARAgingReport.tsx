@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import type { AgingRow } from "@/types/payments";
 import { callPaymentApi, formatCurrency, formatDate } from "@/lib/payment-api";
+import { formatCurrencyAmount, getCurrencyBadgeClasses } from "@/utils/currency";
 import RecordPaymentModal from "@/components/admin/RecordPaymentModal";
 
 interface AgingSummaryTotals {
@@ -32,12 +33,14 @@ interface CustomerAgingInvoice {
   last_reminder_sent_at: string | null;
   reminder_count: number;
   status: string;
+  currency?: string;
 }
 
 export default function ARAgingReport() {
   const [rows, setRows] = useState<AgingRow[]>([]);
   const [totals, setTotals] = useState<AgingSummaryTotals | null>(null);
   const [loading, setLoading] = useState(true);
+  const [outstandingByCurrency, setOutstandingByCurrency] = useState<Record<string, number>>({});
 
   // Expanded rows
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
@@ -65,6 +68,11 @@ export default function ARAgingReport() {
       // Sort by total outstanding descending
       agingRows.sort((a, b) => b.total_outstanding - a.total_outstanding);
       setRows(agingRows);
+
+      // Store per-currency breakdown if available
+      if (data.outstanding_by_currency) {
+        setOutstandingByCurrency(data.outstanding_by_currency);
+      }
 
       // Calculate totals
       if (data.totals) {
@@ -158,6 +166,22 @@ export default function ARAgingReport() {
     { key: "days_90_plus", label: "90+ Days", color: "bg-red-100 text-red-700" },
   ];
 
+  // Check if multi-currency data exists
+  const hasMultiCurrency = Object.keys(outstandingByCurrency).length > 1;
+
+  // Format per-currency breakdown for totals row
+  const formatMultiCurrencyTotal = (total: number) => {
+    if (!hasMultiCurrency) return formatCurrency(total);
+    const parts = Object.entries(outstandingByCurrency)
+      .filter(([, amt]) => amt > 0)
+      .map(([code, amt]) => formatCurrencyAmount(amt, code));
+    return parts.join(" + ");
+  };
+
+  // Compute per-currency subtotals for expanded customer invoices
+  const customerInvoiceCurrencies = [...new Set(customerInvoices.map((inv) => inv.currency || "CAD"))];
+  const customerHasMultiCurrency = customerInvoiceCurrencies.length > 1;
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -188,9 +212,20 @@ export default function ARAgingReport() {
             {loading ? (
               <div className="h-6 bg-gray-100 rounded animate-pulse w-20 mx-auto" />
             ) : (
-              <p className={`text-lg font-bold ${b.color.split(" ")[1]}`}>
-                {formatCurrency(totals?.[b.key] ?? 0)}
-              </p>
+              <>
+                <p className={`text-lg font-bold ${b.color.split(" ")[1]}`}>
+                  {formatCurrency(totals?.[b.key] ?? 0)}
+                </p>
+                {/* Show per-currency breakdown for total outstanding */}
+                {b.key === "total_outstanding" && hasMultiCurrency && (
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    {Object.entries(outstandingByCurrency)
+                      .filter(([, amt]) => amt > 0)
+                      .map(([code, amt]) => `${formatCurrencyAmount(amt, code)}`)
+                      .join(" + ")}
+                  </p>
+                )}
+              </>
             )}
           </div>
         ))}
@@ -325,12 +360,37 @@ export default function ARAgingReport() {
                             </p>
                           ) : (
                             <>
+                              {/* Per-currency summary for this customer */}
+                              {customerHasMultiCurrency && (
+                                <div className="flex items-center gap-3 mb-3 text-sm">
+                                  <span className="text-gray-600 font-medium">Outstanding:</span>
+                                  {customerInvoiceCurrencies.map((curr) => {
+                                    const total = customerInvoices
+                                      .filter((inv) => (inv.currency || "CAD") === curr)
+                                      .reduce((s, inv) => s + inv.balance_due, 0);
+                                    return (
+                                      <span key={curr} className="flex items-center gap-1">
+                                        <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded-full ${getCurrencyBadgeClasses(curr)}`}>
+                                          {curr}
+                                        </span>
+                                        <span className="font-semibold">{formatCurrencyAmount(total, curr)}</span>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
                               <table className="w-full text-xs mb-3">
                                 <thead>
                                   <tr className="border-b border-gray-200">
                                     <th className="text-left px-2 py-2 font-medium text-gray-500">
                                       Invoice #
                                     </th>
+                                    {customerHasMultiCurrency && (
+                                      <th className="text-left px-2 py-2 font-medium text-gray-500">
+                                        Currency
+                                      </th>
+                                    )}
                                     <th className="text-left px-2 py-2 font-medium text-gray-500">
                                       Date
                                     </th>
@@ -358,57 +418,67 @@ export default function ARAgingReport() {
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                  {customerInvoices.map((inv) => (
-                                    <tr key={inv.id} className="hover:bg-white">
-                                      <td className="px-2 py-2 font-mono text-gray-900">
-                                        {inv.invoice_number}
-                                      </td>
-                                      <td className="px-2 py-2 text-gray-600">
-                                        {formatDate(inv.invoice_date)}
-                                      </td>
-                                      <td className="px-2 py-2 text-gray-600">
-                                        {formatDate(inv.due_date)}
-                                      </td>
-                                      <td className="px-2 py-2 text-right text-gray-900">
-                                        {formatCurrency(inv.total_amount)}
-                                      </td>
-                                      <td className="px-2 py-2 text-right text-gray-600">
-                                        {formatCurrency(inv.amount_paid)}
-                                      </td>
-                                      <td className="px-2 py-2 text-right font-medium text-gray-900">
-                                        {formatCurrency(inv.balance_due)}
-                                      </td>
-                                      <td className="px-2 py-2 text-center">
-                                        {inv.days_overdue > 0 ? (
-                                          <span className="text-red-600 font-medium">
-                                            {inv.days_overdue}
-                                          </span>
-                                        ) : (
-                                          <span className="text-green-600">
-                                            —
-                                          </span>
+                                  {customerInvoices.map((inv) => {
+                                    const invCurr = inv.currency || "CAD";
+                                    return (
+                                      <tr key={inv.id} className="hover:bg-white">
+                                        <td className="px-2 py-2 font-mono text-gray-900">
+                                          {inv.invoice_number}
+                                        </td>
+                                        {customerHasMultiCurrency && (
+                                          <td className="px-2 py-2">
+                                            <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded-full ${getCurrencyBadgeClasses(invCurr)}`}>
+                                              {invCurr}
+                                            </span>
+                                          </td>
                                         )}
-                                      </td>
-                                      <td className="px-2 py-2 text-gray-500">
-                                        {inv.last_reminder_sent_at
-                                          ? formatDate(inv.last_reminder_sent_at)
-                                          : "—"}
-                                      </td>
-                                      <td className="px-2 py-2">
-                                        <span
-                                          className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${
-                                            inv.status === "overdue"
-                                              ? "bg-red-100 text-red-700"
-                                              : inv.status === "partially_paid"
-                                                ? "bg-amber-100 text-amber-700"
-                                                : "bg-gray-100 text-gray-600"
-                                          }`}
-                                        >
-                                          {inv.status.replace(/_/g, " ")}
-                                        </span>
-                                      </td>
-                                    </tr>
-                                  ))}
+                                        <td className="px-2 py-2 text-gray-600">
+                                          {formatDate(inv.invoice_date)}
+                                        </td>
+                                        <td className="px-2 py-2 text-gray-600">
+                                          {formatDate(inv.due_date)}
+                                        </td>
+                                        <td className="px-2 py-2 text-right text-gray-900">
+                                          {formatCurrencyAmount(inv.total_amount, invCurr)}
+                                        </td>
+                                        <td className="px-2 py-2 text-right text-gray-600">
+                                          {formatCurrencyAmount(inv.amount_paid, invCurr)}
+                                        </td>
+                                        <td className="px-2 py-2 text-right font-medium text-gray-900">
+                                          {formatCurrencyAmount(inv.balance_due, invCurr)}
+                                        </td>
+                                        <td className="px-2 py-2 text-center">
+                                          {inv.days_overdue > 0 ? (
+                                            <span className="text-red-600 font-medium">
+                                              {inv.days_overdue}
+                                            </span>
+                                          ) : (
+                                            <span className="text-green-600">
+                                              —
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="px-2 py-2 text-gray-500">
+                                          {inv.last_reminder_sent_at
+                                            ? formatDate(inv.last_reminder_sent_at)
+                                            : "—"}
+                                        </td>
+                                        <td className="px-2 py-2">
+                                          <span
+                                            className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${
+                                              inv.status === "overdue"
+                                                ? "bg-red-100 text-red-700"
+                                                : inv.status === "partially_paid"
+                                                  ? "bg-amber-100 text-amber-700"
+                                                  : "bg-gray-100 text-gray-600"
+                                            }`}
+                                          >
+                                            {inv.status.replace(/_/g, " ")}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                               <div className="flex items-center gap-3">
@@ -467,7 +537,15 @@ export default function ARAgingReport() {
                       {formatCurrency(totals.days_90_plus)}
                     </td>
                     <td className="px-4 py-3 text-right text-gray-900">
-                      {formatCurrency(totals.total_outstanding)}
+                      <div>{formatCurrency(totals.total_outstanding)}</div>
+                      {hasMultiCurrency && (
+                        <div className="text-[10px] font-normal text-gray-500">
+                          ({Object.entries(outstandingByCurrency)
+                            .filter(([, amt]) => amt > 0)
+                            .map(([code, amt]) => formatCurrencyAmount(amt, code))
+                            .join(" + ")})
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
