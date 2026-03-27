@@ -701,7 +701,6 @@ const AdminInvoiceDetail = () => {
               </button>
             </div>
           </div>
-          </div>
 
           {/* Invoice Info card */}
           <div className="border border-gray-200 rounded-lg p-4">
