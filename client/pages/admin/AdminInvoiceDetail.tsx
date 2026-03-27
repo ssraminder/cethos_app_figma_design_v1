@@ -405,6 +405,7 @@ const AdminInvoiceDetail = () => {
   const dueDateClass = isOverdue ? "text-red-600" : "text-gray-500";
 
   return (
+    <>
     <div className="p-6">
       {/* Header bar */}
       <div className="flex items-center justify-between mb-6">
@@ -764,8 +765,9 @@ const AdminInvoiceDetail = () => {
           </div>
         </div>
       </div>
+    </div>
 
-      {/* Confirmation modals */}
+    {/* Confirmation modals */}
       {confirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
@@ -909,7 +911,7 @@ const AdminInvoiceDetail = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

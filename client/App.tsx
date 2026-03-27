@@ -46,6 +46,7 @@ import CustomerOrderDetail from "./pages/customer/CustomerOrderDetail";
 import CustomerDocuments from "./pages/customer/CustomerDocuments";
 import CustomerMessages from "./pages/customer/CustomerMessages";
 import CustomerProfile from "./pages/customer/CustomerProfile";
+import CustomerInvoicePayment from "./pages/customer/CustomerInvoicePayment";
 
 // Admin pages
 import AdminLogin from "./pages/admin/Login";
@@ -195,6 +196,10 @@ const App = () => (
                     <Route
                       path="/deposit-success"
                       element={<DepositSuccess />}
+                    />
+                    <Route
+                      path="/customer/invoices"
+                      element={<CustomerInvoicePayment />}
                     />
 
                     {/* Upload Form Routes */}
