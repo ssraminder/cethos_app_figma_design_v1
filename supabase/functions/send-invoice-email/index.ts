@@ -238,7 +238,6 @@ serve(async (req) => {
       </div>` : '';
 
     // ── 7. Build full HTML email ───────────────────────────────────────────
-    const tradeName = branch.trade_name || branch.legal_name;
     const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -247,14 +246,14 @@ serve(async (req) => {
 <div style="max-width:600px;margin:0 auto;background:#fff;">
 
   <!-- Header with logo -->
-  <div style="background:#1e1b4b;padding:24px 32px;text-align:center;">
-    <img src="${branch.logo_url}" alt="CETHOS" style="height:44px;max-width:200px;" />
+  <div style="background:#f0f4ff;padding:28px 32px;text-align:center;border-bottom:1px solid #e2e8f0;">
+    <img src="${branch.logo_url}" alt="CETHOS" style="height:48px;max-width:220px;" />
   </div>
 
   <!-- Invoice badge -->
   <div style="background:#2563eb;padding:12px 32px;">
     <p style="margin:0;color:#fff;font-size:18px;font-weight:700;">Invoice ${invoice.invoice_number}</p>
-    <p style="margin:4px 0 0 0;color:#bfdbfe;font-size:13px;">From ${tradeName}</p>
+    <p style="margin:4px 0 0 0;color:#bfdbfe;font-size:13px;">From ${branch.legal_name}</p>
   </div>
 
   <!-- Body -->
@@ -362,10 +361,38 @@ serve(async (req) => {
     if (!brevoRes.ok) {
       const errText = await brevoRes.text();
       console.error('Brevo send failed:', errText);
+
+      // Log failed attempt
+      await sb.from('invoice_email_log').insert({
+        invoice_id,
+        customer_id: customer.id,
+        sent_to: sentToList,
+        sent_by_staff_id: staff_id || null,
+        subject: emailPayload.subject,
+        custom_message: noteText || null,
+        status: 'failed',
+        error_message: errText,
+        stripe_payment_url: stripePaymentUrl,
+        payment_request_id: paymentRequestId,
+      });
+
       return jsonResp({ success: false, error: `Email send failed: ${errText}` }, 500);
     }
 
-    // ── 9. Update invoice ──────────────────────────────────────────────────
+    // ── 9. Log successful send ───────────────────────────────────────────
+    await sb.from('invoice_email_log').insert({
+      invoice_id,
+      customer_id: customer.id,
+      sent_to: sentToList,
+      sent_by_staff_id: staff_id || null,
+      subject: emailPayload.subject,
+      custom_message: noteText || null,
+      status: 'sent',
+      stripe_payment_url: stripePaymentUrl,
+      payment_request_id: paymentRequestId,
+    });
+
+    // ── 10. Update invoice ──────────────────────────────────────────────────
     const now = new Date().toISOString();
     const newEmailCount = (invoice.email_sent_count || 0) + 1;
     const newStatus = invoice.status === 'issued' || invoice.status === 'draft' ? 'sent' : invoice.status;
