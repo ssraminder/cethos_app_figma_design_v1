@@ -88,6 +88,7 @@ import FastQuoteCreate from "./pages/admin/FastQuoteCreate";
 import VendorInvoices from "./pages/admin/invoices/VendorInvoices";
 import CustomerInvoices from "./pages/admin/invoices/CustomerInvoices";
 import CreateInvoice from "./pages/admin/invoices/CreateInvoice";
+import AdminInvoiceDetail from "./pages/admin/AdminInvoiceDetail";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
 
@@ -351,6 +352,7 @@ const App = () => (
                     <Route path="invoices/vendor" element={<VendorInvoices />} />
                     <Route path="invoices/customer" element={<CustomerInvoices />} />
                     <Route path="invoices/create" element={<CreateInvoice />} />
+                    <Route path="invoices/customer/:invoiceId" element={<AdminInvoiceDetail />} />
 
                     {/* Admin Settings screens */}
                     <Route
