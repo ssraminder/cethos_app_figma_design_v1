@@ -10,8 +10,10 @@ import {
   Building2,
   Mail,
   FileText,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getCurrencySymbol, getCurrencyBadgeClasses } from "@/utils/currency";
 
 // ── Types ────────────────────────────────────────────────────────────
 interface CustomerResult {
@@ -23,6 +25,7 @@ interface CustomerResult {
   requires_po: boolean;
   requires_client_project_number: boolean;
   payment_terms: string | null;
+  preferred_currency?: string | null;
   invoicing_branch_id: number | null;
   invoicing_branch?: { legal_name: string } | null;
   stats?: { unbilled_orders: number };
@@ -644,15 +647,22 @@ export default function CreateInvoice() {
     setCustomLines((prev) => prev.filter((cl) => cl.id !== id));
   };
 
+  const customerCurrency = selectedCustomer?.preferred_currency || "CAD";
+  const currSymbol = getCurrencySymbol(customerCurrency);
   const fmtMoney = (val: number) =>
-    val.toLocaleString("en-CA", { style: "currency", currency: "CAD", minimumFractionDigits: 2 });
+    `${currSymbol}${val.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // ── Render Step 2 ──
   const renderStep2 = () => (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-1">Select Orders</h2>
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-sm text-gray-500 mb-4 flex items-center gap-2">
         Customer: <strong>{selectedCustomer?.company_name || selectedCustomer?.full_name}</strong>
+        {customerCurrency !== "CAD" && (
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${getCurrencyBadgeClasses(customerCurrency)}`}>
+            {customerCurrency}
+          </span>
+        )}
       </p>
 
       {/* Filters */}
@@ -968,6 +978,17 @@ export default function CreateInvoice() {
               <span className="text-gray-500">Payment Terms:</span>{" "}
               <span className="font-medium text-gray-900">
                 {selectedCustomer?.payment_terms?.replace("_", " ") || "Net 30"}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-500">Currency:</span>{" "}
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${
+                customerCurrency !== "CAD"
+                  ? getCurrencyBadgeClasses(customerCurrency)
+                  : "bg-gray-100 text-gray-600"
+              }`}>
+                <Lock className="w-3 h-3" />
+                {customerCurrency}
               </span>
             </div>
           </div>

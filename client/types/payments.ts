@@ -59,6 +59,7 @@ export interface UnpaidInvoice {
   due_date: string;
   invoice_date: string;
   po_number: string | null;
+  currency?: string;
 }
 
 export interface AgingRow {
@@ -85,4 +86,7 @@ export interface ARDashboardStats {
   unallocated_count: number;
   payments_last_30_days: number;
   payments_last_30_count: number;
+  outstanding_by_currency?: Record<string, number>;
+  overdue_by_currency?: Record<string, number>;
+  unallocated_by_currency?: Record<string, number>;
 }

@@ -160,6 +160,8 @@ export default function CustomerDetail() {
   const [customerTypes, setCustomerTypes] = useState<CustomerTypeOption[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+  const [currencies, setCurrencies] = useState<{ code: string; name: string }[]>([]);
+  const [currencyWarning, setCurrencyWarning] = useState<string | null>(null);
   const [invoiceReadiness, setInvoiceReadiness] = useState<InvoiceReadiness | null>(null);
   const [xtrfSyncing, setXtrfSyncing] = useState(false);
   const [xtrfSyncResult, setXtrfSyncResult] = useState<string[] | null>(null);
@@ -249,6 +251,51 @@ export default function CustomerDetail() {
       setPaymentMethods(data.payment_methods || []);
     } catch (error) {
       console.error("Error fetching payment methods:", error);
+    }
+  };
+
+  // Fetch active currencies for dropdown
+  const fetchCurrencies = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("currencies")
+        .select("code, name")
+        .eq("is_active", true)
+        .order("code");
+      if (!error && data) setCurrencies(data);
+    } catch (error) {
+      console.error("Error fetching currencies:", error);
+    }
+  };
+
+  // Check if changing currency would conflict with unpaid invoices
+  const checkCurrencyWarning = async (newCurrency: string) => {
+    if (!id || !newCurrency) {
+      setCurrencyWarning(null);
+      return;
+    }
+    const oldCurrency = customer?.preferred_currency || "CAD";
+    if (newCurrency === oldCurrency) {
+      setCurrencyWarning(null);
+      return;
+    }
+    try {
+      const { count } = await supabase
+        .from("customer_invoices")
+        .select("id", { count: "exact", head: true })
+        .eq("customer_id", id)
+        .in("status", ["issued", "sent", "overdue", "partially_paid"])
+        .gt("balance_due", 0)
+        .neq("currency", newCurrency);
+      if (count && count > 0) {
+        setCurrencyWarning(
+          `This customer has ${count} unpaid invoice(s) in ${oldCurrency}. Changing currency only affects future invoices.`
+        );
+      } else {
+        setCurrencyWarning(null);
+      }
+    } catch {
+      setCurrencyWarning(null);
     }
   };
 
@@ -407,6 +454,7 @@ export default function CustomerDetail() {
       fetchBranches(),
       fetchPaymentMethods(),
       fetchCustomerTypes(),
+      fetchCurrencies(),
       fetchInvoiceReadiness(),
     ]);
     setLoading(false);
@@ -946,17 +994,50 @@ export default function CustomerDetail() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Billing Currency</label>
                       {editing ? (
-                        <select name="preferred_currency" value={formData.preferred_currency || ""} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500">
-                          <option value="">Select currency</option>
-                          <option value="CAD">CAD</option>
-                          <option value="USD">USD</option>
-                          <option value="EUR">EUR</option>
-                          <option value="GBP">GBP</option>
-                        </select>
+                        <>
+                          <select
+                            name="preferred_currency"
+                            value={formData.preferred_currency || "CAD"}
+                            onChange={(e) => {
+                              handleChange(e);
+                              checkCurrencyWarning(e.target.value);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500"
+                          >
+                            {currencies.length > 0 ? (
+                              currencies.map((c) => (
+                                <option key={c.code} value={c.code}>
+                                  {c.code} — {c.name}
+                                </option>
+                              ))
+                            ) : (
+                              <>
+                                <option value="CAD">CAD — Canadian Dollar</option>
+                                <option value="USD">USD — US Dollar</option>
+                                <option value="EUR">EUR — Euro</option>
+                                <option value="GBP">GBP — British Pound</option>
+                              </>
+                            )}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">
+                            All invoices for this customer will be generated in this currency
+                          </p>
+                          {currencyWarning && (
+                            <div className="flex items-start gap-1.5 mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-700">
+                              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                              <span>{currencyWarning}</span>
+                            </div>
+                          )}
+                        </>
                       ) : (
-                        <p className="text-gray-900">{customer.preferred_currency || "—"}</p>
+                        <>
+                          <p className="text-gray-900">{customer.preferred_currency || "CAD"}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            All invoices for this customer will be generated in this currency
+                          </p>
+                        </>
                       )}
                     </div>
 
