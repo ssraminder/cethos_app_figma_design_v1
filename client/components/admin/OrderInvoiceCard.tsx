@@ -10,6 +10,9 @@ import {
   XCircle,
   ClipboardList,
   Mail,
+  ChevronDown,
+  ChevronUp,
+  Send,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -523,6 +526,11 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
         />
       )}
 
+      {/* Email History */}
+      {invoice && (
+        <InvoiceEmailHistory invoiceId={invoice.id} />
+      )}
+
       {/* Actions */}
       {!isVoid && (
         <div className="flex flex-wrap gap-2">
@@ -675,6 +683,152 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
               Add to Multi-Order Invoice →
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Invoice Email History sub-section ──────────────────────────── */
+
+interface EmailLogRow {
+  id: string;
+  sent_to: string;
+  status: string;
+  subject: string | null;
+  custom_message: string | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+function InvoiceEmailHistory({ invoiceId }: { invoiceId: string }) {
+  const [logs, setLogs] = useState<EmailLogRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      setLoading(true);
+      try {
+        const { data } = await supabase
+          .from("invoice_email_log")
+          .select("id, sent_to, status, subject, custom_message, error_message, created_at")
+          .eq("invoice_id", invoiceId)
+          .order("created_at", { ascending: false });
+        setLogs((data as EmailLogRow[]) || []);
+      } catch {
+        // silent
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchLogs();
+  }, [invoiceId]);
+
+  if (loading || logs.length === 0) return null;
+
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case "sent":
+        return (
+          <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-1.5 py-0.5 rounded text-[10px] font-medium">
+            <CheckCircle className="w-3 h-3" />
+            Sent
+          </span>
+        );
+      case "failed":
+        return (
+          <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 px-1.5 py-0.5 rounded text-[10px] font-medium">
+            <XCircle className="w-3 h-3" />
+            Failed
+          </span>
+        );
+      case "bounced":
+        return (
+          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] font-medium">
+            <AlertTriangle className="w-3 h-3" />
+            Bounced
+          </span>
+        );
+      default:
+        return <span className="text-[10px] text-gray-500">{status}</span>;
+    }
+  };
+
+  const formatLogDate = (dateStr: string) => {
+    try {
+      return format(new Date(dateStr), "MMM d, yyyy 'at' h:mm a");
+    } catch {
+      return dateStr;
+    }
+  };
+
+  return (
+    <div className="border-t border-gray-200 pt-3 mt-3 mb-3">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center justify-between w-full mb-2"
+      >
+        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide inline-flex items-center gap-1">
+          <Send className="w-3 h-3" />
+          Email History
+          <span className="text-gray-400 font-normal normal-case ml-1">
+            ({logs.length})
+          </span>
+        </p>
+        {expanded ? (
+          <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="space-y-1.5">
+          {logs.map((log) => (
+            <div key={log.id} className="bg-gray-50 rounded-md px-3 py-2">
+              <div
+                className="flex items-center justify-between cursor-pointer"
+                onClick={() =>
+                  setExpandedRowId(expandedRowId === log.id ? null : log.id)
+                }
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {statusBadge(log.status)}
+                  <span className="text-xs text-gray-700 truncate">
+                    {log.sent_to}
+                  </span>
+                </div>
+                <span className="text-[10px] text-gray-400 whitespace-nowrap ml-2">
+                  {formatLogDate(log.created_at)}
+                </span>
+              </div>
+
+              {expandedRowId === log.id && (
+                <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
+                  {log.subject && (
+                    <p className="text-[11px] text-gray-500">
+                      <span className="font-medium text-gray-600">Subject:</span>{" "}
+                      {log.subject}
+                    </p>
+                  )}
+                  {log.custom_message && (
+                    <p className="text-[11px] text-gray-500">
+                      <span className="font-medium text-gray-600">Message:</span>{" "}
+                      {log.custom_message}
+                    </p>
+                  )}
+                  {log.error_message && (
+                    <p className="text-[11px] text-red-500">
+                      <span className="font-medium text-red-600">Error:</span>{" "}
+                      {log.error_message}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
