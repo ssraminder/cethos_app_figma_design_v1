@@ -28,6 +28,7 @@ const AdminInvoiceDetail = () => {
   const [customer, setCustomer] = useState<any>(null);
   const [branch, setBranch] = useState<any>(null);
   const [paymentMethodsMap, setPaymentMethodsMap] = useState<Record<string, string>>({});
+  const [emailLogs, setEmailLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionInFlight, setActionInFlight] = useState(false);
@@ -138,6 +139,13 @@ const AdminInvoiceDetail = () => {
         }
       }
 
+      // Fetch email send log
+      const emailLogResult = await supabase
+        .from("invoice_email_log")
+        .select("id, sent_to, subject, custom_message, status, error_message, created_at")
+        .eq("invoice_id", invoiceId)
+        .order("created_at", { ascending: false });
+
       // Fetch quote document groups for suggested descriptions
       const quoteIds = (ordersResult.data || [])
         .map((o: any) => o.quote_id)
@@ -162,6 +170,7 @@ const AdminInvoiceDetail = () => {
       setBranch(branchResult.data || null);
       setPaymentMethodsMap(pmMap);
       setQuoteGroupsMap(qgMap);
+      setEmailLogs(emailLogResult.data || []);
       setLoading(false);
     };
 
@@ -170,12 +179,16 @@ const AdminInvoiceDetail = () => {
 
   const reloadInvoice = async () => {
     if (!invoiceId) return;
-    const { data } = await supabase
-      .from("customer_invoices")
-      .select("*")
-      .eq("id", invoiceId)
-      .single();
+    const [{ data }, { data: logs }] = await Promise.all([
+      supabase.from("customer_invoices").select("*").eq("id", invoiceId).single(),
+      supabase
+        .from("invoice_email_log")
+        .select("id, sent_to, subject, custom_message, status, error_message, created_at")
+        .eq("invoice_id", invoiceId)
+        .order("created_at", { ascending: false }),
+    ]);
     if (data) setInvoice(data);
+    if (logs) setEmailLogs(logs);
   };
 
   const handleDownloadPdf = async () => {
@@ -405,6 +418,7 @@ const AdminInvoiceDetail = () => {
   const dueDateClass = isOverdue ? "text-red-600" : "text-gray-500";
 
   return (
+    <>
     <div className="p-6">
       {/* Header bar */}
       <div className="flex items-center justify-between mb-6">
@@ -762,10 +776,50 @@ const AdminInvoiceDetail = () => {
               </div>
             </div>
           </div>
+
+          {/* Email History card */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">Email History</h2>
+            {emailLogs.length === 0 ? (
+              <p className="text-sm text-gray-400">No emails sent yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {emailLogs.map((log) => (
+                  <div key={log.id} className="text-sm border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <span className="text-gray-500 text-xs">
+                        {new Date(log.created_at).toLocaleDateString("en-CA", {
+                          month: "short", day: "numeric", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </span>
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
+                        log.status === "sent"
+                          ? "bg-green-50 text-green-700"
+                          : log.status === "failed"
+                          ? "bg-red-50 text-red-700"
+                          : "bg-yellow-50 text-yellow-700"
+                      }`}>
+                        {log.status}
+                      </span>
+                    </div>
+                    <p className="text-gray-700 truncate">{log.sent_to}</p>
+                    {log.custom_message && (
+                      <p className="text-gray-400 text-xs mt-0.5 italic truncate">"{log.custom_message}"</p>
+                    )}
+                    {log.error_message && (
+                      <p className="text-red-500 text-xs mt-0.5 truncate">{log.error_message}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
+    </div>
 
-      {/* Confirmation modals */}
+    {/* Confirmation modals */}
       {confirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
@@ -909,7 +963,7 @@ const AdminInvoiceDetail = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
