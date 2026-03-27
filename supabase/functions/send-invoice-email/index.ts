@@ -40,7 +40,7 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { invoice_id, custom_message } = await req.json();
+    const { invoice_id, custom_message, recipient_emails } = await req.json();
     if (!invoice_id) {
       throw new Error("Missing required field: invoice_id");
     }
@@ -75,7 +75,7 @@ serve(async (req: Request) => {
       throw new Error("Customer not found");
     }
 
-    if (!customer.email) {
+    if (!customer.email && (!Array.isArray(recipient_emails) || recipient_emails.length === 0)) {
       throw new Error("Customer does not have an email address on file");
     }
 
@@ -194,9 +194,29 @@ ${custom_message ? `
 </body>
 </html>`;
 
+    // Build recipient list: use provided emails or fall back to customer email
+    const toEmails: Array<{ email: string; name: string }> = [];
+    if (Array.isArray(recipient_emails) && recipient_emails.length > 0) {
+      for (const addr of recipient_emails) {
+        if (typeof addr === "string" && addr.includes("@")) {
+          // Use the customer name for the primary email, generic name for extras
+          const name = addr.toLowerCase() === customer.email?.toLowerCase()
+            ? customerName
+            : addr;
+          toEmails.push({ email: addr, name });
+        }
+      }
+    }
+    if (toEmails.length === 0) {
+      if (!customer.email) {
+        throw new Error("Customer does not have an email address on file");
+      }
+      toEmails.push({ email: customer.email, name: customerName });
+    }
+
     // Send email via Brevo
     const emailPayload = {
-      to: [{ email: customer.email, name: customerName }],
+      to: toEmails,
       sender: {
         name: "Cethos Translation Services",
         email: "donotreply@cethos.com",
@@ -205,7 +225,8 @@ ${custom_message ? `
       htmlContent,
     };
 
-    console.log(`Sending invoice ${invoice.invoice_number} to ${customer.email}`);
+    const sentToList = toEmails.map((t) => t.email).join(", ");
+    console.log(`Sending invoice ${invoice.invoice_number} to ${sentToList}`);
 
     const brevoResp = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -244,7 +265,7 @@ ${custom_message ? `
         details: {
           invoice_id: invoice.id,
           invoice_number: invoice.invoice_number,
-          sent_to: customer.email,
+          sent_to: sentToList,
           message_id: brevoResult.messageId,
         },
       });
@@ -252,7 +273,7 @@ ${custom_message ? `
 
     return jsonResponse({
       success: true,
-      sent_to: customer.email,
+      sent_to: sentToList,
       message_id: brevoResult.messageId,
     });
   } catch (error) {

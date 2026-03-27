@@ -323,7 +323,7 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
     }
   };
 
-  const handleSendEmail = async (customMessage: string) => {
+  const handleSendEmail = async (customMessage: string, emails: string[]) => {
     if (!invoice) return;
     setSending(true);
     try {
@@ -339,6 +339,7 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
           body: JSON.stringify({
             invoice_id: invoice.id,
             custom_message: customMessage || undefined,
+            recipient_emails: emails,
           }),
         }
       );
