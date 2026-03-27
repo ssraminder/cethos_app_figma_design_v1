@@ -522,18 +522,12 @@ export default function CustomerInvoices() {
                     <tr key={inv.id} className="hover:bg-gray-50">
                       {/* Invoice # */}
                       <td className="px-4 py-3">
-                        {inv.order_id ? (
-                          <Link
-                            to={`/admin/orders/${inv.order_id}`}
-                            className="text-blue-600 hover:text-blue-800 font-medium"
-                          >
-                            {inv.invoice_number || "—"}
-                          </Link>
-                        ) : (
-                          <span className="font-medium text-gray-900">
-                            {inv.invoice_number || "—"}
-                          </span>
-                        )}
+                        <Link
+                          to={`/admin/invoices/customer/${inv.id}`}
+                          className="text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          {inv.invoice_number || "—"}
+                        </Link>
                       </td>
 
                       {/* Customer */}
