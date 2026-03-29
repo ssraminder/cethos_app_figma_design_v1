@@ -30,6 +30,7 @@ export default function MessagePanel({
   const [sending, setSending] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Mark customer messages as read by staff
   const markMessagesAsRead = async () => {
@@ -264,6 +265,7 @@ export default function MessagePanel({
       }
 
       setNewMessage("");
+      if (textareaRef.current) textareaRef.current.style.height = '32px';
       await fetchMessages();
     } catch (err) {
       console.error("Failed to send message:", err);
@@ -273,12 +275,13 @@ export default function MessagePanel({
     }
   };
 
-  // Handle enter key
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+  // Handle Ctrl+Enter / Cmd+Enter to send
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSend();
     }
+    // Enter without modifier = normal newline (no preventDefault)
   };
 
   return (
@@ -334,12 +337,18 @@ export default function MessagePanel({
             <Paperclip className="w-4 h-4" />
           </button>
           <textarea
+            ref={textareaRef}
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px';
+            }}
             onKeyDown={handleKeyDown}
             placeholder="Message..."
             rows={1}
-            className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs resize-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs resize-none overflow-hidden focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            style={{ minHeight: '32px', maxHeight: '160px' }}
           />
           <button
             onClick={handleSend}
@@ -354,8 +363,8 @@ export default function MessagePanel({
             )}
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-1">
-          Enter to send, Shift+Enter for new line
+        <p className="text-xs text-gray-400 mt-1 text-right">
+          {typeof navigator !== 'undefined' && (navigator.platform?.includes('Mac') || navigator.userAgent?.includes('Mac')) ? '⌘' : 'Ctrl'}+Enter to send
         </p>
       </div>
     </div>
