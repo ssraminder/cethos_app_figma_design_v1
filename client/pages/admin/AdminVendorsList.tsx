@@ -16,6 +16,7 @@ import {
   Clock,
   XCircle,
 } from "lucide-react";
+import { StatCard } from "@/components/admin/StatCard";
 
 interface Vendor {
   id: string;
@@ -414,62 +415,14 @@ export default function AdminVendorsList() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow-sm p-5 border border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-50 rounded-lg">
-              <Users className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Total Vendors</p>
-              <p className="text-2xl font-semibold text-gray-900">
-                {stats.total}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-5 border border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-50 rounded-lg">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Active</p>
-              <p className="text-2xl font-semibold text-gray-900">
-                {stats.active}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-5 border border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <Globe className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">With Portal Access</p>
-              <p className="text-2xl font-semibold text-gray-900">
-                {stats.withPortalAccess}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-5 border border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-50 rounded-lg">
-              <Briefcase className="w-5 h-5 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">With Jobs</p>
-              <p className="text-2xl font-semibold text-gray-900">
-                {stats.withJobs}
-              </p>
-            </div>
-          </div>
-        </div>
+        <StatCard label="Total Vendors" value={stats.total} icon={Users} color="indigo" />
+        <StatCard label="Active" value={stats.active} icon={CheckCircle} color="green" />
+        <StatCard label="With Portal Access" value={stats.withPortalAccess} icon={Globe} color="blue" />
+        <StatCard label="With Jobs" value={stats.withJobs} icon={Briefcase} color="amber" />
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 mb-6">
+      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
         <div className="flex flex-wrap gap-3 items-end">
           {/* Search */}
           <div className="flex-1 min-w-[200px]">

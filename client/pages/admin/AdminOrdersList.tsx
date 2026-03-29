@@ -19,6 +19,8 @@ import {
   Settings2,
 } from "lucide-react";
 import { format } from "date-fns";
+import { StatCard } from "@/components/admin/StatCard";
+import { DollarSign, Zap, TrendingUp, Hash } from "lucide-react";
 
 interface Order {
   id: string;
@@ -457,37 +459,32 @@ export default function AdminOrdersList() {
 
       <div>
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-sm text-gray-500">Total Orders</p>
-            <p className="text-2xl font-semibold text-gray-900 mt-1">
-              {totalCount}
-            </p>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-sm text-gray-500">Page Revenue</p>
-            <p className="text-2xl font-semibold text-gray-900 mt-1">
-              $
-              {totalRevenue.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-              })}
-            </p>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-sm text-gray-500">Rush Orders</p>
-            <p className="text-2xl font-semibold text-amber-600 mt-1">
-              {orders.filter((o) => o.is_rush).length}
-            </p>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-sm text-gray-500">Avg Order Value</p>
-            <p className="text-2xl font-semibold text-gray-900 mt-1">
-              $
-              {orders.length > 0
-                ? (totalRevenue / orders.length).toFixed(2)
-                : "0.00"}
-            </p>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <StatCard
+            label="Total Orders"
+            value={totalCount}
+            icon={Hash}
+            color="blue"
+          />
+          <StatCard
+            label="Page Revenue"
+            value={`$${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+            icon={DollarSign}
+            color="green"
+          />
+          <StatCard
+            label="Rush Orders"
+            value={orders.filter((o) => o.is_rush).length}
+            icon={Zap}
+            color="amber"
+            valueColor={orders.filter((o) => o.is_rush).length > 0 ? "text-amber-600" : undefined}
+          />
+          <StatCard
+            label="Avg Order Value"
+            value={`$${orders.length > 0 ? (totalRevenue / orders.length).toFixed(2) : "0.00"}`}
+            icon={TrendingUp}
+            color="purple"
+          />
         </div>
 
         {/* Search & Filters Bar */}
@@ -710,17 +707,17 @@ export default function AdminOrdersList() {
             <table className="w-full min-w-[1200px]">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
-                  {isColVisible("orderDetails") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order Details</th>}
-                  {isColVisible("customer") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>}
-                  {isColVisible("status") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>}
-                  {isColVisible("total") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>}
-                  {isColVisible("clientTotal") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Client Total</th>}
-                  {isColVisible("vendorCost") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor Cost</th>}
-                  {isColVisible("profit") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Profit</th>}
-                  {isColVisible("profitPct") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">% Profit</th>}
-                  {isColVisible("xtrfProject") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">XTRF Project</th>}
-                  {isColVisible("xtrfInvoice") && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">XTRF Invoice</th>}
-                  {isColVisible("delivery") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Delivery</th>}
+                  {isColVisible("orderDetails") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Order Details</th>}
+                  {isColVisible("customer") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Customer</th>}
+                  {isColVisible("status") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>}
+                  {isColVisible("total") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>}
+                  {isColVisible("clientTotal") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Client Total</th>}
+                  {isColVisible("vendorCost") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Vendor Cost</th>}
+                  {isColVisible("profit") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Profit</th>}
+                  {isColVisible("profitPct") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Profit %</th>}
+                  {isColVisible("xtrfProject") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">XTRF Project</th>}
+                  {isColVisible("xtrfInvoice") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">XTRF Invoice</th>}
+                  {isColVisible("delivery") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Delivery</th>}
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
                     <span className="sr-only">Actions</span>
                   </th>
