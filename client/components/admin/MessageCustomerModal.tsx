@@ -73,6 +73,7 @@ export default function MessageCustomerModal({
   const [uploadProgress, setUploadProgress] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Handle file selection
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -330,6 +331,7 @@ export default function MessageCustomerModal({
 
       setNewMessage("");
       setSelectedFile(null);
+      if (textareaRef.current) textareaRef.current.style.height = '40px';
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -342,12 +344,13 @@ export default function MessageCustomerModal({
     }
   };
 
-  // Handle enter key
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+  // Handle Ctrl+Enter / Cmd+Enter to send
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSend();
     }
+    // Enter without modifier = normal newline (no preventDefault)
   };
 
   // File preview component
@@ -640,13 +643,19 @@ export default function MessageCustomerModal({
 
             {/* Message Input */}
             <textarea
+              ref={textareaRef}
               value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px';
+              }}
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
-              rows={2}
+              rows={1}
               disabled={uploading}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none overflow-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+              style={{ minHeight: '40px', maxHeight: '160px' }}
             />
 
             {/* Send Button */}
@@ -665,8 +674,8 @@ export default function MessageCustomerModal({
             </button>
           </div>
 
-          <p className="text-xs text-gray-400 mt-1">
-            Press Enter to send • Max 10MB • PDF, images, Word, text
+          <p className="text-xs text-gray-400 mt-1 text-right">
+            {typeof navigator !== 'undefined' && (navigator.platform?.includes('Mac') || navigator.userAgent?.includes('Mac')) ? '⌘' : 'Ctrl'}+Enter to send • Max 10MB • PDF, images, Word, text
           </p>
         </div>
       </div>

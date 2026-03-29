@@ -2321,6 +2321,7 @@ export default function AdminOrderDetail() {
       if (result.success) {
         setNewMessage("");
         setAttachmentFile(null);
+        if (messageInputRef.current) messageInputRef.current.style.height = '38px';
         if (fileInputRef.current) fileInputRef.current.value = "";
         await fetchConversationMessages();
       } else {
@@ -4220,17 +4221,22 @@ export default function AdminOrderDetail() {
                 <textarea
                   ref={messageInputRef}
                   value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
+                  onChange={(e) => {
+                    setNewMessage(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px';
+                  }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                       e.preventDefault();
                       handleSendMessage();
                     }
+                    // Enter without modifier = normal newline (no preventDefault)
                   }}
                   placeholder={order?.customer?.full_name ? `Message ${order.customer.full_name}...` : "Type a message..."}
                   rows={1}
-                  className="flex-1 text-sm border border-gray-200 rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-gray-50 focus:bg-white transition-colors placeholder:text-gray-400"
-                  style={{ minHeight: "38px", maxHeight: "100px" }}
+                  className="flex-1 text-sm border border-gray-200 rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none overflow-hidden bg-gray-50 focus:bg-white transition-colors placeholder:text-gray-400"
+                  style={{ minHeight: "38px", maxHeight: "160px" }}
                 />
 
                 {/* Send button */}
@@ -4238,7 +4244,7 @@ export default function AdminOrderDetail() {
                   onClick={handleSendMessage}
                   disabled={(!newMessage.trim() && !attachmentFile) || sendingMessage}
                   className="flex-shrink-0 p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
-                  title="Send (Enter)"
+                  title="Send (Ctrl+Enter)"
                 >
                   {sendingMessage ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -4248,8 +4254,8 @@ export default function AdminOrderDetail() {
                 </button>
               </div>
 
-              <p className="text-[11px] text-gray-400 mt-1.5 px-1">
-                Enter to send · Shift+Enter for new line · Customer receives an email notification
+              <p className="text-[11px] text-gray-400 mt-1.5 px-1 text-right">
+                {typeof navigator !== 'undefined' && (navigator.platform?.includes('Mac') || navigator.userAgent?.includes('Mac')) ? '⌘' : 'Ctrl'}+Enter to send · Customer receives an email notification
               </p>
             </div>
           </div>
