@@ -75,15 +75,9 @@ export default function LoginVerify() {
           {status === "verifying" && (
             <>
               <div className="flex justify-center mb-4">
-                <div
-                  className="w-10 h-10 border-4 border-gray-200 rounded-full animate-spin"
-                  style={{ borderTopColor: "#0891B2" }}
-                />
+                <div className="w-10 h-10 border-4 border-gray-200 border-t-cethos-teal rounded-full animate-spin" />
               </div>
-              <h1
-                className="text-xl font-bold mb-2"
-                style={{ color: "#0C2340" }}
-              >
+              <h1 className="text-xl font-bold mb-2 text-cethos-navy">
                 Verifying your login...
               </h1>
               <p className="text-gray-500 text-sm">Please wait.</p>
@@ -94,10 +88,7 @@ export default function LoginVerify() {
           {status === "success" && (
             <>
               <div className="text-5xl mb-4">&#9989;</div>
-              <h1
-                className="text-xl font-bold mb-2"
-                style={{ color: "#0C2340" }}
-              >
+              <h1 className="text-xl font-bold mb-2 text-cethos-navy">
                 Login successful!
               </h1>
               <p className="text-gray-500 text-sm">
@@ -110,17 +101,13 @@ export default function LoginVerify() {
           {status === "error" && (
             <>
               <div className="text-5xl mb-4">&#9888;&#65039;</div>
-              <h1
-                className="text-xl font-bold mb-2"
-                style={{ color: "#0C2340" }}
-              >
+              <h1 className="text-xl font-bold mb-2 text-cethos-navy">
                 Login link expired
               </h1>
               <p className="text-gray-500 text-sm mb-6">{errorMessage}</p>
               <Link
                 to="/login"
-                className="inline-block w-full py-3 rounded-lg text-white font-semibold text-sm text-center"
-                style={{ backgroundColor: "#0891B2" }}
+                className="inline-block w-full py-3 rounded-lg bg-cethos-teal hover:bg-cethos-teal-700 text-white font-semibold text-sm text-center"
               >
                 Request a New Login Link
               </Link>

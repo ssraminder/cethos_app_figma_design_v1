@@ -328,8 +328,8 @@ export default function AdminDashboard() {
           />
 
           {/* Needs Attention */}
-          <div className="bg-white rounded-lg border p-6">
-            <h3 className="text-sm font-medium text-gray-500 mb-3">
+          <div className="bg-white rounded-xl border border-amber-200 p-6 ring-1 ring-amber-100">
+            <h3 className="text-sm font-semibold text-amber-800 mb-3">
               Needs Attention
             </h3>
             <div className="space-y-2">
@@ -372,7 +372,7 @@ export default function AdminDashboard() {
         {/* ROW 2: Operations */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Active Orders */}
-          <div className="bg-white rounded-lg border p-6">
+          <div className="bg-white rounded-xl border p-6">
             <h3 className="text-sm font-medium text-gray-500 mb-3">
               Active Orders
             </h3>
@@ -394,7 +394,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Upcoming Deliveries */}
-          <div className="bg-white rounded-lg border p-6">
+          <div className="bg-white rounded-xl border p-6">
             <h3 className="text-sm font-medium text-gray-500 mb-3">
               Upcoming Deliveries
             </h3>
@@ -406,7 +406,7 @@ export default function AdminDashboard() {
                   <Link
                     key={order.id}
                     to={`/admin/orders/${order.id}`}
-                    className="flex justify-between items-center text-sm"
+                    className={`flex justify-between items-center text-sm px-3 py-2 rounded-lg -mx-3 transition-colors ${isOverdue ? "bg-red-50 hover:bg-red-100" : "hover:bg-gray-50"}`}
                   >
                     <div>
                       <span className="font-medium text-gray-900">
@@ -560,7 +560,7 @@ function StatCard({
   subtext: string;
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-6">
+    <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between">
         <div
           className={`w-10 h-10 ${iconBg} rounded-lg flex items-center justify-center ${iconColor}`}
@@ -569,7 +569,7 @@ function StatCard({
         </div>
       </div>
       <div className="mt-4">
-        <p className="text-2xl font-semibold text-gray-900 tabular-nums">
+        <p className="text-3xl font-bold text-gray-900 tabular-nums tracking-tight">
           {value}
         </p>
         <p className="text-sm text-gray-500 mt-1">{label}</p>

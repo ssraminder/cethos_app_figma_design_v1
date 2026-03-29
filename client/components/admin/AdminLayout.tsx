@@ -234,7 +234,7 @@ export default function AdminLayout() {
               return (
                 <div
                   key={`section-${item.section}`}
-                  className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider mt-4 first:mt-0"
+                  className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider mt-6 mb-1 first:mt-0"
                 >
                   {item.section}
                 </div>

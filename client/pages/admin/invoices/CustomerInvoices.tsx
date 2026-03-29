@@ -357,30 +357,30 @@ export default function CustomerInvoices() {
 
       {/* Summary Stats — 5 cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
         </div>
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Drafts</p>
           <p className="text-2xl font-bold text-gray-600 mt-1">{stats.drafts}</p>
         </div>
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Issued</p>
           <p className="text-2xl font-bold text-blue-700 mt-1">{stats.issued}</p>
         </div>
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Paid</p>
           <p className="text-2xl font-bold text-green-700 mt-1">{stats.paid}</p>
         </div>
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Outstanding</p>
           <p className="text-2xl font-bold text-red-700 mt-1">{fmtCurrency(stats.outstanding)}</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg border p-4 mb-4">
+      <div className="bg-white rounded-xl border p-4 mb-4">
         <div className="flex flex-wrap gap-3 items-end">
           {/* Search */}
           <div className="flex-1 min-w-[200px]">
@@ -479,7 +479,7 @@ export default function CustomerInvoices() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border overflow-hidden">
+      <div className="bg-white rounded-xl border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

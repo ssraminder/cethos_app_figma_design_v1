@@ -187,10 +187,7 @@ export default function Login() {
           {/* ── Screen 1: Email + Method Toggle ── */}
           {step === "email" && (
             <form onSubmit={handleSendCode}>
-              <h1
-                className="text-2xl font-bold mb-1"
-                style={{ color: "#0C2340" }}
-              >
+              <h1 className="text-2xl font-bold mb-1 text-cethos-navy">
                 Log in to your account
               </h1>
               <p className="text-sm text-gray-500 mb-6">
@@ -240,7 +237,7 @@ export default function Login() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full h-11 px-4 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#0891B2] focus:border-transparent"
+                  className="w-full h-11 px-4 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent"
                   placeholder="you@example.com"
                   required
                   autoFocus
@@ -258,8 +255,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full h-11 rounded-lg text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: "#0891B2" }}
+                className="w-full h-11 rounded-lg bg-cethos-teal hover:bg-cethos-teal-700 text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading
                   ? "Sending..."
@@ -273,8 +269,7 @@ export default function Login() {
                 Don't have an account?{" "}
                 <Link
                   to="/quote"
-                  className="font-medium"
-                  style={{ color: "#0891B2" }}
+                  className="font-medium text-cethos-teal hover:text-cethos-teal-700"
                 >
                   Start a Quote
                 </Link>
@@ -285,18 +280,12 @@ export default function Login() {
           {/* ── Screen 2a: Enter OTP Code ── */}
           {step === "verify-otp" && (
             <form onSubmit={handleVerifyOtp}>
-              <h1
-                className="text-2xl font-bold mb-1 text-center"
-                style={{ color: "#0C2340" }}
-              >
+              <h1 className="text-2xl font-bold mb-1 text-center text-cethos-navy">
                 Enter your code
               </h1>
               <p className="text-sm text-gray-500 text-center mb-6">
                 We sent a 6-digit code to{" "}
-                <span
-                  className="font-semibold"
-                  style={{ color: "#0C2340" }}
-                >
+                <span className="font-semibold text-cethos-navy">
                   {email}
                 </span>
               </p>
@@ -316,12 +305,12 @@ export default function Login() {
                     onChange={(e) => handleOtpDigit(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
                     onPaste={index === 0 ? handleOtpPaste : undefined}
-                    className="w-9 h-12 text-center text-xl font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891B2] focus:border-transparent"
+                    className="w-9 h-12 text-center text-xl font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-transparent"
                     autoFocus={index === 0}
                   />
                 ))}
               </div>
-              <p className="text-xs text-gray-400 text-center mb-6">
+              <p className="text-xs text-gray-500 text-center mb-6">
                 Code expires in 10 minutes
               </p>
 
@@ -336,8 +325,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading || otp.length !== 6}
-                className="w-full h-11 rounded-lg text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-4"
-                style={{ backgroundColor: "#0891B2" }}
+                className="w-full h-11 rounded-lg bg-cethos-teal hover:bg-cethos-teal-700 text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-4"
               >
                 {loading ? "Verifying..." : "Verify Code"}
               </button>
@@ -347,8 +335,7 @@ export default function Login() {
                 type="button"
                 onClick={handleResend}
                 disabled={loading}
-                className="block mx-auto text-sm font-medium disabled:opacity-50"
-                style={{ color: "#0891B2" }}
+                className="block mx-auto text-sm font-medium text-cethos-teal hover:text-cethos-teal-700 disabled:opacity-50"
               >
                 Resend code
               </button>
@@ -372,16 +359,13 @@ export default function Login() {
           {step === "check-email" && (
             <div className="text-center">
               <div className="text-5xl mb-4">&#9993;&#65039;</div>
-              <h1
-                className="text-2xl font-bold mb-2"
-                style={{ color: "#0C2340" }}
-              >
+              <h1 className="text-2xl font-bold mb-2 text-cethos-navy">
                 Check your email
               </h1>
               <p className="text-sm text-gray-500 mb-1">
                 We sent a login link to
               </p>
-              <p className="font-semibold mb-4" style={{ color: "#0C2340" }}>
+              <p className="font-semibold mb-4 text-cethos-navy">
                 {email}
               </p>
               <p className="text-xs text-gray-400 mb-6">
@@ -402,8 +386,7 @@ export default function Login() {
                   type="button"
                   onClick={handleResend}
                   disabled={loading}
-                  className="font-medium disabled:opacity-50"
-                  style={{ color: "#0891B2" }}
+                  className="font-medium text-cethos-teal hover:text-cethos-teal-700 disabled:opacity-50"
                 >
                   Resend
                 </button>
