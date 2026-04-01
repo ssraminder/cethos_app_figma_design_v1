@@ -17,6 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { StatCard } from "@/components/admin/StatCard";
+import { vendorSlug } from "@/utils/vendorSlug";
 
 interface Vendor {
   id: string;
@@ -636,7 +637,7 @@ export default function AdminVendorsList() {
                 vendors.map((v) => (
                   <tr
                     key={v.id}
-                    onClick={() => navigate(`/admin/vendors/${v.id}`)}
+                    onClick={() => navigate(`/admin/vendors/${vendorSlug(v.full_name)}`)}
                     className="hover:bg-gray-50/50 cursor-pointer transition-colors"
                   >
                     <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
@@ -658,7 +659,7 @@ export default function AdminVendorsList() {
                     </td>
                     <td className="px-4 py-3">
                       <Link
-                        to={`/admin/vendors/${v.id}`}
+                        to={`/admin/vendors/${vendorSlug(v.full_name)}`}
                         className="font-medium text-gray-900 hover:text-indigo-600"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -716,7 +717,7 @@ export default function AdminVendorsList() {
                     </td>
                     <td className="px-4 py-3">
                       <Link
-                        to={`/admin/vendors/${v.id}`}
+                        to={`/admin/vendors/${vendorSlug(v.full_name)}`}
                         className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
                         onClick={(e) => e.stopPropagation()}
                       >

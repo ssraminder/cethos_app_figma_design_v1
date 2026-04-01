@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Trash2, Loader2, Info } from "lucide-react";
+import { vendorSlug } from "@/utils/vendorSlug";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
   LANGUAGE_OPTIONS,
@@ -121,7 +122,7 @@ export default function AdminVendorNew() {
   ]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [duplicateVendorId, setDuplicateVendorId] = useState<string | null>(
+  const [duplicateVendorName, setDuplicateVendorName] = useState<string | null>(
     null
   );
 
@@ -137,7 +138,7 @@ export default function AdminVendorNew() {
       });
     }
     if (field === "email") {
-      setDuplicateVendorId(null);
+      setDuplicateVendorName(null);
     }
   };
 
@@ -259,7 +260,7 @@ export default function AdminVendorNew() {
           setErrors({
             email: `A vendor with this email already exists: "${result.existing_vendor.full_name}"`,
           });
-          setDuplicateVendorId(result.existing_vendor.id);
+          setDuplicateVendorName(result.existing_vendor.full_name);
           return;
         }
         toast.error(result.error || "Failed to create vendor");
@@ -267,7 +268,7 @@ export default function AdminVendorNew() {
       }
 
       toast.success("Vendor created successfully");
-      navigate(`/admin/vendors/${result.vendor.id}`);
+      navigate(`/admin/vendors/${vendorSlug(form.full_name)}`);
     } catch {
       toast.error("Network error — please try again");
     } finally {
@@ -346,11 +347,11 @@ export default function AdminVendorNew() {
               {errors.email && (
                 <p className="mt-1 text-sm text-red-500">
                   {errors.email}
-                  {duplicateVendorId && (
+                  {duplicateVendorName && (
                     <>
                       {" "}
                       <Link
-                        to={`/admin/vendors/${duplicateVendorId}`}
+                        to={`/admin/vendors/${vendorSlug(duplicateVendorName)}`}
                         className="text-indigo-600 hover:text-indigo-800 underline"
                       >
                         View existing vendor

@@ -19,9 +19,9 @@ serve(async (req) => {
     );
 
     const url = new URL(req.url);
-    const vendorId = url.searchParams.get("vendor_id");
+    const vendorIdParam = url.searchParams.get("vendor_id");
 
-    if (!vendorId) {
+    if (!vendorIdParam) {
       return new Response(
         JSON.stringify({ success: false, error: "vendor_id is required" }),
         {
@@ -29,6 +29,38 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
+    }
+
+    // Detect if the param is a UUID or a slug (e.g. "raminder-shah")
+    const UUID_REGEX =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isUUID = UUID_REGEX.test(vendorIdParam);
+
+    let vendorId = vendorIdParam;
+
+    // If it's a slug, resolve to a UUID first
+    if (!isUUID) {
+      const slug = vendorIdParam.toLowerCase();
+      const { data: matchedVendor, error: slugError } = await supabase
+        .from("vendors")
+        .select("id")
+        .ilike("full_name", slug.replace(/-/g, " "))
+        .limit(1)
+        .maybeSingle();
+
+      if (slugError || !matchedVendor) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `Vendor not found for slug: ${slug}`,
+          }),
+          {
+            status: 404,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+      vendorId = matchedVendor.id;
     }
 
     console.log(`📋 get-vendor-detail: vendor=${vendorId}`);
