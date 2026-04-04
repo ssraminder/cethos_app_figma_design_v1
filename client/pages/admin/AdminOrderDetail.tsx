@@ -526,7 +526,32 @@ export default function AdminOrderDetail() {
             .filter(Boolean);
         }
         setSourceFileMap(sfMap);
-        setQuoteFiles(data);
+
+        // Group non-combined chunk files by original_filename.
+        // When a PDF is split into N chunks for OCR, N quote_files rows are created
+        // with the same original_filename — these should appear as a single file.
+        const combinedFiles = data.filter((f: any) => f.is_combined);
+        const chunkFiles = data.filter((f: any) => !f.is_combined);
+
+        const chunkGroups = new Map<string, any[]>();
+        for (const f of chunkFiles) {
+          const groupKey = f.original_filename || f.storage_path;
+          if (!chunkGroups.has(groupKey)) chunkGroups.set(groupKey, []);
+          chunkGroups.get(groupKey)!.push(f);
+        }
+
+        const groupedChunks = Array.from(chunkGroups.values()).map((group) => {
+          const rep = group[0];
+          const totalSize = group.reduce((sum: number, f: any) => sum + (f.file_size || 0), 0);
+          return {
+            ...rep,
+            file_size: totalSize,
+            _chunk_count: group.length,
+            _chunk_ids: group.map((f: any) => f.id),
+          };
+        });
+
+        setQuoteFiles([...groupedChunks, ...combinedFiles]);
       }
     } catch (err) {
       console.error("Error fetching documents:", err);
@@ -3403,6 +3428,7 @@ export default function AdminOrderDetail() {
                                   ? `${(file.file_size / 1024).toFixed(1)} KB`
                                   : "—"}{" "}
                                 • {file.mime_type || "Unknown type"}
+                                {file._chunk_count > 1 && ` • ${file._chunk_count} pages`}
                               </p>
                             </div>
                           </div>
