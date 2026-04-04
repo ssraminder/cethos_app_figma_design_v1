@@ -1,6 +1,4 @@
-import { useState, useEffect } from "react";
 import { Download } from "lucide-react";
-import { supabase } from "../../lib/supabase";
 
 interface Attachment {
   id: string;
@@ -23,10 +21,6 @@ export default function FileAttachment({
   attachment,
   isOwn,
 }: FileAttachmentProps) {
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   // Handle different field name conventions
   const fileName =
     attachment.original_filename ||
@@ -39,59 +33,15 @@ export default function FileAttachment({
   const fileIcon = getFileIcon(mimeType);
   const fileSize = formatFileSize(attachment.file_size);
 
-  // Get signed URL for download (bucket is private, so signed URL is required)
-  useEffect(() => {
-    if (attachment.storage_path) {
-      setIsLoading(true);
-      setError(null);
-
-      supabase.storage
-        .from("message-attachments")
-        .createSignedUrl(attachment.storage_path, 3600) // 1 hour expiry
-        .then(({ data, error }) => {
-          if (data?.signedUrl) {
-            setSignedUrl(data.signedUrl);
-          } else {
-            console.error(
-              "Failed to get signed URL for:",
-              attachment.storage_path,
-              error,
-            );
-            setError(error?.message || "Failed to load file");
-          }
-        })
-        .catch((err) => {
-          console.error("Error creating signed URL:", err);
-          setError("Failed to load file");
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    } else if (attachment.download_url) {
-      // Use pre-existing download URL if available
-      setSignedUrl(attachment.download_url);
-      setIsLoading(false);
-    } else {
-      setError("No file path available");
-      setIsLoading(false);
-    }
-  }, [attachment.storage_path, attachment.download_url]);
-
-  const downloadUrl = signedUrl;
-
-  const handleDownload = (e: React.MouseEvent) => {
-    if (!downloadUrl) {
-      e.preventDefault();
-      alert(error || "File is not available for download");
-      return;
-    }
-  };
+  // Use the pre-signed download_url from the server — no client-side storage calls
+  const downloadUrl = attachment.download_url || null;
+  const unavailable = !downloadUrl;
 
   return (
     <div
       className={`flex items-center gap-3 p-3 rounded-lg ${
         isOwn ? "bg-teal-700" : "bg-gray-50"
-      } ${error ? "opacity-60" : ""}`}
+      } ${unavailable ? "opacity-60" : ""}`}
     >
       <span className="text-2xl">{fileIcon}</span>
       <div className="flex-1 min-w-0">
@@ -103,7 +53,7 @@ export default function FileAttachment({
           {fileName}
         </p>
         <p className={`text-xs ${isOwn ? "text-teal-200" : "text-gray-500"}`}>
-          {error ? error : isLoading ? "Loading..." : fileSize}
+          {unavailable ? "(unavailable)" : fileSize}
         </p>
       </div>
       {downloadUrl ? (
@@ -112,7 +62,6 @@ export default function FileAttachment({
           download={fileName}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={handleDownload}
           className={`p-2 rounded-full hover:bg-opacity-20 hover:bg-black transition-colors ${
             isOwn ? "text-white" : "text-gray-600"
           }`}
@@ -125,7 +74,7 @@ export default function FileAttachment({
           className={`p-2 rounded-full ${
             isOwn ? "text-white opacity-50" : "text-gray-400"
           }`}
-          title={error || "Loading..."}
+          title="File unavailable"
         >
           <Download className="w-5 h-5" />
         </div>
