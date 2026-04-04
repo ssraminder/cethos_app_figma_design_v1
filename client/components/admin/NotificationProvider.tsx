@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { MessageSquare, X } from "lucide-react";
+import { useStaffNotifications } from "@/context/StaffNotificationContext";
 
 // Notification sound - using a free online notification sound
 const NOTIFICATION_SOUND_URL =
@@ -11,6 +13,9 @@ interface Notification {
   customerName: string;
   message: string;
   timestamp: Date;
+  conversationId: string;
+  orderId: string | null;
+  quoteId: string | null;
 }
 
 export default function NotificationProvider({
@@ -20,6 +25,8 @@ export default function NotificationProvider({
 }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const navigate = useNavigate();
+  const { incrementUnread } = useStaffNotifications();
 
   // Initialize audio
   useEffect(() => {
@@ -95,12 +102,18 @@ export default function NotificationProvider({
           // Show browser notification
           showBrowserNotification(customerName, payload.new.message_text);
 
+          // Increment sidebar badge
+          incrementUnread();
+
           // Add to in-app notifications
           const newNotification: Notification = {
             id: payload.new.id,
             customerName,
             message: payload.new.message_text,
             timestamp: new Date(),
+            conversationId: payload.new.conversation_id,
+            orderId: payload.new.order_id || null,
+            quoteId: payload.new.quote_id || null,
           };
 
           setNotifications((prev) => [newNotification, ...prev].slice(0, 5));
@@ -121,11 +134,23 @@ export default function NotificationProvider({
       console.log("🔕 Unsubscribing from global notifications");
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [incrementUnread]);
 
   // Dismiss notification
   const dismissNotification = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  // Click on notification to navigate
+  const handleNotificationClick = (notification: Notification) => {
+    dismissNotification(notification.id);
+    if (notification.orderId) {
+      navigate(`/admin/orders/${notification.orderId}`);
+    } else if (notification.quoteId) {
+      navigate(`/admin/quotes/${notification.quoteId}`);
+    } else {
+      navigate("/admin/messages");
+    }
   };
 
   return (
@@ -137,7 +162,8 @@ export default function NotificationProvider({
         {notifications.map((notification) => (
           <div
             key={notification.id}
-            className="bg-white border border-gray-200 rounded-xl shadow-lg p-4 w-80 animate-slide-in"
+            className="bg-white border border-gray-200 rounded-xl shadow-lg p-4 w-80 animate-slide-in cursor-pointer hover:shadow-xl transition-shadow"
+            onClick={() => handleNotificationClick(notification)}
           >
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -150,9 +176,15 @@ export default function NotificationProvider({
                 <p className="text-sm text-gray-600 truncate">
                   {notification.message}
                 </p>
+                <p className="text-xs text-teal-600 mt-1">
+                  Click to view
+                </p>
               </div>
               <button
-                onClick={() => dismissNotification(notification.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dismissNotification(notification.id);
+                }}
                 className="flex-shrink-0 p-1 hover:bg-gray-100 rounded"
               >
                 <X className="w-4 h-4 text-gray-400" />
