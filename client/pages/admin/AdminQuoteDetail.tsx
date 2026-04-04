@@ -641,7 +641,39 @@ export default function AdminQuoteDetail() {
       }
       setSourceFileMap(sfMap);
 
-      return quoteFiles.map((f: any) => ({
+      // Group non-combined chunk files by original_filename.
+      // When a PDF is split into N chunks for OCR, N quote_files rows are created
+      // with the same original_filename — these should appear as a single file.
+      // Already-combined files (is_combined = true) are kept as individual entries.
+      const combinedFiles = quoteFiles.filter((f: any) => f.is_combined);
+      const chunkFiles = quoteFiles.filter((f: any) => !f.is_combined);
+
+      const chunkGroups = new Map<string, any[]>();
+      for (const f of chunkFiles) {
+        const groupKey = f.original_filename || f.storage_path;
+        if (!chunkGroups.has(groupKey)) chunkGroups.set(groupKey, []);
+        chunkGroups.get(groupKey)!.push(f);
+      }
+
+      const groupedChunks = Array.from(chunkGroups.values()).map((group) => {
+        const rep = group[0]; // representative record
+        const totalSize = group.reduce((sum, f) => sum + (f.file_size || 0), 0);
+        return {
+          id: rep.id,
+          displayName: rep.original_filename || rep.storage_path,
+          storagePath: rep.storage_path,
+          bucket: rep.file_category_id === REFERENCE_CATEGORY_ID ? 'quote-reference-files' : 'quote-files',
+          bucketPath: rep.storage_path,
+          fileSize: totalSize,
+          mimeType: rep.mime_type || 'application/pdf',
+          source: 'quote' as const,
+          categoryId: rep.file_category_id,
+          isCombined: false,
+          combinedFromCount: 0,
+        };
+      });
+
+      const mappedCombined = combinedFiles.map((f: any) => ({
         id: f.id,
         displayName: f.original_filename || f.storage_path,
         storagePath: f.storage_path,
@@ -651,9 +683,11 @@ export default function AdminQuoteDetail() {
         mimeType: f.mime_type || 'application/pdf',
         source: 'quote' as const,
         categoryId: f.file_category_id,
-        isCombined: f.is_combined || false,
+        isCombined: true,
         combinedFromCount: f.combined_from_count || 0,
       }));
+
+      return [...groupedChunks, ...mappedCombined];
     }
 
     // Fallback: check ocr_batch_files via ocr_batches
