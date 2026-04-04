@@ -917,8 +917,13 @@ export default function AdminOrderDetail() {
 
   const REFERENCE_CATEGORY_ID = "f1aed462-a25f-4dd0-96c0-f952c3a72950";
 
-  const getBucketForFile = (file: any) =>
-    file.file_category_id === REFERENCE_CATEGORY_ID ? "quote-reference-files" : "quote-files";
+  const getBucketForFile = (file: any) => {
+    if (file.file_category_id === REFERENCE_CATEGORY_ID) return "quote-reference-files";
+    // OCR chunk files are uploaded to ocr-uploads with flat paths (no /),
+    // while quote-files paths have directories (e.g. "{quoteId}/filename.pdf")
+    if (file.storage_path && !file.storage_path.includes('/')) return "ocr-uploads";
+    return "quote-files";
+  };
 
   const handlePreviewFile = async (file: any) => {
     try {
