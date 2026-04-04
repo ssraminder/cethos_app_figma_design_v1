@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { PDFDocument } from "pdf-lib";
 import { supabase } from "@/lib/supabase";
 import {
   AlertCircle,
@@ -548,6 +549,7 @@ export default function AdminOrderDetail() {
             file_size: totalSize,
             _chunk_count: group.length,
             _chunk_ids: group.map((f: any) => f.id),
+            _chunk_paths: group.map((f: any) => f.storage_path),
           };
         });
 
@@ -925,13 +927,35 @@ export default function AdminOrderDetail() {
     return "quote-files";
   };
 
+  // Merge multiple chunk PDFs into a single PDF blob
+  const mergeChunkPdfs = async (file: any): Promise<Blob> => {
+    const bucket = getBucketForFile(file);
+    const mergedPdf = await PDFDocument.create();
+    for (const path of file._chunk_paths) {
+      const { data, error } = await supabase.storage.from(bucket).download(path);
+      if (error || !data) throw new Error(`Failed to download chunk: ${path}`);
+      const chunkBytes = await data.arrayBuffer();
+      const chunkPdf = await PDFDocument.load(chunkBytes, { ignoreEncryption: true });
+      const pages = await mergedPdf.copyPages(chunkPdf, chunkPdf.getPageIndices());
+      pages.forEach(page => mergedPdf.addPage(page));
+    }
+    const mergedBytes = await mergedPdf.save();
+    return new Blob([mergedBytes], { type: 'application/pdf' });
+  };
+
   const handlePreviewFile = async (file: any) => {
     try {
-      const { data } = await supabase.storage
-        .from(getBucketForFile(file))
-        .createSignedUrl(file.storage_path, 3600);
-      if (data?.signedUrl) {
-        window.open(data.signedUrl, "_blank");
+      if (file._chunk_count > 1) {
+        const blob = await mergeChunkPdfs(file);
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank");
+      } else {
+        const { data } = await supabase.storage
+          .from(getBucketForFile(file))
+          .createSignedUrl(file.storage_path, 3600);
+        if (data?.signedUrl) {
+          window.open(data.signedUrl, "_blank");
+        }
       }
     } catch (err) {
       console.error("Preview error:", err);
@@ -940,17 +964,22 @@ export default function AdminOrderDetail() {
 
   const handleDownloadFile = async (file: any) => {
     try {
-      const { data } = await supabase.storage
-        .from(getBucketForFile(file))
-        .download(file.storage_path);
-      if (data) {
-        const url = URL.createObjectURL(data);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = file.original_filename;
-        a.click();
-        URL.revokeObjectURL(url);
+      let blob: Blob;
+      if (file._chunk_count > 1) {
+        blob = await mergeChunkPdfs(file);
+      } else {
+        const { data } = await supabase.storage
+          .from(getBucketForFile(file))
+          .download(file.storage_path);
+        if (!data) return;
+        blob = data;
       }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.original_filename;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Download error:", err);
     }
