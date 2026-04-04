@@ -6,6 +6,7 @@ interface MessageComposerProps {
   customerId?: string;
   staffId?: string;
   quoteId?: string;
+  orderId?: string;
   onMessageSent: (message: any) => void;
   isSending: boolean;
   placeholder?: string;
@@ -16,6 +17,7 @@ export default function MessageComposer({
   customerId,
   staffId,
   quoteId,
+  orderId,
   onMessageSent,
   isSending: externalIsSending,
   placeholder = "Type your message...",
@@ -132,6 +134,7 @@ export default function MessageComposer({
 
       if (customerId) payload.customer_id = customerId;
       if (staffId) payload.staff_id = staffId;
+      if (orderId) payload.order_id = orderId;
       if (quoteId) payload.quote_id = quoteId;
       if (message.trim()) {
         payload.message_text = message.trim();

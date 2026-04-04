@@ -1,10 +1,30 @@
-import { useState, useEffect } from "react";
-import { MessageSquare, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { MessageSquare, Loader2, ChevronDown } from "lucide-react";
 import { useAuth } from "../../context/CustomerAuthContext";
 import { supabase } from "../../lib/supabase";
 import CustomerLayout from "../../components/layouts/CustomerLayout";
 import MessageThread from "../../components/messaging/MessageThread";
 import MessageComposer from "../../components/messaging/MessageComposer";
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const ACTIVE_STATUSES = ["pending", "paid", "in_production", "draft_review"];
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending Review",
+  paid: "In Progress",
+  in_production: "In Production",
+  draft_review: "Under Review",
+};
+
+interface ActiveOrder {
+  id: string;
+  order_number: string;
+  status: string;
+  quote_id: string | null;
+  quote_number: string | null;
+}
 
 interface Conversation {
   id: string;
@@ -39,62 +59,81 @@ export default function CustomerMessages() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch messages
+  // Order context state
+  const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
+
+  // AbortController ref for polling
+  const pollingAbortRef = useRef<AbortController | null>(null);
+
+  // Fetch messages with AbortController support
+  const fetchMessages = useCallback(async () => {
+    if (!customer?.id) return;
+
+    // Cancel any in-flight fetch before starting a new one
+    if (pollingAbortRef.current) pollingAbortRef.current.abort();
+    const controller = new AbortController();
+    pollingAbortRef.current = controller;
+
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/get-quote-messages?customer_id=${customer.id}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          signal: controller.signal,
+        },
+      );
+
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (data.success) {
+        const conversationId = data.conversation_id;
+        setConversation(
+          conversationId ? ({ id: conversationId } as Conversation) : null,
+        );
+        setMessages(data.messages || []);
+
+        // Mark messages as read
+        if (conversationId && document.visibilityState === "visible") {
+          fetch(
+            `${SUPABASE_URL}/functions/v1/mark-messages-read`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                conversation_id: conversationId,
+                reader_type: "customer",
+                reader_id: customer.id,
+              }),
+            },
+          ).catch((err) =>
+            console.error("Failed to mark messages as read:", err),
+          );
+        }
+      }
+    } catch (err: any) {
+      if (err.name === "AbortError") return; // expected on rapid re-fetch
+      console.error("fetchMessages error:", err);
+    }
+  }, [customer?.id]);
+
+  // Initial load
   useEffect(() => {
     if (!customer?.id) return;
 
-    async function loadMessages() {
+    async function initialLoad() {
       setIsLoading(true);
       setError(null);
-
       try {
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-quote-messages?customer_id=${customer.id}`,
-          {
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to load messages");
-        }
-
-        const data = await response.json();
-
-        if (data.success) {
-          // Note: get-quote-messages returns conversation_id directly, not in a data object
-          const conversationId = data.conversation_id;
-          setConversation(
-            conversationId ? ({ id: conversationId } as Conversation) : null,
-          );
-          setMessages(data.messages || []);
-
-          // Mark messages as read
-          if (conversationId) {
-            fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-messages-read`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                },
-                body: JSON.stringify({
-                  conversation_id: conversationId,
-                  reader_type: "customer",
-                  reader_id: customer.id,
-                }),
-              },
-            ).catch((err) =>
-              console.error("Failed to mark messages as read:", err),
-            );
-          }
-        } else {
-          setError(data.error || "Failed to load messages");
-        }
+        await fetchMessages();
       } catch (err) {
         console.error("Failed to load messages:", err);
         setError("Failed to load messages. Please try again.");
@@ -103,10 +142,59 @@ export default function CustomerMessages() {
       }
     }
 
-    loadMessages();
+    initialLoad();
+
+    return () => {
+      pollingAbortRef.current?.abort();
+    };
+  }, [customer?.id, fetchMessages]);
+
+  // Fetch active orders on mount
+  useEffect(() => {
+    if (!customer?.id) return;
+
+    async function loadOrders() {
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/functions/v1/get-customer-dashboard?customer_id=${customer!.id}`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+          },
+        );
+
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const orders: ActiveOrder[] = (data.orders || [])
+          .filter((o: any) => ACTIVE_STATUSES.includes(o.status))
+          .map((o: any) => ({
+            id: o.id,
+            order_number: o.order_number,
+            status: o.status,
+            quote_id: o.quote_id || null,
+            quote_number: o.quote_number || null,
+          }));
+
+        setActiveOrders(orders);
+
+        // Auto-select if exactly 1 active order
+        if (orders.length === 1) {
+          setSelectedOrder(orders[0]);
+        }
+      } catch (err) {
+        console.error("Failed to load active orders:", err);
+      } finally {
+        setOrdersLoaded(true);
+      }
+    }
+
+    loadOrders();
   }, [customer?.id]);
 
-  // Realtime subscription for new messages
+  // Realtime subscription + polling
   useEffect(() => {
     if (!conversation?.id || !customer?.id) return;
 
@@ -114,47 +202,6 @@ export default function CustomerMessages() {
       "🔔 Setting up realtime subscription for conversation:",
       conversation.id,
     );
-
-    // Function to refresh messages
-    const refreshMessages = () => {
-      fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-quote-messages?customer_id=${customer.id}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-        },
-      )
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            setMessages(data.messages || []);
-
-            // Mark new messages as read automatically
-            if (document.visibilityState === "visible") {
-              fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-messages-read`,
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                  },
-                  body: JSON.stringify({
-                    conversation_id: conversation.id,
-                    reader_type: "customer",
-                    reader_id: customer.id,
-                  }),
-                },
-              ).catch((err) =>
-                console.error("Failed to mark messages as read:", err),
-              );
-            }
-          }
-        })
-        .catch((err) => console.error("Failed to fetch messages:", err));
-    };
 
     // Realtime subscription
     const channel = supabase
@@ -169,18 +216,18 @@ export default function CustomerMessages() {
         },
         (payload) => {
           console.log("📩 New message received via realtime:", payload.new);
-          refreshMessages();
+          fetchMessages();
         },
       )
       .subscribe((status) => {
         console.log("🔔 Realtime subscription status:", status);
       });
 
-    // Polling fallback (every 10 seconds) in case realtime fails
+    // Polling fallback (every 10 seconds)
     const pollingInterval = setInterval(() => {
       if (document.visibilityState === "visible") {
         console.log("🔄 Polling for new messages");
-        refreshMessages();
+        fetchMessages();
       }
     }, 10000);
 
@@ -190,8 +237,9 @@ export default function CustomerMessages() {
       );
       supabase.removeChannel(channel);
       clearInterval(pollingInterval);
+      pollingAbortRef.current?.abort();
     };
-  }, [conversation?.id, customer?.id]);
+  }, [conversation?.id, customer?.id, fetchMessages]);
 
   // Handle message sent
   const handleMessageSent = (message: Message) => {
@@ -207,6 +255,10 @@ export default function CustomerMessages() {
       </CustomerLayout>
     );
   }
+
+  // Determine composer state
+  const needsOrderSelection =
+    activeOrders.length > 1 && selectedOrder === null;
 
   return (
     <CustomerLayout>
@@ -252,15 +304,87 @@ export default function CustomerMessages() {
             )}
           </div>
 
-          {/* Composer */}
-          <div className="border-t border-gray-200 p-4 bg-gray-50">
-            <MessageComposer
-              conversationId={conversation?.id}
-              customerId={customer.id}
-              onMessageSent={handleMessageSent}
-              isSending={isSending}
-              placeholder="Type your message to CETHOS staff..."
-            />
+          {/* Context chip + Composer area */}
+          <div className="border-t border-gray-200 bg-gray-50">
+            {/* Context chip */}
+            {ordersLoaded && (
+              <div className="px-4 pt-3">
+                {selectedOrder ? (
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-teal-600 text-white text-sm rounded-full">
+                    <span>
+                      Messaging about: Order #{selectedOrder.order_number}
+                    </span>
+                    {activeOrders.length > 1 && (
+                      <button
+                        onClick={() => setSelectedOrder(null)}
+                        className="inline-flex items-center gap-0.5 text-teal-100 hover:text-white transition-colors underline underline-offset-2"
+                      >
+                        Change
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ) : activeOrders.length === 0 ? (
+                  <div className="inline-flex items-center px-3 py-1.5 bg-gray-400 text-white text-sm rounded-full">
+                    General Inquiry
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {/* Order picker (2+ orders, none selected) */}
+            {needsOrderSelection ? (
+              <div className="p-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  Which order are you contacting us about?
+                </p>
+                <select
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                  value=""
+                  onChange={(e) => {
+                    const order = activeOrders.find(
+                      (o) => o.id === e.target.value,
+                    );
+                    if (order) setSelectedOrder(order);
+                  }}
+                >
+                  <option value="" disabled>
+                    Select an order...
+                  </option>
+                  {activeOrders.map((order) => (
+                    <option key={order.id} value={order.id}>
+                      Order #{order.order_number} —{" "}
+                      {STATUS_LABELS[order.status] || order.status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <>
+                {/* No active orders banner */}
+                {ordersLoaded && activeOrders.length === 0 && (
+                  <div className="px-4 pt-2">
+                    <p className="text-xs text-gray-400">
+                      No active orders found. Our team will respond to your
+                      inquiry.
+                    </p>
+                  </div>
+                )}
+
+                {/* Composer */}
+                <div className="p-4">
+                  <MessageComposer
+                    conversationId={conversation?.id}
+                    customerId={customer.id}
+                    orderId={selectedOrder?.id ?? undefined}
+                    quoteId={selectedOrder?.quote_id ?? undefined}
+                    onMessageSent={handleMessageSent}
+                    isSending={isSending}
+                    placeholder="Type your message to CETHOS staff..."
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
 
