@@ -189,6 +189,15 @@ serve(async (req: Request) => {
     // ----------------------------------------------------------------
     // 6. Process attachments (if any)
     // ----------------------------------------------------------------
+    interface AttachmentInfo {
+      original_filename: string;
+      filename: string;
+      storage_path: string;
+      file_size: number;
+      mime_type: string;
+    }
+    const processedAttachments: AttachmentInfo[] = [];
+
     if (attachments && attachments.length > 0) {
       try {
         for (const attachmentPath of attachments) {
@@ -204,6 +213,17 @@ serve(async (req: Request) => {
             console.error("Attachment processing error:", attachError);
           }
         }
+
+        // Fetch the attachment records for email inclusion
+        const { data: attachRecords } = await supabase
+          .from("message_attachments")
+          .select("original_filename, filename, storage_path, file_size, mime_type")
+          .eq("message_id", insertedMessage.id);
+
+        if (attachRecords) {
+          processedAttachments.push(...attachRecords);
+        }
+
         console.log(
           `📎 Processed ${attachments.length} attachment(s)`,
         );
@@ -246,6 +266,81 @@ serve(async (req: Request) => {
           ? `${FRONTEND_URL}/dashboard/quotes/${quote_id}`
           : `${FRONTEND_URL}/dashboard/messages`;
 
+        // Generate signed download URLs and base64 content for attachments
+        let attachmentsHtml = "";
+        const brevoAttachments: { name: string; content: string }[] = [];
+
+        if (processedAttachments.length > 0) {
+          // Build HTML section for attachment download links
+          const linkItems: string[] = [];
+          for (const att of processedAttachments) {
+            const displayName = att.original_filename || att.filename || "file";
+            const sizeKB = att.file_size ? `${(att.file_size / 1024).toFixed(1)} KB` : "";
+
+            // Generate signed URL (24-hour expiry for email links)
+            const { data: signedData } = await supabase.storage
+              .from("message-attachments")
+              .createSignedUrl(att.storage_path, 86400); // 24 hours
+
+            const downloadLink = signedData?.signedUrl || dashboardUrl;
+
+            linkItems.push(`
+              <tr>
+                <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;">
+                  <table cellpadding="0" cellspacing="0" width="100%">
+                    <tr>
+                      <td style="font-size:14px;color:#374151;">
+                        &#128206; <a href="${downloadLink}" style="color:#1e40af;text-decoration:underline;font-weight:500;">${displayName}</a>
+                        <span style="color:#9ca3af;font-size:12px;margin-left:8px;">${sizeKB}</span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>`);
+
+            // Download file content and encode as base64 for Brevo attachment
+            // Only attach files under 10MB to avoid email size limits
+            if (att.file_size && att.file_size <= 10 * 1024 * 1024) {
+              try {
+                const { data: fileBlob } = await supabase.storage
+                  .from("message-attachments")
+                  .download(att.storage_path);
+
+                if (fileBlob) {
+                  const arrayBuffer = await fileBlob.arrayBuffer();
+                  const bytes = new Uint8Array(arrayBuffer);
+                  let binary = "";
+                  for (let i = 0; i < bytes.length; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                  }
+                  const base64Content = btoa(binary);
+                  brevoAttachments.push({
+                    name: displayName,
+                    content: base64Content,
+                  });
+                }
+              } catch (dlErr) {
+                console.error(`Failed to download attachment for email: ${displayName}`, dlErr);
+                // Non-blocking — download link in email is still available
+              }
+            }
+          }
+
+          attachmentsHtml = `
+              <!-- Attachments -->
+              <div style="margin:24px 0;">
+                <p style="margin:0 0 8px;color:#374151;font-size:14px;font-weight:600;">
+                  &#128206; Attached Files (${processedAttachments.length})
+                </p>
+                <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+                  ${linkItems.join("")}
+                </table>
+                <p style="margin:8px 0 0;color:#9ca3af;font-size:12px;">
+                  Download links expire in 24 hours. Files are also attached to this email.
+                </p>
+              </div>`;
+        }
+
         const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -277,6 +372,7 @@ serve(async (req: Request) => {
               <div style="margin:24px 0;padding:16px 20px;background-color:#eff6ff;border-left:4px solid #3b82f6;border-radius:0 8px 8px 0;">
                 <p style="margin:0;color:#1e3a5f;font-size:15px;line-height:1.6;white-space:pre-wrap;">${message_text}</p>
               </div>
+              ${attachmentsHtml}
               <!-- CTA Button -->
               <table cellpadding="0" cellspacing="0" style="margin:24px 0;">
                 <tr>
@@ -320,6 +416,12 @@ serve(async (req: Request) => {
           subject,
           htmlContent,
         };
+
+        // Attach files to email if any were processed
+        if (brevoAttachments.length > 0) {
+          emailPayload.attachment = brevoAttachments;
+          console.log(`📎 Including ${brevoAttachments.length} file attachment(s) in email`);
+        }
 
         console.log("📧 Sending email to:", customer.email);
 

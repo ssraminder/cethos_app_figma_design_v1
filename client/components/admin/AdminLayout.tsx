@@ -24,9 +24,11 @@ import {
   FileSpreadsheet,
   ClipboardList,
   Building2,
+  MessageSquare,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
+import { StaffNotificationProvider, useStaffNotifications } from "../../context/StaffNotificationContext";
 import NotificationProvider from "./NotificationProvider";
 
 interface NavItem {
@@ -42,6 +44,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Dashboard",
     path: "/admin/dashboard",
     icon: LayoutDashboard,
+    section: "Main",
+  },
+  {
+    label: "Messages",
+    path: "/admin/messages",
+    icon: MessageSquare,
     section: "Main",
   },
   {
@@ -180,12 +188,13 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export default function AdminLayout() {
+function AdminLayoutInner() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const branding = useBranding();
   const { session, signOut } = useAdminAuthContext();
+  const { unreadCount } = useStaffNotifications();
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -262,7 +271,14 @@ export default function AdminLayout() {
               }`}
             />
             {(sidebarOpen || isMobile) && (
-              <span className={item.isChild ? "text-sm" : ""}>{item.label}</span>
+              <span className={`flex-1 ${item.isChild ? "text-sm" : ""}`}>{item.label}</span>
+            )}
+            {item.path === "/admin/messages" && unreadCount > 0 && (
+              <span className={`flex-shrink-0 bg-red-500 text-white text-xs font-bold rounded-full ${
+                sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
+              }`}>
+                {(sidebarOpen || isMobile) ? (unreadCount > 99 ? "99+" : unreadCount) : ""}
+              </span>
             )}
           </NavLink>
         </div>
@@ -407,5 +423,13 @@ export default function AdminLayout() {
         </main>
       </div>
     </NotificationProvider>
+  );
+}
+
+export default function AdminLayout() {
+  return (
+    <StaffNotificationProvider>
+      <AdminLayoutInner />
+    </StaffNotificationProvider>
   );
 }
