@@ -660,23 +660,38 @@ export default function AdminQuoteDetail() {
     const { data: ocrFiles, error: ocrError } = await supabase
       .from('ocr_batch_files')
       .select(`
-        id, filename, original_filename, storage_path, file_size, mime_type,
+        id, filename, original_filename, storage_path, file_size, mime_type, file_group_id, chunk_index,
         ocr_batches!inner(quote_id)
       `)
       .eq('ocr_batches.quote_id', quoteId)
       .in('status', ['completed', 'pending', 'processing']);
 
     if (!ocrError && ocrFiles && ocrFiles.length > 0) {
-      return ocrFiles.map((f: any) => ({
-        id: f.id,
-        displayName: f.filename || f.original_filename || extractFilename(f.storage_path),
-        storagePath: f.storage_path,
-        bucket: 'ocr-uploads',
-        bucketPath: f.storage_path,
-        fileSize: f.file_size || 0,
-        mimeType: f.mime_type || 'application/pdf',
-        source: 'ocr' as const,
-      }));
+      // Group chunks by file_group_id (or original_filename) so multi-chunk PDFs
+      // appear as a single file rather than one entry per chunk.
+      const fileGroups = new Map<string, any[]>();
+      for (const f of ocrFiles) {
+        const groupKey = f.file_group_id || f.original_filename || f.filename;
+        if (!fileGroups.has(groupKey)) fileGroups.set(groupKey, []);
+        fileGroups.get(groupKey)!.push(f);
+      }
+
+      return Array.from(fileGroups.values()).map((group) => {
+        // Sort by chunk_index so we pick chunk 0 (or the only file) as representative
+        group.sort((a, b) => (a.chunk_index ?? 0) - (b.chunk_index ?? 0));
+        const rep = group[0];
+        const totalSize = group.reduce((sum, f) => sum + (f.file_size || 0), 0);
+        return {
+          id: rep.id,
+          displayName: rep.original_filename || rep.filename || extractFilename(rep.storage_path),
+          storagePath: rep.storage_path,
+          bucket: 'ocr-uploads',
+          bucketPath: rep.storage_path,
+          fileSize: totalSize,
+          mimeType: rep.mime_type || 'application/pdf',
+          source: 'ocr' as const,
+        };
+      });
     }
 
     return [];
@@ -2898,11 +2913,16 @@ export default function AdminQuoteDetail() {
   }
 
   // Derive pricing summary totals from ai_analysis_results (excluding excluded items)
+  // Prefer quote.calculated_totals (updated by recalculate-quote-pricing edge function)
+  // over potentially-stale per-document line_total values in ai_analysis_results.
   const activeAnalysis = analysis.filter(ar => !ar.is_excluded);
-  const translationTotal = activeAnalysis.reduce((sum, ar) => sum + Number(ar.line_total || 0), 0);
-  const docCertificationTotal = activeAnalysis.reduce((sum, ar) => sum + Number(ar.certification_price || 0), 0);
+  const translationTotal = quote.calculated_totals?.translation_total
+    ?? activeAnalysis.reduce((sum, ar) => sum + Number(ar.line_total || 0), 0);
+  const docCertificationTotal = quote.calculated_totals?.doc_certification_total
+    ?? activeAnalysis.reduce((sum, ar) => sum + Number(ar.certification_price || 0), 0);
   const quoteCertificationTotal = Number(quote.calculated_totals?.quote_certification_total || 0);
-  const displaySubtotal = translationTotal + docCertificationTotal + quoteCertificationTotal;
+  const displaySubtotal = quote.calculated_totals?.subtotal
+    ?? (translationTotal + docCertificationTotal + quoteCertificationTotal);
 
   // Adjustments total: prefer calculated_totals JSONB, fall back to computing from adjustments array
   const adjustmentsTotal = quote.calculated_totals?.adjustments_total
