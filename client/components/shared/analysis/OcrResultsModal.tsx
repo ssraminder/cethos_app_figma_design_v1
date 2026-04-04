@@ -584,10 +584,13 @@ function recalcBillablePages(
 function calcTranslationCost(
   billablePages: number,
   baseRate: number,
-  languageMultiplier: number = 1.0
+  languageMultiplier: number = 1.0,
+  isManualOverride: boolean = false
 ): number {
   if (billablePages === 0) return 0;
-  const perPageRate = Math.ceil((baseRate * languageMultiplier) / 2.5) * 2.5;
+  const perPageRate = isManualOverride
+    ? baseRate * languageMultiplier
+    : Math.ceil((baseRate * languageMultiplier) / 2.5) * 2.5;
   return billablePages * perPageRate;
 }
 
@@ -746,6 +749,7 @@ export default function OcrResultsModal({
   // Linked quote state (for "Update Existing Quote" flow)
   const [linkedQuoteId, setLinkedQuoteId] = useState<string | null>(null);
   const [linkedQuoteNumber, setLinkedQuoteNumber] = useState<string | null>(null);
+  const [linkedQuoteBaseRateOverride, setLinkedQuoteBaseRateOverride] = useState<number | null>(null);
   const [isUpdatingQuote, setIsUpdatingQuote] = useState(false);
 
   // Single-file AI analysis state
@@ -882,20 +886,23 @@ export default function OcrResultsModal({
         if (batchRow?.quote_id) {
           const { data: linkedQuote } = await supabase
             .from('quotes')
-            .select('id, quote_number, status')
+            .select('id, quote_number, status, base_rate_override')
             .eq('id', batchRow.quote_id)
             .single();
 
           if (linkedQuote) {
             setLinkedQuoteId(linkedQuote.id);
             setLinkedQuoteNumber(linkedQuote.quote_number);
+            setLinkedQuoteBaseRateOverride(linkedQuote.base_rate_override ?? null);
           } else {
             setLinkedQuoteId(null);
             setLinkedQuoteNumber(null);
+            setLinkedQuoteBaseRateOverride(null);
           }
         } else {
           setLinkedQuoteId(null);
           setLinkedQuoteNumber(null);
+          setLinkedQuoteBaseRateOverride(null);
         }
       } catch {
         // No linked quote - that's fine
@@ -1092,6 +1099,7 @@ export default function OcrResultsModal({
       setAiAnalysis([]);
       setPricingRows([]);
       setPricingRatesLoaded(false);
+      setLinkedQuoteBaseRateOverride(null);
       setShowUseInQuoteModal(false);
       setExpandedCertRows(new Set());
       setIsSavingPricing(false);
@@ -1305,10 +1313,11 @@ export default function OcrResultsModal({
         ? 0
         : docCerts.reduce((sum, dc) => sum + dc.certificationPrice, 0);
       // baseRate is the stored effective rate (already language-adjusted), so languageMultiplier=1.0
+      // Skip $2.50 rounding when the quote has a manual base_rate_override set
       const transCost =
         isExcluded || billable === 0
           ? 0
-          : calcTranslationCost(billable, baseRate, 1.0);
+          : calcTranslationCost(billable, baseRate, 1.0, linkedQuoteBaseRateOverride != null);
 
       return {
         analysisId: r.id,
@@ -1352,7 +1361,7 @@ export default function OcrResultsModal({
       )[0];
       setLastSavedAt(new Date(latest.pricingSavedAt!));
     }
-  }, [analysisResults, pricingRatesLoaded, pricingBaseRate, pricingWordsPerPage, certificationTypes]);
+  }, [analysisResults, pricingRatesLoaded, pricingBaseRate, pricingWordsPerPage, certificationTypes, linkedQuoteBaseRateOverride]);
 
   // -------------------------------------------------------------------------
   // Pricing: computed totals
@@ -3115,7 +3124,9 @@ export default function OcrResultsModal({
                   (complexity === "hard" ? 1.25 : complexity === "medium" ? 1.15 : 1.00);
                 const baseRate = analysis.pricing_base_rate || 65.00;
                 const billablePages = analysis.pricing_billable_pages || analysis.billable_pages || 0;
-                const perPageRate = Math.ceil((baseRate * multiplier) / 2.5) * 2.5;
+                const perPageRate = linkedQuoteBaseRateOverride != null
+                  ? baseRate * multiplier
+                  : Math.ceil((baseRate * multiplier) / 2.5) * 2.5;
                 const lineTotal = billablePages * perPageRate;
                 const isExcluded = analysis.pricing_is_excluded === true;
 
@@ -3173,7 +3184,9 @@ export default function OcrResultsModal({
                         (c === "hard" ? 1.25 : c === "medium" ? 1.15 : 1.00);
                       const br = a.pricing_base_rate || 65.00;
                       const bp = a.pricing_billable_pages || a.billable_pages || 0;
-                      const ppr = Math.ceil((br * m) / 2.5) * 2.5;
+                      const ppr = linkedQuoteBaseRateOverride != null
+                        ? br * m
+                        : Math.ceil((br * m) / 2.5) * 2.5;
                       return sum + (bp * ppr);
                     }, 0)
                     .toFixed(2)}

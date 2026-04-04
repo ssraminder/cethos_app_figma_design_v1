@@ -19,14 +19,16 @@ export const roundToNext250 = (amount: number): number => {
  * Calculate per-page rate based on language multiplier
  * @param multiplier - Language tier multiplier (e.g., 0.9, 1.0, 1.2, 1.4)
  * @param baseRate - Optional override for base rate (defaults to $65.00)
- * @returns Per-page rate rounded to next $2.50
+ * @param isManualOverride - When true, skips $2.50 rounding (quote has base_rate_override set)
+ * @returns Per-page rate (rounded to next $2.50 unless isManualOverride is true)
  */
 export const calculatePerPageRate = (
   multiplier: number = 1.0,
-  baseRate: number = BASE_RATE_PER_PAGE
+  baseRate: number = BASE_RATE_PER_PAGE,
+  isManualOverride: boolean = false
 ): number => {
   const rawRate = baseRate * multiplier;
-  return roundToNext250(rawRate);
+  return isManualOverride ? rawRate : roundToNext250(rawRate);
 };
 
 /**
@@ -35,15 +37,17 @@ export const calculatePerPageRate = (
  * @param multiplier - Language tier multiplier
  * @param complexityMultiplier - Complexity multiplier (1.0, 1.15, 1.25)
  * @param baseRate - Optional override for base rate
+ * @param isManualOverride - When true, skips $2.50 rounding (quote has base_rate_override set)
  * @returns Line total rounded to 2 decimal places
  */
 export const calculateLineTotal = (
   billablePages: number,
   multiplier: number = 1.0,
   complexityMultiplier: number = 1.0,
-  baseRate: number = BASE_RATE_PER_PAGE
+  baseRate: number = BASE_RATE_PER_PAGE,
+  isManualOverride: boolean = false
 ): number => {
-  const perPageRate = calculatePerPageRate(multiplier, baseRate);
+  const perPageRate = calculatePerPageRate(multiplier, baseRate, isManualOverride);
   const total = billablePages * perPageRate * complexityMultiplier;
   return Math.round(total * 100) / 100; // Round to 2 decimal places
 };
@@ -60,7 +64,8 @@ export const formatCurrency = (amount: number): string => {
  */
 export const getPricingBreakdown = (
   multiplier: number,
-  baseRate: number = BASE_RATE_PER_PAGE
+  baseRate: number = BASE_RATE_PER_PAGE,
+  isManualOverride: boolean = false
 ): {
   baseRate: number;
   multiplier: number;
@@ -69,7 +74,7 @@ export const getPricingBreakdown = (
   breakdownText: string;
 } => {
   const rawRate = baseRate * multiplier;
-  const perPageRate = roundToNext250(rawRate);
+  const perPageRate = isManualOverride ? rawRate : roundToNext250(rawRate);
 
   return {
     baseRate,

@@ -38,14 +38,18 @@ export function calculateDocumentBillable(
  * Calculate translation cost for a document
  * Formula: billable × CEIL(base_rate × lang_mult / 2.50) × 2.50
  * Rounding applies to the per-page rate, NOT the final total.
+ * When isManualOverride is true (quote.base_rate_override IS NOT NULL), rounding is skipped.
  */
 export function calculateTranslationCost(
   billablePages: number,
   baseRate: number,
-  languageMultiplier: number
+  languageMultiplier: number,
+  isManualOverride: boolean = false
 ): number {
   if (billablePages === 0) return 0;
-  const perPageRate = Math.ceil((baseRate * languageMultiplier) / 2.5) * 2.5;
+  const perPageRate = isManualOverride
+    ? baseRate * languageMultiplier
+    : Math.ceil((baseRate * languageMultiplier) / 2.5) * 2.5;
   return billablePages * perPageRate;
 }
 
@@ -124,11 +128,12 @@ export function recalculateGroup(
   baseRate: number,
   languageMultiplier: number,
   certificationPrice: number,
-  settings: PricingSettings = DEFAULT_PRICING_SETTINGS
+  settings: PricingSettings = DEFAULT_PRICING_SETTINGS,
+  isManualOverride: boolean = false
 ): DocumentGroup {
   const totalWords = group.pages.reduce((sum, p) => sum + p.word_count, 0);
   const totalBillable = calculateDocumentBillable(group.pages, settings);
-  const translationCost = calculateTranslationCost(totalBillable, baseRate, languageMultiplier);
+  const translationCost = calculateTranslationCost(totalBillable, baseRate, languageMultiplier, isManualOverride);
   const groupTotal = calculateGroupTotal(translationCost, certificationPrice);
 
   return {
