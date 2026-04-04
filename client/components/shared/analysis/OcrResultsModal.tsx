@@ -1313,11 +1313,13 @@ export default function OcrResultsModal({
         ? 0
         : docCerts.reduce((sum, dc) => sum + dc.certificationPrice, 0);
       // baseRate is the stored effective rate (already language-adjusted), so languageMultiplier=1.0
-      // Skip $2.50 rounding when the quote has a manual base_rate_override set
+      // Skip $2.50 rounding when the rate was manually saved (hasSaved) or when the quote
+      // has a base_rate_override set at the quote level.
+      const isRateOverridden = (hasSaved && r.pricingBaseRate != null) || linkedQuoteBaseRateOverride != null;
       const transCost =
         isExcluded || billable === 0
           ? 0
-          : calcTranslationCost(billable, baseRate, 1.0, linkedQuoteBaseRateOverride != null);
+          : calcTranslationCost(billable, baseRate, 1.0, isRateOverridden);
 
       return {
         analysisId: r.id,
@@ -1335,7 +1337,7 @@ export default function OcrResultsModal({
         complexity,
         complexityMultiplier: mult,
         baseRate,
-        baseRateOverridden: hasSaved && r.pricingBaseRate != null,
+        baseRateOverridden: isRateOverridden,
         defaultCertTypeId: rowCertTypeId,
         defaultCertTypeName: rowCertTypeName,
         defaultCertUnitPrice: rowCertUnitPrice,
@@ -1444,6 +1446,7 @@ export default function OcrResultsModal({
 
         // Recalculate costs
         // baseRate is the stored effective rate (already language-adjusted), so languageMultiplier=1.0
+        // Skip $2.50 rounding when the rate was manually overridden by staff.
         if (updated.billablePages === 0) {
           updated.translationCost = 0;
           updated.certificationCost = 0;
@@ -1452,7 +1455,8 @@ export default function OcrResultsModal({
           updated.translationCost = calcTranslationCost(
             updated.billablePages,
             updated.baseRate,
-            1.0
+            1.0,
+            updated.baseRateOverridden
           );
           updated.lineTotal = updated.translationCost + updated.certificationCost;
         }
