@@ -1444,7 +1444,7 @@ export default function AdminOrderDetail() {
       phase2Promises.push(
         orderData.quote_id
           ? supabase.from("ai_analysis_results").select(`
-              id, detected_language, detected_document_type, word_count,
+              id, quote_file_id, detected_language, detected_document_type, word_count,
               page_count, country_of_issue,
               quote_file:quote_files!ai_analysis_results_quote_file_id_fkey(original_filename)
             `).eq("quote_id", orderData.quote_id).is("deleted_at", null).order("created_at")
@@ -3331,7 +3331,11 @@ export default function AdminOrderDetail() {
                   Documents ({documentAnalysis.length})
                 </p>
                 <div className="space-y-2">
-                  {documentAnalysis.map((doc: any) => (
+                  {documentAnalysis.map((doc: any) => {
+                    const matchedFile = doc.quote_file_id
+                      ? quoteFiles.find((f: any) => f.id === doc.quote_file_id)
+                      : null;
+                    return (
                     <div
                       key={doc.id}
                       className="flex items-center justify-between text-sm bg-gray-50 px-3 py-2 rounded-lg"
@@ -3348,8 +3352,18 @@ export default function AdminOrderDetail() {
                           {doc.country_of_issue ? ` • Issued: ${doc.country_of_issue}` : ""}
                         </p>
                       </div>
+                      {matchedFile && (
+                        <button
+                          onClick={() => handleDownloadFile(matchedFile)}
+                          className="ml-2 p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0"
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
