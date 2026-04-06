@@ -1,8 +1,8 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDFDocument } from 'pdf-lib';
 
-// Point pdf.js worker at the CDN build
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const COMPRESSION_THRESHOLD_BYTES = 3 * 1024 * 1024; // 3MB — skip small files
 const TARGET_DPI = 150;

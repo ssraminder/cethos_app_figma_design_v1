@@ -1,11 +1,11 @@
 // client/utils/pdfOperations.ts
 // Reusable PDF operations built on pdf-lib and pdfjs-dist
 
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-// Reuse the worker setup from compressPdf.ts
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 /**
  * Merge multiple PDF files into a single PDF.
@@ -420,7 +420,6 @@ export async function applyTextEdits(
 
       // Draw edited text items on top
       // Note: We use pdf-lib's built-in fonts since we can't embed arbitrary fonts
-      const { rgb } = await import('pdf-lib');
       const font = await newPdf.embedFont('Helvetica' as any);
 
       for (const item of edit.items) {
