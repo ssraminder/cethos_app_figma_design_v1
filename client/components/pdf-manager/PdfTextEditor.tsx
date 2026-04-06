@@ -65,7 +65,7 @@ export default function PdfTextEditor() {
       const ab = await selectedFile!.file.arrayBuffer();
       fileBytesRef.current = ab;
 
-      const pdfDoc = await (await import('pdfjs-dist')).getDocument({ data: new Uint8Array(ab) }).promise;
+      const pdfDoc = await (await import(/* @vite-ignore */ 'pdfjs-dist')).getDocument({ data: new Uint8Array(ab) }).promise;
       setTotalPages(pdfDoc.numPages);
       pdfDoc.destroy();
     }
