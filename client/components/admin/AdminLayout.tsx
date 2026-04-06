@@ -25,6 +25,7 @@ import {
   ClipboardList,
   Building2,
   MessageSquare,
+  Files,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -89,6 +90,12 @@ const NAV_ITEMS: NavItem[] = [
     path: "/admin/preprocess-ocr",
     icon: Scissors,
     section: "Main",
+  },
+  {
+    label: "PDF Manager",
+    path: "/admin/pdf-manager",
+    icon: Files,
+    section: "Tools",
   },
   {
     label: "AI Analytics",

@@ -91,6 +91,7 @@ import CustomerInvoices from "./pages/admin/invoices/CustomerInvoices";
 import CreateInvoice from "./pages/admin/invoices/CreateInvoice";
 import AdminInvoiceDetail from "./pages/admin/AdminInvoiceDetail";
 import AdminMessages from "./pages/admin/AdminMessages";
+import PdfManager from "./pages/admin/PdfManager";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
 
@@ -346,6 +347,7 @@ const App = () => (
                     <Route path="ocr-word-count" element={<OCRWordCountPage />} />
                     <Route path="ocr-word-count/:batchId" element={<OCRBatchResultsPage />} />
                     <Route path="preprocess-ocr" element={<PreprocessOCRPage />} />
+                    <Route path="pdf-manager" element={<PdfManager />} />
                     <Route path="vendors" element={<AdminVendorsList />} />
                     <Route path="vendors/new" element={<AdminVendorNew />} />
                     <Route path="vendors/:vendorId" element={<AdminVendorDetail />} />
