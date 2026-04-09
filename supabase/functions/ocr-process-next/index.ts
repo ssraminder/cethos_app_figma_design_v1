@@ -24,6 +24,7 @@ const NOTIFICATION_EMAILS = [
 
 const DOCUMENT_AI_TIMEOUT_MS = 90_000;
 const SELF_CHAIN_DELAY_MS = 500;
+const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB — Document AI inline limit
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -82,6 +83,11 @@ serve(async (req) => {
       const fileSizeKB = Math.round(arrayBuffer.byteLength / 1024);
       const fileSizeMB = (arrayBuffer.byteLength / (1024 * 1024)).toFixed(1);
       console.log(`📦 File size: ${fileSizeKB} KB (${fileSizeMB} MB)`);
+
+      // Guard: reject files that exceed Document AI's inline processing limit
+      if (arrayBuffer.byteLength > MAX_FILE_SIZE_BYTES) {
+        throw new Error(`File too large (${fileSizeMB}MB). Maximum is ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB for inline processing. Re-upload with smaller chunks.`);
+      }
 
       // Memory-efficient base64 encoding using Deno std library
       // This avoids the OOM from building a giant string via string concatenation
