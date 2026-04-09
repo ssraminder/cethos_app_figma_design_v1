@@ -1325,7 +1325,7 @@ export default function PreprocessOCRPage() {
             )}
           </h1>
           <p className="text-gray-600 mt-2">
-            Upload PDFs or images — PDFs are automatically split into 3-page chunks,
+            Upload PDFs or images — PDFs are automatically split into 25-page chunks,
             and images are combined into a single PDF before OCR processing.
           </p>
         </div>
@@ -1336,8 +1336,8 @@ export default function PreprocessOCRPage() {
           <div className="text-sm text-blue-800">
             <p className="font-medium mb-1">How it works:</p>
             <ol className="list-decimal list-inside space-y-1">
-              <li>Upload PDF or image files (up to 100MB each)</li>
-              <li>Images are combined into a single PDF; multi-page PDFs are split into 1-page chunks</li>
+              <li>Upload PDF or image files (up to 250MB each)</li>
+              <li>Images are combined into a single PDF; multi-page PDFs are split into 25-page chunks</li>
               <li>All chunks are submitted for OCR word counting</li>
               <li>Processing takes ~2 minutes per chunk</li>
               <li>You'll receive an email when results are ready</li>
@@ -1575,7 +1575,7 @@ export default function PreprocessOCRPage() {
                 Drag & drop PDF or image files here, or click to select
               </p>
               <p className="text-sm text-gray-500">
-                Maximum 100MB per file • PDF, JPG, PNG, GIF, WebP, TIFF • Images are combined into one PDF
+                Maximum 250MB per file • PDF, JPG, PNG, GIF, WebP, TIFF • Images are combined into one PDF
               </p>
               <input
                 ref={fileInputRef}
