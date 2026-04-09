@@ -78,6 +78,12 @@ serve(async (req) => {
     let totalWords = 0;
     let translationCost = 0;
 
+    // API usage accumulators
+    let totalApiCostAccum = 0;
+    let totalInputTokensAccum = 0;
+    let totalOutputTokensAccum = 0;
+    let totalTokensAccum = 0;
+
     // Process each file
     for (const file of files) {
       try {
@@ -143,6 +149,73 @@ serve(async (req) => {
 
         const processingTimeMs = Date.now() - processingStart;
 
+        // ──────────────────────────────────────────────────────────────
+        // API Usage Tracking
+        //
+        // Each API call in the pipeline (OCR, LLM analysis, etc.) should
+        // log its token usage and cost here. When real providers are
+        // integrated, replace these placeholders with actual usage data.
+        // ──────────────────────────────────────────────────────────────
+
+        // Placeholder usage — replace with real values from provider responses
+        const apiUsageEntries = [
+          {
+            source_type: "quote_processing",
+            source_id: quoteId,
+            quote_id: quoteId,
+            quote_file_id: file.id,
+            provider: "google_document_ai",
+            model: null,
+            operation: "ocr",
+            input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 0,
+            pages_processed: analysisResult.pageCount,
+            cost_usd: analysisResult.pageCount * 0.0015, // $1.50 per 1000 pages
+            processing_time_ms: Math.round(processingTimeMs * 0.6),
+            status: "success",
+            request_metadata: { file_id: file.id, filename: file.original_filename },
+          },
+          {
+            source_type: "quote_processing",
+            source_id: quoteId,
+            quote_id: quoteId,
+            quote_file_id: file.id,
+            provider: "openai",
+            model: "gpt-4o",
+            operation: "document_analysis",
+            input_tokens: analysisResult.wordCount * 2, // approximate tokenization
+            output_tokens: 150,
+            total_tokens: analysisResult.wordCount * 2 + 150,
+            pages_processed: 0,
+            cost_usd:
+              (analysisResult.wordCount * 2 * 2.5) / 1_000_000 + // $2.50/M input tokens
+              (150 * 10.0) / 1_000_000, // $10/M output tokens
+            processing_time_ms: Math.round(processingTimeMs * 0.4),
+            status: "success",
+            request_metadata: { file_id: file.id, filename: file.original_filename },
+          },
+        ];
+
+        // Log API usage
+        const totalApiCost = apiUsageEntries.reduce((s, e) => s + e.cost_usd, 0);
+        const totalInputTokens = apiUsageEntries.reduce((s, e) => s + e.input_tokens, 0);
+        const totalOutputTokens = apiUsageEntries.reduce((s, e) => s + e.output_tokens, 0);
+        const totalTokens = apiUsageEntries.reduce((s, e) => s + e.total_tokens, 0);
+
+        const { error: usageError } = await supabase
+          .from("api_usage_log")
+          .insert(apiUsageEntries);
+
+        if (usageError) {
+          console.error("Failed to log API usage (non-blocking):", usageError);
+        }
+
+        totalApiCostAccum += totalApiCost;
+        totalInputTokensAccum += totalInputTokens;
+        totalOutputTokensAccum += totalOutputTokens;
+        totalTokensAccum += totalTokens;
+
         // Determine complexity multiplier
         const complexityMultiplier =
           analysisResult.assessedComplexity === "hard"
@@ -184,6 +257,10 @@ serve(async (req) => {
           ocr_confidence: analysisResult.ocrConfidence,
           processing_status: "completed",
           processing_time_ms: processingTimeMs,
+          total_api_cost_usd: totalApiCost,
+          total_input_tokens: totalInputTokens,
+          total_output_tokens: totalOutputTokens,
+          total_tokens: totalTokens,
         });
 
         // Mark file as processed
@@ -307,6 +384,13 @@ serve(async (req) => {
         documentCount: files.length,
         totalPages,
         totalWords,
+      },
+      apiUsage: {
+        totalCostUsd: Math.round(totalApiCostAccum * 1_000_000) / 1_000_000,
+        totalInputTokens: totalInputTokensAccum,
+        totalOutputTokens: totalOutputTokensAccum,
+        totalTokens: totalTokensAccum,
+        apiCallCount: files.length * 2, // OCR + analysis per file
       },
       hitl: {
         required: needsReview,

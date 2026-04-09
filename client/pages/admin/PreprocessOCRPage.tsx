@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PDFDocument } from 'pdf-lib';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { compressPdfIfNeeded, needsCompression } from '@/utils/compressPdf';
+// Compression skipped for OCR preprocessing — OCR needs original quality
 import {
   Upload,
   FileText,
@@ -38,10 +38,11 @@ const IMAGE_MIME_TYPES = new Set([
 const isPdf = (file: File) => file.type === 'application/pdf';
 const isImage = (file: File) => IMAGE_MIME_TYPES.has(file.type);
 
-const MAX_PAGES_PER_CHUNK = 3;
-const MAX_FILE_SIZE_MB = 100; // Upload limit
+const MAX_PAGES_PER_CHUNK = 25;
+const MAX_FILE_SIZE_MB = 250; // Upload limit
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const WARN_CHUNK_SIZE_MB = 15; // Warn if chunk exceeds this
+const WARN_CHUNK_SIZE_MB = 50; // Warn if chunk exceeds this
+const MAX_CONCURRENT_UPLOADS = 3; // Parallel upload concurrency
 
 // ============================================================================
 // TYPES
@@ -849,16 +850,9 @@ export default function PreprocessOCRPage() {
 
     const preCompressFiles = acceptedFiles.filter(f => f.size <= MAX_FILE_SIZE_BYTES);
 
-    // Compress large PDFs before processing
-    const hasBig = preCompressFiles.some(needsCompression);
-    if (hasBig) setIsOptimising(true);
-
-    let validFiles: File[];
-    try {
-      validFiles = await Promise.all(preCompressFiles.map(compressPdfIfNeeded));
-    } finally {
-      setIsOptimising(false);
-    }
+    // Skip compression for OCR preprocessing — OCR needs original quality,
+    // and compressing a 177MB/222-page PDF page-by-page blocks the browser.
+    const validFiles = preCompressFiles;
 
     // Create file entries — images get immediate 'ready' status, PDFs need analysis
     const newFiles: UploadedFile[] = validFiles.map(file => {
@@ -1078,18 +1072,19 @@ export default function PreprocessOCRPage() {
     });
 
     try {
-      const uploadedFiles: {
+      // Phase 1: Split all PDFs and prepare upload tasks (CPU-bound, sequential)
+      interface UploadTask {
         filename: string;
-        storagePath: string;
+        blob: Blob;
         fileSize: number;
         fileGroupId: string | null;
         originalFilename: string | null;
         chunkIndex: number | null;
-      }[] = [];
+      }
+
+      const uploadTasks: UploadTask[] = [];
 
       for (const uploadFile of allFilesToProcess) {
-        // Generate a group UUID for files that were split into multiple chunks
-        // Files with only 1 chunk (not split) get null
         const wasSplit = uploadFile.chunks.length > 1;
         const fileGroupId = wasSplit ? crypto.randomUUID() : null;
         const originalFilename = wasSplit ? uploadFile.name : null;
@@ -1098,40 +1093,17 @@ export default function PreprocessOCRPage() {
           (uploadFile.chunks.length === 1 && uploadFile.chunks[0].status === 'pending');
 
         if (!needsSplitting && uploadFile.chunks.length === 1) {
-          // Single chunk - upload original file directly
-          const chunk = uploadFile.chunks[0];
-
-          setProgress(prev => ({
-            ...prev,
-            phase: 'uploading',
-            currentFile: uploadFile.name,
-            message: `Uploading ${uploadFile.name}...`,
-          }));
-
-          const storagePath = generateStoragePath(chunk.name);
-          const { error: uploadError } = await supabase.storage
-            .from('ocr-uploads')
-            .upload(storagePath, uploadFile.file, { contentType: 'application/pdf' });
-
-          if (uploadError) {
-            throw new Error(`Upload failed for ${uploadFile.name}: ${uploadError.message}`);
-          }
-
-          uploadedFiles.push({
-            filename: chunk.name,
-            storagePath,
+          // Single chunk - no splitting needed
+          uploadTasks.push({
+            filename: uploadFile.chunks[0].name,
+            blob: uploadFile.file,
             fileSize: uploadFile.size,
-            // Group metadata (null for unsplit files)
             fileGroupId: null,
             originalFilename: null,
             chunkIndex: null,
           });
-
-          uploadedCount++;
-          setProgress(prev => ({ ...prev, uploadedChunks: uploadedCount }));
-
         } else {
-          // Multiple chunks - need to split
+          // Multiple chunks - split the PDF
           setProgress(prev => ({
             ...prev,
             phase: 'splitting',
@@ -1153,11 +1125,10 @@ export default function PreprocessOCRPage() {
               message: `Splitting ${uploadFile.name}: chunk ${i + 1}/${uploadFile.chunks.length} (pages ${chunk.pageStart}-${chunk.pageEnd})...`,
             }));
 
-            // Create chunk PDF
             const chunkPdf = await PDFDocument.create();
             const pageIndices = Array.from(
               { length: chunk.pageCount },
-              (_, idx) => chunk.pageStart - 1 + idx // 0-indexed
+              (_, idx) => chunk.pageStart - 1 + idx
             );
             const copiedPages = await chunkPdf.copyPages(pdfDoc, pageIndices);
             copiedPages.forEach(page => chunkPdf.addPage(page));
@@ -1169,36 +1140,66 @@ export default function PreprocessOCRPage() {
               console.warn(`Warning: Chunk ${chunk.name} is ${chunkSizeMB.toFixed(1)}MB (over ${WARN_CHUNK_SIZE_MB}MB warning threshold)`);
             }
 
-            // Upload chunk
-            setProgress(prev => ({
-              ...prev,
-              phase: 'uploading',
-              message: `Uploading ${chunk.name} (${chunkSizeMB.toFixed(1)}MB)...`,
-            }));
-
-            const storagePath = generateStoragePath(chunk.name);
-            const { error: uploadError } = await supabase.storage
-              .from('ocr-uploads')
-              .upload(storagePath, chunkBlob, { contentType: 'application/pdf' });
-
-            if (uploadError) {
-              throw new Error(`Upload failed for ${chunk.name}: ${uploadError.message}`);
-            }
-
-            uploadedFiles.push({
+            uploadTasks.push({
               filename: chunk.name,
-              storagePath,
+              blob: chunkBlob,
               fileSize: chunkBytes.length,
-              // Group metadata for split files
-              fileGroupId: fileGroupId,           // same UUID for all chunks of this file
-              originalFilename: originalFilename, // e.g. "contract.pdf"
-              chunkIndex: i + 1,                  // 1-based index
+              fileGroupId,
+              originalFilename,
+              chunkIndex: i + 1,
             });
-
-            uploadedCount++;
-            setProgress(prev => ({ ...prev, uploadedChunks: uploadedCount }));
           }
         }
+      }
+
+      // Phase 2: Upload all chunks in parallel batches
+      setProgress(prev => ({
+        ...prev,
+        phase: 'uploading',
+        message: `Uploading ${uploadTasks.length} file(s) (${MAX_CONCURRENT_UPLOADS} concurrent)...`,
+      }));
+
+      const uploadedFiles: {
+        filename: string;
+        storagePath: string;
+        fileSize: number;
+        fileGroupId: string | null;
+        originalFilename: string | null;
+        chunkIndex: number | null;
+      }[] = [];
+
+      for (let i = 0; i < uploadTasks.length; i += MAX_CONCURRENT_UPLOADS) {
+        const batch = uploadTasks.slice(i, i + MAX_CONCURRENT_UPLOADS);
+
+        const results = await Promise.all(
+          batch.map(async (task) => {
+            const storagePath = generateStoragePath(task.filename);
+            const { error: uploadError } = await supabase.storage
+              .from('ocr-uploads')
+              .upload(storagePath, task.blob, { contentType: 'application/pdf' });
+
+            if (uploadError) {
+              throw new Error(`Upload failed for ${task.filename}: ${uploadError.message}`);
+            }
+
+            return {
+              filename: task.filename,
+              storagePath,
+              fileSize: task.fileSize,
+              fileGroupId: task.fileGroupId,
+              originalFilename: task.originalFilename,
+              chunkIndex: task.chunkIndex,
+            };
+          })
+        );
+
+        uploadedFiles.push(...results);
+        uploadedCount += results.length;
+        setProgress(prev => ({
+          ...prev,
+          uploadedChunks: uploadedCount,
+          message: `Uploaded ${uploadedCount}/${uploadTasks.length} file(s)...`,
+        }));
       }
 
       // Create batch via existing edge function

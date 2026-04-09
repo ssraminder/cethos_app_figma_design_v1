@@ -14,7 +14,9 @@ import {
   Loader2,
   AlertTriangle,
   Eye,
-  RefreshCw
+  RefreshCw,
+  DollarSign,
+  Cpu
 } from 'lucide-react';
 
 interface PageResult {
@@ -48,6 +50,19 @@ interface FileGroup {
   allPages: PageResult[];       // all pages across all files
 }
 
+interface ApiUsageEntry {
+  provider: string;
+  model: string | null;
+  operation: string;
+  callCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  pagesProcessed: number;
+  totalCostUsd: number;
+  avgProcessingTimeMs: number;
+}
+
 interface BatchResult {
   id: string;
   status: string;
@@ -59,6 +74,13 @@ interface BatchResult {
   createdAt: string;
   completedAt: string | null;
   staffName: string;
+  // API usage totals
+  totalApiCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+  totalPagesOcrd: number;
+  apiCallsCount: number;
 }
 
 export default function OCRBatchResultsPage() {
@@ -72,6 +94,7 @@ export default function OCRBatchResultsPage() {
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
+  const [apiUsageBreakdown, setApiUsageBreakdown] = useState<ApiUsageEntry[]>([]);
   const isInitialLoad = useRef(true);
 
   const fetchResults = useCallback(async () => {
@@ -100,6 +123,7 @@ export default function OCRBatchResultsPage() {
       const data = await response.json();
       setBatch(data.batch);
       setFiles(data.files);
+      setApiUsageBreakdown(data.apiUsageBreakdown || []);
       setLastRefreshedAt(new Date());
 
       // Auto-expand only on initial load
@@ -350,6 +374,105 @@ export default function OCRBatchResultsPage() {
             </div>
           )}
         </div>
+
+        {/* API Usage & Cost Card */}
+        {(batch.totalApiCostUsd > 0 || batch.totalTokens > 0 || apiUsageBreakdown.length > 0) && (
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <DollarSign className="w-5 h-5 text-gray-700" />
+              <h2 className="text-lg font-bold text-gray-900">API Usage & Costs</h2>
+            </div>
+
+            {/* Cost summary stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="bg-emerald-50 rounded-lg p-4">
+                <p className="text-sm text-emerald-600">Total API Cost</p>
+                <p className="text-2xl font-bold text-emerald-900">
+                  ${batch.totalApiCostUsd.toFixed(4)}
+                </p>
+              </div>
+              <div className="bg-sky-50 rounded-lg p-4">
+                <p className="text-sm text-sky-600">Total Tokens</p>
+                <p className="text-2xl font-bold text-sky-900">
+                  {batch.totalTokens.toLocaleString()}
+                </p>
+                <p className="text-xs text-sky-600">
+                  {batch.totalInputTokens.toLocaleString()} in / {batch.totalOutputTokens.toLocaleString()} out
+                </p>
+              </div>
+              <div className="bg-violet-50 rounded-lg p-4">
+                <p className="text-sm text-violet-600">Pages OCR'd</p>
+                <p className="text-2xl font-bold text-violet-900">{batch.totalPagesOcrd}</p>
+              </div>
+              <div className="bg-orange-50 rounded-lg p-4">
+                <p className="text-sm text-orange-600">API Calls</p>
+                <p className="text-2xl font-bold text-orange-900">{batch.apiCallsCount}</p>
+              </div>
+            </div>
+
+            {/* Per-provider breakdown table */}
+            {apiUsageBreakdown.length > 0 && (
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">Provider</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">Operation</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-500">Calls</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-500">Input Tokens</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-500">Output Tokens</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-500">Pages</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-500">Cost</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-500">Avg Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {apiUsageBreakdown.map((entry, idx) => (
+                      <tr key={idx} className="border-t">
+                        <td className="px-4 py-2 text-gray-900">
+                          <div className="flex items-center gap-1.5">
+                            <Cpu className="w-3.5 h-3.5 text-gray-400" />
+                            {entry.provider}
+                            {entry.model && (
+                              <span className="text-xs text-gray-400">({entry.model})</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 text-gray-700">{entry.operation}</td>
+                        <td className="px-4 py-2 text-right text-gray-900">{entry.callCount}</td>
+                        <td className="px-4 py-2 text-right text-gray-900">{entry.inputTokens.toLocaleString()}</td>
+                        <td className="px-4 py-2 text-right text-gray-900">{entry.outputTokens.toLocaleString()}</td>
+                        <td className="px-4 py-2 text-right text-gray-900">{entry.pagesProcessed || '—'}</td>
+                        <td className="px-4 py-2 text-right font-medium text-emerald-700">${entry.totalCostUsd.toFixed(4)}</td>
+                        <td className="px-4 py-2 text-right text-gray-500">{(entry.avgProcessingTimeMs / 1000).toFixed(1)}s</td>
+                      </tr>
+                    ))}
+                    {/* Totals row */}
+                    <tr className="border-t bg-gray-50 font-medium">
+                      <td className="px-4 py-2 text-gray-900" colSpan={2}>Total</td>
+                      <td className="px-4 py-2 text-right text-gray-900">
+                        {apiUsageBreakdown.reduce((s, e) => s + e.callCount, 0)}
+                      </td>
+                      <td className="px-4 py-2 text-right text-gray-900">
+                        {apiUsageBreakdown.reduce((s, e) => s + e.inputTokens, 0).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right text-gray-900">
+                        {apiUsageBreakdown.reduce((s, e) => s + e.outputTokens, 0).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right text-gray-900">
+                        {apiUsageBreakdown.reduce((s, e) => s + e.pagesProcessed, 0) || '—'}
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium text-emerald-700">
+                        ${apiUsageBreakdown.reduce((s, e) => s + e.totalCostUsd, 0).toFixed(4)}
+                      </td>
+                      <td className="px-4 py-2 text-right text-gray-500">—</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* File Results */}
         <div className="space-y-4">
