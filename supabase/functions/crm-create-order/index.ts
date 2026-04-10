@@ -394,12 +394,54 @@ serve(async (req) => {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ACTION: list_languages
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    else if (action === "list_languages") {
+      const { data: languages, error } = await sb
+        .from("languages")
+        .select("id, code, name, native_name, tier, multiplier, is_source_available, is_target_available")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+
+      if (error) return jsonResp({ success: false, error: error.message }, 500);
+      return jsonResp({ success: true, languages: languages || [] });
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ACTION: list_services (intended uses)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    else if (action === "list_services") {
+      const { data: services, error } = await sb
+        .from("intended_uses")
+        .select("id, code, name, description, subcategory")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+
+      if (error) return jsonResp({ success: false, error: error.message }, 500);
+      return jsonResp({ success: true, services: services || [] });
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ACTION: list_certification_types
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    else if (action === "list_certification_types") {
+      const { data: certTypes, error } = await sb
+        .from("certification_types")
+        .select("id, code, name, description, price, currency")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+
+      if (error) return jsonResp({ success: false, error: error.message }, 500);
+      return jsonResp({ success: true, certification_types: certTypes || [] });
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Unknown action
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     else {
       return jsonResp({
         success: false,
-        error: "Unknown action. Valid: create_order, check_proposal, list_crm_orders",
+        error: "Unknown action. Valid: create_order, check_proposal, list_crm_orders, list_languages, list_services, list_certification_types",
       }, 400);
     }
   } catch (error: any) {

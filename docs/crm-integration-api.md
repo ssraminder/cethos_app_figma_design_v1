@@ -315,6 +315,109 @@ Retrieve a paginated list of orders created via CRM integration.
 
 ---
 
+### 4. List Languages
+
+**`POST /crm-create-order`**
+
+Returns all active languages with their codes (use `code` value for `source_language` / `target_language` in `create_order`).
+
+#### Request Body
+
+```json
+{
+  "action": "list_languages"
+}
+```
+
+#### Success Response
+
+```json
+{
+  "success": true,
+  "languages": [
+    {
+      "id": "uuid",
+      "code": "fr",
+      "name": "French",
+      "native_name": "Français",
+      "tier": 1,
+      "multiplier": 1.0,
+      "is_source_available": true,
+      "is_target_available": true
+    }
+  ]
+}
+```
+
+---
+
+### 5. List Services (Intended Uses)
+
+**`POST /crm-create-order`**
+
+Returns all active intended uses/services (use `code` value for `intended_use` in `create_order`).
+
+#### Request Body
+
+```json
+{
+  "action": "list_services"
+}
+```
+
+#### Success Response
+
+```json
+{
+  "success": true,
+  "services": [
+    {
+      "id": "uuid",
+      "code": "immigration",
+      "name": "Immigration",
+      "description": "Documents for immigration applications",
+      "subcategory": null
+    }
+  ]
+}
+```
+
+---
+
+### 6. List Certification Types
+
+**`POST /crm-create-order`**
+
+Returns all active certification types and their prices.
+
+#### Request Body
+
+```json
+{
+  "action": "list_certification_types"
+}
+```
+
+#### Success Response
+
+```json
+{
+  "success": true,
+  "certification_types": [
+    {
+      "id": "uuid",
+      "code": "certified",
+      "name": "Certified Translation",
+      "description": "Certified by a professional translator",
+      "price": 20.00,
+      "currency": "CAD"
+    }
+  ]
+}
+```
+
+---
+
 ## Processing Logic
 
 When `create_order` is called, the edge function performs these steps in order:
