@@ -498,6 +498,7 @@ export default function EditOrderModal({
           tax_amount: calculatedTotals.taxAmount,
           total_amount: calculatedTotals.total,
           balance_due: calculatedTotals.total - (order.amount_paid || 0),
+          status: (calculatedTotals.total - (order.amount_paid || 0)) <= 0 ? "paid" : "balance_due",
           updated_at: new Date().toISOString(),
         })
         .eq("id", order.id);
