@@ -84,8 +84,10 @@ export default function BalanceResolutionModal({
   staffRole,
   onSuccess,
 }: BalanceResolutionModalProps) {
-  const isUnderpayment = balanceChange > 0;
-  const absAmount = Math.abs(balanceChange);
+  // Use actual payment difference: amount_paid vs current total determines real refund/balance due
+  const actualDifference = order.amount_paid - order.total_amount;
+  const isUnderpayment = actualDifference < 0;
+  const absAmount = Math.abs(actualDifference);
   const maxOffset = OFFSET_LIMITS[staffRole] || 10;
   const canOffset = absAmount <= maxOffset;
 

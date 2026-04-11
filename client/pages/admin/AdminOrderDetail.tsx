@@ -4878,9 +4878,14 @@ export default function AdminOrderDetail() {
               // Store original total before refresh
               setOriginalTotal(order.total_amount);
               setBalanceChange(balanceChangeAmount);
-              // Refresh order data first, then show balance resolution modal
+              // Refresh order data first, then show balance resolution modal only if actual payment difference exists
               fetchOrderDetails().then(() => {
-                setShowBalanceResolutionModal(true);
+                // Check actual difference between amount paid and new total
+                const amountPaid = order.amount_paid || 0;
+                const actualDiff = Math.abs(amountPaid - newTotal);
+                if (actualDiff > 0.01) {
+                  setShowBalanceResolutionModal(true);
+                }
               });
             } else {
               fetchOrderDetails();
