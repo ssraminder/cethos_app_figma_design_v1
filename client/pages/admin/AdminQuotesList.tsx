@@ -165,7 +165,7 @@ export default function AdminQuotesList() {
       // Apply filters
       if (search) {
         query = query.or(
-          `quote_number.ilike.%${search}%,customers.email.ilike.%${search}%,customers.full_name.ilike.%${search}%`,
+          `quote_number.ilike.%${search}%,customer.email.ilike.%${search}%,customer.full_name.ilike.%${search}%`,
         );
       }
       if (status) {
