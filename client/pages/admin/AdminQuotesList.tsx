@@ -88,6 +88,7 @@ export default function AdminQuotesList() {
 
   // Filters from URL
   const search = searchParams.get("search") || "";
+  const customerName = searchParams.get("customer_name") || "";
   const status = searchParams.get("status") || "";
   const processingStatus = searchParams.get("processing") || "";
   const dateFrom = searchParams.get("from") || "";
@@ -97,6 +98,7 @@ export default function AdminQuotesList() {
 
   // Local filter state (for inputs before applying)
   const [searchInput, setSearchInput] = useState(search);
+  const [customerNameInput, setCustomerNameInput] = useState(customerName);
   const [showFilters, setShowFilters] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
   const [showIncomplete, setShowIncomplete] = useState(false); // Show quotes without customer info
@@ -164,9 +166,22 @@ export default function AdminQuotesList() {
 
       // Apply filters
       if (search) {
-        query = query.or(
-          `quote_number.ilike.%${search}%,customer.email.ilike.%${search}%,customer.full_name.ilike.%${search}%`,
-        );
+        query = query.ilike("quote_number", `%${search}%`);
+      }
+
+      if (customerName) {
+        const { data: matchingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .ilike("full_name", `%${customerName}%`);
+        const ids = (matchingCustomers || []).map((c: any) => c.id);
+        if (ids.length === 0) {
+          setQuotes([]);
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
+        query = query.in("customer_id", ids);
       }
       if (status) {
         query = query.eq("status", status);
@@ -259,7 +274,7 @@ export default function AdminQuotesList() {
   useEffect(() => {
     fetchQuotes();
     fetchAttentionCounts();
-  }, [search, status, processingStatus, dateFrom, dateTo, rushOnly, showExpired, page]);
+  }, [search, customerName, status, processingStatus, dateFrom, dateTo, rushOnly, showExpired, page]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -280,6 +295,7 @@ export default function AdminQuotesList() {
   const clearFilters = () => {
     setSearchParams({});
     setSearchInput("");
+    setCustomerNameInput("");
   };
 
   // Check if quote can be deleted
@@ -373,7 +389,7 @@ export default function AdminQuotesList() {
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const hasActiveFilters = search || status || processingStatus || dateFrom || dateTo || rushOnly;
+  const hasActiveFilters = search || customerName || status || processingStatus || dateFrom || dateTo || rushOnly;
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
@@ -485,7 +501,7 @@ export default function AdminQuotesList() {
               {hasActiveFilters && (
                 <span className="w-5 h-5 bg-blue-600 text-white text-xs rounded-full flex items-center justify-center">
                   {
-                    [search, status, processingStatus, dateFrom, dateTo, rushOnly].filter(Boolean)
+                    [search, customerName, status, processingStatus, dateFrom, dateTo, rushOnly].filter(Boolean)
                       .length
                   }
                 </span>
@@ -509,7 +525,24 @@ export default function AdminQuotesList() {
 
           {/* Expanded Filters */}
           {showFilters && (
-            <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {/* Customer Name Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Customer Name
+                </label>
+                <form onSubmit={(e) => { e.preventDefault(); updateFilter("customer_name", customerNameInput); }}>
+                  <input
+                    type="text"
+                    value={customerNameInput}
+                    onChange={(e) => setCustomerNameInput(e.target.value)}
+                    onBlur={() => updateFilter("customer_name", customerNameInput)}
+                    placeholder="Filter by name..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </form>
+              </div>
+
               {/* Status Filter */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
