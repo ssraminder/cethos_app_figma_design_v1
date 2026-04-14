@@ -17,6 +17,8 @@ interface ExchangeRate {
   id: string;
   rate_date: string;
   mid_market_rate: number | null;
+  mid_market_low: number | null;
+  mid_market_avg: number | null;
   boc_rate: number | null;
   approx_bank_rate: number | null;
   actual_rbc_rate: number | null;
@@ -276,17 +278,17 @@ export default function ExchangeRates() {
       {/* Legend */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 space-y-1">
         <p>
-          <strong>Column B:</strong> Mid-market rate (real-time, lowest of day kept) &nbsp;|&nbsp;
-          <strong>Column C:</strong> Bank of Canada official rate (Valet API) &nbsp;|&nbsp;
-          <strong>Column D:</strong> Approx bank rate (BoC − 3.1% markup)
+          <strong>B (Mid-Market):</strong> Latest real-time rate &nbsp;|&nbsp;
+          <strong>Daily Low:</strong> Lowest mid-market observed today &nbsp;|&nbsp;
+          <strong>Daily Avg:</strong> Average of all observations
         </p>
         <p>
-          <strong>Column E:</strong> Actual RBC rate (enter manually) &nbsp;|&nbsp;
-          <strong>Diff:</strong> Actual vs Approx &nbsp;|&nbsp;
-          <strong>% from Mid:</strong> How far the actual rate is from mid-market
+          <strong>C (BoC):</strong> Bank of Canada official rate &nbsp;|&nbsp;
+          <strong>D (Approx Bank):</strong> BoC − 3.1% markup &nbsp;|&nbsp;
+          <strong>E (Actual RBC):</strong> Enter manually
         </p>
         <p className="text-blue-600 font-medium">
-          Auto-fetched every 4 hours (8am–8pm ET). Manual fetch keeps the lowest mid-market rate seen today.
+          Auto-fetched every 4 hours (8am–8pm ET). Each run is stored as an observation — low/avg computed from all runs.
         </p>
       </div>
 
@@ -303,6 +305,12 @@ export default function ExchangeRates() {
                 </th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">
                   Mid-Market (B)
+                </th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">
+                  Daily Low
+                </th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">
+                  Daily Avg
                 </th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">
                   BoC Rate (C)
@@ -327,7 +335,7 @@ export default function ExchangeRates() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12">
+                  <td colSpan={10} className="text-center py-12">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" />
                     <p className="text-sm text-gray-500 mt-2">
                       Loading rates...
@@ -336,7 +344,7 @@ export default function ExchangeRates() {
                 </tr>
               ) : rates.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-gray-500">
+                  <td colSpan={10} className="text-center py-12 text-gray-500">
                     No exchange rates recorded yet. Click "Fetch Today's Rates"
                     to get started.
                   </td>
@@ -365,6 +373,12 @@ export default function ExchangeRates() {
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700">
                         {fmt(rate.mid_market_rate)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-green-700">
+                        {fmt(rate.mid_market_low)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-500">
+                        {fmt(rate.mid_market_avg)}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700">
                         {fmt(rate.boc_rate)}
