@@ -57,6 +57,7 @@ function DiffBadge({ value, label }: { value: number | null; label: string }) {
 
 export default function ExchangeRates() {
   const [rates, setRates] = useState<ExchangeRate[]>([]);
+  const [obsCounts, setObsCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [page, setPage] = useState(1);
@@ -80,6 +81,22 @@ export default function ExchangeRates() {
       if (error) throw error;
       setRates(data || []);
       setTotalCount(count || 0);
+
+      // Fetch observation counts for visible dates
+      if (data && data.length > 0) {
+        const dates = data.map((r: ExchangeRate) => r.rate_date);
+        const { data: obs } = await supabase
+          .from("exchange_rate_observations")
+          .select("rate_date")
+          .in("rate_date", dates);
+        if (obs) {
+          const counts: Record<string, number> = {};
+          obs.forEach((o: { rate_date: string }) => {
+            counts[o.rate_date] = (counts[o.rate_date] || 0) + 1;
+          });
+          setObsCounts(counts);
+        }
+      }
     } catch (err: any) {
       toast.error("Failed to load exchange rates: " + err.message);
     } finally {
@@ -91,7 +108,7 @@ export default function ExchangeRates() {
     fetchRates();
   }, [fetchRates]);
 
-  // Fetch today's rates from APIs and upsert (keeps lowest mid-market rate of the day)
+  // Fetch rates: insert observation, then refresh daily summary via DB function
   const fetchTodayRates = async () => {
     setFetching(true);
     try {
@@ -103,14 +120,12 @@ export default function ExchangeRates() {
         ),
       ]);
 
-      // Parse real-time mid-market rate
       let midRate: number | null = null;
       if (midMarketRes.status === "fulfilled" && midMarketRes.value.ok) {
         const midData = await midMarketRes.value.json();
         midRate = midData?.rates?.CAD ?? null;
       }
 
-      // Parse BoC official rate
       let bocRate: number | null = null;
       if (bocRes.status === "fulfilled" && bocRes.value.ok) {
         const bocData = await bocRes.value.json();
@@ -119,41 +134,33 @@ export default function ExchangeRates() {
       }
 
       if (!midRate && !bocRate) throw new Error("Both rate APIs failed");
-
-      // Fallback: use whichever is available
       if (!midRate) midRate = bocRate;
       if (!bocRate) bocRate = midRate;
 
       const today = new Date().toISOString().split("T")[0];
 
-      // Check if row exists to apply "keep lowest mid-market" logic
-      const { data: existing } = await supabase
-        .from("exchange_rates")
-        .select("mid_market_rate")
-        .eq("rate_date", today)
-        .maybeSingle();
-
-      const keepLowest =
-        existing?.mid_market_rate != null
-          ? Math.min(Number(existing.mid_market_rate), midRate!)
-          : midRate;
-
-      const { error } = await supabase.from("exchange_rates").upsert(
-        {
+      // 1. Insert raw observation
+      const { error: obsError } = await supabase
+        .from("exchange_rate_observations")
+        .insert({
           rate_date: today,
-          mid_market_rate: keepLowest,
+          source: "manual",
+          mid_market_rate: midRate,
           boc_rate: bocRate,
-        },
-        { onConflict: "rate_date" }
+        });
+
+      if (obsError) throw obsError;
+
+      // 2. Refresh daily summary (DB picks lowest mid-market, latest BoC)
+      const { error: rpcError } = await supabase.rpc(
+        "refresh_daily_exchange_rate",
+        { target_date: today }
       );
 
-      if (error) throw error;
+      if (rpcError) throw rpcError;
 
-      const isNew = !existing;
       toast.success(
-        isNew
-          ? `Rates fetched for ${today}: Mid = ${midRate!.toFixed(4)}, BoC = ${bocRate!.toFixed(4)}`
-          : `Rates updated for ${today}: Mid = ${keepLowest!.toFixed(4)} (lowest kept), BoC = ${bocRate!.toFixed(4)}`
+        `Observation recorded: Mid = ${midRate!.toFixed(4)}, BoC = ${bocRate!.toFixed(4)} — daily summary refreshed (lowest kept)`
       );
       fetchRates();
     } catch (err: any) {
@@ -347,6 +354,14 @@ export default function ExchangeRates() {
                     >
                       <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
                         {rate.rate_date}
+                        {obsCounts[rate.rate_date] > 0 && (
+                          <span
+                            className="ml-2 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-500 rounded-full"
+                            title={`${obsCounts[rate.rate_date]} observation(s) recorded`}
+                          >
+                            {obsCounts[rate.rate_date]} obs
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700">
                         {fmt(rate.mid_market_rate)}
