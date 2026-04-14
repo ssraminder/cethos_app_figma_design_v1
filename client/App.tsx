@@ -92,6 +92,7 @@ import CreateInvoice from "./pages/admin/invoices/CreateInvoice";
 import AdminInvoiceDetail from "./pages/admin/AdminInvoiceDetail";
 import AdminMessages from "./pages/admin/AdminMessages";
 import PdfManager from "./pages/admin/PdfManager";
+import ExchangeRates from "./pages/admin/ExchangeRates";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
 
@@ -357,6 +358,7 @@ const App = () => (
                     <Route path="quick-payment/history" element={<AdminPaymentHistory />} />
                     <Route path="payments" element={<PaymentsList />} />
                     <Route path="payments/:id" element={<PaymentDetail />} />
+                    <Route path="exchange-rates" element={<ExchangeRates />} />
                     <Route path="reports/aging" element={<ARAgingReport />} />
                     <Route path="invoices/vendor" element={<VendorInvoices />} />
                     <Route path="invoices/customer" element={<CustomerInvoices />} />

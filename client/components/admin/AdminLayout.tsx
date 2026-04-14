@@ -26,6 +26,7 @@ import {
   Building2,
   MessageSquare,
   Files,
+  ArrowLeftRight,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -166,6 +167,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: Receipt,
     section: "Finance",
     isChild: true,
+  },
+  {
+    label: "Exchange Rates",
+    path: "/admin/exchange-rates",
+    icon: ArrowLeftRight,
+    section: "Finance",
   },
   {
     label: "Reports",
