@@ -91,32 +91,57 @@ export default function ExchangeRates() {
     fetchRates();
   }, [fetchRates]);
 
-  // Fetch today's rates from APIs and upsert
+  // Fetch today's rates from APIs and upsert (keeps lowest mid-market rate of the day)
   const fetchTodayRates = async () => {
     setFetching(true);
     try {
-      // Fetch Bank of Canada rate (USD/CAD) from Valet API
-      const bocRes = await fetch(
-        "https://www.bankofcanada.ca/valet/observations/FXUSDCAD/json?recent=1"
-      );
-      if (!bocRes.ok) throw new Error("Bank of Canada API failed");
-      const bocData = await bocRes.json();
-      const bocObs = bocData?.observations?.[0];
-      const bocRate = bocObs ? parseFloat(bocObs.FXUSDCAD?.v) : null;
+      // Fetch both APIs in parallel
+      const [midMarketRes, bocRes] = await Promise.allSettled([
+        fetch("https://open.er-api.com/v6/latest/USD"),
+        fetch(
+          "https://www.bankofcanada.ca/valet/observations/FXUSDCAD/json?recent=1"
+        ),
+      ]);
 
-      if (!bocRate) throw new Error("Could not parse BoC rate");
+      // Parse real-time mid-market rate
+      let midRate: number | null = null;
+      if (midMarketRes.status === "fulfilled" && midMarketRes.value.ok) {
+        const midData = await midMarketRes.value.json();
+        midRate = midData?.rates?.CAD ?? null;
+      }
 
-      // Use BoC rate as mid-market proxy; actual Google Finance mid-market
-      // can be slightly different — staff can adjust manually if needed.
-      // We'll set mid_market_rate = bocRate (closest official source)
-      // and approx_bank_rate is auto-computed as boc_rate * 1.031
+      // Parse BoC official rate
+      let bocRate: number | null = null;
+      if (bocRes.status === "fulfilled" && bocRes.value.ok) {
+        const bocData = await bocRes.value.json();
+        const bocObs = bocData?.observations?.[0];
+        bocRate = bocObs ? parseFloat(bocObs.FXUSDCAD?.v) : null;
+      }
+
+      if (!midRate && !bocRate) throw new Error("Both rate APIs failed");
+
+      // Fallback: use whichever is available
+      if (!midRate) midRate = bocRate;
+      if (!bocRate) bocRate = midRate;
 
       const today = new Date().toISOString().split("T")[0];
+
+      // Check if row exists to apply "keep lowest mid-market" logic
+      const { data: existing } = await supabase
+        .from("exchange_rates")
+        .select("mid_market_rate")
+        .eq("rate_date", today)
+        .maybeSingle();
+
+      const keepLowest =
+        existing?.mid_market_rate != null
+          ? Math.min(Number(existing.mid_market_rate), midRate!)
+          : midRate;
 
       const { error } = await supabase.from("exchange_rates").upsert(
         {
           rate_date: today,
-          mid_market_rate: bocRate,
+          mid_market_rate: keepLowest,
           boc_rate: bocRate,
         },
         { onConflict: "rate_date" }
@@ -124,8 +149,11 @@ export default function ExchangeRates() {
 
       if (error) throw error;
 
+      const isNew = !existing;
       toast.success(
-        `Rates fetched for ${today}: BoC rate = ${bocRate.toFixed(4)}`
+        isNew
+          ? `Rates fetched for ${today}: Mid = ${midRate!.toFixed(4)}, BoC = ${bocRate!.toFixed(4)}`
+          : `Rates updated for ${today}: Mid = ${keepLowest!.toFixed(4)} (lowest kept), BoC = ${bocRate!.toFixed(4)}`
       );
       fetchRates();
     } catch (err: any) {
@@ -241,14 +269,17 @@ export default function ExchangeRates() {
       {/* Legend */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 space-y-1">
         <p>
-          <strong>Column B:</strong> Mid-market rate (BoC indicative) &nbsp;|&nbsp;
+          <strong>Column B:</strong> Mid-market rate (real-time, lowest of day kept) &nbsp;|&nbsp;
           <strong>Column C:</strong> Bank of Canada official rate (Valet API) &nbsp;|&nbsp;
-          <strong>Column D:</strong> Approx bank rate (BoC + 3.1% markup)
+          <strong>Column D:</strong> Approx bank rate (BoC − 3.1% markup)
         </p>
         <p>
           <strong>Column E:</strong> Actual RBC rate (enter manually) &nbsp;|&nbsp;
           <strong>Diff:</strong> Actual vs Approx &nbsp;|&nbsp;
           <strong>% from Mid:</strong> How far the actual rate is from mid-market
+        </p>
+        <p className="text-blue-600 font-medium">
+          Auto-fetched every 4 hours (8am–8pm ET). Manual fetch keeps the lowest mid-market rate seen today.
         </p>
       </div>
 
