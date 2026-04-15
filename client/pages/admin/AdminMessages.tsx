@@ -39,82 +39,29 @@ export default function AdminMessages() {
 
   const fetchConversations = useCallback(async () => {
     try {
-      // Fetch all customer conversations with customer info
-      const { data: convs, error: convError } = await supabase
-        .from("customer_conversations")
-        .select(
-          "id, customer_id, last_message_at, customers(full_name, email)",
-        )
-        .order("last_message_at", { ascending: false });
+      const { data, error } = await supabase.rpc(
+        "get_admin_conversation_summaries",
+      );
 
-      if (convError || !convs) {
-        console.error("Error fetching conversations:", convError);
+      if (error) {
+        console.error("Error fetching conversations:", error);
         return;
       }
 
-      // For each conversation, get the latest message and unread count
-      const summaries: ConversationSummary[] = [];
-
-      for (const conv of convs) {
-        // Get latest message
-        const { data: latestMsg } = await supabase
-          .from("conversation_messages")
-          .select(
-            "id, message_text, sender_type, created_at, read_by_staff_at, order_id, quote_id",
-          )
-          .eq("conversation_id", conv.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!latestMsg) continue; // skip empty conversations
-
-        // Get unread count (customer messages not read by staff)
-        const { count } = await supabase
-          .from("conversation_messages")
-          .select("id", { count: "exact", head: true })
-          .eq("conversation_id", conv.id)
-          .eq("sender_type", "customer")
-          .is("read_by_staff_at", null);
-
-        // Resolve order/quote numbers if IDs present
-        let orderNumber: string | null = null;
-        let quoteNumber: string | null = null;
-
-        if (latestMsg.order_id) {
-          const { data: ord } = await supabase
-            .from("orders")
-            .select("order_number")
-            .eq("id", latestMsg.order_id)
-            .maybeSingle();
-          orderNumber = ord?.order_number || null;
-        }
-
-        if (latestMsg.quote_id) {
-          const { data: qt } = await supabase
-            .from("quotes")
-            .select("quote_number")
-            .eq("id", latestMsg.quote_id)
-            .maybeSingle();
-          quoteNumber = qt?.quote_number || null;
-        }
-
-        summaries.push({
-          conversation_id: conv.id,
-          customer_id: conv.customer_id,
-          customer_name:
-            (conv.customers as any)?.full_name || "Unknown Customer",
-          customer_email: (conv.customers as any)?.email || "",
-          last_message_text: latestMsg.message_text || "(attachment)",
-          last_message_at: latestMsg.created_at,
-          last_sender_type: latestMsg.sender_type,
-          unread_count: count || 0,
-          order_id: latestMsg.order_id,
-          order_number: orderNumber,
-          quote_id: latestMsg.quote_id,
-          quote_number: quoteNumber,
-        });
-      }
+      const summaries: ConversationSummary[] = (data || []).map((row: any) => ({
+        conversation_id: row.conversation_id,
+        customer_id: row.customer_id,
+        customer_name: row.customer_name || "Unknown Customer",
+        customer_email: row.customer_email || "",
+        last_message_text: row.last_message_text || "(attachment)",
+        last_message_at: row.last_message_at,
+        last_sender_type: row.last_sender_type,
+        unread_count: row.unread_count || 0,
+        order_id: row.order_id,
+        order_number: row.order_number,
+        quote_id: row.quote_id,
+        quote_number: row.quote_number,
+      }));
 
       setConversations(summaries);
     } catch (err) {
