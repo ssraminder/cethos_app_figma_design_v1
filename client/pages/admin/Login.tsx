@@ -137,13 +137,32 @@ export default function AdminLogin() {
       console.log("Session exists:", authData.session ? "YES" : "NO");
 
       // Step 2: Verify user is in staff_users table and active
+      // The SIGNED_IN auth state change can abort in-flight Supabase requests,
+      // so retry once after a brief delay if the query is aborted.
       console.log("Querying staff_users for email:", normalizedEmail);
 
-      const { data: staffData, error: staffError } = await supabase
-        .from("staff_users")
-        .select("id, full_name, email, role, is_active")
-        .eq("email", normalizedEmail)
-        .single();
+      let staffData: any = null;
+      let staffError: any = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await supabase
+          .from("staff_users")
+          .select("id, full_name, email, role, is_active")
+          .eq("email", normalizedEmail)
+          .single();
+        staffData = result.data;
+        staffError = result.error;
+
+        if (!staffError) break;
+
+        const isAbort = staffError.message?.includes("AbortError") ||
+          staffError.message?.includes("aborted");
+        if (isAbort && attempt === 0) {
+          console.warn("Staff query aborted by auth state change, retrying...");
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          continue;
+        }
+        break;
+      }
 
       console.log("Staff query result:", { staffData, staffError });
       if (staffError) {

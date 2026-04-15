@@ -121,13 +121,29 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session.user);
 
       // Has Supabase session but no localStorage - rebuild from database
+      // Retry once on AbortError (auth state changes can abort in-flight requests)
       console.log("StaffAuthContext: Rebuilding session from Supabase");
-      const { data: staffData, error } = await supabase
-        .from("staff_users")
-        .select("id, email, full_name, role, is_active")
-        .eq("email", session.user.email)
-        .eq("is_active", true)
-        .single();
+      let staffData: any = null;
+      let error: any = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await supabase
+          .from("staff_users")
+          .select("id, email, full_name, role, is_active")
+          .eq("email", session.user.email)
+          .eq("is_active", true)
+          .single();
+        staffData = result.data;
+        error = result.error;
+        if (!error) break;
+        const isAbort = error.message?.includes("AbortError") ||
+          error.message?.includes("aborted");
+        if (isAbort && attempt === 0) {
+          console.warn("StaffAuthContext: Staff query aborted, retrying...");
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          continue;
+        }
+        break;
+      }
 
       if (!isMounted) return;
       if (error || !staffData) {
