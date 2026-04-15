@@ -132,6 +132,17 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
       if (!isMounted) return;
       if (error || !staffData) {
         console.error("StaffAuthContext: Staff lookup failed", error);
+        // Clear stale cached auth to prevent login loops
+        localStorage.removeItem("staffSession");
+        localStorage.removeItem("cethos-auth");
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutErr) {
+          console.warn("StaffAuthContext: SignOut during cleanup threw:", signOutErr);
+        }
+        if (!isMounted) return;
+        setSession(null);
+        setUser(null);
         setStaffUser(null);
         setLoading(false);
         return;

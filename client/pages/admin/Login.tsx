@@ -62,12 +62,17 @@ export default function AdminLogin() {
           return;
         }
 
-        // If authenticated but not staff, sign out
+        // If authenticated but not staff, sign out and clear all cached auth data
         if (session && !staffUser) {
-          console.log("AdminLogin: Authenticated but not staff, signing out...");
-          await supabase.auth.signOut();
-          if (!mounted) return;
+          console.log("AdminLogin: Authenticated but not staff, signing out and clearing cached auth...");
           localStorage.removeItem("staffSession");
+          localStorage.removeItem("cethos-auth");
+          try {
+            await supabase.auth.signOut();
+          } catch (signOutErr) {
+            console.warn("SignOut during auth check threw:", signOutErr);
+          }
+          if (!mounted) return;
           setError(
             "Access denied. Your account is not authorized for admin access.",
           );
@@ -76,6 +81,7 @@ export default function AdminLogin() {
         // No session — clear any stale staffSession from localStorage
         if (!session) {
           localStorage.removeItem("staffSession");
+          localStorage.removeItem("cethos-auth");
         }
       } catch (err) {
         console.error("Auth check failed:", err);
@@ -140,15 +146,28 @@ export default function AdminLogin() {
         .single();
 
       console.log("Staff query result:", { staffData, staffError });
+      if (staffError) {
+        console.error("Staff query error details:", JSON.stringify(staffError));
+      }
 
       if (staffError || !staffData) {
-        await supabase.auth.signOut();
+        // Clear all cached auth data to prevent stale session loops
+        localStorage.removeItem("staffSession");
+        localStorage.removeItem("cethos-auth");
+        // Sign out, but don't let signOut errors mask the real issue
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutErr) {
+          console.warn("SignOut during login cleanup threw:", signOutErr);
+        }
         throw new Error(
           "Access denied. Your account is not authorized for admin access.",
         );
       }
 
       if (!staffData.is_active) {
+        localStorage.removeItem("staffSession");
+        localStorage.removeItem("cethos-auth");
         await supabase.auth.signOut();
         throw new Error("Your account has been deactivated.");
       }
