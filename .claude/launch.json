@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--port", "5199"],
       "port": 5199
+    },
+    {
+      "name": "vendor-portal",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d D:\\cethos-vendor\\apps\\vendor && npx vite --port 5200"],
+      "port": 5200
     }
   ]
 }

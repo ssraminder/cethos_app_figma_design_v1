@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Trash2, Loader2, Info } from "lucide-react";
-import { vendorSlug } from "@/utils/vendorSlug";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
   LANGUAGE_OPTIONS,
@@ -125,6 +124,9 @@ export default function AdminVendorNew() {
   const [duplicateVendorName, setDuplicateVendorName] = useState<string | null>(
     null
   );
+  const [duplicateVendorId, setDuplicateVendorId] = useState<string | null>(
+    null
+  );
 
   // ── Helpers ──
 
@@ -139,6 +141,7 @@ export default function AdminVendorNew() {
     }
     if (field === "email") {
       setDuplicateVendorName(null);
+      setDuplicateVendorId(null);
     }
   };
 
@@ -261,6 +264,7 @@ export default function AdminVendorNew() {
             email: `A vendor with this email already exists: "${result.existing_vendor.full_name}"`,
           });
           setDuplicateVendorName(result.existing_vendor.full_name);
+          setDuplicateVendorId(result.existing_vendor.id);
           return;
         }
         toast.error(result.error || "Failed to create vendor");
@@ -268,7 +272,7 @@ export default function AdminVendorNew() {
       }
 
       toast.success("Vendor created successfully");
-      navigate(`/admin/vendors/${vendorSlug(form.full_name)}`);
+      navigate(`/admin/vendors/${result.vendor.id}`);
     } catch {
       toast.error("Network error — please try again");
     } finally {
@@ -351,7 +355,7 @@ export default function AdminVendorNew() {
                     <>
                       {" "}
                       <Link
-                        to={`/admin/vendors/${vendorSlug(duplicateVendorName)}`}
+                        to={`/admin/vendors/${duplicateVendorId}`}
                         className="text-indigo-600 hover:text-indigo-800 underline"
                       >
                         View existing vendor

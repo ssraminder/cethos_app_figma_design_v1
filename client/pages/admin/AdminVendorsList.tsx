@@ -17,7 +17,6 @@ import {
   XCircle,
 } from "lucide-react";
 import { StatCard } from "@/components/admin/StatCard";
-import { vendorSlug } from "@/utils/vendorSlug";
 
 interface Vendor {
   id: string;
@@ -224,18 +223,18 @@ export default function AdminVendorsList() {
       });
 
     Promise.all([
-      supabase.from("vendors").select("*", { count: "exact", head: true }),
+      supabase.from("vendors").select("id", { count: "exact", head: true }),
       supabase
         .from("vendors")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("status", "active"),
       supabase
         .from("vendors")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .not("auth_user_id", "is", null),
       supabase
         .from("vendors")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .gt("total_projects", 0),
     ]).then(([total, active, portal, jobs]) => {
       setStats({
@@ -244,6 +243,8 @@ export default function AdminVendorsList() {
         withPortalAccess: portal.count ?? 0,
         withJobs: jobs.count ?? 0,
       });
+    }).catch(() => {
+      // Stats are non-critical; silently keep defaults on transient errors
     });
   }, []);
 
@@ -637,7 +638,7 @@ export default function AdminVendorsList() {
                 vendors.map((v) => (
                   <tr
                     key={v.id}
-                    onClick={() => navigate(`/admin/vendors/${vendorSlug(v.full_name)}`)}
+                    onClick={() => navigate(`/admin/vendors/${v.id}`)}
                     className="hover:bg-gray-50/50 cursor-pointer transition-colors"
                   >
                     <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
@@ -659,7 +660,7 @@ export default function AdminVendorsList() {
                     </td>
                     <td className="px-4 py-3">
                       <Link
-                        to={`/admin/vendors/${vendorSlug(v.full_name)}`}
+                        to={`/admin/vendors/${v.id}`}
                         className="font-medium text-gray-900 hover:text-indigo-600"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -717,7 +718,7 @@ export default function AdminVendorsList() {
                     </td>
                     <td className="px-4 py-3">
                       <Link
-                        to={`/admin/vendors/${vendorSlug(v.full_name)}`}
+                        to={`/admin/vendors/${v.id}`}
                         className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
                         onClick={(e) => e.stopPropagation()}
                       >
