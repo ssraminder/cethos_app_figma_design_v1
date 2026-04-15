@@ -58,24 +58,13 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
     executeAction(
       "reminder",
       async () => {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        const response = await fetch(
-          `${supabaseUrl}/functions/v1/vendor-invitation-reminder`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${anonKey}`,
-              apikey: anonKey,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ vendor_id: vendor.id }),
-          }
+        const { error } = await supabase.functions.invoke(
+          "vendor-auth-otp-send",
+          { body: { email: vendor.email, is_reminder: true } }
         );
-        const result = await response.json();
-        if (!result.success) throw new Error(result.error || "Failed");
+        if (error) throw error;
       },
-      "Reminder sent"
+      `Reminder sent to ${vendor.email}`
     );
 
   const handleForceReset = () =>
@@ -329,28 +318,26 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
           )}
 
           {/* Terminate Sessions */}
-          {activeSessions > 0 && (
-            <button
-              onClick={() => {
-                if (confirmAction === "terminate") {
-                  handleTerminateSessions();
-                } else {
-                  setConfirmAction("terminate");
-                }
-              }}
-              disabled={!!actionLoading}
-              className="flex items-center gap-2 px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-            >
-              {isLoading("terminate") ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Trash2 className="w-4 h-4" />
-              )}
-              {confirmAction === "terminate"
-                ? "Click again to confirm"
-                : `Terminate All Sessions (${activeSessions})`}
-            </button>
-          )}
+          <button
+            onClick={() => {
+              if (confirmAction === "terminate") {
+                handleTerminateSessions();
+              } else {
+                setConfirmAction("terminate");
+              }
+            }}
+            disabled={!!actionLoading || activeSessions === 0}
+            className="flex items-center gap-2 px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+          >
+            {isLoading("terminate") ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
+            {confirmAction === "terminate"
+              ? "Click again to confirm"
+              : `Terminate All Sessions (${activeSessions})`}
+          </button>
 
           {/* Revoke Access */}
           {hasPortalAuth && (
