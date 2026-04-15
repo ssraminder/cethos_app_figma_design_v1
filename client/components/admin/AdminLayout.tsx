@@ -208,11 +208,14 @@ function AdminLayoutInner() {
   const location = useLocation();
   const branding = useBranding();
   const { session, signOut } = useAdminAuthContext();
-  const { unreadCount } = useStaffNotifications();
+  const { unreadCount, newOrderCount, resetNewOrders, newQuoteCount, resetNewQuotes } = useStaffNotifications();
 
   useEffect(() => {
     setMobileMenuOpen(false);
-  }, [location.pathname]);
+    // Reset notification badges when navigating to the respective pages
+    if (location.pathname.startsWith("/admin/orders")) resetNewOrders();
+    if (location.pathname.startsWith("/admin/quotes")) resetNewQuotes();
+  }, [location.pathname, resetNewOrders, resetNewQuotes]);
 
   useEffect(() => {
     const saved = localStorage.getItem("admin_sidebar_open");
@@ -292,6 +295,20 @@ function AdminLayoutInner() {
                 sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
               }`}>
                 {(sidebarOpen || isMobile) ? (unreadCount > 99 ? "99+" : unreadCount) : ""}
+              </span>
+            )}
+            {item.path === "/admin/orders" && newOrderCount > 0 && (
+              <span className={`flex-shrink-0 bg-green-500 text-white text-xs font-bold rounded-full ${
+                sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
+              }`}>
+                {(sidebarOpen || isMobile) ? (newOrderCount > 99 ? "99+" : newOrderCount) : ""}
+              </span>
+            )}
+            {item.path === "/admin/quotes" && newQuoteCount > 0 && (
+              <span className={`flex-shrink-0 bg-blue-500 text-white text-xs font-bold rounded-full ${
+                sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
+              }`}>
+                {(sidebarOpen || isMobile) ? (newQuoteCount > 99 ? "99+" : newQuoteCount) : ""}
               </span>
             )}
           </NavLink>
