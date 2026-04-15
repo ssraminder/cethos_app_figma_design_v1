@@ -413,8 +413,20 @@ function ConversationModal({
           .from("message_attachments")
           .select("*")
           .in("message_id", msgIds);
-        if (atts) {
-          for (const a of atts) {
+        if (atts && atts.length > 0) {
+          // Generate signed download URLs for each attachment
+          const withUrls = await Promise.all(
+            atts.map(async (a) => {
+              if (a.storage_path) {
+                const { data: urlData } = await supabase.storage
+                  .from("message-attachments")
+                  .createSignedUrl(a.storage_path, 3600); // 1 hour expiry
+                return { ...a, download_url: urlData?.signedUrl || null };
+              }
+              return { ...a, download_url: null };
+            }),
+          );
+          for (const a of withUrls) {
             if (!attachmentsByMsg[a.message_id])
               attachmentsByMsg[a.message_id] = [];
             attachmentsByMsg[a.message_id].push(a);

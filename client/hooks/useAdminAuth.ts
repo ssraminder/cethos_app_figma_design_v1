@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -27,12 +27,18 @@ export function useAdminAuth(): UseAdminAuthReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Use a ref for location.pathname so clearSessionAndRedirect doesn't
+  // change identity on every route change (which would re-trigger the
+  // auth check effect and flash "Verifying access..." on every navigation).
+  const locationRef = useRef(location.pathname);
+  locationRef.current = location.pathname;
+
   const clearSessionAndRedirect = useCallback(() => {
     localStorage.removeItem("staffSession");
     setSession(null);
 
     // Store the current path to redirect back after login
-    const returnPath = location.pathname;
+    const returnPath = locationRef.current;
     if (
       returnPath !== "/admin/login" &&
       returnPath !== "/admin/reset-password"
@@ -41,7 +47,7 @@ export function useAdminAuth(): UseAdminAuthReturn {
     }
 
     navigate("/admin/login");
-  }, [navigate, location.pathname]);
+  }, [navigate]);
 
   const validateSession =
     useCallback(async (): Promise<StaffSession | null> => {
