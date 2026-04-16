@@ -39,7 +39,7 @@ serve(async (req: Request) => {
     // Verify order exists
     const { data: order, error: orderErr } = await supabase
       .from("orders")
-      .select("id, quote_id, quotes(source_language, target_language)")
+      .select("id, quote_id, quotes(source_language_id, target_language_id)")
       .eq("id", order_id)
       .single();
 
@@ -52,7 +52,6 @@ serve(async (req: Request) => {
       .from("order_workflows")
       .select("id")
       .eq("order_id", order_id)
-      .is("deleted_at", null)
       .maybeSingle();
 
     if (existing) {
@@ -62,7 +61,7 @@ serve(async (req: Request) => {
     // Fetch template
     const { data: template, error: tplErr } = await supabase
       .from("workflow_templates")
-      .select("id, code, name, step_count")
+      .select("id, code, name")
       .eq("code", template_code)
       .eq("is_active", true)
       .single();
@@ -103,15 +102,15 @@ serve(async (req: Request) => {
 
     // Extract languages from quote
     const quote = order.quotes as any;
-    const sourceLang = quote?.source_language ?? null;
-    const targetLang = quote?.target_language ?? null;
+    const sourceLang = quote?.source_language_id ?? null;
+    const targetLang = quote?.target_language_id ?? null;
 
     // Create workflow steps
     const stepInserts = templateSteps.map((ts: any) => ({
       workflow_id: workflow.id,
       order_id,
       step_number: ts.step_number,
-      step_name: ts.name,
+      name: ts.name,
       actor_type: ts.actor_type,
       assignment_mode: ts.assignment_mode || "manual",
       auto_advance: ts.auto_advance ?? false,
@@ -121,7 +120,7 @@ serve(async (req: Request) => {
       service_id: ts.service_id,
       allowed_actor_types: ts.allowed_actor_types,
       status: "pending",
-      currency: "CAD",
+      vendor_currency: "CAD",
       revision_count: 0,
       source_language: sourceLang,
       target_language: targetLang,
@@ -129,7 +128,7 @@ serve(async (req: Request) => {
     }));
 
     const { error: stepsErr } = await supabase
-      .from("workflow_steps")
+      .from("order_workflow_steps")
       .insert(stepInserts);
 
     if (stepsErr) {

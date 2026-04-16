@@ -39,16 +39,15 @@ serve(async (req: Request) => {
       .from("order_workflows")
       .select("id, template_code, template_name, status, current_step_number, total_steps")
       .eq("order_id", order_id)
-      .is("deleted_at", null)
       .maybeSingle();
 
     if (!workflow) {
       // No workflow — return available templates
       const { data: templates } = await supabase
         .from("workflow_templates")
-        .select("id, code, name, description, is_default, step_count")
+        .select("id, code, name, description, is_default")
         .eq("is_active", true)
-        .order("sort_order");
+        .order("name");
 
       // Fetch template steps for preview
       const enriched = [];
@@ -85,40 +84,89 @@ serve(async (req: Request) => {
       });
     }
 
-    // 2. Fetch workflow steps with offers, deliveries, and payables
+    // 2. Fetch workflow steps — table is order_workflow_steps
     const { data: rawSteps } = await supabase
-      .from("workflow_steps")
+      .from("order_workflow_steps")
       .select(`
-        id, step_number, step_name, actor_type, status, assignment_mode,
+        id, step_number, name, actor_type, status, assignment_mode,
         auto_assign_rule, auto_advance, is_optional, requires_file_upload,
         allowed_actor_types,
-        assigned_vendor_id, vendor_name, assigned_staff_id, assigned_by,
+        vendor_id, assigned_staff_id, assigned_by,
         preferred_vendor_id,
         offered_at, accepted_at, started_at, deadline,
         delivered_at, approved_at,
-        rate, rate_unit, vendor_total, currency,
+        vendor_rate, vendor_rate_unit, vendor_total, vendor_currency,
         source_file_paths, delivered_file_paths,
         instructions, notes_from_vendor, rejection_reason, revision_count,
         source_language, target_language,
-        service_id, service_name, order_document_id,
-        unassigned_vendor_id, unassigned_vendor_name,
+        service_id, order_document_id,
+        unassigned_vendor_id,
         unassign_reason, unassign_notes, unassigned_at,
         approval_depends_on_step,
         created_at, updated_at
       `)
       .eq("order_id", order_id)
       .eq("workflow_id", workflow.id)
-      .is("deleted_at", null)
       .order("step_number");
+
+    // Batch-fetch vendor names for steps that have a vendor_id
+    const vendorIds = (rawSteps ?? [])
+      .map((s: any) => s.vendor_id)
+      .filter(Boolean);
+    const unassignedVendorIds = (rawSteps ?? [])
+      .map((s: any) => s.unassigned_vendor_id)
+      .filter(Boolean);
+    const preferredVendorIds = (rawSteps ?? [])
+      .map((s: any) => s.preferred_vendor_id)
+      .filter(Boolean);
+
+    // Also collect vendor IDs from offers
+    const stepIds = (rawSteps ?? []).map((s: any) => s.id);
+    let offerVendorIds: string[] = [];
+    if (stepIds.length > 0) {
+      const { data: offerRows } = await supabase
+        .from("vendor_step_offers")
+        .select("vendor_id")
+        .in("step_id", stepIds);
+      offerVendorIds = (offerRows ?? []).map((o: any) => o.vendor_id).filter(Boolean);
+    }
+
+    const allVendorIds = [...new Set([...vendorIds, ...unassignedVendorIds, ...preferredVendorIds, ...offerVendorIds])];
+
+    let vendorNameMap: Record<string, string> = {};
+    if (allVendorIds.length > 0) {
+      const { data: vendors } = await supabase
+        .from("vendors")
+        .select("id, full_name")
+        .in("id", allVendorIds);
+      for (const v of vendors ?? []) {
+        vendorNameMap[v.id] = v.full_name;
+      }
+    }
+
+    // Fetch service names
+    const serviceIds = (rawSteps ?? [])
+      .map((s: any) => s.service_id)
+      .filter(Boolean);
+    let serviceNameMap: Record<string, string> = {};
+    if (serviceIds.length > 0) {
+      const { data: services } = await supabase
+        .from("services")
+        .select("id, name")
+        .in("id", [...new Set(serviceIds)]);
+      for (const svc of services ?? []) {
+        serviceNameMap[svc.id] = svc.name;
+      }
+    }
 
     const steps: any[] = [];
 
     for (const s of rawSteps ?? []) {
-      // Fetch offers for this step
+      // Fetch offers for this step — table is vendor_step_offers
       const { data: offers } = await supabase
-        .from("vendor_offers")
+        .from("vendor_step_offers")
         .select(`
-          id, vendor_id, vendor_name, status,
+          id, vendor_id, status,
           vendor_rate, vendor_rate_unit, vendor_total, vendor_currency,
           deadline, expires_at, offered_at, declined_reason, responded_at,
           counter_status, counter_rate, counter_rate_unit, counter_total,
@@ -128,8 +176,13 @@ serve(async (req: Request) => {
           auto_accept_within_limits
         `)
         .eq("step_id", s.id)
-        .is("deleted_at", null)
         .order("offered_at", { ascending: false });
+
+      // Enrich offers with vendor names
+      const enrichedOffers = (offers ?? []).map((o: any) => ({
+        ...o,
+        vendor_name: vendorNameMap[o.vendor_id] || null,
+      }));
 
       // Fetch deliveries for this step
       const { data: deliveries } = await supabase
@@ -153,12 +206,11 @@ serve(async (req: Request) => {
           vendor_invoice_number, approved_at, paid_at,
           original_subtotal, original_total
         `)
-        .eq("step_id", s.id)
-        .is("deleted_at", null)
+        .eq("workflow_step_id", s.id)
         .neq("status", "cancelled")
         .maybeSingle();
 
-      const offerList = offers ?? [];
+      const offerList = enrichedOffers;
       const activeOffers = offerList.filter(
         (o: any) => o.status === "pending" || o.status === "offered",
       );
@@ -169,7 +221,7 @@ serve(async (req: Request) => {
       steps.push({
         id: s.id,
         step_number: s.step_number,
-        name: s.step_name,
+        name: s.name,
         actor_type: s.actor_type,
         status: s.status,
         assignment_mode: s.assignment_mode,
@@ -181,8 +233,8 @@ serve(async (req: Request) => {
         deliveries: deliveries ?? [],
         delivery_count: deliveries?.length ?? 0,
         latest_delivery: deliveries?.[0] ?? null,
-        vendor_id: s.assigned_vendor_id,
-        vendor_name: s.vendor_name,
+        vendor_id: s.vendor_id,
+        vendor_name: vendorNameMap[s.vendor_id] || null,
         assigned_staff_id: s.assigned_staff_id,
         assigned_by: s.assigned_by,
         preferred_vendor_id: s.preferred_vendor_id,
@@ -192,10 +244,10 @@ serve(async (req: Request) => {
         deadline: s.deadline,
         delivered_at: s.delivered_at,
         approved_at: s.approved_at,
-        vendor_rate: s.rate,
-        vendor_rate_unit: s.rate_unit,
+        vendor_rate: s.vendor_rate,
+        vendor_rate_unit: s.vendor_rate_unit,
         vendor_total: s.vendor_total,
-        vendor_currency: s.currency || "CAD",
+        vendor_currency: s.vendor_currency || "CAD",
         source_file_paths: s.source_file_paths,
         delivered_file_paths: s.delivered_file_paths,
         instructions: s.instructions,
@@ -205,7 +257,7 @@ serve(async (req: Request) => {
         source_language: s.source_language,
         target_language: s.target_language,
         service_id: s.service_id,
-        service_name: s.service_name,
+        service_name: serviceNameMap[s.service_id] || null,
         order_document_id: s.order_document_id,
         offer_count: offerList.length,
         active_offer_count: activeOffers.length,
@@ -213,7 +265,7 @@ serve(async (req: Request) => {
         offers: offerList,
         payable: payable ?? null,
         unassigned_vendor_id: s.unassigned_vendor_id,
-        unassigned_vendor_name: s.unassigned_vendor_name,
+        unassigned_vendor_name: vendorNameMap[s.unassigned_vendor_id] || null,
         unassign_reason: s.unassign_reason,
         unassign_notes: s.unassign_notes,
         unassigned_at: s.unassigned_at,
@@ -252,8 +304,7 @@ serve(async (req: Request) => {
     const { data: payables } = await supabase
       .from("vendor_payables")
       .select("subtotal, total, status")
-      .eq("workflow_id", workflow.id)
-      .is("deleted_at", null)
+      .eq("order_id", order_id)
       .neq("status", "cancelled");
 
     const vendorFinancials = {

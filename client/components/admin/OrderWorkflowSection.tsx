@@ -1830,6 +1830,7 @@ interface WorkflowPipelineProps {
   onExtendDeadline?: (stepId: string, newDeadline: string, reason: string) => Promise<void>;
   onAdjustPayable?: (step: WorkflowStep, newRate: number | undefined, newSubtotal: number | undefined, reason: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
+  minMarginPercent?: number;
 }
 
 function WorkflowPipeline({
@@ -1860,6 +1861,7 @@ function WorkflowPipeline({
   onExtendDeadline,
   onAdjustPayable,
   onRefresh,
+  minMarginPercent = 30,
 }: WorkflowPipelineProps) {
   const [editDeadlineStepId, setEditDeadlineStepId] = useState<string | null>(null);
   const [editDeadlineValue, setEditDeadlineValue] = useState('');
@@ -2161,11 +2163,11 @@ function WorkflowPipeline({
                 {/* Active offers display */}
                 {step.offers && step.offers.length > 0 && (
                   <div className="mt-1 space-y-0.5">
-                    {step.offers.filter((o: any) => o.status === "sent").length > 0 && (
+                    {step.offers.filter((o: any) => o.status === "pending").length > 0 && (
                       <div className="text-xs text-blue-600">
-                        {step.offers.filter((o: any) => o.status === "sent").length} offer(s) pending
+                        {step.offers.filter((o: any) => o.status === "pending").length} offer(s) pending
                         {step.offers
-                          .filter((o: any) => o.status === "sent")
+                          .filter((o: any) => o.status === "pending")
                           .map((o: any) => (
                             <span
                               key={o.id}
@@ -2247,7 +2249,7 @@ function WorkflowPipeline({
                         )}
 
                         {/* Proposed counter – pending review */}
-                        {offer.counter_status === 'proposed' && (
+                        {offer.counter_status === 'pending' && (
                           <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-xs">
                             <div className="font-medium text-yellow-800 mb-2">
                               🔔 Counter-Proposal <span className="font-normal text-yellow-600">(pending)</span>
@@ -2718,19 +2720,19 @@ function WorkflowPipeline({
                       >
                         Send More Offers
                       </button>
-                      {step.offers?.some((o: any) => ['sent', 'accepted'].includes(o.status)) && (
+                      {step.offers?.some((o: any) => ['pending', 'accepted'].includes(o.status)) && (
                         <button
                           className="text-xs px-2 py-1 border border-red-300 text-red-600 rounded hover:bg-red-50"
                           disabled={actionLoading === step.id}
                           onClick={(e) => {
                             e.stopPropagation();
-                            const activeCount = step.offers!.filter((o: any) => ['sent', 'accepted'].includes(o.status)).length;
+                            const activeCount = step.offers!.filter((o: any) => ['pending', 'accepted'].includes(o.status)).length;
                             if (confirm(`Retract all ${activeCount} offer(s) and reset step to Pending? All associated payables will be cancelled.`)) {
                               handleStepAction(step.id, "retract_offers", {});
                             }
                           }}
                         >
-                          {actionLoading === step.id ? "..." : `Retract All (${step.offers!.filter((o: any) => ['sent', 'accepted'].includes(o.status)).length})`}
+                          {actionLoading === step.id ? "..." : `Retract All (${step.offers!.filter((o: any) => ['pending', 'accepted'].includes(o.status)).length})`}
                         </button>
                       )}
                     </>
@@ -2784,7 +2786,7 @@ function WorkflowPipeline({
                               : "bg-green-600 text-white hover:bg-green-700"
                           }`}
                           disabled={actionLoading === step.id || !!isBlocked}
-                          title={isBlocked ? `Blocked: Step ${depStep!.step_number} (${depStep!.name ?? depStep!.step_name}) must be approved first` : "Approve delivery"}
+                          title={isBlocked ? `Blocked: Step ${depStep!.step_number} (${depStep!.name}) must be approved first` : "Approve delivery"}
                           onClick={(e) => {
                             e.stopPropagation();
                             setApproveModalStep(step);
@@ -3571,7 +3573,7 @@ function UnassignVendorModal({ isOpen, onClose, step, onConfirm }: UnassignVendo
 
 // ── Main Exported Section Component ──
 
-export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { orderId: string; onWorkflowLoaded?: (data: any) => void }) {
+export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refreshKey }: { orderId: string; onWorkflowLoaded?: (data: any) => void; refreshKey?: number }) {
   const [data, setData] = useState<WorkflowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -3629,6 +3631,12 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded }: { or
   useEffect(() => {
     fetchWorkflow();
   }, [fetchWorkflow]);
+
+  useEffect(() => {
+    if (refreshKey && refreshKey > 0) {
+      fetchWorkflow();
+    }
+  }, [refreshKey]);
 
   useEffect(() => {
     const fetchMarginSetting = async () => {

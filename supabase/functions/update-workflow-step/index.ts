@@ -41,7 +41,7 @@ serve(async (req: Request) => {
 
     // Fetch the step
     const { data: step, error: stepErr } = await supabase
-      .from("workflow_steps")
+      .from("order_workflow_steps")
       .select("*, order_workflows!workflow_id(id, order_id, status, current_step_number)")
       .eq("id", step_id)
       .single();
@@ -58,14 +58,12 @@ serve(async (req: Request) => {
         const { vendor_id } = body;
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
 
-        // Find vendor rate matching the step's service/language
         const { data: rates } = await supabase
           .from("vendor_rates")
           .select("rate, calculation_unit, currency")
           .eq("vendor_id", vendor_id)
           .eq("is_active", true);
 
-        // Try to find a rate matching the step's service
         let match = rates?.find((r: any) => step.service_id && r.service_id === step.service_id);
         if (!match && rates?.length) match = rates[0];
 
@@ -82,25 +80,23 @@ serve(async (req: Request) => {
         const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions } = body;
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
 
-        // Get vendor name
         const { data: vendor } = await supabase
           .from("vendors")
-          .select("id, company_name, contact_name")
+          .select("id, full_name")
           .eq("id", vendor_id)
           .single();
 
-        const vendorName = vendor?.company_name || vendor?.contact_name || "Unknown Vendor";
+        const vendorName = vendor?.full_name || "Unknown Vendor";
 
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({
-            assigned_vendor_id: vendor_id,
-            vendor_name: vendorName,
+            vendor_id,
             status: "accepted",
-            rate: vendor_rate ?? null,
-            rate_unit: vendor_rate_unit ?? null,
+            vendor_rate: vendor_rate ?? null,
+            vendor_rate_unit: vendor_rate_unit ?? null,
             vendor_total: vendor_total ?? null,
-            currency: vendor_currency || "CAD",
+            vendor_currency: vendor_currency || "CAD",
             deadline: deadline || null,
             instructions: instructions || null,
             accepted_at: new Date().toISOString(),
@@ -112,10 +108,8 @@ serve(async (req: Request) => {
         if (vendor_rate && vendor_total) {
           const units = vendor_rate > 0 ? vendor_total / vendor_rate : 1;
           await supabase.from("vendor_payables").insert({
-            workflow_id: step.workflow_id,
-            step_id,
+            workflow_step_id: step_id,
             vendor_id,
-            vendor_name: vendorName,
             order_id: workflow.order_id,
             rate: vendor_rate,
             rate_unit: vendor_rate_unit || "flat",
@@ -124,7 +118,8 @@ serve(async (req: Request) => {
             total: vendor_total,
             currency: vendor_currency || "CAD",
             status: "pending",
-            description: `Step ${step.step_number}: ${step.step_name}`,
+            step_name: step.name,
+            description: `Step ${step.step_number}: ${step.name}`,
           });
         }
 
@@ -149,24 +144,14 @@ serve(async (req: Request) => {
 
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
 
-        const { data: vendor } = await supabase
-          .from("vendors")
-          .select("id, company_name, contact_name")
-          .eq("id", vendor_id)
-          .single();
-
-        const vendorName = vendor?.company_name || vendor?.contact_name || "Unknown";
         const expiresAt = expires_in_hours
           ? new Date(Date.now() + expires_in_hours * 3600000).toISOString()
           : null;
 
         // Create offer record
-        await supabase.from("vendor_offers").insert({
+        await supabase.from("vendor_step_offers").insert({
           step_id,
-          workflow_id: step.workflow_id,
-          order_id: workflow.order_id,
           vendor_id,
-          vendor_name: vendorName,
           status: "pending",
           vendor_rate: vendor_rate ?? null,
           vendor_rate_unit: vendor_rate_unit ?? null,
@@ -175,6 +160,7 @@ serve(async (req: Request) => {
           deadline: deadline || null,
           expires_at: expiresAt,
           offered_at: new Date().toISOString(),
+          offered_by: body.staff_id || null,
           negotiation_allowed: negotiation_allowed ?? false,
           max_rate: max_rate ?? null,
           max_total: max_total ?? null,
@@ -184,7 +170,7 @@ serve(async (req: Request) => {
 
         // Update step status to offered
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({
             status: "offered",
             offered_at: new Date().toISOString(),
@@ -196,10 +182,8 @@ serve(async (req: Request) => {
         if (vendor_rate && vendor_total) {
           const units = vendor_rate > 0 ? vendor_total / vendor_rate : 1;
           await supabase.from("vendor_payables").insert({
-            workflow_id: step.workflow_id,
-            step_id,
+            workflow_step_id: step_id,
             vendor_id,
-            vendor_name: vendorName,
             order_id: workflow.order_id,
             rate: vendor_rate,
             rate_unit: vendor_rate_unit || "flat",
@@ -208,7 +192,8 @@ serve(async (req: Request) => {
             total: vendor_total,
             currency: vendor_currency || "CAD",
             status: "pending",
-            description: `Step ${step.step_number}: ${step.step_name}`,
+            step_name: step.name,
+            description: `Step ${step.step_number}: ${step.name}`,
           });
         }
 
@@ -237,22 +222,12 @@ serve(async (req: Request) => {
           : null;
 
         for (const v of vendorList) {
-          const { data: vendor } = await supabase
-            .from("vendors")
-            .select("id, company_name, contact_name")
-            .eq("id", v.vendor_id)
-            .single();
-
-          const vendorName = vendor?.company_name || vendor?.contact_name || "Unknown";
           const offerRate = v.vendor_rate ?? vendor_rate;
           const offerTotal = v.vendor_total ?? vendor_total;
 
-          await supabase.from("vendor_offers").insert({
+          await supabase.from("vendor_step_offers").insert({
             step_id,
-            workflow_id: step.workflow_id,
-            order_id: workflow.order_id,
             vendor_id: v.vendor_id,
-            vendor_name: vendorName,
             status: "pending",
             vendor_rate: offerRate ?? null,
             vendor_rate_unit: vendor_rate_unit ?? null,
@@ -261,6 +236,7 @@ serve(async (req: Request) => {
             deadline: deadline || null,
             expires_at: expiresAt,
             offered_at: new Date().toISOString(),
+            offered_by: body.staff_id || null,
             negotiation_allowed: negotiation_allowed ?? false,
             max_rate: max_rate ?? null,
             max_total: max_total ?? null,
@@ -270,7 +246,7 @@ serve(async (req: Request) => {
         }
 
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({
             status: "offered",
             offered_at: new Date().toISOString(),
@@ -290,12 +266,11 @@ serve(async (req: Request) => {
 
       // ── Retract offer ──
       case "retract_offer": {
-        const { offer_id, staff_id } = body;
+        const { offer_id } = body;
         if (!offer_id) return json({ success: false, error: "Missing offer_id" }, 400);
 
-        // Cancel the offer
         await supabase
-          .from("vendor_offers")
+          .from("vendor_step_offers")
           .update({
             status: "retracted",
             responded_at: new Date().toISOString(),
@@ -306,27 +281,24 @@ serve(async (req: Request) => {
         await supabase
           .from("vendor_payables")
           .update({ status: "cancelled" })
-          .eq("step_id", step_id)
-          .match({ status: "pending" });
+          .eq("workflow_step_id", step_id)
+          .eq("status", "pending");
 
         // Check remaining active offers
         const { data: remaining } = await supabase
-          .from("vendor_offers")
+          .from("vendor_step_offers")
           .select("id")
           .eq("step_id", step_id)
-          .in("status", ["pending", "offered"])
-          .is("deleted_at", null);
+          .in("status", ["pending", "offered"]);
 
         const remainingCount = remaining?.length ?? 0;
 
-        // If no more active offers, reset step to pending
         if (remainingCount === 0) {
           await supabase
-            .from("workflow_steps")
+            .from("order_workflow_steps")
             .update({
               status: "pending",
-              assigned_vendor_id: null,
-              vendor_name: null,
+              vendor_id: null,
               offered_at: null,
             })
             .eq("id", step_id);
@@ -338,22 +310,19 @@ serve(async (req: Request) => {
       // ── Unassign vendor ──
       case "unassign_vendor": {
         const {
-          staff_id, reason, notes,
-          payable_action, adjusted_amount, adjustment_reason,
+          reason, notes,
+          payable_action, adjusted_amount,
           retract_offers, preserve_files,
         } = body;
 
-        // Record unassignment details
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({
-            unassigned_vendor_id: step.assigned_vendor_id,
-            unassigned_vendor_name: step.vendor_name,
+            unassigned_vendor_id: step.vendor_id,
             unassign_reason: reason,
             unassign_notes: notes || null,
             unassigned_at: new Date().toISOString(),
-            assigned_vendor_id: null,
-            vendor_name: null,
+            vendor_id: null,
             status: "pending",
             accepted_at: null,
             started_at: null,
@@ -363,18 +332,17 @@ serve(async (req: Request) => {
           })
           .eq("id", step_id);
 
-        // Handle payable
         if (payable_action === "cancel") {
           await supabase
             .from("vendor_payables")
             .update({ status: "cancelled" })
-            .eq("step_id", step_id)
+            .eq("workflow_step_id", step_id)
             .neq("status", "paid");
         } else if (payable_action === "adjust" && adjusted_amount !== undefined) {
           const { data: payable } = await supabase
             .from("vendor_payables")
             .select("id, subtotal, total")
-            .eq("step_id", step_id)
+            .eq("workflow_step_id", step_id)
             .neq("status", "cancelled")
             .maybeSingle();
 
@@ -392,10 +360,9 @@ serve(async (req: Request) => {
           }
         }
 
-        // Retract pending offers if requested
         if (retract_offers) {
           await supabase
-            .from("vendor_offers")
+            .from("vendor_step_offers")
             .update({ status: "retracted", responded_at: new Date().toISOString() })
             .eq("step_id", step_id)
             .in("status", ["pending", "offered"]);
@@ -406,17 +373,16 @@ serve(async (req: Request) => {
 
       // ── Extend deadline ──
       case "extend_deadline": {
-        const { new_deadline, reason, staff_id } = body;
+        const { new_deadline } = body;
         if (!new_deadline) return json({ success: false, error: "Missing new_deadline" }, 400);
 
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({ deadline: new_deadline })
           .eq("id", step_id);
 
-        // Also update any active offers for this step
         await supabase
-          .from("vendor_offers")
+          .from("vendor_step_offers")
           .update({ deadline: new_deadline })
           .eq("step_id", step_id)
           .in("status", ["pending", "offered"]);
@@ -426,22 +392,19 @@ serve(async (req: Request) => {
 
       // ── Approve delivery ──
       case "approve": {
-        // Check approval dependency — e.g. vendor translation approval
-        // may require customer draft review to be approved first
+        // Check approval dependency
         if (step.approval_depends_on_step) {
           const { data: depStep } = await supabase
-            .from("workflow_steps")
-            .select("id, step_number, step_name, status")
+            .from("order_workflow_steps")
+            .select("id, step_number, name, status")
             .eq("workflow_id", step.workflow_id)
             .eq("step_number", step.approval_depends_on_step)
-            .is("deleted_at", null)
             .single();
 
           if (depStep && depStep.status !== "approved" && depStep.status !== "skipped") {
-            // Auto-advance the dependency step to in_progress if still pending
             if (depStep.status === "pending") {
               await supabase
-                .from("workflow_steps")
+                .from("order_workflow_steps")
                 .update({
                   status: "in_progress",
                   started_at: new Date().toISOString(),
@@ -451,16 +414,16 @@ serve(async (req: Request) => {
 
             return json({
               success: false,
-              error: `Cannot approve this step until Step ${depStep.step_number} (${depStep.step_name}) is completed. Current status: ${depStep.status}`,
+              error: `Cannot approve this step until Step ${depStep.step_number} (${depStep.name}) is completed. Current status: ${depStep.status}`,
               blocked_by_step: depStep.step_number,
-              blocked_by_step_name: depStep.step_name,
+              blocked_by_step_name: depStep.name,
               blocked_by_step_status: depStep.status,
             }, 409);
           }
         }
 
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({
             status: "approved",
             approved_at: new Date().toISOString(),
@@ -494,15 +457,14 @@ serve(async (req: Request) => {
             status: "approved",
             approved_at: new Date().toISOString(),
           })
-          .eq("step_id", step_id)
+          .eq("workflow_step_id", step_id)
           .eq("status", "pending");
 
-        // Check if all steps are complete and auto-advance workflow
+        // Check if all steps are complete
         const { data: allSteps } = await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .select("status")
-          .eq("workflow_id", step.workflow_id)
-          .is("deleted_at", null);
+          .eq("workflow_id", step.workflow_id);
 
         const allDone = allSteps?.every(
           (s: any) => s.status === "approved" || s.status === "skipped",
@@ -523,7 +485,7 @@ serve(async (req: Request) => {
         const { reason: revisionReason } = body;
 
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({
             status: "revision_requested",
             rejection_reason: revisionReason || null,
@@ -532,7 +494,6 @@ serve(async (req: Request) => {
           })
           .eq("id", step_id);
 
-        // Update latest delivery review status
         const { data: latestDelivery } = await supabase
           .from("step_deliveries")
           .select("id")
@@ -559,7 +520,7 @@ serve(async (req: Request) => {
       // ── Start work ──
       case "start": {
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({
             status: "in_progress",
             started_at: new Date().toISOString(),
@@ -572,7 +533,7 @@ serve(async (req: Request) => {
       // ── Skip step ──
       case "skip": {
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({ status: "skipped" })
           .eq("id", step_id);
 
@@ -582,15 +543,14 @@ serve(async (req: Request) => {
       // ── Cancel step ──
       case "cancel": {
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({ status: "cancelled" })
           .eq("id", step_id);
 
-        // Cancel associated payables
         await supabase
           .from("vendor_payables")
           .update({ status: "cancelled" })
-          .eq("step_id", step_id)
+          .eq("workflow_step_id", step_id)
           .neq("status", "paid");
 
         return json({ success: true });
@@ -602,7 +562,7 @@ serve(async (req: Request) => {
         if (!new_actor_type) return json({ success: false, error: "Missing new_actor_type" }, 400);
 
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({ actor_type: new_actor_type })
           .eq("id", step_id);
 
@@ -611,7 +571,7 @@ serve(async (req: Request) => {
 
       // ── Adjust payable ──
       case "adjust_payable": {
-        const { payable_id, new_rate, new_subtotal, adjustment_reason: adjReason, staff_id } = body;
+        const { payable_id, new_rate, new_subtotal } = body;
 
         const { data: payable } = await supabase
           .from("vendor_payables")
@@ -639,7 +599,6 @@ serve(async (req: Request) => {
           .update(updateData)
           .eq("id", payable_id);
 
-        // Fetch updated payable
         const { data: updated } = await supabase
           .from("vendor_payables")
           .select("rate, subtotal, total")
@@ -647,6 +606,35 @@ serve(async (req: Request) => {
           .single();
 
         return json({ success: true, current: updated });
+      }
+
+      // ── Generic status change ──
+      case "change_status": {
+        const { status: newStatus } = body;
+        if (!newStatus) return json({ success: false, error: "Missing status" }, 400);
+
+        const updateData: any = { status: newStatus };
+        if (newStatus === "in_progress" && !step.started_at) {
+          updateData.started_at = new Date().toISOString();
+        }
+        if (newStatus === "delivered") {
+          updateData.delivered_at = new Date().toISOString();
+        }
+
+        await supabase
+          .from("order_workflow_steps")
+          .update(updateData)
+          .eq("id", step_id);
+
+        // Update workflow status if needed
+        if (newStatus === "in_progress" && workflow.status === "not_started") {
+          await supabase
+            .from("order_workflows")
+            .update({ status: "in_progress" })
+            .eq("id", workflow.id);
+        }
+
+        return json({ success: true });
       }
 
       default:

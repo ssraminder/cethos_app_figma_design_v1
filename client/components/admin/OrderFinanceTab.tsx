@@ -1,9 +1,13 @@
+import { useState } from "react";
 import { format } from "date-fns";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 // ── Types ──
 
 interface OrderFinanceTabProps {
   workflowData: any | null;
+  onRefresh?: () => void;
 }
 
 interface OrderFinancials {
@@ -288,12 +292,81 @@ function PayablesBreakdown({
   steps,
   vf,
   currency,
+  onRefresh,
 }: {
   steps: any[];
   vf: VendorFinancials;
   currency: string;
+  onRefresh?: () => void;
 }) {
   const payableSteps = steps.filter((s: any) => s.payable != null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("wire");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const handleMarkInvoiced = async (payableId: string) => {
+    if (!invoiceNumber.trim()) {
+      toast.error("Vendor invoice number is required");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-vendor-payables", {
+        body: {
+          action: "update_status",
+          payable_id: payableId,
+          status: "invoiced",
+          vendor_invoice_number: invoiceNumber,
+          vendor_invoice_date: invoiceDate || null,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success("Payable marked as invoiced");
+      setEditingId(null);
+      setInvoiceNumber("");
+      setInvoiceDate("");
+      onRefresh?.();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update payable");
+    }
+    setActionLoading(false);
+  };
+
+  const handleMarkPaid = async (payableId: string) => {
+    if (!paymentMethod) {
+      toast.error("Payment method is required");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-vendor-payables", {
+        body: {
+          action: "update_status",
+          payable_id: payableId,
+          status: "paid",
+          payment_method: paymentMethod,
+          payment_reference: paymentReference || null,
+          payment_notes: paymentNotes || null,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success("Payable marked as paid");
+      setEditingId(null);
+      setPaymentMethod("wire");
+      setPaymentReference("");
+      setPaymentNotes("");
+      onRefresh?.();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update payable");
+    }
+    setActionLoading(false);
+  };
 
   return (
     <div>
@@ -306,45 +379,143 @@ function PayablesBreakdown({
             </p>
           </div>
         ) : (
-          <>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left py-2.5 px-4 text-xs font-medium text-gray-500">Step</th>
-                  <th className="text-left py-2.5 px-4 text-xs font-medium text-gray-500">Vendor</th>
-                  <th className="text-left py-2.5 px-4 text-xs font-medium text-gray-500">Rate</th>
-                  <th className="text-right py-2.5 px-4 text-xs font-medium text-gray-500">Total</th>
-                  <th className="text-left py-2.5 px-4 text-xs font-medium text-gray-500">Status</th>
-                  <th className="text-right py-2.5 px-4 text-xs font-medium text-gray-500">Margin</th>
-                  <th className="text-left py-2.5 px-4 text-xs font-medium text-gray-500">Invoice #</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payableSteps.map((step: any) => {
-                  const p: StepPayable = step.payable;
-                  return (
-                    <tr key={p.id} className="border-b border-gray-100">
-                      <td className="py-2 px-4 text-gray-900 font-medium">{step.name}</td>
-                      <td className="py-2 px-4 text-gray-600">{p.vendor_name || "\u2014"}</td>
-                      <td className="py-2 px-4 text-gray-600">{formatRate(p.rate, p.rate_unit)}</td>
-                      <td className="py-2 px-4 text-right font-medium text-gray-900">
-                        {formatCurrency(p.total, p.currency || currency)}
-                      </td>
-                      <td className="py-2 px-4">
-                        <PayableBadge status={p.status} />
-                      </td>
-                      <td className="py-2 px-4 text-right text-gray-600">
-                        {p.margin_percent != null ? `${p.margin_percent.toFixed(1)}%` : "\u2014"}
-                      </td>
-                      <td className="py-2 px-4 text-gray-600 text-xs font-mono">
-                        {p.vendor_invoice_number || "\u2014"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </>
+          <div className="divide-y divide-gray-100">
+            {payableSteps.map((step: any) => {
+              const p: StepPayable = step.payable;
+              return (
+                <div key={p.id} className="px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 text-sm flex-1 min-w-0">
+                      <span className="font-medium text-gray-900">{step.name}</span>
+                      <span className="text-gray-400">{p.vendor_name || "\u2014"}</span>
+                      <span className="text-gray-500">{formatRate(p.rate, p.rate_unit)}</span>
+                      <span className="font-medium text-gray-900">{formatCurrency(p.total, p.currency || currency)}</span>
+                      <PayableBadge status={p.status} />
+                      {p.vendor_invoice_number && (
+                        <span className="text-xs text-gray-500 font-mono">{p.vendor_invoice_number}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 ml-2">
+                      {p.status === "approved" && editingId !== `inv-${p.id}` && (
+                        <button
+                          onClick={() => { setEditingId(`inv-${p.id}`); setInvoiceNumber(""); setInvoiceDate(""); }}
+                          className="px-2.5 py-1 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
+                        >
+                          Mark Invoiced
+                        </button>
+                      )}
+                      {(p.status === "approved" || p.status === "invoiced") && editingId !== `pay-${p.id}` && (
+                        <button
+                          onClick={() => { setEditingId(`pay-${p.id}`); setPaymentMethod("wire"); setPaymentReference(""); setPaymentNotes(""); }}
+                          className="px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+                        >
+                          Mark Paid
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Inline form: Mark Invoiced */}
+                  {editingId === `inv-${p.id}` && (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                      <div className="text-xs font-medium text-amber-800">Mark as Invoiced</div>
+                      <div className="flex gap-2 items-end flex-wrap">
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-0.5">Invoice #</label>
+                          <input
+                            type="text"
+                            value={invoiceNumber}
+                            onChange={(e) => setInvoiceNumber(e.target.value)}
+                            className="border rounded px-2 py-1 text-sm w-32"
+                            placeholder="INV-001"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-0.5">Date</label>
+                          <input
+                            type="date"
+                            value={invoiceDate}
+                            onChange={(e) => setInvoiceDate(e.target.value)}
+                            className="border rounded px-2 py-1 text-sm w-36"
+                          />
+                        </div>
+                        <button
+                          onClick={() => handleMarkInvoiced(p.id)}
+                          disabled={actionLoading}
+                          className="px-3 py-1 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-lg"
+                        >
+                          {actionLoading ? "Saving..." : "Confirm"}
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Inline form: Mark Paid */}
+                  {editingId === `pay-${p.id}` && (
+                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg space-y-2">
+                      <div className="text-xs font-medium text-green-800">Mark as Paid</div>
+                      <div className="flex gap-2 items-end flex-wrap">
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-0.5">Method</label>
+                          <select
+                            value={paymentMethod}
+                            onChange={(e) => setPaymentMethod(e.target.value)}
+                            className="border rounded px-2 py-1 text-sm w-28"
+                          >
+                            <option value="wire">Wire</option>
+                            <option value="interac">Interac</option>
+                            <option value="paypal">PayPal</option>
+                            <option value="wise">Wise</option>
+                            <option value="cheque">Cheque</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-0.5">Reference</label>
+                          <input
+                            type="text"
+                            value={paymentReference}
+                            onChange={(e) => setPaymentReference(e.target.value)}
+                            className="border rounded px-2 py-1 text-sm w-32"
+                            placeholder="TXN-12345"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-0.5">Notes</label>
+                          <input
+                            type="text"
+                            value={paymentNotes}
+                            onChange={(e) => setPaymentNotes(e.target.value)}
+                            className="border rounded px-2 py-1 text-sm w-32"
+                            placeholder="Optional"
+                          />
+                        </div>
+                        <button
+                          onClick={() => handleMarkPaid(p.id)}
+                          disabled={actionLoading}
+                          className="px-3 py-1 text-xs font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg"
+                        >
+                          {actionLoading ? "Saving..." : "Confirm"}
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
 
         {/* Summary row */}
@@ -430,7 +601,7 @@ function ProfitSummary({
 
 // ── Main Component ──
 
-export default function OrderFinanceTab({ workflowData }: OrderFinanceTabProps) {
+export default function OrderFinanceTab({ workflowData, onRefresh }: OrderFinanceTabProps) {
   if (!workflowData) {
     return (
       <div className="py-12 text-center">
@@ -471,7 +642,7 @@ export default function OrderFinanceTab({ workflowData }: OrderFinanceTabProps) 
     <div className="space-y-6">
       <SummaryCards of={of} vf={vf} margin={margin} />
       <ReceivableBreakdown of={of} invoice={invoice} />
-      <PayablesBreakdown steps={steps} vf={vf} currency={of.currency} />
+      <PayablesBreakdown steps={steps} vf={vf} currency={of.currency} onRefresh={onRefresh} />
       <ProfitSummary of={of} vf={vf} margin={margin} />
     </div>
   );

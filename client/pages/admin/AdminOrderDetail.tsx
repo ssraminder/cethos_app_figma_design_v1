@@ -429,6 +429,7 @@ export default function AdminOrderDetail() {
   const [documentLineItems, setDocumentLineItems] = useState<DocumentLineItem[]>([]);
   const [orderAdjustments, setOrderAdjustments] = useState<OrderAdjustment[]>([]);
   const [workflowData, setWorkflowData] = useState<any>(null);
+  const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0);
   const [refunds, setRefunds] = useState<any[]>([]);
   const [activeMainTab, setActiveMainTab] = useState<"workflow" | "finance">("workflow");
   const messagesBottomRef = useRef<HTMLDivElement>(null);
@@ -4002,7 +4003,7 @@ export default function AdminOrderDetail() {
           {/* Tab Content: Finance */}
           {activeMainTab === "finance" && (
             <>
-              <OrderFinanceTab workflowData={workflowData} />
+              <OrderFinanceTab workflowData={workflowData} onRefresh={() => setWorkflowRefreshKey(k => k + 1)} />
               {id && order?.customer_id && currentStaff?.staffId && (
                 <div className="mt-4">
                   <OrderInvoiceCard
@@ -4017,7 +4018,7 @@ export default function AdminOrderDetail() {
 
           {/* Tab Content: Workflow (also renders when finance tab is active but hidden, to keep data loaded) */}
           <div className={activeMainTab !== "workflow" ? "hidden" : ""}>
-            {id && <OrderWorkflowSection orderId={id} onWorkflowLoaded={setWorkflowData} />}
+            {id && <OrderWorkflowSection orderId={id} onWorkflowLoaded={setWorkflowData} refreshKey={workflowRefreshKey} />}
           </div>
         </div>
 

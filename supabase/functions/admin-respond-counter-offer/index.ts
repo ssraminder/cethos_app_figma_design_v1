@@ -42,11 +42,11 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Fetch the offer with step details
+    // Fetch the offer
     const { data: offer, error: offerErr } = await supabase
-      .from("vendor_offers")
+      .from("vendor_step_offers")
       .select(`
-        id, step_id, vendor_id, vendor_name, workflow_id, order_id,
+        id, step_id, vendor_id,
         counter_rate, counter_rate_unit, counter_total, counter_currency,
         counter_deadline, counter_note, counter_status,
         vendor_rate, vendor_rate_unit, vendor_total, vendor_currency
@@ -62,12 +62,20 @@ serve(async (req: Request) => {
       return json({ success: false, error: "Counter-proposal is not pending" }, 400);
     }
 
-    // Get step info for response
+    // Get step info (includes order_id we need for payables)
     const { data: step } = await supabase
-      .from("workflow_steps")
-      .select("step_name, step_number")
+      .from("order_workflow_steps")
+      .select("name, step_number, order_id, workflow_id")
       .eq("id", offer.step_id)
       .single();
+
+    // Get vendor name
+    const { data: vendor } = await supabase
+      .from("vendors")
+      .select("full_name")
+      .eq("id", offer.vendor_id)
+      .single();
+    const vendorName = vendor?.full_name || "Unknown";
 
     const now = new Date().toISOString();
 
@@ -81,7 +89,7 @@ serve(async (req: Request) => {
 
       // Update offer counter status
       await supabase
-        .from("vendor_offers")
+        .from("vendor_step_offers")
         .update({
           counter_status: "accepted",
           counter_responded_at: now,
@@ -92,7 +100,7 @@ serve(async (req: Request) => {
 
       // Retract all other pending offers for this step
       await supabase
-        .from("vendor_offers")
+        .from("vendor_step_offers")
         .update({
           status: "retracted",
           responded_at: now,
@@ -103,15 +111,14 @@ serve(async (req: Request) => {
 
       // Assign vendor to step
       await supabase
-        .from("workflow_steps")
+        .from("order_workflow_steps")
         .update({
-          assigned_vendor_id: offer.vendor_id,
-          vendor_name: offer.vendor_name,
+          vendor_id: offer.vendor_id,
           status: "accepted",
-          rate: finalRate,
-          rate_unit: finalRateUnit,
+          vendor_rate: finalRate,
+          vendor_rate_unit: finalRateUnit,
           vendor_total: finalTotal,
-          currency: finalCurrency || "CAD",
+          vendor_currency: finalCurrency || "CAD",
           deadline: finalDeadline || null,
           accepted_at: now,
           assigned_by: staff_id || null,
@@ -122,17 +129,17 @@ serve(async (req: Request) => {
       await supabase
         .from("vendor_payables")
         .update({ status: "cancelled" })
-        .eq("step_id", offer.step_id)
+        .eq("workflow_step_id", offer.step_id)
         .eq("status", "pending");
 
       if (finalRate && finalTotal) {
         const units = finalRate > 0 ? finalTotal / finalRate : 1;
         await supabase.from("vendor_payables").insert({
-          workflow_id: offer.workflow_id,
-          step_id: offer.step_id,
+          workflow_step_id: offer.step_id,
+          offer_id: offer.id,
           vendor_id: offer.vendor_id,
-          vendor_name: offer.vendor_name,
-          order_id: offer.order_id,
+          order_id: step?.order_id,
+          step_name: step?.name || null,
           rate: finalRate,
           rate_unit: finalRateUnit || "flat",
           units,
@@ -140,19 +147,19 @@ serve(async (req: Request) => {
           total: finalTotal,
           currency: finalCurrency || "CAD",
           status: "pending",
-          description: `Step ${step?.step_number}: ${step?.step_name}`,
+          description: `Step ${step?.step_number}: ${step?.name}`,
         });
       }
 
       return json({
         success: true,
-        vendor_name: offer.vendor_name,
-        step_name: step?.step_name,
+        vendor_name: vendorName,
+        step_name: step?.name,
       });
     } else {
       // Reject counter-proposal
       await supabase
-        .from("vendor_offers")
+        .from("vendor_step_offers")
         .update({
           counter_status: "rejected",
           counter_responded_at: now,
@@ -162,8 +169,8 @@ serve(async (req: Request) => {
 
       return json({
         success: true,
-        vendor_name: offer.vendor_name,
-        step_name: step?.step_name,
+        vendor_name: vendorName,
+        step_name: step?.name,
       });
     }
   } catch (err) {
