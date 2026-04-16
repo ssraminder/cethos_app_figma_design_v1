@@ -69,7 +69,10 @@ serve(async (req) => {
           total_output_tokens,
           total_tokens,
           total_pages_ocrd,
-          api_calls_count
+          api_calls_count,
+          ocr_provider,
+          fallback_attempted,
+          primary_provider_error
         `)
         .eq("id", fileId)
         .single();
@@ -120,7 +123,10 @@ serve(async (req) => {
                 total_output_tokens,
                 total_tokens,
                 total_pages_ocrd,
-                api_calls_count
+                api_calls_count,
+                ocr_provider,
+                fallback_attempted,
+                primary_provider_error
               `)
               .in("batch_id", batchIds)
               .order("queued_at");
@@ -141,8 +147,8 @@ serve(async (req) => {
                 const allFileIds = batchFiles.map((f: any) => f.id);
 
                 const resultSelect = includeText
-                  ? "id, file_id, page_number, word_count, character_count, raw_text, confidence_score, detected_language, language_confidence"
-                  : "id, file_id, page_number, word_count, character_count, confidence_score, detected_language, language_confidence";
+                  ? "id, file_id, page_number, word_count, character_count, raw_text, markdown_text, confidence_score, detected_language, language_confidence, ocr_provider"
+                  : "id, file_id, page_number, word_count, character_count, confidence_score, detected_language, language_confidence, ocr_provider";
 
                 let allPages: any[] = [];
                 if (allFileIds.length > 0) {
@@ -203,8 +209,8 @@ serve(async (req) => {
       }
 
       const resultSelect = includeText
-        ? "id, file_id, page_number, word_count, character_count, raw_text, confidence_score, detected_language, language_confidence"
-        : "id, file_id, page_number, word_count, character_count, confidence_score, detected_language, language_confidence";
+        ? "id, file_id, page_number, word_count, character_count, raw_text, markdown_text, confidence_score, detected_language, language_confidence, ocr_provider"
+        : "id, file_id, page_number, word_count, character_count, confidence_score, detected_language, language_confidence, ocr_provider";
 
       const { data: pages, error: pagesError } = await supabaseAdmin
         .from("ocr_batch_results")
@@ -265,7 +271,10 @@ serve(async (req) => {
         total_output_tokens,
         total_tokens,
         total_pages_ocrd,
-        api_calls_count
+        api_calls_count,
+        ocr_provider,
+        fallback_attempted,
+        primary_provider_error
       `)
       .eq("batch_id", batchId)
       .order("queued_at");
@@ -277,8 +286,8 @@ serve(async (req) => {
     const fileIds = (files || []).map(f => f.id);
 
     const resultSelect = includeText
-      ? "id, file_id, page_number, word_count, character_count, raw_text, confidence_score, detected_language, language_confidence"
-      : "id, file_id, page_number, word_count, character_count, confidence_score, detected_language, language_confidence";
+      ? "id, file_id, page_number, word_count, character_count, raw_text, markdown_text, confidence_score, detected_language, language_confidence, ocr_provider"
+      : "id, file_id, page_number, word_count, character_count, confidence_score, detected_language, language_confidence, ocr_provider";
 
     let results: any[] = [];
     if (fileIds.length > 0) {

@@ -25,6 +25,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { supabase } from "@/lib/supabase";
 import UseInQuoteModal from "./UseInQuoteModal";
@@ -38,8 +40,10 @@ interface OcrPageData {
   word_count: number;
   confidence_score: number | null;
   raw_text: string | null;
+  markdown_text: string | null;
   detected_language: string | null;
   language_confidence: number | null;
+  ocr_provider: string | null;
 }
 
 interface OcrApplyData {
@@ -755,6 +759,9 @@ export default function OcrResultsModal({
   // Single-file AI analysis state
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis[]>([]);
 
+  // Re-OCR with Mistral in-flight tracking (fileId → in-progress)
+  const [reocrInProgress, setReocrInProgress] = useState<Set<string>>(new Set());
+
   // Derive effective batchId — use prop first, fall back to aiAnalysis data
   const effectiveBatchId = batchId || (aiAnalysis.length > 0 ? aiAnalysis[0].batch_id : undefined) || null;
 
@@ -949,8 +956,10 @@ export default function OcrResultsModal({
             word_count: (p.word_count as number) || 0,
             confidence_score: (p.confidence_score as number) ?? null,
             raw_text: (p.raw_text as string) ?? null,
+            markdown_text: (p.markdown_text as string) ?? null,
             detected_language: (p.detected_language as string) ?? null,
             language_confidence: (p.language_confidence as number) ?? null,
+            ocr_provider: (p.ocr_provider as string) ?? null,
           })
         );
 
@@ -1004,8 +1013,10 @@ export default function OcrResultsModal({
           word_count: (p.word_count as number) || 0,
           confidence_score: (p.confidence_score as number) ?? null,
           raw_text: (p.raw_text as string) ?? null,
+          markdown_text: (p.markdown_text as string) ?? null,
           detected_language: (p.detected_language as string) ?? null,
           language_confidence: (p.language_confidence as number) ?? null,
+          ocr_provider: (p.ocr_provider as string) ?? null,
         })
       );
 
@@ -1076,6 +1087,75 @@ export default function OcrResultsModal({
       setAiAnalysis([]);
     }
   }, []);
+
+  // -------------------------------------------------------------------------
+  // Re-OCR with Mistral — replaces existing OCR results for a file
+  // -------------------------------------------------------------------------
+  const handleReocrWithMistral = useCallback(
+    async (targetFileId: string) => {
+      if (reocrInProgress.has(targetFileId)) return;
+
+      const confirmed = window.confirm(
+        "Re-OCR this file with Mistral? Existing OCR results will be replaced."
+      );
+      if (!confirmed) return;
+
+      setReocrInProgress((prev) => new Set(prev).add(targetFileId));
+
+      try {
+        const { data, error: invokeError } = await supabase.functions.invoke(
+          "ocr-process-mistral",
+          { body: { mode: "single", fileId: targetFileId } }
+        );
+
+        if (invokeError || !data?.success) {
+          const msg =
+            (data as { error?: string } | null)?.error ||
+            invokeError?.message ||
+            "Mistral OCR failed";
+          throw new Error(msg);
+        }
+
+        toast.success(
+          `Mistral OCR complete: ${data.pages ?? 0} pages, ${(
+            data.words ?? 0
+          ).toLocaleString()} words`
+        );
+
+        // Clear cached page data for this file so it re-fetches with markdown_text.
+        setFilePageData((prev) => {
+          const next = { ...prev };
+          delete next[targetFileId];
+          return next;
+        });
+        setSingleFilePages([]);
+
+        if (batchId) {
+          await fetchBatchData();
+          await fetchFilePages(targetFileId);
+        } else if (fileId) {
+          await fetchSingleFileData();
+        }
+      } catch (err: any) {
+        console.error("Re-OCR with Mistral failed:", err);
+        toast.error(err?.message || "Mistral re-OCR failed");
+      } finally {
+        setReocrInProgress((prev) => {
+          const next = new Set(prev);
+          next.delete(targetFileId);
+          return next;
+        });
+      }
+    },
+    [
+      reocrInProgress,
+      batchId,
+      fileId,
+      fetchBatchData,
+      fetchFilePages,
+      fetchSingleFileData,
+    ]
+  );
 
   useEffect(() => {
     if (isOpen && batchId) {
@@ -2771,8 +2851,39 @@ export default function OcrResultsModal({
         : 0;
     const sfPrimaryLang = getMostCommonLanguage(singleFilePages);
 
+    const sfProvider =
+      singleFilePages.find((p) => p.ocr_provider)?.ocr_provider ?? null;
+
     return (
       <div className="space-y-4">
+        {/* Provider / Re-OCR row */}
+        {fileId && (
+          <div className="flex items-center justify-between px-3 py-2 bg-white border border-gray-200 rounded-lg">
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span>OCR engine:</span>
+              <OcrProviderBadge provider={sfProvider} />
+            </div>
+            <button
+              type="button"
+              disabled={reocrInProgress.has(fileId)}
+              onClick={() => handleReocrWithMistral(fileId)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              {reocrInProgress.has(fileId) ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Reprocessing…
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Re-OCR with Mistral
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -2906,45 +3017,18 @@ export default function OcrResultsModal({
                       </td>
                     </tr>
 
-                    {expandedPage === page.page_number && page.raw_text && (
-                      <tr>
-                        <td colSpan={5} className="p-0">
-                          <div className="mx-4 my-3 border border-gray-200 rounded-lg overflow-hidden">
-                            <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
-                              <span className="text-sm font-medium text-gray-700">
-                                Page {page.page_number} Text
-                              </span>
-                              <button
-                                onClick={() =>
-                                  handleCopyPageText(
-                                    page.page_number,
-                                    page.raw_text!
-                                  )
-                                }
-                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                              >
-                                {copiedPage === page.page_number ? (
-                                  <>
-                                    <Check className="w-3.5 h-3.5 text-green-600" />
-                                    Copied
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy className="w-3.5 h-3.5" />
-                                    Copy
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                            <div className="p-4 max-h-[300px] overflow-y-auto bg-white">
-                              <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono leading-relaxed">
-                                {page.raw_text}
-                              </pre>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                    {expandedPage === page.page_number &&
+                      (page.raw_text || page.markdown_text) && (
+                        <tr>
+                          <td colSpan={5} className="p-0">
+                            <PageTextTabs
+                              page={page}
+                              onCopy={handleCopyPageText}
+                              copied={copiedPage === page.page_number}
+                            />
+                          </td>
+                        </tr>
+                      )}
                   </React.Fragment>
                 ))}
               </tbody>
@@ -3458,6 +3542,8 @@ export default function OcrResultsModal({
                                   onCopyPage={handleCopyPageText}
                                   onLoadPages={() => fetchFilePages(file.id)}
                                   showChunkHeader
+                                  onReocrWithMistral={handleReocrWithMistral}
+                                  isReocring={reocrInProgress.has(file.id)}
                                 />
                               ))
                             ) : (
@@ -3470,6 +3556,8 @@ export default function OcrResultsModal({
                                 onTogglePage={toggleExpandedPage}
                                 onCopyPage={handleCopyPageText}
                                 onLoadPages={() => fetchFilePages(row.files[0].id)}
+                                onReocrWithMistral={handleReocrWithMistral}
+                                isReocring={reocrInProgress.has(row.files[0].id)}
                               />
                             )}
                           </div>
@@ -4117,6 +4205,8 @@ function FilePageDetails({
   onCopyPage,
   onLoadPages,
   showChunkHeader,
+  onReocrWithMistral,
+  isReocring,
 }: {
   file: OcrBatchFile;
   pages?: OcrPageData[];
@@ -4127,6 +4217,8 @@ function FilePageDetails({
   onCopyPage: (pageNum: number, text: string) => void;
   onLoadPages: () => void;
   showChunkHeader?: boolean;
+  onReocrWithMistral?: (fileId: string) => void;
+  isReocring?: boolean;
 }) {
   useEffect(() => {
     if (!pages && !isLoading) {
@@ -4145,6 +4237,40 @@ function FilePageDetails({
             ({file.page_count} pages, {(file.word_count || 0).toLocaleString()}{" "}
             words)
           </span>
+        </div>
+      )}
+
+      {onReocrWithMistral && (
+        <div className="px-4 py-2 flex items-center justify-between bg-white border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <OcrProviderBadge provider={(file as any).ocr_provider ?? null} />
+            {(file as any).fallback_attempted && (
+              <span
+                className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded"
+                title={(file as any).primary_provider_error || "Primary provider failed"}
+              >
+                FALLBACK USED
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={isReocring}
+            onClick={() => onReocrWithMistral(file.id)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            {isReocring ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Reprocessing…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-3.5 h-3.5" />
+                Re-OCR with Mistral
+              </>
+            )}
+          </button>
         </div>
       )}
 
@@ -4229,42 +4355,18 @@ function FilePageDetails({
                   </td>
                 </tr>
 
-                {expandedPage === page.page_number && page.raw_text && (
-                  <tr>
-                    <td colSpan={5} className="p-0">
-                      <div className="mx-4 my-3 border border-gray-200 rounded-lg overflow-hidden">
-                        <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
-                          <span className="text-sm font-medium text-gray-700">
-                            Page {page.page_number} Text
-                          </span>
-                          <button
-                            onClick={() =>
-                              onCopyPage(page.page_number, page.raw_text!)
-                            }
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                          >
-                            {copiedPage === page.page_number ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-green-600" />
-                                Copied
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                Copy
-                              </>
-                            )}
-                          </button>
-                        </div>
-                        <div className="p-4 max-h-[300px] overflow-y-auto bg-white">
-                          <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono leading-relaxed">
-                            {page.raw_text}
-                          </pre>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
+                {expandedPage === page.page_number &&
+                  (page.raw_text || page.markdown_text) && (
+                    <tr>
+                      <td colSpan={5} className="p-0">
+                        <PageTextTabs
+                          page={page}
+                          onCopy={onCopyPage}
+                          copied={copiedPage === page.page_number}
+                        />
+                      </td>
+                    </tr>
+                  )}
               </React.Fragment>
             ))}
           </tbody>
@@ -4431,5 +4533,129 @@ function AnalysisResultCardComponent({
         </div>
       )}
     </article>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OCR provider badge + layout-aware page text viewer
+// ---------------------------------------------------------------------------
+
+function OcrProviderBadge({ provider }: { provider: string | null | undefined }) {
+  if (!provider) return null;
+  const label =
+    provider === "mistral"
+      ? "Mistral"
+      : provider === "google_document_ai"
+        ? "Google"
+        : provider;
+  const styles =
+    provider === "mistral"
+      ? "bg-purple-50 text-purple-700 border-purple-200"
+      : "bg-blue-50 text-blue-700 border-blue-200";
+  return (
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium border rounded uppercase tracking-wide ${styles}`}
+      title={`OCR engine: ${label}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function PageTextTabs({
+  page,
+  onCopy,
+  copied,
+}: {
+  page: OcrPageData;
+  onCopy: (pageNum: number, text: string) => void;
+  copied: boolean;
+}) {
+  const [view, setView] = useState<"text" | "layout">("text");
+  const hasMarkdown = !!page.markdown_text && page.markdown_text.trim().length > 0;
+  const hasText = !!page.raw_text && page.raw_text.trim().length > 0;
+
+  return (
+    <div className="mx-4 my-3 border border-gray-200 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200 gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-medium text-gray-700">
+            Page {page.page_number}
+          </span>
+          <OcrProviderBadge provider={page.ocr_provider} />
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="inline-flex rounded border border-gray-200 bg-white overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setView("text")}
+              className={`px-2 py-1 text-xs font-medium ${
+                view === "text"
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              Text
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("layout")}
+              className={`px-2 py-1 text-xs font-medium border-l border-gray-200 ${
+                view === "layout"
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              Layout
+            </button>
+          </div>
+          <button
+            onClick={() =>
+              onCopy(
+                page.page_number,
+                view === "layout" && hasMarkdown
+                  ? (page.markdown_text as string)
+                  : (page.raw_text || "")
+              )
+            }
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-green-600" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5" />
+                Copy
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+      <div className="p-4 max-h-[300px] overflow-y-auto bg-white">
+        {view === "text" ? (
+          hasText ? (
+            <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono leading-relaxed">
+              {page.raw_text}
+            </pre>
+          ) : (
+            <p className="text-xs text-gray-500 italic">No text extracted.</p>
+          )
+        ) : hasMarkdown ? (
+          <div className="prose prose-sm max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {page.markdown_text as string}
+            </ReactMarkdown>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500 italic">
+            Layout view is only available from Mistral. Click "Re-OCR with
+            Mistral" to regenerate this page with layout-preserving output.
+          </p>
+        )}
+      </div>
+    </div>
   );
 }

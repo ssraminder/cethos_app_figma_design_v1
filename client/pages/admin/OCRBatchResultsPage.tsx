@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import { OcrResultsModal } from '../../components/shared/analysis';
 import {
@@ -95,6 +96,7 @@ export default function OCRBatchResultsPage() {
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [apiUsageBreakdown, setApiUsageBreakdown] = useState<ApiUsageEntry[]>([]);
+  const [reocrInProgress, setReocrInProgress] = useState<Set<string>>(new Set());
   const isInitialLoad = useRef(true);
 
   const fetchResults = useCallback(async () => {
@@ -150,6 +152,51 @@ export default function OCRBatchResultsPage() {
       isInitialLoad.current = false;
     }
   }, [batchId]);
+
+  const handleReocrWithMistral = useCallback(
+    async (fileId: string, filename: string) => {
+      if (reocrInProgress.has(fileId)) return;
+
+      const confirmed = window.confirm(
+        `Re-OCR "${filename}" with Mistral? Existing OCR results for this file will be replaced.`
+      );
+      if (!confirmed) return;
+
+      setReocrInProgress((prev) => new Set(prev).add(fileId));
+
+      try {
+        const { data, error: invokeError } = await supabase.functions.invoke(
+          'ocr-process-mistral',
+          { body: { mode: 'single', fileId } }
+        );
+
+        if (invokeError || !data?.success) {
+          const msg =
+            (data as { error?: string } | null)?.error ||
+            invokeError?.message ||
+            'Mistral OCR failed';
+          throw new Error(msg);
+        }
+
+        toast.success(
+          `Mistral OCR complete: ${data.pages ?? 0} pages, ${(
+            data.words ?? 0
+          ).toLocaleString()} words`
+        );
+        await fetchResults();
+      } catch (err: any) {
+        console.error('Re-OCR with Mistral failed:', err);
+        toast.error(err?.message || 'Mistral re-OCR failed');
+      } finally {
+        setReocrInProgress((prev) => {
+          const next = new Set(prev);
+          next.delete(fileId);
+          return next;
+        });
+      }
+    },
+    [reocrInProgress, fetchResults]
+  );
 
   useEffect(() => {
     if (batchId) fetchResults();
@@ -529,6 +576,41 @@ export default function OCRBatchResultsPage() {
                       View Details
                     </span>
                   )}
+                  {group.type === 'standalone' && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReocrWithMistral(group.files[0].id, group.displayName);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.stopPropagation();
+                          handleReocrWithMistral(group.files[0].id, group.displayName);
+                        }
+                      }}
+                      aria-disabled={reocrInProgress.has(group.files[0].id)}
+                      className={`flex items-center gap-1 text-sm font-medium ${
+                        reocrInProgress.has(group.files[0].id)
+                          ? 'text-purple-400 cursor-not-allowed'
+                          : 'text-purple-700 hover:text-purple-900'
+                      }`}
+                      title="Re-OCR this file with Mistral (layout-aware output)"
+                    >
+                      {reocrInProgress.has(group.files[0].id) ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Reprocessing…
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4" />
+                          Re-OCR (Mistral)
+                        </>
+                      )}
+                    </span>
+                  )}
                   {group.status === 'completed' ? (
                     <CheckCircle className="w-5 h-5 text-green-500" />
                   ) : group.status === 'failed' ? (
@@ -570,6 +652,24 @@ export default function OCRBatchResultsPage() {
                                   View Details
                                 </button>
                               )}
+                              <button
+                                onClick={() => handleReocrWithMistral(file.id, file.filename)}
+                                disabled={reocrInProgress.has(file.id)}
+                                className="flex items-center gap-1 text-purple-700 hover:text-purple-900 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                                title="Re-OCR this file with Mistral (layout-aware output)"
+                              >
+                                {reocrInProgress.has(file.id) ? (
+                                  <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    Reprocessing…
+                                  </>
+                                ) : (
+                                  <>
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    Re-OCR (Mistral)
+                                  </>
+                                )}
+                              </button>
                               {file.status === 'completed' ? (
                                 <CheckCircle className="w-4 h-4 text-green-400" />
                               ) : (

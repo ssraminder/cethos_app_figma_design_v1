@@ -1,6 +1,10 @@
 // supabase/functions/ocr-process-next/index.ts
-// Version: 19
+// Version: 20
 // Changes:
+//   v20: Auto-fallback to Mistral OCR when Google Document AI fails.
+//        On error, invokes the ocr-process-mistral edge function for the
+//        same file before marking it as failed. Records the Google error
+//        in ocr_batch_files.primary_provider_error for audit.
 //   v19: Memory-efficient base64 encoding for large PDF chunks.
 //        Replaces the string concatenation approach (which OOMs on 20MB+ files)
 //        with a chunked encoding strategy that processes 32KB at a time.
@@ -212,21 +216,48 @@ serve(async (req) => {
         ? `Document AI timeout after ${DOCUMENT_AI_TIMEOUT_MS / 1000}s — chunk too large`
         : (processingError.message?.substring(0, 500) || "Unknown error");
 
-      console.error(`❌ Processing error for ${file.filename}:`, errorMessage);
+      console.error(`❌ Google Document AI failed for ${file.filename}:`, errorMessage);
 
+      // Record the Google failure before attempting fallback.
       await supabaseAdmin
         .from("ocr_batch_files")
         .update({
-          status: "failed",
-          error_message: errorMessage,
-          completed_at: new Date().toISOString(),
+          fallback_attempted: true,
+          primary_provider_error: errorMessage,
         })
         .eq("id", file.file_id);
 
-      await updateBatchProgress(supabaseAdmin, file.batch_id);
-      await checkAndNotify(supabaseAdmin, file.batch_id);
+      const fallback = await tryMistralFallback({
+        supabaseUrl,
+        supabaseServiceKey,
+        fileId: file.file_id,
+      });
 
-      processingResult = { success: false, error: errorMessage };
+      if (fallback.success) {
+        console.log(`✅ Mistral fallback succeeded for ${file.filename}`);
+        processingResult = { success: true, pages: fallback.pages, words: fallback.words };
+        // ocr-process-mistral already updated status=completed + wrote results.
+        // updateBatchProgress was called inside the Mistral function too.
+        await checkAndNotify(supabaseAdmin, file.batch_id);
+      } else {
+        console.error(`❌ Mistral fallback also failed for ${file.filename}:`, fallback.error);
+        await supabaseAdmin
+          .from("ocr_batch_files")
+          .update({
+            status: "failed",
+            error_message: `Mistral fallback: ${fallback.error || "unknown"}`,
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", file.file_id);
+
+        await updateBatchProgress(supabaseAdmin, file.batch_id);
+        await checkAndNotify(supabaseAdmin, file.batch_id);
+
+        processingResult = {
+          success: false,
+          error: `Google: ${errorMessage}; Mistral: ${fallback.error || "unknown"}`,
+        };
+      }
     }
 
     // ── v18: Self-chain with concurrency guard ─────────────────────────────
@@ -337,6 +368,35 @@ async function updateBatchProgress(supabaseAdmin: any, batchId: string): Promise
       ...(allDone ? { completed_at: new Date().toISOString() } : {}),
     })
     .eq("id", batchId);
+}
+
+// ============================================================================
+// MISTRAL FALLBACK
+// ============================================================================
+
+async function tryMistralFallback(args: {
+  supabaseUrl: string;
+  supabaseServiceKey: string;
+  fileId: string;
+}): Promise<{ success: boolean; pages?: number; words?: number; error?: string }> {
+  try {
+    const resp = await fetch(`${args.supabaseUrl}/functions/v1/ocr-process-mistral`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${args.supabaseServiceKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ mode: "single", fileId: args.fileId }),
+    });
+
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data?.success) {
+      return { success: false, error: data?.error || `Mistral HTTP ${resp.status}` };
+    }
+    return { success: true, pages: data.pages, words: data.words };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "fetch failed" };
+  }
 }
 
 // ============================================================================
