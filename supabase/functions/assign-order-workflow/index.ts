@@ -74,7 +74,7 @@ serve(async (req: Request) => {
     // Fetch template steps
     const { data: templateSteps } = await supabase
       .from("workflow_template_steps")
-      .select("step_number, name, actor_type, assignment_mode, auto_advance, is_optional, requires_file_upload, instructions, service_id, allowed_actor_types")
+      .select("step_number, name, actor_type, assignment_mode, auto_advance, is_optional, requires_file_upload, instructions, service_id, allowed_actor_types, approval_depends_on_step")
       .eq("template_id", template.id)
       .order("step_number");
 
@@ -125,6 +125,7 @@ serve(async (req: Request) => {
       revision_count: 0,
       source_language: sourceLang,
       target_language: targetLang,
+      approval_depends_on_step: ts.approval_depends_on_step ?? null,
     }));
 
     const { error: stepsErr } = await supabase

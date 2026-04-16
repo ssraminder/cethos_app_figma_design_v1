@@ -112,6 +112,7 @@ interface WorkflowStep {
   unassign_reason: string | null;
   unassign_notes: string | null;
   unassigned_at: string | null;
+  approval_depends_on_step: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -2761,30 +2762,49 @@ function WorkflowPipeline({
                   )}
 
                   {/* Approve + Request Revision: delivered */}
-                  {step.status === "delivered" && (
-                    <>
-                      <button
-                        className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                        disabled={actionLoading === step.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setApproveModalStep(step);
-                        }}
-                      >
-                        {actionLoading === step.id ? "..." : "Approve"}
-                      </button>
-                      <button
-                        className="text-xs px-3 py-1 border border-amber-400 text-amber-600 rounded hover:bg-amber-50"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setReviseFeedback('');
-                          setReviseModalStep(step);
-                        }}
-                      >
-                        Request Revision
-                      </button>
-                    </>
-                  )}
+                  {step.status === "delivered" && (() => {
+                    // Check if approval is gated by another step
+                    const depStepNum = step.approval_depends_on_step;
+                    const depStep = depStepNum
+                      ? steps.find((s) => s.step_number === depStepNum)
+                      : null;
+                    const isBlocked = depStep && depStep.status !== "approved" && depStep.status !== "skipped";
+
+                    return (
+                      <>
+                        {isBlocked && depStep && (
+                          <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                            Waiting for Step {depStep.step_number}: {depStep.name}
+                          </span>
+                        )}
+                        <button
+                          className={`text-xs px-3 py-1 rounded ${
+                            isBlocked
+                              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                              : "bg-green-600 text-white hover:bg-green-700"
+                          }`}
+                          disabled={actionLoading === step.id || !!isBlocked}
+                          title={isBlocked ? `Blocked: Step ${depStep!.step_number} (${depStep!.name ?? depStep!.step_name}) must be approved first` : "Approve delivery"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setApproveModalStep(step);
+                          }}
+                        >
+                          {actionLoading === step.id ? "..." : "Approve"}
+                        </button>
+                        <button
+                          className="text-xs px-3 py-1 border border-amber-400 text-amber-600 rounded hover:bg-amber-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReviseFeedback('');
+                            setReviseModalStep(step);
+                          }}
+                        >
+                          Request Revision
+                        </button>
+                      </>
+                    );
+                  })()}
 
                   {/* Skip Step: optional + not terminal */}
                   {step.is_optional && !["approved", "skipped", "cancelled"].includes(step.status) && (
@@ -3174,8 +3194,7 @@ function WorkflowPipeline({
                 className="text-xs px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
                 disabled={actionLoading === approveModalStep.id}
                 onClick={async () => {
-                  await handleStepAction(approveModalStep.id, "change_status", {
-                    status: "approved",
+                  await handleStepAction(approveModalStep.id, "approve", {
                     staff_id: currentStaff?.id,
                   });
                   setApproveModalStep(null);

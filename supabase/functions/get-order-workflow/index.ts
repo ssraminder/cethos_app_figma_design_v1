@@ -103,6 +103,7 @@ serve(async (req: Request) => {
         service_id, service_name, order_document_id,
         unassigned_vendor_id, unassigned_vendor_name,
         unassign_reason, unassign_notes, unassigned_at,
+        approval_depends_on_step,
         created_at, updated_at
       `)
       .eq("order_id", order_id)
@@ -216,6 +217,7 @@ serve(async (req: Request) => {
         unassign_reason: s.unassign_reason,
         unassign_notes: s.unassign_notes,
         unassigned_at: s.unassigned_at,
+        approval_depends_on_step: s.approval_depends_on_step ?? null,
         created_at: s.created_at,
         updated_at: s.updated_at,
       });

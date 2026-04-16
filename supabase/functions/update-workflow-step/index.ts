@@ -426,6 +426,39 @@ serve(async (req: Request) => {
 
       // ── Approve delivery ──
       case "approve": {
+        // Check approval dependency — e.g. vendor translation approval
+        // may require customer draft review to be approved first
+        if (step.approval_depends_on_step) {
+          const { data: depStep } = await supabase
+            .from("workflow_steps")
+            .select("id, step_number, step_name, status")
+            .eq("workflow_id", step.workflow_id)
+            .eq("step_number", step.approval_depends_on_step)
+            .is("deleted_at", null)
+            .single();
+
+          if (depStep && depStep.status !== "approved" && depStep.status !== "skipped") {
+            // Auto-advance the dependency step to in_progress if still pending
+            if (depStep.status === "pending") {
+              await supabase
+                .from("workflow_steps")
+                .update({
+                  status: "in_progress",
+                  started_at: new Date().toISOString(),
+                })
+                .eq("id", depStep.id);
+            }
+
+            return json({
+              success: false,
+              error: `Cannot approve this step until Step ${depStep.step_number} (${depStep.step_name}) is completed. Current status: ${depStep.status}`,
+              blocked_by_step: depStep.step_number,
+              blocked_by_step_name: depStep.step_name,
+              blocked_by_step_status: depStep.status,
+            }, 409);
+          }
+        }
+
         await supabase
           .from("workflow_steps")
           .update({
