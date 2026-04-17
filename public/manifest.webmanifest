@@ -1,0 +1,25 @@
+{
+  "name": "Cethos Kiosk",
+  "short_name": "Cethos Kiosk",
+  "description": "Walk-in translation quote kiosk for Cethos front-desk tablets.",
+  "start_url": "/kiosk",
+  "scope": "/kiosk/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#f0fdfa",
+  "theme_color": "#0d9488",
+  "icons": [
+    {
+      "src": "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/final_favicon_cethosAsset%202.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/final_favicon_cethosAsset%202.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

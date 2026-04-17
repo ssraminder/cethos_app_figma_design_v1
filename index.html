@@ -18,6 +18,14 @@
 
     <!-- Preconnect to Supabase for faster asset loading -->
     <link rel="preconnect" href="https://lmzoyezvsjgsxveoakdr.supabase.co" />
+
+    <!-- PWA — used by /kiosk/* routes for "Add to Home Screen" on tablets -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0d9488" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Cethos Kiosk" />
+    <meta name="mobile-web-app-capable" content="yes" />
   </head>
   <body>
     <div id="root"></div>

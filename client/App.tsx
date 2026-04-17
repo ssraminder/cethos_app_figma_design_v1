@@ -86,6 +86,10 @@ import AdminVendorsList from "./pages/admin/AdminVendorsList";
 import AdminVendorDetail from "./pages/admin/AdminVendorDetail";
 import AdminVendorNew from "./pages/admin/AdminVendorNew";
 import FastQuoteCreate from "./pages/admin/FastQuoteCreate";
+import AdminKioskDevices from "./pages/admin/AdminKioskDevices";
+import AdminMyKioskPin from "./pages/admin/AdminMyKioskPin";
+import KioskPairing from "./pages/kiosk/KioskPairing";
+import KioskShell from "./pages/kiosk/KioskShell";
 import VendorInvoices from "./pages/admin/invoices/VendorInvoices";
 import CustomerInvoices from "./pages/admin/invoices/CustomerInvoices";
 import CreateInvoice from "./pages/admin/invoices/CreateInvoice";
@@ -303,6 +307,10 @@ const App = () => (
                     }
                   />
 
+                  {/* Kiosk mode — paired-device auth, no user session */}
+                  <Route path="/kiosk/pair" element={<KioskPairing />} />
+                  <Route path="/kiosk" element={<KioskShell />} />
+
                   {/* Admin login (not protected) */}
                   <Route path="/admin/login" element={<AdminLogin />} />
                   <Route
@@ -341,6 +349,8 @@ const App = () => (
                     <Route path="thresholds" element={<Thresholds />} />
                     <Route path="ai/knowledge" element={<AIKnowledgeBase />} />
                     <Route path="staff" element={<AdminStaffManagement />} />
+                    <Route path="kiosk-devices" element={<AdminKioskDevices />} />
+                    <Route path="my-kiosk-pin" element={<AdminMyKioskPin />} />
                     <Route path="reports" element={<AdminReports />} />
                     <Route path="ar" element={<AccountsReceivable />} />
                     <Route path="customers" element={<CustomersList />} />
