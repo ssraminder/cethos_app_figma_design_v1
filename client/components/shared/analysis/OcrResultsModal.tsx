@@ -1104,7 +1104,7 @@ export default function OcrResultsModal({
       if (reocrInProgress.has(targetFileId)) return;
 
       const confirmed = window.confirm(
-        "Re-OCR this file with Mistral? Existing OCR results will be replaced."
+        "Re-OCR this file with Mistral? Existing Google results are kept — only the Mistral column will be refreshed."
       );
       if (!confirmed) return;
 

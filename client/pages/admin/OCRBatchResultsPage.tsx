@@ -325,7 +325,7 @@ export default function OCRBatchResultsPage() {
       if (reocrInProgress.has(fileId)) return;
 
       const confirmed = window.confirm(
-        `Re-OCR "${filename}" with Mistral? Existing OCR results for this file will be replaced.`
+        `Re-OCR "${filename}" with Mistral? Existing Google results are kept — only the Mistral column will be refreshed.`
       );
       if (!confirmed) return;
 
