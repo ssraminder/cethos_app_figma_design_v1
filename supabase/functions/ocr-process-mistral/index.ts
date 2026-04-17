@@ -1,16 +1,19 @@
 // supabase/functions/ocr-process-mistral/index.ts
-// Version: 1
+// Version: 2
 //
 // Backup OCR processor using Mistral Document OCR
 // (POST https://api.mistral.ai/v1/ocr, model: mistral-ocr-latest).
 //
-// Modes:
-//   - "single": reprocess one ocr_batch_files.id. Deletes any existing
-//     ocr_batch_results rows for that file_id and writes fresh ones with
-//     ocr_provider='mistral' + markdown_text populated. Used for:
-//       (a) admin "Re-OCR with Mistral" manual re-runs
-//       (b) auto-fallback from ocr-process-next when Google Document AI fails
-//   - "queue": reserved for future (not used in Phase 1)
+// Modes (mode=single, reason differs):
+//   - reason="fallback" — auto-fallback from ocr-process-next after Google
+//     Document AI failed. Destructive: clears all ocr_batch_results for the
+//     file (Google didn't produce any), writes Mistral rows, sets
+//     active_ocr_provider='mistral'.
+//   - reason="manual" (default) — admin "Re-OCR with Mistral" button.
+//     Additive: only replaces existing mistral rows (idempotent re-run), keeps
+//     any google_document_ai rows intact. Does NOT flip active_ocr_provider —
+//     staff chooses in the UI via the "Use this for analysis" action. If the
+//     file has no google rows yet, Mistral becomes active by default.
 //
 // Required Supabase edge-function secret (set in dashboard):
 //   MISTRAL_API_KEY — API key from https://console.mistral.ai/
@@ -56,20 +59,24 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const mode = (body.mode as string) || "single";
+    const reason = ((body.reason as string) || "manual").toLowerCase();
     const fileId = body.fileId as string | undefined;
 
     if (mode !== "single") {
       return jsonResponse(400, { success: false, error: `Unsupported mode: ${mode}` });
     }
+    if (reason !== "manual" && reason !== "fallback") {
+      return jsonResponse(400, { success: false, error: `Unsupported reason: ${reason}` });
+    }
     if (!fileId) {
       return jsonResponse(400, { success: false, error: "fileId required for mode=single" });
     }
 
-    console.log(`🤖 Mistral OCR — processing file ${fileId}`);
+    console.log(`🤖 Mistral OCR — processing file ${fileId} (reason=${reason})`);
 
     const { data: fileRow, error: fileError } = await supabaseAdmin
       .from("ocr_batch_files")
-      .select("id, batch_id, filename, storage_path, mime_type")
+      .select("id, batch_id, filename, storage_path, mime_type, active_ocr_provider")
       .eq("id", fileId)
       .single();
 
@@ -77,10 +84,16 @@ serve(async (req) => {
       throw new Error(`File ${fileId} not found: ${fileError?.message || "no row"}`);
     }
 
-    await supabaseAdmin
-      .from("ocr_batch_files")
-      .update({ status: "processing", started_at: new Date().toISOString() })
-      .eq("id", fileId);
+    // On manual re-runs, preserve the file's current status (usually "completed"
+    // from Google) and don't flip it to "processing" — that would hide the file's
+    // existing results from the UI while Mistral runs. Fallback path still does
+    // flip since the file just failed.
+    if (reason === "fallback") {
+      await supabaseAdmin
+        .from("ocr_batch_files")
+        .update({ status: "processing", started_at: new Date().toISOString() })
+        .eq("id", fileId);
+    }
 
     const startTime = Date.now();
 
@@ -92,11 +105,15 @@ serve(async (req) => {
 
     const processingTime = Date.now() - startTime;
 
-    // Delete any existing results for this file, then insert fresh ones.
-    const { error: deleteError } = await supabaseAdmin
+    // Fallback: wipe all rows (Google didn't produce usable ones).
+    // Manual: wipe only existing Mistral rows — keep Google rows for comparison.
+    const deleteQuery = supabaseAdmin
       .from("ocr_batch_results")
       .delete()
       .eq("file_id", fileId);
+    const { error: deleteError } = reason === "manual"
+      ? await deleteQuery.eq("ocr_provider", "mistral")
+      : await deleteQuery;
     if (deleteError) {
       throw new Error(`Failed to clear existing results: ${deleteError.message}`);
     }
@@ -110,21 +127,66 @@ serve(async (req) => {
       }
     }
 
-    const costUsd = result.pageResults.length * MISTRAL_COST_PER_PAGE_USD;
+    const mistralCostUsd = result.pageResults.length * MISTRAL_COST_PER_PAGE_USD;
+
+    // Decide the active provider. Fallback always flips to mistral. Manual
+    // re-runs keep the existing active unless no Google rows exist yet
+    // (first-time OCR via manual trigger).
+    let activeProvider: string;
+    if (reason === "fallback") {
+      activeProvider = "mistral";
+    } else {
+      const { count: googleRowCount } = await supabaseAdmin
+        .from("ocr_batch_results")
+        .select("id", { count: "exact", head: true })
+        .eq("file_id", fileId)
+        .eq("ocr_provider", "google_document_ai");
+      activeProvider = (googleRowCount && googleRowCount > 0)
+        ? (fileRow as any).active_ocr_provider || "google_document_ai"
+        : "mistral";
+    }
+
+    // File-level word_count/page_count should reflect the ACTIVE provider's
+    // rows, not the last-run provider. Count pages where ocr_provider=active.
+    const { data: activeRows } = await supabaseAdmin
+      .from("ocr_batch_results")
+      .select("word_count")
+      .eq("file_id", fileId)
+      .eq("ocr_provider", activeProvider);
+
+    const activePageCount = activeRows?.length || 0;
+    const activeWordCount = (activeRows || []).reduce(
+      (sum: number, r: any) => sum + (r.word_count || 0),
+      0
+    );
+
+    // Cost is additive for manual re-runs (Google + Mistral both charged),
+    // replacement for fallback (Google produced nothing).
+    const { data: existingCostRow } = await supabaseAdmin
+      .from("ocr_batch_files")
+      .select("total_api_cost_usd, api_calls_count")
+      .eq("id", fileId)
+      .single();
+
+    const priorCost = parseFloat((existingCostRow as any)?.total_api_cost_usd || "0") || 0;
+    const priorCalls = (existingCostRow as any)?.api_calls_count || 0;
+    const nextTotalCost = reason === "fallback" ? mistralCostUsd : priorCost + mistralCostUsd;
+    const nextApiCalls = reason === "fallback" ? 1 : priorCalls + 1;
 
     await supabaseAdmin
       .from("ocr_batch_files")
       .update({
         status: "completed",
-        page_count: result.pageResults.length,
-        word_count: result.totalWords,
+        page_count: activePageCount,
+        word_count: activeWordCount,
         processing_time_ms: processingTime,
         completed_at: new Date().toISOString(),
         ocr_provider: "mistral",
+        active_ocr_provider: activeProvider,
         error_message: null,
-        total_api_cost_usd: costUsd,
-        total_pages_ocrd: result.pageResults.length,
-        api_calls_count: 1,
+        total_api_cost_usd: nextTotalCost,
+        total_pages_ocrd: activePageCount,
+        api_calls_count: nextApiCalls,
       })
       .eq("id", fileId);
 
@@ -137,7 +199,7 @@ serve(async (req) => {
       model: MISTRAL_MODEL,
       operation: "ocr",
       pages_processed: result.pageResults.length,
-      cost_usd: costUsd,
+      cost_usd: mistralCostUsd,
       processing_time_ms: processingTime,
       status: "success",
     });

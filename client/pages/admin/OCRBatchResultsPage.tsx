@@ -24,6 +24,7 @@ interface PageResult {
   page_number: number;
   word_count: number;
   character_count: number;
+  ocr_provider?: string | null;
 }
 
 interface FileResult {
@@ -38,6 +39,23 @@ interface FileResult {
   file_group_id: string | null;
   original_filename: string | null;
   chunk_index: number | null;
+  // Provider tracking (per-file)
+  ocr_provider?: string | null;
+  active_ocr_provider?: string | null;
+  fallback_attempted?: boolean | null;
+  primary_provider_error?: string | null;
+}
+
+// Filter a file's pages down to the rows produced by its active OCR provider.
+// When both Google and Mistral ran, the API returns both sets — we only want
+// to count/render the active one in aggregates, charts, and CSV.
+function activePages(file: FileResult): PageResult[] {
+  const active = file.active_ocr_provider || 'google_document_ai';
+  // If no rows have ocr_provider set (legacy data before the migration),
+  // return them all so we don't accidentally hide everything.
+  const hasProviderTagging = (file.pages || []).some((p) => p.ocr_provider);
+  if (!hasProviderTagging) return file.pages || [];
+  return (file.pages || []).filter((p) => (p.ocr_provider || 'google_document_ai') === active);
 }
 
 interface FileGroup {
@@ -251,7 +269,7 @@ export default function OCRBatchResultsPage() {
       const totalWords = chunks.reduce((sum, c) => sum + (c.word_count || 0), 0);
       const allCompleted = chunks.every(c => c.status === 'completed');
       const allFailed = chunks.every(c => c.status === 'failed');
-      const allPages = chunks.flatMap(c => c.pages);
+      const allPages = chunks.flatMap(c => activePages(c));
 
       groups.push({
         type: 'group',
@@ -275,7 +293,7 @@ export default function OCRBatchResultsPage() {
         status: file.status,
         chunkCount: 1,
         files: [file],
-        allPages: file.pages,
+        allPages: activePages(file),
       });
     });
 
@@ -294,8 +312,9 @@ export default function OCRBatchResultsPage() {
         // Grouped: show each chunk's pages under original name
         group.files.forEach(file => {
           const chunkLabel = `Chunk ${file.chunk_index || '?'} (${file.filename})`;
-          if (file.pages.length > 0) {
-            file.pages.forEach(page => {
+          const pages = activePages(file);
+          if (pages.length > 0) {
+            pages.forEach(page => {
               rows.push(`"${origName}","${chunkLabel}",${page.page_number},${page.word_count},${(page.word_count / 225).toFixed(2)}`);
             });
             rows.push(`"${origName}","${chunkLabel}",Subtotal,${file.word_count},${(file.word_count / 225).toFixed(1)}`);
@@ -309,8 +328,9 @@ export default function OCRBatchResultsPage() {
       } else {
         // Standalone: same as before
         const file = group.files[0];
-        if (file.pages.length > 0) {
-          file.pages.forEach(page => {
+        const pages = activePages(file);
+        if (pages.length > 0) {
+          pages.forEach(page => {
             rows.push(`"${origName}",,${page.page_number},${page.word_count},${(page.word_count / 225).toFixed(2)}`);
           });
           rows.push(`"${origName}",,Total,${file.word_count},${(file.word_count / 225).toFixed(1)}`);
@@ -678,43 +698,50 @@ export default function OCRBatchResultsPage() {
                             </div>
                           </div>
 
-                          {/* Per-page table for this chunk */}
-                          {file.status === 'failed' ? (
-                            <div className="px-4 py-3 bg-red-50">
-                              <p className="text-sm text-red-700">
-                                Error: {file.error_message || 'Unknown error'}
-                              </p>
-                            </div>
-                          ) : file.pages.length > 0 ? (
-                            <table className="w-full">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Page</th>
-                                  <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Words</th>
-                                  <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Billable</th>
-                                  <th className="px-4 py-2 w-1/2"><span className="sr-only">Bar</span></th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {file.pages.map((page) => {
-                                  const maxWords = Math.max(...file.pages.map(p => p.word_count), 1);
-                                  const barWidth = (page.word_count / maxWords) * 100;
-                                  return (
-                                    <tr key={page.page_number} className="border-t">
-                                      <td className="px-4 py-2 text-sm text-gray-900">Page {page.page_number}</td>
-                                      <td className="px-4 py-2 text-sm text-gray-900 text-right">{page.word_count.toLocaleString()}</td>
-                                      <td className="px-4 py-2 text-sm text-gray-500 text-right">{(page.word_count / 225).toFixed(2)}</td>
-                                      <td className="px-4 py-2">
-                                        <div className="h-4 bg-gray-100 rounded overflow-hidden">
-                                          <div className="h-full bg-blue-500 rounded" style={{ width: `${barWidth}%` }} />
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          ) : null}
+                          {/* Per-page table for this chunk (filter to active provider) */}
+                          {(() => {
+                            const activePgs = activePages(file);
+                            if (file.status === 'failed') {
+                              return (
+                                <div className="px-4 py-3 bg-red-50">
+                                  <p className="text-sm text-red-700">
+                                    Error: {file.error_message || 'Unknown error'}
+                                  </p>
+                                </div>
+                              );
+                            }
+                            if (activePgs.length === 0) return null;
+                            const maxWords = Math.max(...activePgs.map((p) => p.word_count), 1);
+                            return (
+                              <table className="w-full">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Page</th>
+                                    <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Words</th>
+                                    <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Billable</th>
+                                    <th className="px-4 py-2 w-1/2"><span className="sr-only">Bar</span></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {activePgs.map((page) => {
+                                    const barWidth = (page.word_count / maxWords) * 100;
+                                    return (
+                                      <tr key={page.page_number} className="border-t">
+                                        <td className="px-4 py-2 text-sm text-gray-900">Page {page.page_number}</td>
+                                        <td className="px-4 py-2 text-sm text-gray-900 text-right">{page.word_count.toLocaleString()}</td>
+                                        <td className="px-4 py-2 text-sm text-gray-500 text-right">{(page.word_count / 225).toFixed(2)}</td>
+                                        <td className="px-4 py-2">
+                                          <div className="h-4 bg-gray-100 rounded overflow-hidden">
+                                            <div className="h-full bg-blue-500 rounded" style={{ width: `${barWidth}%` }} />
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            );
+                          })()}
                         </div>
                       ))}
 
@@ -749,8 +776,9 @@ export default function OCRBatchResultsPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {group.files[0].pages.map((page) => {
-                              const maxWords = Math.max(...group.files[0].pages.map(p => p.word_count), 1);
+                            {activePages(group.files[0]).map((page) => {
+                              const activePgs = activePages(group.files[0]);
+                              const maxWords = Math.max(...activePgs.map(p => p.word_count), 1);
                               const barWidth = (page.word_count / maxWords) * 100;
                               return (
                                 <tr key={page.page_number} className="border-t">

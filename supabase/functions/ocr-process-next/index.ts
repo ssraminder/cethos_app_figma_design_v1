@@ -1,6 +1,8 @@
 // supabase/functions/ocr-process-next/index.ts
-// Version: 20
+// Version: 21
 // Changes:
+//   v21: Pass reason="fallback" to ocr-process-mistral so it does a
+//        destructive replace (instead of the additive manual re-run path).
 //   v20: Auto-fallback to Mistral OCR when Google Document AI fails.
 //        On error, invokes the ocr-process-mistral edge function for the
 //        same file before marking it as failed. Records the Google error
@@ -386,7 +388,7 @@ async function tryMistralFallback(args: {
         Authorization: `Bearer ${args.supabaseServiceKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ mode: "single", fileId: args.fileId }),
+      body: JSON.stringify({ mode: "single", fileId: args.fileId, reason: "fallback" }),
     });
 
     const data = await resp.json().catch(() => ({}));

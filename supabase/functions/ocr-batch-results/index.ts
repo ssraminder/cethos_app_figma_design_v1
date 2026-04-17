@@ -71,6 +71,7 @@ serve(async (req) => {
           total_pages_ocrd,
           api_calls_count,
           ocr_provider,
+          active_ocr_provider,
           fallback_attempted,
           primary_provider_error
         `)
@@ -125,6 +126,7 @@ serve(async (req) => {
                 total_pages_ocrd,
                 api_calls_count,
                 ocr_provider,
+                active_ocr_provider,
                 fallback_attempted,
                 primary_provider_error
               `)
@@ -273,6 +275,7 @@ serve(async (req) => {
         total_pages_ocrd,
         api_calls_count,
         ocr_provider,
+        active_ocr_provider,
         fallback_attempted,
         primary_provider_error
       `)

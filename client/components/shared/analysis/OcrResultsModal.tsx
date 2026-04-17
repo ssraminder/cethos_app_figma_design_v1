@@ -64,6 +64,10 @@ interface OcrBatchFile {
   original_filename: string | null;
   chunk_index: number | null;
   pages?: OcrPageData[];
+  ocr_provider?: string | null;
+  active_ocr_provider?: string | null;
+  fallback_attempted?: boolean | null;
+  primary_provider_error?: string | null;
 }
 
 interface DisplayRow {
@@ -725,6 +729,7 @@ export default function OcrResultsModal({
 
   // Single-file mode states
   const [singleFilePages, setSingleFilePages] = useState<OcrPageData[]>([]);
+  const [singleFileActiveProvider, setSingleFileActiveProvider] = useState<string | null>(null);
 
   // Tab state (batch mode only)
   const [activeTab, setActiveTab] = useState<string>("ocr");
@@ -1021,6 +1026,9 @@ export default function OcrResultsModal({
       );
 
       setSingleFilePages(pages);
+      setSingleFileActiveProvider(
+        (data.file?.active_ocr_provider as string) ?? null
+      );
     } catch (err) {
       console.error("Error fetching single file data:", err);
       setError((err as Error).message || "Failed to load file results");
@@ -1157,6 +1165,45 @@ export default function OcrResultsModal({
     ]
   );
 
+  // -------------------------------------------------------------------------
+  // Set active OCR provider for a file (staff picks which provider's results
+  // drive AI analysis + pricing). Updates ocr_batch_files.active_ocr_provider
+  // then refetches so the UI reflects the new active.
+  // -------------------------------------------------------------------------
+  const handleSetActiveProvider = useCallback(
+    async (targetFileId: string, provider: string) => {
+      try {
+        const { error: updateError } = await supabase
+          .from("ocr_batch_files")
+          .update({ active_ocr_provider: provider })
+          .eq("id", targetFileId);
+
+        if (updateError) throw updateError;
+
+        toast.success(
+          `Active OCR set to ${provider === "mistral" ? "Mistral" : "Google"}`
+        );
+
+        setFilePageData((prev) => {
+          const next = { ...prev };
+          delete next[targetFileId];
+          return next;
+        });
+
+        if (batchId) {
+          await fetchBatchData();
+          await fetchFilePages(targetFileId);
+        } else if (fileId) {
+          await fetchSingleFileData();
+        }
+      } catch (err: any) {
+        console.error("Failed to set active provider:", err);
+        toast.error(err?.message || "Failed to update active provider");
+      }
+    },
+    [batchId, fileId, fetchBatchData, fetchFilePages, fetchSingleFileData]
+  );
+
   useEffect(() => {
     if (isOpen && batchId) {
       fetchBatchData();
@@ -1176,6 +1223,7 @@ export default function OcrResultsModal({
       setActiveTab("ocr");
       setAnalyseError(null);
       setSingleFilePages([]);
+      setSingleFileActiveProvider(null);
       setAiAnalysis([]);
       setPricingRows([]);
       setPricingRatesLoaded(false);
@@ -2939,102 +2987,22 @@ export default function OcrResultsModal({
           </div>
         </div>
 
-        {/* Per-page results table */}
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2.5 text-left font-medium text-gray-700">
-                    Page
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-gray-700">
-                    Words
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-gray-700">
-                    Confidence
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-gray-700">
-                    Language
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-gray-700">
-                    Text
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {singleFilePages.map((page) => (
-                  <React.Fragment key={page.page_number}>
-                    <tr className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-medium text-gray-900">
-                        {page.page_number}
-                      </td>
-                      <td className="px-4 py-2 text-gray-700">
-                        {page.word_count.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2">
-                        <span
-                          className={`font-medium ${confidenceColor(
-                            (page.confidence_score || 0) * 100
-                          )}`}
-                        >
-                          {page.confidence_score != null
-                            ? `${(page.confidence_score * 100).toFixed(1)}%`
-                            : "N/A"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-gray-700">
-                        {page.detected_language ? (
-                          <span>
-                            {getLanguageFlag(page.detected_language)}{" "}
-                            {getLanguageName(page.detected_language)}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">N/A</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2">
-                        {page.raw_text ? (
-                          <button
-                            onClick={() => toggleExpandedPage(page.page_number)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
-                          >
-                            {expandedPage === page.page_number ? (
-                              <>
-                                <EyeOff className="w-3.5 h-3.5" />
-                                Hide
-                              </>
-                            ) : (
-                              <>
-                                <Eye className="w-3.5 h-3.5" />
-                                View
-                              </>
-                            )}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-400">No text</span>
-                        )}
-                      </td>
-                    </tr>
-
-                    {expandedPage === page.page_number &&
-                      (page.raw_text || page.markdown_text) && (
-                        <tr>
-                          <td colSpan={5} className="p-0">
-                            <PageTextTabs
-                              page={page}
-                              onCopy={handleCopyPageText}
-                              copied={copiedPage === page.page_number}
-                            />
-                          </td>
-                        </tr>
-                      )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        {/* Per-page results table (with comparison view when 2 providers run) */}
+        <SingleFileProviderView
+          pages={singleFilePages}
+          activeProvider={
+            singleFileActiveProvider || sfProvider || "google_document_ai"
+          }
+          expandedPage={expandedPage}
+          copiedPage={copiedPage}
+          onTogglePage={toggleExpandedPage}
+          onCopyPage={handleCopyPageText}
+          onSetActive={
+            fileId
+              ? (provider) => handleSetActiveProvider(fileId, provider)
+              : undefined
+          }
+        />
       </div>
     );
   };
@@ -3544,6 +3512,7 @@ export default function OcrResultsModal({
                                   showChunkHeader
                                   onReocrWithMistral={handleReocrWithMistral}
                                   isReocring={reocrInProgress.has(file.id)}
+                                  onSetActiveProvider={handleSetActiveProvider}
                                 />
                               ))
                             ) : (
@@ -3558,6 +3527,7 @@ export default function OcrResultsModal({
                                 onLoadPages={() => fetchFilePages(row.files[0].id)}
                                 onReocrWithMistral={handleReocrWithMistral}
                                 isReocring={reocrInProgress.has(row.files[0].id)}
+                                onSetActiveProvider={handleSetActiveProvider}
                               />
                             )}
                           </div>
@@ -4207,6 +4177,7 @@ function FilePageDetails({
   showChunkHeader,
   onReocrWithMistral,
   isReocring,
+  onSetActiveProvider,
 }: {
   file: OcrBatchFile;
   pages?: OcrPageData[];
@@ -4219,12 +4190,27 @@ function FilePageDetails({
   showChunkHeader?: boolean;
   onReocrWithMistral?: (fileId: string) => void;
   isReocring?: boolean;
+  onSetActiveProvider?: (fileId: string, provider: string) => void;
 }) {
   useEffect(() => {
     if (!pages && !isLoading) {
       onLoadPages();
     }
   }, [pages, isLoading, onLoadPages]);
+
+  const pagesByProvider = useMemo(() => {
+    const grouped = new Map<string, OcrPageData[]>();
+    (pages || []).forEach((p) => {
+      const key = p.ocr_provider || "google_document_ai";
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(p);
+    });
+    return grouped;
+  }, [pages]);
+
+  const providerKeys = Array.from(pagesByProvider.keys());
+  const hasComparison = providerKeys.length > 1;
+  const activeProvider = file.active_ocr_provider || "google_document_ai";
 
   return (
     <div className="border-b border-gray-200 last:border-b-0">
@@ -4243,11 +4229,11 @@ function FilePageDetails({
       {onReocrWithMistral && (
         <div className="px-4 py-2 flex items-center justify-between bg-white border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <OcrProviderBadge provider={(file as any).ocr_provider ?? null} />
-            {(file as any).fallback_attempted && (
+            <OcrProviderBadge provider={file.ocr_provider ?? null} />
+            {file.fallback_attempted && (
               <span
                 className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded"
-                title={(file as any).primary_provider_error || "Primary provider failed"}
+                title={file.primary_provider_error || "Primary provider failed"}
               >
                 FALLBACK USED
               </span>
@@ -4267,7 +4253,7 @@ function FilePageDetails({
             ) : (
               <>
                 <RefreshCw className="w-3.5 h-3.5" />
-                Re-OCR with Mistral
+                {hasComparison ? "Re-run Mistral" : "Re-OCR with Mistral"}
               </>
             )}
           </button>
@@ -4279,103 +4265,256 @@ function FilePageDetails({
           <Loader2 className="w-5 h-5 animate-spin text-blue-600 mr-2" />
           <span className="text-sm text-gray-500">Loading page details...</span>
         </div>
-      ) : pages && pages.length > 0 ? (
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-2 text-left font-medium text-gray-700">
-                Page
-              </th>
-              <th className="px-4 py-2 text-left font-medium text-gray-700">
-                Words
-              </th>
-              <th className="px-4 py-2 text-left font-medium text-gray-700">
-                Confidence
-              </th>
-              <th className="px-4 py-2 text-left font-medium text-gray-700">
-                Language
-              </th>
-              <th className="px-4 py-2 text-left font-medium text-gray-700">
-                Text
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {pages.map((page) => (
-              <React.Fragment key={page.page_number}>
-                <tr className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium text-gray-900">
-                    {page.page_number}
-                  </td>
-                  <td className="px-4 py-2 text-gray-700">
-                    {page.word_count.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={`font-medium ${confidenceColor(
-                        (page.confidence_score || 0) * 100
-                      )}`}
-                    >
-                      {page.confidence_score != null
-                        ? `${(page.confidence_score * 100).toFixed(1)}%`
-                        : "N/A"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-gray-700">
-                    {page.detected_language ? (
-                      <span>
-                        {getLanguageFlag(page.detected_language)}{" "}
-                        {getLanguageName(page.detected_language)}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">N/A</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    {page.raw_text ? (
-                      <button
-                        onClick={() => onTogglePage(page.page_number)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
-                      >
-                        {expandedPage === page.page_number ? (
-                          <>
-                            <EyeOff className="w-3.5 h-3.5" />
-                            Hide
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="w-3.5 h-3.5" />
-                            View
-                          </>
-                        )}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-gray-400">No text</span>
-                    )}
-                  </td>
-                </tr>
-
-                {expandedPage === page.page_number &&
-                  (page.raw_text || page.markdown_text) && (
-                    <tr>
-                      <td colSpan={5} className="p-0">
-                        <PageTextTabs
-                          page={page}
-                          onCopy={onCopyPage}
-                          copied={copiedPage === page.page_number}
-                        />
-                      </td>
-                    </tr>
-                  )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
-      ) : (
+      ) : !pages || pages.length === 0 ? (
         <div className="px-4 py-4 text-sm text-gray-500 text-center">
           No page data available.
         </div>
+      ) : hasComparison ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
+          {providerKeys.map((provider) => (
+            <ProviderPagesSection
+              key={provider}
+              provider={provider}
+              isActive={provider === activeProvider}
+              pages={pagesByProvider.get(provider) || []}
+              expandedPage={expandedPage}
+              copiedPage={copiedPage}
+              onTogglePage={onTogglePage}
+              onCopyPage={onCopyPage}
+              onSetActive={
+                onSetActiveProvider
+                  ? () => onSetActiveProvider(file.id, provider)
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+      ) : (
+        <ProviderPagesSection
+          provider={providerKeys[0]}
+          isActive
+          pages={pages}
+          expandedPage={expandedPage}
+          copiedPage={copiedPage}
+          onTogglePage={onTogglePage}
+          onCopyPage={onCopyPage}
+          hideHeader
+        />
       )}
+    </div>
+  );
+}
+
+// Renders a single provider's per-page table, with optional "Use for analysis"
+// header. Used twice side-by-side in comparison mode, once (headerless) in
+// single-provider mode.
+function ProviderPagesSection({
+  provider,
+  isActive,
+  pages,
+  expandedPage,
+  copiedPage,
+  onTogglePage,
+  onCopyPage,
+  onSetActive,
+  hideHeader,
+}: {
+  provider: string;
+  isActive: boolean;
+  pages: OcrPageData[];
+  expandedPage: number | null;
+  copiedPage: number | null;
+  onTogglePage: (pageNum: number) => void;
+  onCopyPage: (pageNum: number, text: string) => void;
+  onSetActive?: () => void;
+  hideHeader?: boolean;
+}) {
+  const totalWords = pages.reduce((s, p) => s + (p.word_count || 0), 0);
+
+  return (
+    <div className="min-w-0">
+      {!hideHeader && (
+        <div
+          className={`px-4 py-2 flex items-center justify-between gap-2 border-b ${
+            isActive
+              ? "bg-emerald-50 border-emerald-200"
+              : "bg-gray-50 border-gray-200"
+          }`}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <OcrProviderBadge provider={provider} />
+            {isActive && (
+              <span className="text-[10px] font-medium text-emerald-700 bg-white border border-emerald-200 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                Active for analysis
+              </span>
+            )}
+            <span className="text-xs text-gray-500 whitespace-nowrap">
+              {pages.length} pages · {totalWords.toLocaleString()} words
+            </span>
+          </div>
+          {!isActive && onSetActive && (
+            <button
+              type="button"
+              onClick={onSetActive}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors flex-shrink-0"
+            >
+              Use for analysis
+            </button>
+          )}
+        </div>
+      )}
+
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-4 py-2 text-left font-medium text-gray-700">Page</th>
+            <th className="px-4 py-2 text-left font-medium text-gray-700">Words</th>
+            <th className="px-4 py-2 text-left font-medium text-gray-700">Conf.</th>
+            <th className="px-4 py-2 text-left font-medium text-gray-700">Lang</th>
+            <th className="px-4 py-2 text-left font-medium text-gray-700">Text</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {pages.map((page) => (
+            <React.Fragment key={`${provider}-${page.page_number}`}>
+              <tr className="hover:bg-gray-50">
+                <td className="px-4 py-2 font-medium text-gray-900">
+                  {page.page_number}
+                </td>
+                <td className="px-4 py-2 text-gray-700">
+                  {page.word_count.toLocaleString()}
+                </td>
+                <td className="px-4 py-2">
+                  <span
+                    className={`font-medium ${confidenceColor(
+                      (page.confidence_score || 0) * 100
+                    )}`}
+                  >
+                    {page.confidence_score != null
+                      ? `${(page.confidence_score * 100).toFixed(1)}%`
+                      : "N/A"}
+                  </span>
+                </td>
+                <td className="px-4 py-2 text-gray-700">
+                  {page.detected_language ? (
+                    <span>
+                      {getLanguageFlag(page.detected_language)}{" "}
+                      {getLanguageName(page.detected_language)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">N/A</span>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  {page.raw_text || page.markdown_text ? (
+                    <button
+                      onClick={() => onTogglePage(page.page_number)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                    >
+                      {expandedPage === page.page_number ? (
+                        <>
+                          <EyeOff className="w-3.5 h-3.5" />
+                          Hide
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3.5 h-3.5" />
+                          View
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-gray-400">No text</span>
+                  )}
+                </td>
+              </tr>
+
+              {expandedPage === page.page_number &&
+                (page.raw_text || page.markdown_text) && (
+                  <tr>
+                    <td colSpan={5} className="p-0">
+                      <PageTextTabs
+                        page={page}
+                        onCopy={onCopyPage}
+                        copied={copiedPage === page.page_number}
+                      />
+                    </td>
+                  </tr>
+                )}
+            </React.Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Single-file OCR results: same comparison layout as batch mode when both
+// Google and Mistral rows exist for this file; single table otherwise.
+function SingleFileProviderView({
+  pages,
+  activeProvider,
+  expandedPage,
+  copiedPage,
+  onTogglePage,
+  onCopyPage,
+  onSetActive,
+}: {
+  pages: OcrPageData[];
+  activeProvider: string;
+  expandedPage: number | null;
+  copiedPage: number | null;
+  onTogglePage: (pageNum: number) => void;
+  onCopyPage: (pageNum: number, text: string) => void;
+  onSetActive?: (provider: string) => void;
+}) {
+  const pagesByProvider = useMemo(() => {
+    const grouped = new Map<string, OcrPageData[]>();
+    pages.forEach((p) => {
+      const key = p.ocr_provider || "google_document_ai";
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(p);
+    });
+    return grouped;
+  }, [pages]);
+
+  const providerKeys = Array.from(pagesByProvider.keys());
+  const hasComparison = providerKeys.length > 1;
+
+  if (hasComparison) {
+    return (
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
+          {providerKeys.map((provider) => (
+            <ProviderPagesSection
+              key={provider}
+              provider={provider}
+              isActive={provider === activeProvider}
+              pages={pagesByProvider.get(provider) || []}
+              expandedPage={expandedPage}
+              copiedPage={copiedPage}
+              onTogglePage={onTogglePage}
+              onCopyPage={onCopyPage}
+              onSetActive={onSetActive ? () => onSetActive(provider) : undefined}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <ProviderPagesSection
+        provider={providerKeys[0] || activeProvider}
+        isActive
+        pages={pages}
+        expandedPage={expandedPage}
+        copiedPage={copiedPage}
+        onTogglePage={onTogglePage}
+        onCopyPage={onCopyPage}
+        hideHeader
+      />
     </div>
   );
 }
