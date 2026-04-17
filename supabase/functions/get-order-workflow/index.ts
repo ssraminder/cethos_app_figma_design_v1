@@ -283,21 +283,65 @@ serve(async (req: Request) => {
     ).length;
     const pending = total - completed - inProgress;
 
-    // 4. Order financials from the order's quote
+    // 4. Order financials — read directly from the orders row. The orders
+    //    table is the source of truth (written at order creation and updated
+    //    on payment). Previously only `quotes.calculated_totals` was read,
+    //    which is missing fields like amount_paid, balance_due, currency.
     const { data: orderRow } = await supabase
       .from("orders")
-      .select("quote_id, quotes(calculated_totals)")
+      .select(`
+        subtotal, certification_total, rush_fee, delivery_fee,
+        discount_total, surcharge_total,
+        tax_rate, tax_amount, total_amount,
+        amount_paid, balance_due, currency, status
+      `)
       .eq("id", order_id)
       .single();
 
-    const totals = (orderRow?.quotes as any)?.calculated_totals;
-    const orderFinancials = totals
-      ? {
-          subtotal: totals.subtotal ?? 0,
-          pre_tax: totals.pre_tax ?? totals.subtotal ?? 0,
-          tax: totals.tax ?? 0,
-          total: totals.total ?? 0,
-        }
+    const num = (v: any) => (v == null ? 0 : parseFloat(v) || 0);
+    const orderFinancials = orderRow
+      ? (() => {
+          const subtotal = num(orderRow.subtotal);
+          const certification_total = num(orderRow.certification_total);
+          const rush_fee = num(orderRow.rush_fee);
+          const delivery_fee = num(orderRow.delivery_fee);
+          const discount_total = num(orderRow.discount_total);
+          const surcharge_total = num(orderRow.surcharge_total);
+          const tax_rate = num(orderRow.tax_rate);
+          const tax = num(orderRow.tax_amount);
+          const total = num(orderRow.total_amount);
+          const amount_paid = num(orderRow.amount_paid);
+          const balance_due = num(orderRow.balance_due);
+          const pre_tax =
+            subtotal +
+            certification_total +
+            rush_fee +
+            delivery_fee +
+            surcharge_total -
+            discount_total;
+          const payment_status =
+            orderRow.status === "paid" || balance_due <= 0
+              ? "paid"
+              : amount_paid > 0
+                ? "partial"
+                : "unpaid";
+          return {
+            subtotal,
+            certification_total,
+            rush_fee,
+            delivery_fee,
+            discount_total,
+            surcharge_total,
+            pre_tax,
+            tax_rate,
+            tax,
+            total,
+            amount_paid,
+            balance_due,
+            currency: orderRow.currency || "CAD",
+            payment_status,
+          };
+        })()
       : null;
 
     // 5. Vendor financials aggregation
