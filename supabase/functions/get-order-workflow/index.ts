@@ -34,6 +34,12 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // 0. Compute order_financials up front so both branches (workflow
+    //    exists AND no-workflow-yet) return it. Previously only the
+    //    with-workflow branch returned financials, which left the
+    //    admin-side Finance tab blank until a workflow was assigned.
+    const orderFinancials = await loadOrderFinancials(supabase, order_id);
+
     // 1. Check for existing workflow
     const { data: workflow } = await supabase
       .from("order_workflows")
@@ -81,6 +87,7 @@ serve(async (req: Request) => {
         workflow: null,
         steps: [],
         available_templates: enriched,
+        order_financials: orderFinancials,
       });
     }
 
@@ -283,66 +290,7 @@ serve(async (req: Request) => {
     ).length;
     const pending = total - completed - inProgress;
 
-    // 4. Order financials — read directly from the orders row. The orders
-    //    table is the source of truth (written at order creation and updated
-    //    on payment). Previously only `quotes.calculated_totals` was read,
-    //    which is missing fields like amount_paid, balance_due, currency.
-    const { data: orderRow } = await supabase
-      .from("orders")
-      .select(`
-        subtotal, certification_total, rush_fee, delivery_fee,
-        discount_total, surcharge_total,
-        tax_rate, tax_amount, total_amount,
-        amount_paid, balance_due, currency, status
-      `)
-      .eq("id", order_id)
-      .single();
-
-    const num = (v: any) => (v == null ? 0 : parseFloat(v) || 0);
-    const orderFinancials = orderRow
-      ? (() => {
-          const subtotal = num(orderRow.subtotal);
-          const certification_total = num(orderRow.certification_total);
-          const rush_fee = num(orderRow.rush_fee);
-          const delivery_fee = num(orderRow.delivery_fee);
-          const discount_total = num(orderRow.discount_total);
-          const surcharge_total = num(orderRow.surcharge_total);
-          const tax_rate = num(orderRow.tax_rate);
-          const tax = num(orderRow.tax_amount);
-          const total = num(orderRow.total_amount);
-          const amount_paid = num(orderRow.amount_paid);
-          const balance_due = num(orderRow.balance_due);
-          const pre_tax =
-            subtotal +
-            certification_total +
-            rush_fee +
-            delivery_fee +
-            surcharge_total -
-            discount_total;
-          const payment_status =
-            orderRow.status === "paid" || balance_due <= 0
-              ? "paid"
-              : amount_paid > 0
-                ? "partial"
-                : "unpaid";
-          return {
-            subtotal,
-            certification_total,
-            rush_fee,
-            delivery_fee,
-            discount_total,
-            surcharge_total,
-            pre_tax,
-            tax_rate,
-            tax,
-            total,
-            amount_paid,
-            balance_due,
-            currency: orderRow.currency || "CAD",
-            payment_status,
-          };
-        })()
-      : null;
+    // 4. Order financials already computed up top — reuse it.
 
     // 5. Vendor financials aggregation
     const { data: payables } = await supabase
@@ -404,3 +352,67 @@ serve(async (req: Request) => {
     return json({ success: false, error: (err as Error).message }, 500);
   }
 });
+
+// ----------------------------------------------------------------------------
+// Load order_financials from the orders row.
+// orders is the source of truth: columns are written at creation and updated
+// by the Stripe webhook. The Finance tab expects the full shape
+// (amount_paid, balance_due, payment_status, currency, etc.), not just a
+// subset from quotes.calculated_totals.
+// ----------------------------------------------------------------------------
+async function loadOrderFinancials(supabase: any, order_id: string) {
+  const { data: orderRow } = await supabase
+    .from("orders")
+    .select(`
+      subtotal, certification_total, rush_fee, delivery_fee,
+      discount_total, surcharge_total,
+      tax_rate, tax_amount, total_amount,
+      amount_paid, balance_due, currency, status
+    `)
+    .eq("id", order_id)
+    .single();
+
+  if (!orderRow) return null;
+
+  const num = (v: any) => (v == null ? 0 : parseFloat(v) || 0);
+  const subtotal = num(orderRow.subtotal);
+  const certification_total = num(orderRow.certification_total);
+  const rush_fee = num(orderRow.rush_fee);
+  const delivery_fee = num(orderRow.delivery_fee);
+  const discount_total = num(orderRow.discount_total);
+  const surcharge_total = num(orderRow.surcharge_total);
+  const tax_rate = num(orderRow.tax_rate);
+  const tax = num(orderRow.tax_amount);
+  const total = num(orderRow.total_amount);
+  const amount_paid = num(orderRow.amount_paid);
+  const balance_due = num(orderRow.balance_due);
+  const pre_tax =
+    subtotal +
+    certification_total +
+    rush_fee +
+    delivery_fee +
+    surcharge_total -
+    discount_total;
+  const payment_status =
+    orderRow.status === "paid" || balance_due <= 0
+      ? "paid"
+      : amount_paid > 0
+        ? "partial"
+        : "unpaid";
+  return {
+    subtotal,
+    certification_total,
+    rush_fee,
+    delivery_fee,
+    discount_total,
+    surcharge_total,
+    pre_tax,
+    tax_rate,
+    tax,
+    total,
+    amount_paid,
+    balance_due,
+    currency: orderRow.currency || "CAD",
+    payment_status,
+  };
+}
