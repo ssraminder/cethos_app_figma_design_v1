@@ -58,6 +58,136 @@ function activePages(file: FileResult): PageResult[] {
   return (file.pages || []).filter((p) => (p.ocr_provider || 'google_document_ai') === active);
 }
 
+// Group a file's pages by OCR provider. Returns [] when only one provider
+// has rows (caller renders the single-provider view), otherwise [google, mistral]
+// in a stable order for side-by-side display.
+function providerGroups(file: FileResult): Array<{ provider: string; pages: PageResult[] }> {
+  const pages = file.pages || [];
+  const hasProviderTagging = pages.some((p) => p.ocr_provider);
+  if (!hasProviderTagging) return [];
+  const byProvider = new Map<string, PageResult[]>();
+  for (const p of pages) {
+    const key = p.ocr_provider || 'google_document_ai';
+    if (!byProvider.has(key)) byProvider.set(key, []);
+    byProvider.get(key)!.push(p);
+  }
+  if (byProvider.size < 2) return [];
+  const order = ['google_document_ai', 'mistral'];
+  const known = order
+    .filter((p) => byProvider.has(p))
+    .map((p) => ({ provider: p, pages: byProvider.get(p)! }));
+  const extras = Array.from(byProvider.entries())
+    .filter(([p]) => !order.includes(p))
+    .map(([provider, pages]) => ({ provider, pages }));
+  return [...known, ...extras];
+}
+
+function providerLabel(provider: string): string {
+  if (provider === 'google_document_ai') return 'Google';
+  if (provider === 'mistral') return 'Mistral';
+  return provider;
+}
+
+function providerBadgeClasses(provider: string): string {
+  if (provider === 'mistral') return 'bg-purple-50 text-purple-700 border-purple-200';
+  return 'bg-blue-50 text-blue-700 border-blue-200';
+}
+
+function ProviderBarsTable({
+  pages,
+  provider,
+  isActive,
+  onSetActive,
+  compact,
+}: {
+  pages: PageResult[];
+  provider?: string;
+  isActive?: boolean;
+  onSetActive?: () => void;
+  compact?: boolean;
+}) {
+  if (pages.length === 0) return null;
+  const maxWords = Math.max(...pages.map((p) => p.word_count), 1);
+  const totalWords = pages.reduce((s, p) => s + (p.word_count || 0), 0);
+
+  return (
+    <div className="min-w-0">
+      {provider && (
+        <div
+          className={`px-4 py-2 flex items-center justify-between gap-2 border-b ${
+            isActive ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'
+          }`}
+        >
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <span
+              className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium border rounded uppercase tracking-wide ${providerBadgeClasses(provider)}`}
+            >
+              {providerLabel(provider)}
+            </span>
+            {isActive && (
+              <span className="text-[10px] font-medium text-emerald-700 bg-white border border-emerald-200 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                Active for analysis
+              </span>
+            )}
+            <span className="text-xs text-gray-500 whitespace-nowrap">
+              {pages.length} pages · {totalWords.toLocaleString()} words · {(totalWords / 225).toFixed(1)} billable
+            </span>
+          </div>
+          {!isActive && onSetActive && (
+            <button
+              type="button"
+              onClick={onSetActive}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 flex-shrink-0"
+            >
+              Use for analysis
+            </button>
+          )}
+        </div>
+      )}
+      <table className="w-full">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Page</th>
+            <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Words</th>
+            <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Billable</th>
+            {!compact && (
+              <th className="px-4 py-2 w-1/2">
+                <span className="sr-only">Bar</span>
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {pages.map((page) => {
+            const barWidth = (page.word_count / maxWords) * 100;
+            return (
+              <tr key={`${provider || 'active'}-${page.page_number}`} className="border-t">
+                <td className="px-4 py-2 text-sm text-gray-900">Page {page.page_number}</td>
+                <td className="px-4 py-2 text-sm text-gray-900 text-right">
+                  {page.word_count.toLocaleString()}
+                </td>
+                <td className="px-4 py-2 text-sm text-gray-500 text-right">
+                  {(page.word_count / 225).toFixed(2)}
+                </td>
+                {!compact && (
+                  <td className="px-4 py-2">
+                    <div className="h-4 bg-gray-100 rounded overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded"
+                        style={{ width: `${barWidth}%` }}
+                      />
+                    </div>
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 interface FileGroup {
   type: 'group' | 'standalone';
   displayName: string;          // original_filename for groups, filename for standalone
@@ -214,6 +344,24 @@ export default function OCRBatchResultsPage() {
       }
     },
     [reocrInProgress, fetchResults]
+  );
+
+  const handleSetActiveProvider = useCallback(
+    async (fileId: string, provider: string) => {
+      try {
+        const { error } = await supabase
+          .from('ocr_batch_files')
+          .update({ active_ocr_provider: provider })
+          .eq('id', fileId);
+        if (error) throw error;
+        toast.success(`Active OCR set to ${providerLabel(provider)}`);
+        await fetchResults();
+      } catch (err: any) {
+        console.error('Failed to set active provider:', err);
+        toast.error(err?.message || 'Failed to update active provider');
+      }
+    },
+    [fetchResults]
   );
 
   useEffect(() => {
@@ -698,9 +846,9 @@ export default function OCRBatchResultsPage() {
                             </div>
                           </div>
 
-                          {/* Per-page table for this chunk (filter to active provider) */}
+                          {/* Per-page table(s) for this chunk — side-by-side when both
+                              providers have rows, single-provider view otherwise. */}
                           {(() => {
-                            const activePgs = activePages(file);
                             if (file.status === 'failed') {
                               return (
                                 <div className="px-4 py-3 bg-red-50">
@@ -710,37 +858,26 @@ export default function OCRBatchResultsPage() {
                                 </div>
                               );
                             }
-                            if (activePgs.length === 0) return null;
-                            const maxWords = Math.max(...activePgs.map((p) => p.word_count), 1);
-                            return (
-                              <table className="w-full">
-                                <thead className="bg-gray-50">
-                                  <tr>
-                                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Page</th>
-                                    <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Words</th>
-                                    <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Billable</th>
-                                    <th className="px-4 py-2 w-1/2"><span className="sr-only">Bar</span></th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {activePgs.map((page) => {
-                                    const barWidth = (page.word_count / maxWords) * 100;
-                                    return (
-                                      <tr key={page.page_number} className="border-t">
-                                        <td className="px-4 py-2 text-sm text-gray-900">Page {page.page_number}</td>
-                                        <td className="px-4 py-2 text-sm text-gray-900 text-right">{page.word_count.toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-sm text-gray-500 text-right">{(page.word_count / 225).toFixed(2)}</td>
-                                        <td className="px-4 py-2">
-                                          <div className="h-4 bg-gray-100 rounded overflow-hidden">
-                                            <div className="h-full bg-blue-500 rounded" style={{ width: `${barWidth}%` }} />
-                                          </div>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            );
+                            const groups = providerGroups(file);
+                            if (groups.length >= 2) {
+                              const active = file.active_ocr_provider || 'google_document_ai';
+                              return (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
+                                  {groups.map((g) => (
+                                    <ProviderBarsTable
+                                      key={g.provider}
+                                      pages={g.pages}
+                                      provider={g.provider}
+                                      isActive={g.provider === active}
+                                      onSetActive={() => handleSetActiveProvider(file.id, g.provider)}
+                                      compact
+                                    />
+                                  ))}
+                                </div>
+                              );
+                            }
+                            const activePgs = activePages(file);
+                            return <ProviderBarsTable pages={activePgs} />;
                           })()}
                         </div>
                       ))}
@@ -757,7 +894,7 @@ export default function OCRBatchResultsPage() {
                       </div>
                     </div>
                   ) : (
-                    // STANDALONE: Render exactly as before (single file, per-page table)
+                    // STANDALONE: single file, side-by-side when both providers ran
                     <div>
                       {group.files[0].status === 'failed' ? (
                         <div className="p-4 bg-red-50">
@@ -766,42 +903,28 @@ export default function OCRBatchResultsPage() {
                           </p>
                         </div>
                       ) : (
-                        <table className="w-full">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Page</th>
-                              <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Words</th>
-                              <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Billable</th>
-                              <th className="px-4 py-2 w-1/2"><span className="sr-only">Bar</span></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {activePages(group.files[0]).map((page) => {
-                              const activePgs = activePages(group.files[0]);
-                              const maxWords = Math.max(...activePgs.map(p => p.word_count), 1);
-                              const barWidth = (page.word_count / maxWords) * 100;
-                              return (
-                                <tr key={page.page_number} className="border-t">
-                                  <td className="px-4 py-2 text-sm text-gray-900">Page {page.page_number}</td>
-                                  <td className="px-4 py-2 text-sm text-gray-900 text-right">{page.word_count.toLocaleString()}</td>
-                                  <td className="px-4 py-2 text-sm text-gray-500 text-right">{(page.word_count / 225).toFixed(2)}</td>
-                                  <td className="px-4 py-2">
-                                    <div className="h-4 bg-gray-100 rounded overflow-hidden">
-                                      <div className="h-full bg-blue-500 rounded" style={{ width: `${barWidth}%` }} />
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                            {/* File Total Row */}
-                            <tr className="border-t bg-gray-50 font-medium">
-                              <td className="px-4 py-2 text-sm text-gray-900">Total</td>
-                              <td className="px-4 py-2 text-sm text-gray-900 text-right">{group.files[0].word_count.toLocaleString()}</td>
-                              <td className="px-4 py-2 text-sm text-gray-900 text-right">{(group.files[0].word_count / 225).toFixed(2)}</td>
-                              <td></td>
-                            </tr>
-                          </tbody>
-                        </table>
+                        (() => {
+                          const file = group.files[0];
+                          const groups = providerGroups(file);
+                          if (groups.length >= 2) {
+                            const active = file.active_ocr_provider || 'google_document_ai';
+                            return (
+                              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
+                                {groups.map((g) => (
+                                  <ProviderBarsTable
+                                    key={g.provider}
+                                    pages={g.pages}
+                                    provider={g.provider}
+                                    isActive={g.provider === active}
+                                    onSetActive={() => handleSetActiveProvider(file.id, g.provider)}
+                                    compact
+                                  />
+                                ))}
+                              </div>
+                            );
+                          }
+                          return <ProviderBarsTable pages={activePages(file)} />;
+                        })()
                       )}
                     </div>
                   )}
