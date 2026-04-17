@@ -109,47 +109,52 @@ function ProviderBarsTable({
   if (pages.length === 0) return null;
   const maxWords = Math.max(...pages.map((p) => p.word_count), 1);
   const totalWords = pages.reduce((s, p) => s + (p.word_count || 0), 0);
+  const totalBillable = totalWords / 225;
 
   return (
     <div className="min-w-0">
       {provider && (
         <div
-          className={`px-4 py-2 flex items-center justify-between gap-2 border-b ${
+          className={`px-4 py-2.5 border-b ${
             isActive ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'
           }`}
         >
-          <div className="flex items-center gap-2 min-w-0 flex-wrap">
-            <span
-              className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium border rounded uppercase tracking-wide ${providerBadgeClasses(provider)}`}
-            >
-              {providerLabel(provider)}
-            </span>
-            {isActive && (
-              <span className="text-[10px] font-medium text-emerald-700 bg-white border border-emerald-200 px-1.5 py-0.5 rounded uppercase tracking-wide">
-                Active for analysis
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+              <span
+                className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border rounded uppercase tracking-wide ${providerBadgeClasses(provider)}`}
+              >
+                {providerLabel(provider)}
               </span>
-            )}
-            <span className="text-xs text-gray-500 whitespace-nowrap">
-              {pages.length} pages · {totalWords.toLocaleString()} words · {(totalWords / 225).toFixed(1)} billable
-            </span>
+              {isActive ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-white border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-wide">
+                  <CheckCircle className="w-3 h-3" />
+                  Active for analysis
+                </span>
+              ) : onSetActive ? (
+                <button
+                  type="button"
+                  onClick={onSetActive}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-blue-700 bg-white border border-blue-200 rounded uppercase tracking-wide hover:bg-blue-50 transition-colors"
+                >
+                  Use for analysis
+                </button>
+              ) : null}
+            </div>
+            <div className="text-xs text-gray-600 whitespace-nowrap tabular-nums">
+              <span className="font-medium text-gray-900">{pages.length}</span> pages ·{' '}
+              <span className="font-medium text-gray-900">{totalWords.toLocaleString()}</span> words ·{' '}
+              <span className="font-medium text-gray-900">{totalBillable.toFixed(1)}</span> billable
+            </div>
           </div>
-          {!isActive && onSetActive && (
-            <button
-              type="button"
-              onClick={onSetActive}
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 flex-shrink-0"
-            >
-              Use for analysis
-            </button>
-          )}
         </div>
       )}
       <table className="w-full">
         <thead className="bg-gray-50">
           <tr>
-            <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Page</th>
-            <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Words</th>
-            <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">Billable</th>
+            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Page</th>
+            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Words</th>
+            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Billable</th>
             {!compact && (
               <th className="px-4 py-2 w-1/2">
                 <span className="sr-only">Bar</span>
@@ -163,10 +168,10 @@ function ProviderBarsTable({
             return (
               <tr key={`${provider || 'active'}-${page.page_number}`} className="border-t">
                 <td className="px-4 py-2 text-sm text-gray-900">Page {page.page_number}</td>
-                <td className="px-4 py-2 text-sm text-gray-900 text-right">
+                <td className="px-4 py-2 text-sm text-gray-900 text-right tabular-nums">
                   {page.word_count.toLocaleString()}
                 </td>
-                <td className="px-4 py-2 text-sm text-gray-500 text-right">
+                <td className="px-4 py-2 text-sm text-gray-500 text-right tabular-nums">
                   {(page.word_count / 225).toFixed(2)}
                 </td>
                 {!compact && (
@@ -183,6 +188,20 @@ function ProviderBarsTable({
             );
           })}
         </tbody>
+        <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+          <tr>
+            <td className="px-4 py-2 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+              Total
+            </td>
+            <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right tabular-nums">
+              {totalWords.toLocaleString()}
+            </td>
+            <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right tabular-nums">
+              {totalBillable.toFixed(2)}
+            </td>
+            {!compact && <td />}
+          </tr>
+        </tfoot>
       </table>
     </div>
   );
