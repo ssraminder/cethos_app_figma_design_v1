@@ -144,6 +144,38 @@ export async function authenticateStaffToken(
   return payload;
 }
 
+/**
+ * Resolve which staff_id to attribute a kiosk action to.
+ *
+ * If the tablet sent a staff token (kiosk-staff-unlock was used), we trust
+ * that — it means a specific staff member typed their PIN. Otherwise we fall
+ * back to the device's `default_staff_id` set at pairing time.
+ *
+ * Either way, the device must be a valid paired device.
+ */
+export async function resolveActingStaffId(
+  req: Request,
+  device: KioskDevice,
+): Promise<string> {
+  const token = req.headers.get("x-kiosk-staff-token");
+  if (token) {
+    const payload = await verifyKioskStaffToken(
+      getEnv("SUPABASE_SERVICE_ROLE_KEY"),
+      token,
+    );
+    if (payload && payload.device_id === device.id) {
+      return payload.staff_id;
+    }
+  }
+  if (!device.default_staff_id) {
+    throw new KioskAuthError(
+      "Device has no default staff assigned — re-pair the device",
+      401,
+    );
+  }
+  return device.default_staff_id;
+}
+
 export class KioskAuthError extends Error {
   constructor(message: string, public status = 401) {
     super(message);

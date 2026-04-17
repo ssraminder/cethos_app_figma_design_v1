@@ -12,12 +12,12 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import {
   authenticateDevice,
-  authenticateStaffToken,
   getSupabaseAdmin,
   handleOptions,
   jsonResponse,
   KioskAuthError,
   rateLimit,
+  resolveActingStaffId,
 } from "../_shared/kiosk-auth.ts";
 
 serve(async (req: Request) => {
@@ -27,7 +27,7 @@ serve(async (req: Request) => {
   try {
     const supabase = getSupabaseAdmin();
     const device = await authenticateDevice(req, supabase);
-    const staffPayload = await authenticateStaffToken(req, device);
+    const actingStaffId = await resolveActingStaffId(req, device);
 
     // Per-device quote cap — loose cap to prevent a misbehaving device from
     // spraying quotes. Legitimate use is ~a few per hour.
@@ -40,7 +40,7 @@ serve(async (req: Request) => {
 
     const body = await req.json();
     const { customer, quote, documents, pricing } = body;
-    const staffId = staffPayload.staff_id;
+    const staffId = actingStaffId;
 
     // Validation (mirrors create-fast-quote)
     if (!customer?.fullName) throw new Error("Missing customer.fullName");

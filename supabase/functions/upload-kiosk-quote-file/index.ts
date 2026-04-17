@@ -8,11 +8,11 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import {
   authenticateDevice,
-  authenticateStaffToken,
   getSupabaseAdmin,
   handleOptions,
   jsonResponse,
   KioskAuthError,
+  resolveActingStaffId,
 } from "../_shared/kiosk-auth.ts";
 
 serve(async (req: Request) => {
@@ -22,7 +22,7 @@ serve(async (req: Request) => {
   try {
     const supabase = getSupabaseAdmin();
     const device = await authenticateDevice(req, supabase);
-    const staffPayload = await authenticateStaffToken(req, device);
+    const actingStaffId = await resolveActingStaffId(req, device);
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -81,7 +81,7 @@ serve(async (req: Request) => {
     await supabase
       .from("staff_activity_log")
       .insert({
-        staff_id: staffPayload.staff_id,
+        staff_id: actingStaffId,
         activity_type: "kiosk_file_uploaded",
         entity_type: "quote",
         entity_id: quoteId,

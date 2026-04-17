@@ -34,45 +34,10 @@ export function clearDeviceCreds(): void {
   localStorage.removeItem(DEVICE_LS_KEY);
 }
 
-// Staff token — in-memory only, wiped on tab close and between transactions.
-let staffToken: string | null = null;
-let staffInfo: { staff_id: string; staff_name: string; staff_email: string } | null =
-  null;
-let staffTokenExpiresAt: number | null = null;
-
-export function setStaffAuth(
-  token: string,
-  info: { staff_id: string; staff_name: string; staff_email: string },
-  expiresAt: string,
-): void {
-  staffToken = token;
-  staffInfo = info;
-  staffTokenExpiresAt = new Date(expiresAt).getTime();
-}
-
-export function clearStaffAuth(): void {
-  staffToken = null;
-  staffInfo = null;
-  staffTokenExpiresAt = null;
-}
-
-export function hasStaffAuth(): boolean {
-  if (!staffToken || !staffTokenExpiresAt) return false;
-  if (staffTokenExpiresAt < Date.now()) {
-    clearStaffAuth();
-    return false;
-  }
-  return true;
-}
-
-export function getStaffInfo() {
-  return staffInfo;
-}
-
 // ─── Request helpers ────────────────────────────────────────────────────────
 
 function buildHeaders(
-  opts: { includeStaff?: boolean; includeDevice?: boolean } = {},
+  opts: { includeDevice?: boolean } = {},
 ): Record<string, string> {
   const h: Record<string, string> = {
     Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
@@ -84,16 +49,13 @@ function buildHeaders(
       h["x-kiosk-device-secret"] = creds.device_secret;
     }
   }
-  if (opts.includeStaff && staffToken) {
-    h["x-kiosk-staff-token"] = staffToken;
-  }
   return h;
 }
 
 export async function kioskPost<T = unknown>(
   fnName: string,
   body: unknown,
-  opts: { includeStaff?: boolean; includeDevice?: boolean } = {},
+  opts: { includeDevice?: boolean } = {},
 ): Promise<T> {
   const resp = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
     method: "POST",
@@ -117,7 +79,7 @@ export async function kioskUploadFile(
   for (const [k, v] of Object.entries(extraFields)) form.append(k, v);
   const resp = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
     method: "POST",
-    headers: buildHeaders({ includeStaff: true }),
+    headers: buildHeaders(),
     body: form,
   });
   const data = await resp.json().catch(() => ({}));

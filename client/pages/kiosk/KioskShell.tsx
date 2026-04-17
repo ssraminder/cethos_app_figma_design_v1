@@ -1,19 +1,18 @@
 // KioskShell — finite state machine that drives a kiosk quote flow.
 //
-//   idle
-//    └► staff_unlock (email + PIN)
-//        └► staff_form  (quote details — KioskStaffForm)
-//            └► handoff_to_customer (splash)
-//                └► customer_form (contact fields only)
-//                    └► handoff_to_staff (PIN to unlock again)
-//                        └► review (summary + "Send quote to customer")
-//                            └► done
-//                                └► idle
+// A paired device is the only credential required. Quotes are attributed to
+// the device's default_staff_id (set when the device was paired).
 //
-// The staff token lives in memory (KioskApi). It is cleared when the shell
-// transitions into customer_form and re-acquired at handoff_to_staff.
+//   idle
+//    └► staff_form  (quote details — KioskStaffForm)
+//        └► handoff_to_customer (splash)
+//            └► customer_form (contact fields only)
+//                └► handoff_to_staff (splash)
+//                    └► review (summary + "Send quote to customer")
+//                        └► done
+//                            └► idle
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -23,24 +22,18 @@ import {
   ArrowRight,
   CheckCircle2,
   Mail,
-  KeyRound,
   RotateCcw,
 } from "lucide-react";
 import {
   clearDeviceCreds,
-  clearStaffAuth,
   getDeviceCreds,
-  getStaffInfo,
-  hasStaffAuth,
   kioskPost,
   kioskUploadFile,
-  setStaffAuth,
 } from "./KioskApi";
 import KioskStaffForm, { StaffQuoteData } from "./KioskStaffForm";
 
 type State =
   | "idle"
-  | "staff_unlock"
   | "staff_form"
   | "handoff_to_customer"
   | "customer_form"
@@ -70,6 +63,14 @@ const EMPTY_CUSTOMER: CustomerDraft = {
 export default function KioskShell() {
   const navigate = useNavigate();
   const creds = getDeviceCreds();
+
+  // Lock tablet to portrait orientation (ignored on desktop browsers).
+  useEffect(() => {
+    const so = (screen as unknown as { orientation?: { lock?: (t: string) => Promise<void> } }).orientation;
+    so?.lock?.("portrait").catch(() => {
+      // Not all browsers allow this outside fullscreen; safe to ignore.
+    });
+  }, []);
 
   // If not paired, send to the pairing screen
   if (!creds) return <Navigate to="/kiosk/pair" replace />;
@@ -102,7 +103,6 @@ export default function KioskShell() {
   }, [state]);
 
   const resetToIdle = () => {
-    clearStaffAuth();
     setStaffData(null);
     setCustomer(EMPTY_CUSTOMER);
     setCreatedQuote(null);
@@ -112,21 +112,16 @@ export default function KioskShell() {
   const unpair = () => {
     if (!confirm("Unpair this tablet? You'll need a new pairing code to use it.")) return;
     clearDeviceCreds();
-    clearStaffAuth();
     navigate("/kiosk/pair");
   };
 
   // ─── Transitions ────────────────────────────────────────────────────
-  const onStaffUnlocked = () => setState("staff_form");
-
   const onStaffFormDone = (data: StaffQuoteData) => {
     setStaffData(data);
     setState("handoff_to_customer");
   };
 
   const startCustomerStep = () => {
-    // Staff token stays alive in memory so customer_form can submit without
-    // re-auth. But we explicitly hide staff identity from view.
     setState("customer_form");
   };
 
@@ -142,11 +137,6 @@ export default function KioskShell() {
     if (!staffData) {
       toast.error("Session lost; starting over");
       resetToIdle();
-      return;
-    }
-    if (!hasStaffAuth()) {
-      toast.error("Staff session expired — ask staff to unlock");
-      setState("handoff_to_staff");
       return;
     }
 
@@ -199,7 +189,6 @@ export default function KioskShell() {
             total: staffData.pricing.total,
           },
         },
-        { includeStaff: true },
       );
 
       // Upload each document's files
@@ -220,9 +209,6 @@ export default function KioskShell() {
         quoteId: resp.quoteId,
         quoteNumber: resp.quoteNumber,
       });
-      // Keep staff token alive — staff stays "signed in" through the handback
-      // splash, so they don't have to re-enter their PIN to finish. The token
-      // still expires on its own (30min) and is wiped on resetToIdle().
       setState("handoff_to_staff");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to submit");
@@ -231,17 +217,11 @@ export default function KioskShell() {
 
   const sendQuoteEmail = async () => {
     if (!createdQuote) return;
-    if (!hasStaffAuth()) {
-      toast.error("Staff session expired");
-      setState("handoff_to_staff");
-      return;
-    }
     setState("emailing");
     try {
       const data = await kioskPost<{ success: true; sent_to: string }>(
         "kiosk-send-quote-email",
         { quoteId: createdQuote.quoteId },
-        { includeStaff: true },
       );
       toast.success(`Quote sent to ${data.sent_to}`);
       setState("done");
@@ -269,7 +249,7 @@ export default function KioskShell() {
               Tap to start a walk-in translation quote.
             </p>
             <button
-              onClick={() => setState("staff_unlock")}
+              onClick={() => setState("staff_form")}
               className="bg-teal-600 text-white text-xl font-semibold px-10 py-5 rounded-2xl hover:bg-teal-700 inline-flex items-center gap-3"
             >
               Start new quote <ArrowRight className="w-6 h-6" />
@@ -285,33 +265,7 @@ export default function KioskShell() {
     );
   }
 
-  if (state === "staff_unlock") {
-    return (
-      <StaffUnlock
-        deviceName={creds.device_name}
-        title="Staff unlock"
-        subtitle="Enter your email and kiosk PIN to begin."
-        onCancel={resetToIdle}
-        onSuccess={onStaffUnlocked}
-      />
-    );
-  }
-
   if (state === "handoff_to_staff") {
-    // Staff is still signed in from Unlock #1 — just show a "hand back"
-    // splash so the customer knows to return the tablet. No PIN re-entry.
-    // If their token somehow expired (30-min idle), bounce to unlock.
-    if (!hasStaffAuth()) {
-      return (
-        <StaffUnlock
-          deviceName={creds.device_name}
-          title="Staff session expired"
-          subtitle="Please re-enter your email and PIN to finish the quote."
-          onCancel={resetToIdle}
-          onSuccess={() => setState("review")}
-        />
-      );
-    }
     return (
       <KioskFrame deviceName={creds.device_name}>
         <div className="flex-1 flex items-center justify-center p-8">
@@ -616,129 +570,3 @@ function Field({
   );
 }
 
-function StaffUnlock({
-  deviceName,
-  title,
-  subtitle,
-  onSuccess,
-  onCancel,
-}: {
-  deviceName: string;
-  title: string;
-  subtitle: string;
-  onSuccess: () => void;
-  onCancel: () => void;
-}) {
-  const [email, setEmail] = useState(getStaffInfo()?.staff_email || "");
-  const [pin, setPin] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    if (!email || !pin) {
-      setError("Email and PIN are required");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const data = await kioskPost<{
-        success: true;
-        staff_token: string;
-        staff_id: string;
-        staff_name: string;
-        staff_email: string;
-        expires_at: string;
-      }>(
-        "kiosk-staff-unlock",
-        { staff_email: email.trim().toLowerCase(), pin },
-        { includeStaff: false },
-      );
-      setStaffAuth(
-        data.staff_token,
-        {
-          staff_id: data.staff_id,
-          staff_name: data.staff_name,
-          staff_email: data.staff_email,
-        },
-        data.expires_at,
-      );
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unlock failed");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <KioskFrame deviceName={deviceName}>
-      <div className="flex-1 flex items-center justify-center p-6">
-        <form
-          onSubmit={submit}
-          className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8"
-        >
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center">
-              <KeyRound className="w-6 h-6 text-teal-700" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">{title}</h1>
-              <p className="text-sm text-gray-500">{subtitle}</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <Field
-              label="Staff email"
-              type="email"
-              value={email}
-              onChange={setEmail}
-              placeholder="you@cethos.com"
-            />
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
-                Kiosk PIN
-              </label>
-              <input
-                type="password"
-                inputMode="numeric"
-                value={pin}
-                onChange={(e) =>
-                  setPin(e.target.value.replace(/\D/g, "").slice(0, 6))
-                }
-                maxLength={6}
-                placeholder="••••"
-                className="w-full px-4 py-3 text-lg tracking-widest font-mono border rounded-lg focus:ring-2 focus:ring-teal-500"
-                autoComplete="off"
-              />
-            </div>
-          </div>
-
-          {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-800 text-sm rounded-lg">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting || !email || !pin}
-            className="mt-6 w-full bg-teal-600 text-white py-3 rounded-xl text-base font-semibold hover:bg-teal-700 disabled:opacity-60 flex items-center justify-center gap-2"
-          >
-            {submitting && <Loader2 className="w-5 h-5 animate-spin" />}
-            Unlock
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="mt-3 w-full text-sm text-gray-500 hover:text-gray-800"
-          >
-            Cancel
-          </button>
-        </form>
-      </div>
-    </KioskFrame>
-  );
-}

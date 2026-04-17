@@ -17,11 +17,11 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import {
   authenticateDevice,
-  authenticateStaffToken,
   getSupabaseAdmin,
   handleOptions,
   jsonResponse,
   KioskAuthError,
+  resolveActingStaffId,
 } from "../_shared/kiosk-auth.ts";
 
 const SITE_URL = Deno.env.get("SITE_URL") || "https://portal.cethos.com";
@@ -33,7 +33,7 @@ serve(async (req: Request) => {
   try {
     const supabase = getSupabaseAdmin();
     const device = await authenticateDevice(req, supabase);
-    const staffPayload = await authenticateStaffToken(req, device);
+    const actingStaffId = await resolveActingStaffId(req, device);
 
     const { quoteId } = await req.json();
     if (!quoteId) {
@@ -117,7 +117,7 @@ serve(async (req: Request) => {
     await supabase
       .from("staff_activity_log")
       .insert({
-        staff_id: staffPayload.staff_id,
+        staff_id: actingStaffId,
         activity_type: "kiosk_quote_emailed",
         entity_type: "quote",
         entity_id: quote.id,
