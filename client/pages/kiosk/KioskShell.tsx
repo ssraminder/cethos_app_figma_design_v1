@@ -220,8 +220,9 @@ export default function KioskShell() {
         quoteId: resp.quoteId,
         quoteNumber: resp.quoteNumber,
       });
-      // Clear staff token — customer step is done, hand back to staff requires fresh unlock
-      clearStaffAuth();
+      // Keep staff token alive — staff stays "signed in" through the handback
+      // splash, so they don't have to re-enter their PIN to finish. The token
+      // still expires on its own (30min) and is wiped on resetToIdle().
       setState("handoff_to_staff");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to submit");
@@ -284,26 +285,63 @@ export default function KioskShell() {
     );
   }
 
-  if (state === "staff_unlock" || state === "handoff_to_staff") {
+  if (state === "staff_unlock") {
     return (
       <StaffUnlock
         deviceName={creds.device_name}
-        title={
-          state === "handoff_to_staff"
-            ? "Hand back to staff"
-            : "Staff unlock"
-        }
-        subtitle={
-          state === "handoff_to_staff"
-            ? "Please ask staff to finish your quote."
-            : "Enter your email and kiosk PIN to begin."
-        }
+        title="Staff unlock"
+        subtitle="Enter your email and kiosk PIN to begin."
         onCancel={resetToIdle}
-        onSuccess={() => {
-          if (state === "staff_unlock") onStaffUnlocked();
-          else setState("review");
-        }}
+        onSuccess={onStaffUnlocked}
       />
+    );
+  }
+
+  if (state === "handoff_to_staff") {
+    // Staff is still signed in from Unlock #1 — just show a "hand back"
+    // splash so the customer knows to return the tablet. No PIN re-entry.
+    // If their token somehow expired (30-min idle), bounce to unlock.
+    if (!hasStaffAuth()) {
+      return (
+        <StaffUnlock
+          deviceName={creds.device_name}
+          title="Staff session expired"
+          subtitle="Please re-enter your email and PIN to finish the quote."
+          onCancel={resetToIdle}
+          onSuccess={() => setState("review")}
+        />
+      );
+    }
+    return (
+      <KioskFrame deviceName={creds.device_name}>
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="text-center max-w-md">
+            <div className="inline-flex w-20 h-20 bg-teal-100 rounded-2xl items-center justify-center mb-6">
+              <User className="w-10 h-10 text-teal-700" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-3">
+              Please hand the tablet back to staff
+            </h1>
+            <p className="text-gray-500 mb-8">
+              Thanks! Staff will finish your quote and send it to your email.
+            </p>
+            <button
+              onClick={() => setState("review")}
+              className="bg-teal-600 text-white text-xl font-semibold px-10 py-5 rounded-2xl hover:bg-teal-700 inline-flex items-center gap-3"
+            >
+              Continue <ArrowRight className="w-6 h-6" />
+            </button>
+            <div className="mt-8">
+              <button
+                onClick={resetToIdle}
+                className="text-sm text-gray-400 hover:text-gray-700 underline"
+              >
+                Cancel and start over
+              </button>
+            </div>
+          </div>
+        </div>
+      </KioskFrame>
     );
   }
 
