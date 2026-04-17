@@ -39,6 +39,7 @@ serve(async (req: Request) => {
     //    with-workflow branch returned financials, which left the
     //    admin-side Finance tab blank until a workflow was assigned.
     const orderFinancials = await loadOrderFinancials(supabase, order_id);
+    const payments = await loadOrderPayments(supabase, order_id);
 
     // 1. Check for existing workflow
     const { data: workflow } = await supabase
@@ -88,6 +89,7 @@ serve(async (req: Request) => {
         steps: [],
         available_templates: enriched,
         order_financials: orderFinancials,
+        payments,
       });
     }
 
@@ -343,6 +345,7 @@ serve(async (req: Request) => {
       },
       steps,
       order_financials: orderFinancials,
+      payments,
       total_vendor_cost: totalVendorCost,
       vendor_financials: vendorFinancials,
       margin,
@@ -352,6 +355,140 @@ serve(async (req: Request) => {
     return json({ success: false, error: (err as Error).message }, 500);
   }
 });
+
+// ----------------------------------------------------------------------------
+// Load order payments with card details. Lazily enriches from Stripe (card
+// brand, last4, receipt URL, charge id) the first time each row is read,
+// caches back to the payments row via stripe_enriched_at. Subsequent calls
+// return from DB only — no Stripe API hit per admin page load.
+// ----------------------------------------------------------------------------
+async function loadOrderPayments(supabase: any, order_id: string) {
+  const { data: rows } = await supabase
+    .from("payments")
+    .select(`
+      id, order_id, amount, currency, amount_cad, payment_type, status,
+      payment_method, failure_reason, receipt_url, created_at,
+      stripe_checkout_session_id, stripe_payment_intent_id, stripe_charge_id,
+      card_brand, card_last4, card_exp_month, card_exp_year,
+      cardholder_name, card_country, stripe_enriched_at
+    `)
+    .eq("order_id", order_id)
+    .order("created_at", { ascending: false });
+
+  if (!rows || rows.length === 0) return [];
+
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+  const enriched: any[] = [];
+
+  for (const row of rows) {
+    const needsEnrichment =
+      !row.stripe_enriched_at &&
+      (row.stripe_payment_intent_id || row.stripe_checkout_session_id);
+
+    if (stripeKey && needsEnrichment) {
+      try {
+        const details = await fetchStripeCardDetails(
+          stripeKey,
+          row.stripe_payment_intent_id,
+          row.stripe_checkout_session_id,
+        );
+        if (details) {
+          const patch: Record<string, unknown> = {
+            stripe_enriched_at: new Date().toISOString(),
+          };
+          if (details.charge_id && !row.stripe_charge_id) patch.stripe_charge_id = details.charge_id;
+          if (details.card_brand) patch.card_brand = details.card_brand;
+          if (details.card_last4) patch.card_last4 = details.card_last4;
+          if (details.card_exp_month) patch.card_exp_month = details.card_exp_month;
+          if (details.card_exp_year) patch.card_exp_year = details.card_exp_year;
+          if (details.cardholder_name) patch.cardholder_name = details.cardholder_name;
+          if (details.card_country) patch.card_country = details.card_country;
+          if (details.receipt_url && !row.receipt_url) patch.receipt_url = details.receipt_url;
+
+          await supabase.from("payments").update(patch).eq("id", row.id);
+          Object.assign(row, patch);
+        } else {
+          // Mark as tried so we don't keep re-requesting
+          await supabase
+            .from("payments")
+            .update({ stripe_enriched_at: new Date().toISOString() })
+            .eq("id", row.id);
+          row.stripe_enriched_at = new Date().toISOString();
+        }
+      } catch (err) {
+        console.error("Stripe enrichment failed:", (err as Error).message);
+      }
+    }
+
+    enriched.push(row);
+  }
+
+  return enriched;
+}
+
+async function fetchStripeCardDetails(
+  stripeKey: string,
+  paymentIntentId: string | null,
+  checkoutSessionId: string | null,
+): Promise<{
+  charge_id?: string;
+  card_brand?: string;
+  card_last4?: string;
+  card_exp_month?: number;
+  card_exp_year?: number;
+  cardholder_name?: string;
+  card_country?: string;
+  receipt_url?: string;
+} | null> {
+  const auth = `Bearer ${stripeKey}`;
+
+  // Prefer the payment intent path — expand charges + payment_method.
+  let pi: any = null;
+  if (paymentIntentId) {
+    const url = `https://api.stripe.com/v1/payment_intents/${encodeURIComponent(
+      paymentIntentId,
+    )}?expand[]=latest_charge&expand[]=payment_method`;
+    const resp = await fetch(url, { headers: { Authorization: auth } });
+    if (resp.ok) pi = await resp.json();
+  }
+
+  // Fall back to checkout session if we only have the session id.
+  if (!pi && checkoutSessionId) {
+    const url = `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(
+      checkoutSessionId,
+    )}?expand[]=payment_intent.latest_charge&expand[]=payment_intent.payment_method`;
+    const resp = await fetch(url, { headers: { Authorization: auth } });
+    if (resp.ok) {
+      const sess = await resp.json();
+      pi = sess?.payment_intent && typeof sess.payment_intent === "object" ? sess.payment_intent : null;
+    }
+  }
+
+  if (!pi) return null;
+
+  const charge = typeof pi.latest_charge === "object" ? pi.latest_charge : null;
+  const pm = typeof pi.payment_method === "object" ? pi.payment_method : null;
+
+  const card =
+    pm?.card ||
+    charge?.payment_method_details?.card ||
+    null;
+  const billing =
+    pm?.billing_details ||
+    charge?.billing_details ||
+    null;
+
+  return {
+    charge_id: charge?.id || undefined,
+    card_brand: card?.brand || undefined,
+    card_last4: card?.last4 || undefined,
+    card_exp_month: card?.exp_month || undefined,
+    card_exp_year: card?.exp_year || undefined,
+    cardholder_name: billing?.name || undefined,
+    card_country: card?.country || undefined,
+    receipt_url: charge?.receipt_url || undefined,
+  };
+}
 
 // ----------------------------------------------------------------------------
 // Load order_financials from the orders row.

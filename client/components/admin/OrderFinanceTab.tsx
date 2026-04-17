@@ -69,6 +69,27 @@ interface StepPayable {
   vendor_invoice_number: string | null;
 }
 
+interface PaymentRecord {
+  id: string;
+  amount: number;
+  currency: string;
+  payment_type: string | null;
+  status: string | null;
+  payment_method: string | null;
+  failure_reason: string | null;
+  receipt_url: string | null;
+  created_at: string;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_charge_id: string | null;
+  card_brand: string | null;
+  card_last4: string | null;
+  card_exp_month: number | null;
+  card_exp_year: number | null;
+  cardholder_name: string | null;
+  card_country: string | null;
+}
+
 // ── Helpers ──
 
 function formatCurrency(amount: number | null | undefined, currency = "CAD"): string {
@@ -637,13 +658,165 @@ export default function OrderFinanceTab({ workflowData, onRefresh }: OrderFinanc
   const margin: MarginData | null = workflowData.margin || null;
   const invoice: Invoice | null = workflowData.invoice || null;
   const steps: any[] = workflowData.steps || [];
+  const payments: PaymentRecord[] = workflowData.payments || [];
 
   return (
     <div className="space-y-6">
       <SummaryCards of={of} vf={vf} margin={margin} />
       <ReceivableBreakdown of={of} invoice={invoice} />
+      <PaymentDetails payments={payments} />
       <PayablesBreakdown steps={steps} vf={vf} currency={of.currency} onRefresh={onRefresh} />
       <ProfitSummary of={of} vf={vf} margin={margin} />
+    </div>
+  );
+}
+
+// ── Payment Details ──
+
+function PaymentDetails({ payments }: { payments: PaymentRecord[] }) {
+  if (!payments || payments.length === 0) return null;
+
+  const cardBrandLabel = (brand: string | null) => {
+    if (!brand) return null;
+    const map: Record<string, string> = {
+      visa: "Visa",
+      mastercard: "Mastercard",
+      amex: "American Express",
+      discover: "Discover",
+      jcb: "JCB",
+      diners: "Diners Club",
+      unionpay: "UnionPay",
+    };
+    return map[brand.toLowerCase()] || brand;
+  };
+
+  const statusBadge = (status: string | null) => {
+    const s = (status || "").toLowerCase();
+    if (s === "succeeded" || s === "paid" || s === "completed") {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded">
+          Succeeded
+        </span>
+      );
+    }
+    if (s === "failed" || s === "canceled") {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded">
+          {status}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 rounded">
+        {status || "—"}
+      </span>
+    );
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <h3 className="text-sm font-semibold text-gray-900 mb-3">Payment Details</h3>
+      <div className="space-y-3">
+        {payments.map((p) => {
+          const isCard = !!p.card_last4;
+          const exp =
+            p.card_exp_month && p.card_exp_year
+              ? `${String(p.card_exp_month).padStart(2, "0")}/${String(
+                  p.card_exp_year
+                ).slice(-2)}`
+              : null;
+          return (
+            <div
+              key={p.id}
+              className="border border-gray-200 rounded-md p-3 space-y-2 text-sm"
+            >
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-gray-900">
+                    {formatCurrency(p.amount, p.currency)}
+                  </span>
+                  {p.payment_type && (
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded capitalize">
+                      {p.payment_type}
+                    </span>
+                  )}
+                  {statusBadge(p.status)}
+                </div>
+                <span className="text-xs text-gray-500">
+                  {format(new Date(p.created_at), "MMM d, yyyy · h:mm a")}
+                </span>
+              </div>
+
+              {isCard && (
+                <div className="flex items-center gap-3 text-sm text-gray-700">
+                  <span className="font-medium">
+                    {cardBrandLabel(p.card_brand)} •••• {p.card_last4}
+                  </span>
+                  {exp && <span className="text-gray-500">exp {exp}</span>}
+                  {p.card_country && (
+                    <span className="text-gray-500">{p.card_country}</span>
+                  )}
+                  {p.cardholder_name && (
+                    <span className="text-gray-500">· {p.cardholder_name}</span>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-xs text-gray-600">
+                {p.stripe_payment_intent_id && (
+                  <div>
+                    <span className="text-gray-400">Payment Intent</span>{" "}
+                    <code className="font-mono text-gray-700">
+                      {p.stripe_payment_intent_id}
+                    </code>
+                  </div>
+                )}
+                {p.stripe_charge_id && (
+                  <div>
+                    <span className="text-gray-400">Charge</span>{" "}
+                    <code className="font-mono text-gray-700">
+                      {p.stripe_charge_id}
+                    </code>
+                  </div>
+                )}
+                {p.stripe_checkout_session_id && (
+                  <div className="sm:col-span-2">
+                    <span className="text-gray-400">Checkout Session</span>{" "}
+                    <code className="font-mono text-gray-700">
+                      {p.stripe_checkout_session_id}
+                    </code>
+                  </div>
+                )}
+                {!isCard && p.payment_method && (
+                  <div>
+                    <span className="text-gray-400">Method</span>{" "}
+                    <span className="text-gray-700 capitalize">
+                      {p.payment_method}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {p.failure_reason && (
+                <p className="text-xs text-red-600">
+                  Failure: {p.failure_reason}
+                </p>
+              )}
+
+              {p.receipt_url && (
+                <a
+                  href={p.receipt_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+                >
+                  View Stripe receipt →
+                </a>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
