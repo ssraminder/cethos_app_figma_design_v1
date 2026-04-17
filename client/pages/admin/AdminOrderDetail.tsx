@@ -944,9 +944,16 @@ export default function AdminOrderDetail() {
     return new Blob([mergedBytes], { type: 'application/pdf' });
   };
 
+  // Only PDFs get merged as chunks. Other types (images, etc.) can share an
+  // original_filename across rows without being mergable — treat each row as
+  // a standalone file and use the representative storage_path.
+  const isPdfFile = (file: any) =>
+    (file.mime_type || "").toLowerCase() === "application/pdf" ||
+    (file.storage_path || "").toLowerCase().endsWith(".pdf");
+
   const handlePreviewFile = async (file: any) => {
     try {
-      if (file._chunk_count > 1) {
+      if (file._chunk_count > 1 && isPdfFile(file)) {
         const blob = await mergeChunkPdfs(file);
         const url = URL.createObjectURL(blob);
         window.open(url, "_blank");
@@ -966,7 +973,7 @@ export default function AdminOrderDetail() {
   const handleDownloadFile = async (file: any) => {
     try {
       let blob: Blob;
-      if (file._chunk_count > 1) {
+      if (file._chunk_count > 1 && isPdfFile(file)) {
         blob = await mergeChunkPdfs(file);
       } else {
         const { data } = await supabase.storage
@@ -3472,7 +3479,8 @@ export default function AdminOrderDetail() {
                                   ? `${(file.file_size / 1024).toFixed(1)} KB`
                                   : "—"}{" "}
                                 • {file.mime_type || "Unknown type"}
-                                {file._chunk_count > 1 && ` • ${file._chunk_count} pages`}
+                                {file._chunk_count > 1 &&
+                                  ` • ${file._chunk_count} ${isPdfFile(file) ? "chunks" : "parts"}`}
                               </p>
                             </div>
                           </div>
