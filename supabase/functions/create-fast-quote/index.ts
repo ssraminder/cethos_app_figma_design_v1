@@ -154,6 +154,7 @@ serve(async (req: Request) => {
         entry_point: quote.entryPoint || "staff_manual",
         manual_quote_notes: quote.manualQuoteNotes || null,
         processing_status: "quote_ready",
+        promised_delivery_date: quote.promisedDeliveryDate || null,
       })
       .select("id, quote_number")
       .single();

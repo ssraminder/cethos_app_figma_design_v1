@@ -52,6 +52,7 @@ export interface StaffQuoteData {
   taxRateId: string;
   turnaroundOptionId: string;
   specialInstructions: string;
+  promisedDeliveryDate: string | null; // YYYY-MM-DD
   documents: Array<{
     label: string;
     pageCount: number;
@@ -72,6 +73,13 @@ export interface StaffQuoteData {
     reason: string;
     amount: number;
   };
+  surcharge: {
+    enabled: boolean;
+    type: "percentage" | "fixed";
+    value: number;
+    reason: string;
+    amount: number;
+  };
   pricing: {
     translationSubtotal: number;
     certificationTotal: number;
@@ -82,6 +90,7 @@ export interface StaffQuoteData {
     rushFee: number;
     isRush: boolean;
     discountAmount: number;
+    surchargeAmount: number;
   };
 }
 
@@ -133,6 +142,15 @@ export default function KioskStaffForm({
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
   const [discountValue, setDiscountValue] = useState("");
   const [discountReason, setDiscountReason] = useState("");
+
+  // Quote-level surcharge
+  const [surchargeEnabled, setSurchargeEnabled] = useState(false);
+  const [surchargeType, setSurchargeType] = useState<"percentage" | "fixed">("percentage");
+  const [surchargeValue, setSurchargeValue] = useState("");
+  const [surchargeReason, setSurchargeReason] = useState("");
+
+  // Promised delivery date (optional — staff override)
+  const [promisedDeliveryDate, setPromisedDeliveryDate] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -256,12 +274,24 @@ export default function KioskStaffForm({
           discountType === "percentage"
             ? subtotalBefore * (dv / 100)
             : dv;
-        // Cap: don't let the discount exceed the pre-rush subtotal
         if (discountAmount > subtotalBefore) discountAmount = subtotalBefore;
       }
     }
 
-    const subtotal = subtotalBefore + rushFee - discountAmount;
+    // Quote-level surcharge (applied to the same base as discount)
+    let surchargeAmount = 0;
+    if (surchargeEnabled) {
+      const sv = parseFloat(surchargeValue);
+      if (!isNaN(sv) && sv > 0) {
+        surchargeAmount =
+          surchargeType === "percentage"
+            ? subtotalBefore * (sv / 100)
+            : sv;
+      }
+    }
+
+    const subtotal =
+      subtotalBefore + rushFee - discountAmount + surchargeAmount;
     const taxRate = selectedTax?.rate || 0;
     const taxAmount = subtotal * taxRate;
     const total = subtotal + taxAmount;
@@ -275,8 +305,9 @@ export default function KioskStaffForm({
       rushFee,
       isRush,
       discountAmount,
+      surchargeAmount,
     };
-  }, [priced, selectedTurnaround, selectedTax, discountEnabled, discountType, discountValue]);
+  }, [priced, selectedTurnaround, selectedTax, discountEnabled, discountType, discountValue, surchargeEnabled, surchargeType, surchargeValue]);
 
   const addDoc = () =>
     setDocs((prev) => [
@@ -345,12 +376,24 @@ export default function KioskStaffForm({
         return;
       }
     }
+    if (surchargeEnabled) {
+      const sv = parseFloat(surchargeValue);
+      if (isNaN(sv) || sv <= 0) {
+        toast.error("Enter a surcharge amount, or uncheck Surcharge");
+        return;
+      }
+      if (!surchargeReason.trim()) {
+        toast.error("Surcharge reason is required");
+        return;
+      }
+    }
     onSubmit({
       sourceLanguageId,
       targetLanguageId,
       taxRateId,
       turnaroundOptionId,
       specialInstructions: specialInstructions.trim(),
+      promisedDeliveryDate: promisedDeliveryDate || null,
       documents: priced.map((d) => ({
         label: d.label.trim(),
         pageCount: d.pageCount,
@@ -370,6 +413,13 @@ export default function KioskStaffForm({
         value: discountEnabled ? parseFloat(discountValue) || 0 : 0,
         reason: discountEnabled ? discountReason.trim() : "",
         amount: totals.discountAmount,
+      },
+      surcharge: {
+        enabled: surchargeEnabled,
+        type: surchargeType,
+        value: surchargeEnabled ? parseFloat(surchargeValue) || 0 : 0,
+        reason: surchargeEnabled ? surchargeReason.trim() : "",
+        amount: totals.surchargeAmount,
       },
       pricing: totals,
     });
@@ -678,6 +728,82 @@ export default function KioskStaffForm({
               </div>
             )}
           </section>
+
+          {/* Surcharge */}
+          <section className="bg-white rounded-xl border p-5">
+            <label className="flex items-center gap-2 mb-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={surchargeEnabled}
+                onChange={(e) => setSurchargeEnabled(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <span className="font-semibold">Apply surcharge</span>
+            </label>
+            {surchargeEnabled && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Select
+                    label="Type"
+                    value={surchargeType}
+                    onChange={(v) =>
+                      setSurchargeType(v as "percentage" | "fixed")
+                    }
+                    options={[
+                      { value: "percentage", label: "Percentage (%)" },
+                      { value: "fixed", label: "Fixed amount ($)" },
+                    ]}
+                  />
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                      {surchargeType === "percentage"
+                        ? "Percent (%)"
+                        : "Amount ($)"}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={surchargeType === "percentage" ? "0.1" : "0.01"}
+                      value={surchargeValue}
+                      onChange={(e) => setSurchargeValue(e.target.value)}
+                      placeholder={
+                        surchargeType === "percentage" ? "e.g. 10" : "e.g. 25.00"
+                      }
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                    Reason
+                  </label>
+                  <input
+                    value={surchargeReason}
+                    onChange={(e) => setSurchargeReason(e.target.value)}
+                    placeholder="e.g. Hardcopy notarization"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Promised delivery date */}
+          <section className="bg-white rounded-xl border p-5">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+              Promised delivery date (optional)
+            </label>
+            <input
+              type="date"
+              value={promisedDeliveryDate}
+              onChange={(e) => setPromisedDeliveryDate(e.target.value)}
+              min={new Date().toISOString().slice(0, 10)}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Leave blank to use the default based on turnaround.
+            </p>
+          </section>
         </div>
 
         {/* ── Right column — totals & continue ─────────────── */}
@@ -701,6 +827,13 @@ export default function KioskStaffForm({
                   label="Discount"
                   value={-totals.discountAmount}
                   highlight="text-green-700"
+                />
+              )}
+              {totals.surchargeAmount > 0 && (
+                <Row
+                  label="Surcharge"
+                  value={totals.surchargeAmount}
+                  highlight="text-amber-700"
                 />
               )}
               <Row label="Subtotal" value={totals.subtotal} />

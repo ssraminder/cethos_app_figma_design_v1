@@ -155,6 +155,7 @@ serve(async (req: Request) => {
         manual_quote_notes: quote.manualQuoteNotes || null,
         processing_status: "quote_ready",
         kiosk_device_id: device.id,
+        promised_delivery_date: quote.promisedDeliveryDate || null,
       })
       .select("id, quote_number")
       .single();

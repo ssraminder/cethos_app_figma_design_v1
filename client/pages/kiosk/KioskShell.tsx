@@ -171,6 +171,7 @@ export default function KioskShell() {
             specialInstructions: staffData.specialInstructions || null,
             isRush: staffData.pricing.isRush,
             rushFee: staffData.pricing.rushFee,
+            promisedDeliveryDate: staffData.promisedDeliveryDate,
           },
           documents: staffData.documents.map((d) => ({
             label: d.label,
@@ -197,6 +198,12 @@ export default function KioskShell() {
             discountValue: staffData.discount.value,
             discountAmount: staffData.discount.amount,
             discountReason: staffData.discount.reason,
+            surchargeType: staffData.surcharge.enabled
+              ? staffData.surcharge.type
+              : null,
+            surchargeValue: staffData.surcharge.value,
+            surchargeAmount: staffData.surcharge.amount,
+            surchargeReason: staffData.surcharge.reason,
           },
         },
       );
