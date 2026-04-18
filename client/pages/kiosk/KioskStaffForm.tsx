@@ -42,6 +42,7 @@ interface KioskDoc {
   pageCount: number;
   complexity: "easy" | "medium" | "hard";
   certificationTypeId: string;
+  perPageRateOverride: string; // blank = auto
   files: File[];
 }
 
@@ -64,6 +65,13 @@ export interface StaffQuoteData {
     lineTotal: number;
     files: File[];
   }>;
+  discount: {
+    enabled: boolean;
+    type: "percentage" | "fixed";
+    value: number;
+    reason: string;
+    amount: number;
+  };
   pricing: {
     translationSubtotal: number;
     certificationTotal: number;
@@ -73,6 +81,7 @@ export interface StaffQuoteData {
     total: number;
     rushFee: number;
     isRush: boolean;
+    discountAmount: number;
   };
 }
 
@@ -114,9 +123,16 @@ export default function KioskStaffForm({
       pageCount: 1,
       complexity: "easy",
       certificationTypeId: "",
+      perPageRateOverride: "",
       files: [],
     },
   ]);
+
+  // Quote-level discount
+  const [discountEnabled, setDiscountEnabled] = useState(false);
+  const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -192,12 +208,16 @@ export default function KioskStaffForm({
       const billable = Math.ceil(d.pageCount * compMult * 10) / 10;
       const cert = certTypes.find((c) => c.id === d.certificationTypeId);
       const certPrice = cert?.price || 0;
-      const translation = billable * perPageRate;
+      const overrideRate = parseFloat(d.perPageRateOverride);
+      const effectiveRate =
+        !isNaN(overrideRate) && overrideRate > 0 ? overrideRate : perPageRate;
+      const translation = billable * effectiveRate;
       return {
         ...d,
         complexityMultiplier: compMult,
         billablePages: billable,
-        perPageRate,
+        perPageRate: effectiveRate,
+        autoPerPageRate: perPageRate,
         certificationPrice: certPrice,
         translationCost: translation,
         lineTotal: translation + certPrice,
@@ -226,7 +246,22 @@ export default function KioskStaffForm({
           ? subtotalBefore * (selectedTurnaround.fee_value / 100)
           : selectedTurnaround.fee_value;
     }
-    const subtotal = subtotalBefore + rushFee;
+
+    // Quote-level discount (applied to translation+cert subtotal, not rush/tax)
+    let discountAmount = 0;
+    if (discountEnabled) {
+      const dv = parseFloat(discountValue);
+      if (!isNaN(dv) && dv > 0) {
+        discountAmount =
+          discountType === "percentage"
+            ? subtotalBefore * (dv / 100)
+            : dv;
+        // Cap: don't let the discount exceed the pre-rush subtotal
+        if (discountAmount > subtotalBefore) discountAmount = subtotalBefore;
+      }
+    }
+
+    const subtotal = subtotalBefore + rushFee - discountAmount;
     const taxRate = selectedTax?.rate || 0;
     const taxAmount = subtotal * taxRate;
     const total = subtotal + taxAmount;
@@ -239,8 +274,9 @@ export default function KioskStaffForm({
       total,
       rushFee,
       isRush,
+      discountAmount,
     };
-  }, [priced, selectedTurnaround, selectedTax]);
+  }, [priced, selectedTurnaround, selectedTax, discountEnabled, discountType, discountValue]);
 
   const addDoc = () =>
     setDocs((prev) => [
@@ -251,6 +287,7 @@ export default function KioskStaffForm({
         pageCount: 1,
         complexity: "easy",
         certificationTypeId: prev[prev.length - 1]?.certificationTypeId || "",
+        perPageRateOverride: "",
         files: [],
       },
     ]);
@@ -297,6 +334,17 @@ export default function KioskStaffForm({
         return;
       }
     }
+    if (discountEnabled) {
+      const dv = parseFloat(discountValue);
+      if (isNaN(dv) || dv <= 0) {
+        toast.error("Enter a discount amount, or uncheck Discount");
+        return;
+      }
+      if (!discountReason.trim()) {
+        toast.error("Discount reason is required");
+        return;
+      }
+    }
     onSubmit({
       sourceLanguageId,
       targetLanguageId,
@@ -316,6 +364,13 @@ export default function KioskStaffForm({
         lineTotal: d.lineTotal,
         files: d.files,
       })),
+      discount: {
+        enabled: discountEnabled,
+        type: discountType,
+        value: discountEnabled ? parseFloat(discountValue) || 0 : 0,
+        reason: discountEnabled ? discountReason.trim() : "",
+        amount: totals.discountAmount,
+      },
       pricing: totals,
     });
   };
@@ -493,6 +548,27 @@ export default function KioskStaffForm({
                         small
                       />
                     </div>
+                    <div className="mt-2">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                        Per-page rate ($){" "}
+                        <span className="font-normal text-gray-400 normal-case">
+                          — auto: ${perPageRate.toFixed(2)}
+                        </span>
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={d.perPageRateOverride}
+                        onChange={(e) =>
+                          updateDoc(d.id, {
+                            perPageRateOverride: e.target.value,
+                          })
+                        }
+                        placeholder={`Leave blank for auto (${perPageRate.toFixed(2)})`}
+                        className="w-full px-2 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
                     <div className="mt-2 flex items-center gap-2">
                       <label className="inline-flex items-center gap-2 text-xs bg-white border border-dashed border-gray-300 rounded px-3 py-2 cursor-pointer hover:border-teal-500">
                         <Upload className="w-4 h-4" />
@@ -543,6 +619,65 @@ export default function KioskStaffForm({
               })}
             </div>
           </section>
+
+          {/* Discount */}
+          <section className="bg-white rounded-xl border p-5">
+            <label className="flex items-center gap-2 mb-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={discountEnabled}
+                onChange={(e) => setDiscountEnabled(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <span className="font-semibold">Apply discount</span>
+            </label>
+            {discountEnabled && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Select
+                    label="Type"
+                    value={discountType}
+                    onChange={(v) =>
+                      setDiscountType(v as "percentage" | "fixed")
+                    }
+                    options={[
+                      { value: "percentage", label: "Percentage (%)" },
+                      { value: "fixed", label: "Fixed amount ($)" },
+                    ]}
+                  />
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                      {discountType === "percentage"
+                        ? "Percent (%)"
+                        : "Amount ($)"}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={discountType === "percentage" ? "0.1" : "0.01"}
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                      placeholder={
+                        discountType === "percentage" ? "e.g. 10" : "e.g. 25.00"
+                      }
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                    Reason
+                  </label>
+                  <input
+                    value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)}
+                    placeholder="e.g. Returning customer"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+              </div>
+            )}
+          </section>
         </div>
 
         {/* ── Right column — totals & continue ─────────────── */}
@@ -560,6 +695,13 @@ export default function KioskStaffForm({
               />
               {totals.isRush && (
                 <Row label="Rush fee" value={totals.rushFee} />
+              )}
+              {totals.discountAmount > 0 && (
+                <Row
+                  label="Discount"
+                  value={-totals.discountAmount}
+                  highlight="text-green-700"
+                />
               )}
               <Row label="Subtotal" value={totals.subtotal} />
               <Row
@@ -649,19 +791,22 @@ function Row({
   label,
   value,
   bold,
+  highlight,
 }: {
   label: string;
   value: number;
   bold?: boolean;
+  highlight?: string;
 }) {
+  const cls = bold
+    ? "text-base font-bold text-gray-900"
+    : highlight || "text-gray-600";
   return (
-    <div
-      className={`flex justify-between ${
-        bold ? "text-base font-bold text-gray-900" : "text-gray-600"
-      }`}
-    >
+    <div className={`flex justify-between ${cls}`}>
       <dt>{label}</dt>
-      <dd>${value.toFixed(2)}</dd>
+      <dd>
+        {value < 0 ? "−" : ""}${Math.abs(value).toFixed(2)}
+      </dd>
     </div>
   );
 }

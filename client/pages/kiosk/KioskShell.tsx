@@ -187,6 +187,12 @@ export default function KioskShell() {
             taxRate: staffData.pricing.taxRate,
             taxAmount: staffData.pricing.taxAmount,
             total: staffData.pricing.total,
+            discountType: staffData.discount.enabled
+              ? staffData.discount.type
+              : null,
+            discountValue: staffData.discount.value,
+            discountAmount: staffData.discount.amount,
+            discountReason: staffData.discount.reason,
           },
         },
       );
