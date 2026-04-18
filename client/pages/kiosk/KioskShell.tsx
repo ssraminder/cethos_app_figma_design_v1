@@ -31,6 +31,7 @@ import {
   kioskUploadFile,
 } from "./KioskApi";
 import KioskStaffForm, { StaffQuoteData } from "./KioskStaffForm";
+import CustomerSearch, { CustomerHit } from "@/components/shared/CustomerSearch";
 
 type State =
   | "idle"
@@ -45,6 +46,7 @@ type State =
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 min
 
 interface CustomerDraft {
+  existingCustomerId: string | null;
   fullName: string;
   email: string;
   phone: string;
@@ -53,6 +55,7 @@ interface CustomerDraft {
 }
 
 const EMPTY_CUSTOMER: CustomerDraft = {
+  existingCustomerId: null,
   fullName: "",
   email: "",
   phone: "",
@@ -150,6 +153,7 @@ export default function KioskShell() {
         "create-fast-quote-kiosk",
         {
           customer: {
+            existingCustomerId: customer.existingCustomerId,
             fullName: customer.fullName.trim(),
             email: customer.email.trim().toLowerCase() || null,
             phone: customer.phone.trim() || null,
@@ -316,27 +320,50 @@ export default function KioskShell() {
   }
 
   if (state === "handoff_to_customer") {
+    const pickExisting = (c: CustomerHit) => {
+      setCustomer({
+        existingCustomerId: c.id,
+        fullName: c.full_name || "",
+        email: c.email || "",
+        phone: c.phone || "",
+        customerType: c.customer_type || "individual",
+        companyName: c.company_name || "",
+      });
+    };
     return (
       <KioskFrame deviceName={creds.device_name}>
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center max-w-md">
-            <div className="inline-flex w-20 h-20 bg-blue-100 rounded-2xl items-center justify-center mb-6">
-              <User className="w-10 h-10 text-blue-700" />
+        <div className="flex-1 flex items-start justify-center p-6 overflow-y-auto">
+          <div className="w-full max-w-md text-center mt-6">
+            <div className="inline-flex w-16 h-16 bg-blue-100 rounded-2xl items-center justify-center mb-4">
+              <User className="w-8 h-8 text-blue-700" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-3">
-              Please pass the tablet to the customer
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              Pass the tablet to the customer
             </h1>
-            <p className="text-gray-500 mb-8">
-              The customer will enter their contact details. Staff will see the
-              tablet again before any payment step.
+            <p className="text-gray-500 mb-5 text-sm">
+              Existing customer? Look them up below first (optional). Otherwise
+              tap "I'm ready" and the customer will enter their own info.
             </p>
+
+            <div className="bg-white rounded-xl border p-4 mb-5 text-left">
+              <CustomerSearch
+                onSelect={pickExisting}
+                onClear={() => setCustomer(EMPTY_CUSTOMER)}
+                pickedLabel={
+                  customer.existingCustomerId
+                    ? `${customer.fullName}${customer.email ? ` · ${customer.email}` : ""}`
+                    : undefined
+                }
+              />
+            </div>
+
             <button
               onClick={startCustomerStep}
-              className="bg-blue-600 text-white text-xl font-semibold px-10 py-5 rounded-2xl hover:bg-blue-700 inline-flex items-center gap-3"
+              className="w-full bg-blue-600 text-white text-xl font-semibold px-10 py-4 rounded-2xl hover:bg-blue-700 inline-flex items-center justify-center gap-3"
             >
               I'm ready <ArrowRight className="w-6 h-6" />
             </button>
-            <div className="mt-8">
+            <div className="mt-6">
               <button
                 onClick={resetToIdle}
                 className="text-sm text-gray-400 hover:text-gray-700 underline"

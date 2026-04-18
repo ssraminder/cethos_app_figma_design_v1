@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { toast } from "sonner";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import CustomerSearch, { CustomerHit } from "@/components/shared/CustomerSearch";
 import {
   ArrowLeft,
   Zap,
@@ -1003,12 +1004,34 @@ export default function FastQuoteCreate() {
               Customer Information
             </h2>
 
-            {existingCustomerBanner && (
-              <div className="mb-4 flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
-                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                Existing customer found: {existingCustomerBanner}
-              </div>
-            )}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Existing customer (optional)
+              </label>
+              <CustomerSearch
+                pickedLabel={
+                  existingCustomerId
+                    ? `Linked to ${existingCustomerBanner || fullName}`
+                    : undefined
+                }
+                onSelect={(c: CustomerHit) => {
+                  setExistingCustomerId(c.id);
+                  setExistingCustomerBanner(c.full_name || c.email || "Unknown");
+                  if (c.full_name) setFullName(c.full_name);
+                  if (c.email) setEmail(c.email);
+                  if (c.phone) setPhone(c.phone);
+                  if (c.customer_type) setCustomerType(c.customer_type);
+                  if (c.company_name) setCompanyName(c.company_name);
+                }}
+                onClear={() => {
+                  setExistingCustomerId(null);
+                  setExistingCustomerBanner("");
+                }}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Search by name, email, phone, or company. Leave blank to create a new customer.
+              </p>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div data-field="fullName">
