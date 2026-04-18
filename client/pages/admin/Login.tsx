@@ -136,32 +136,37 @@ export default function AdminLogin() {
 
       console.log("Session exists:", authData.session ? "YES" : "NO");
 
-      // Step 2: Verify user is in staff_users table and active
-      // The SIGNED_IN auth state change can abort in-flight Supabase requests,
-      // so retry once after a brief delay if the query is aborted.
+      // Step 2: Verify user is in staff_users table and active.
+      // The SIGNED_IN auth state change aborts in-flight Supabase client
+      // requests (even retries), so call PostgREST directly with the fresh
+      // access token — this bypasses the client's internal AbortController.
       console.log("Querying staff_users for email:", normalizedEmail);
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const accessToken = authData.session.access_token;
 
       let staffData: any = null;
       let staffError: any = null;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const result = await supabase
-          .from("staff_users")
-          .select("id, full_name, email, role, is_active")
-          .eq("email", normalizedEmail)
-          .single();
-        staffData = result.data;
-        staffError = result.error;
-
-        if (!staffError) break;
-
-        const isAbort = staffError.message?.includes("AbortError") ||
-          staffError.message?.includes("aborted");
-        if (isAbort && attempt === 0) {
-          console.warn("Staff query aborted by auth state change, retrying...");
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          continue;
+      try {
+        const restUrl = `${supabaseUrl}/rest/v1/staff_users?select=id,full_name,email,role,is_active&email=eq.${encodeURIComponent(normalizedEmail)}&limit=1`;
+        const response = await fetch(restUrl, {
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json",
+          },
+        });
+        if (!response.ok) {
+          staffError = {
+            message: `HTTP ${response.status}: ${await response.text()}`,
+          };
+        } else {
+          const rows = await response.json();
+          staffData = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
         }
-        break;
+      } catch (fetchErr: any) {
+        staffError = { message: fetchErr?.message || String(fetchErr) };
       }
 
       console.log("Staff query result:", { staffData, staffError });

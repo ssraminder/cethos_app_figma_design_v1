@@ -2,7 +2,7 @@
   "name": "Cethos Kiosk",
   "short_name": "Cethos Kiosk",
   "description": "Walk-in translation quote kiosk for Cethos front-desk tablets.",
-  "start_url": "/kiosk",
+  "start_url": "/kiosk/",
   "scope": "/kiosk/",
   "display": "fullscreen",
   "orientation": "portrait",
