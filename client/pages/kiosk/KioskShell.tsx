@@ -168,6 +168,7 @@ export default function KioskShell() {
             targetLanguageId: staffData.targetLanguageId,
             taxRateId: staffData.taxRateId,
             turnaroundOptionId: staffData.turnaroundOptionId || null,
+            intendedUseId: staffData.intendedUseId,
             specialInstructions: staffData.specialInstructions || null,
             isRush: staffData.pricing.isRush,
             rushFee: staffData.pricing.rushFee,

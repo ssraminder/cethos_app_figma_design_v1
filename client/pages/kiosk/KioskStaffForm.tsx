@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Trash2, Upload, FileText, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 interface Language {
   id: string;
@@ -36,6 +37,11 @@ interface TaxRate {
   tax_name: string;
   rate: number;
 }
+interface IntendedUse {
+  id: string;
+  name: string;
+  default_certification_type_id: string | null;
+}
 interface KioskDoc {
   id: string;
   label: string;
@@ -51,6 +57,7 @@ export interface StaffQuoteData {
   targetLanguageId: string;
   taxRateId: string;
   turnaroundOptionId: string;
+  intendedUseId: string | null;
   specialInstructions: string;
   promisedDeliveryDate: string | null; // YYYY-MM-DD
   documents: Array<{
@@ -117,6 +124,7 @@ export default function KioskStaffForm({
   const [certTypes, setCertTypes] = useState<CertificationType[]>([]);
   const [turnarounds, setTurnarounds] = useState<TurnaroundOption[]>([]);
   const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
+  const [intendedUses, setIntendedUses] = useState<IntendedUse[]>([]);
   const [baseRate, setBaseRate] = useState(65);
   const [wordsPerPage] = useState(225);
 
@@ -124,6 +132,7 @@ export default function KioskStaffForm({
   const [targetLanguageId, setTargetLanguageId] = useState("");
   const [taxRateId, setTaxRateId] = useState("");
   const [turnaroundOptionId, setTurnaroundOptionId] = useState("");
+  const [intendedUseId, setIntendedUseId] = useState("");
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [docs, setDocs] = useState<KioskDoc[]>([
     {
@@ -155,7 +164,7 @@ export default function KioskStaffForm({
   useEffect(() => {
     (async () => {
       try {
-        const [langRes, certRes, turnRes, taxRes, settingsRes] =
+        const [langRes, certRes, turnRes, taxRes, usesRes, settingsRes] =
           await Promise.all([
             supabase
               .from("languages")
@@ -180,6 +189,11 @@ export default function KioskStaffForm({
               .eq("is_active", true)
               .order("region_name"),
             supabase
+              .from("intended_uses")
+              .select("id,name,default_certification_type_id")
+              .eq("is_active", true)
+              .order("name"),
+            supabase
               .from("app_settings")
               .select("key,value")
               .in("key", ["base_rate"]),
@@ -189,6 +203,7 @@ export default function KioskStaffForm({
         setCertTypes(certRes.data || []);
         setTurnarounds(turnRes.data || []);
         setTaxRates(taxRes.data || []);
+        setIntendedUses(usesRes.data || []);
         for (const s of settingsRes.data || []) {
           if (s.key === "base_rate") setBaseRate(parseFloat(s.value) || 65);
         }
@@ -392,6 +407,7 @@ export default function KioskStaffForm({
       targetLanguageId,
       taxRateId,
       turnaroundOptionId,
+      intendedUseId: intendedUseId || null,
       specialInstructions: specialInstructions.trim(),
       promisedDeliveryDate: promisedDeliveryDate || null,
       documents: priced.map((d) => ({
@@ -471,24 +487,60 @@ export default function KioskStaffForm({
           {/* Languages + tax + turnaround */}
           <section className="bg-white rounded-xl border p-5">
             <h2 className="font-semibold mb-3">Translation</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <Select
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <SearchableSelect
                 label="Source language"
+                required
+                placeholder="Search language…"
                 value={sourceLanguageId}
                 onChange={setSourceLanguageId}
                 options={languages
                   .filter((l) => l.is_source_available)
-                  .map((l) => ({ value: l.id, label: l.name }))}
+                  .map((l) => ({
+                    value: l.id,
+                    label: l.native_name
+                      ? `${l.name} (${l.native_name})`
+                      : l.name,
+                  }))}
               />
-              <Select
+              <SearchableSelect
                 label="Target language"
+                required
+                placeholder="Search language…"
                 value={targetLanguageId}
                 onChange={setTargetLanguageId}
                 options={languages
                   .filter(
                     (l) => l.is_target_available && l.id !== sourceLanguageId,
                   )
-                  .map((l) => ({ value: l.id, label: l.name }))}
+                  .map((l) => ({
+                    value: l.id,
+                    label: l.native_name
+                      ? `${l.name} (${l.native_name})`
+                      : l.name,
+                  }))}
+              />
+              <SearchableSelect
+                label="Intended use"
+                placeholder="Search intended use…"
+                value={intendedUseId}
+                onChange={(v) => {
+                  setIntendedUseId(v);
+                  // Auto-apply the default cert type to all docs (like admin flow)
+                  const use = intendedUses.find((u) => u.id === v);
+                  if (use?.default_certification_type_id) {
+                    setDocs((prev) =>
+                      prev.map((d) => ({
+                        ...d,
+                        certificationTypeId: use.default_certification_type_id!,
+                      })),
+                    );
+                  }
+                }}
+                options={intendedUses.map((u) => ({
+                  value: u.id,
+                  label: u.name,
+                }))}
               />
               <Select
                 label="Tax region"
