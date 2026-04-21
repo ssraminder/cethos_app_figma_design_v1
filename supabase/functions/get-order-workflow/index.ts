@@ -190,6 +190,21 @@ serve(async (req: Request) => {
       }
     }
 
+    // Fetch staff names for steps assigned to internal staff.
+    const staffIds = (rawSteps ?? [])
+      .map((s: any) => s.assigned_staff_id)
+      .filter(Boolean);
+    let staffNameMap: Record<string, string> = {};
+    if (staffIds.length > 0) {
+      const { data: staffRows } = await supabase
+        .from("staff_users")
+        .select("id, full_name, email")
+        .in("id", [...new Set(staffIds)]);
+      for (const st of staffRows ?? []) {
+        staffNameMap[st.id] = st.full_name || st.email || st.id;
+      }
+    }
+
     const steps: any[] = [];
 
     for (const s of rawSteps ?? []) {
@@ -289,6 +304,7 @@ serve(async (req: Request) => {
         target_language: s.target_language,
         source_language_name: langNameMap[s.source_language] || null,
         target_language_name: langNameMap[s.target_language] || null,
+        assigned_staff_name: staffNameMap[s.assigned_staff_id] || null,
         service_id: s.service_id,
         service_name: serviceNameMap[s.service_id] || null,
         order_document_id: s.order_document_id,

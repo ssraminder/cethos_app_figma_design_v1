@@ -2186,6 +2186,7 @@ function WorkflowPipeline({
                   <ActorTypeBadge actorType={step.actor_type} />
                   <span className="text-sm text-gray-600">
                     {step.vendor_name ||
+                      step.assigned_staff_name ||
                       (step.assigned_staff_id ? (
                         "Staff assigned"
                       ) : (
