@@ -6,7 +6,7 @@
 // Quote mode         → calls create-fast-quote (pay-link flow)
 // Direct Order mode  → calls admin-create-order (AR customers only, invoice on delivery)
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -50,6 +50,27 @@ interface ARCustomer {
   is_ar_customer: boolean;
   payment_terms: string | null;
   currency: string | null;
+  default_tax_rate_id: string | null;
+  invoicing_branch_id: number | null;
+  requires_po: boolean | null;
+  requires_client_project_number: boolean | null;
+}
+
+interface BranchRow {
+  id: number;
+  code: string;
+  legal_name: string | null;
+  is_default: boolean;
+  is_active: boolean;
+}
+
+interface TaxRateRow {
+  id: string;
+  region_code: string | null;
+  region_name: string | null;
+  tax_name: string | null;
+  rate: number;
+  is_active: boolean;
 }
 
 interface LineItem {
@@ -96,6 +117,8 @@ export default function AdminCreateOrder() {
   // ── Reference data ──
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [languages, setLanguages] = useState<LanguageRow[]>([]);
+  const [branches, setBranches] = useState<BranchRow[]>([]);
+  const [taxRates, setTaxRates] = useState<TaxRateRow[]>([]);
   const [loadingRefs, setLoadingRefs] = useState(true);
 
   // ── Form state ──
@@ -108,8 +131,15 @@ export default function AdminCreateOrder() {
   const [rushFee, setRushFee] = useState<string>("");
   const [deliveryFee, setDeliveryFee] = useState<string>("");
   const [taxRate, setTaxRate] = useState<string>("0.05");
+  const [selectedTaxRateId, setSelectedTaxRateId] = useState<string>("");
   const [specialInstructions, setSpecialInstructions] = useState<string>("");
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState<string>("");
+  const [currency, setCurrency] = useState<string>("CAD");
+  const [branchId, setBranchId] = useState<number | null>(null);
+  const [poNumber, setPoNumber] = useState<string>("");
+  const [clientProjectNumber, setClientProjectNumber] = useState<string>("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -122,13 +152,53 @@ export default function AdminCreateOrder() {
   const [newCustomerType, setNewCustomerType] = useState<string>("business");
   const [newIsAR, setNewIsAR] = useState(false);
   const [newPaymentTerms, setNewPaymentTerms] = useState<string>("net_30");
+  const [newCurrency, setNewCurrency] = useState<string>("CAD");
+  const [newTaxRateId, setNewTaxRateId] = useState<string>("");
+  const [newBranchId, setNewBranchId] = useState<number | null>(null);
   const [savingCustomer, setSavingCustomer] = useState(false);
+
+  // ── Company name autocomplete (typeahead on existing customers.company_name) ──
+  const [companySuggestions, setCompanySuggestions] = useState<string[]>([]);
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
+  const companyDebounceRef = useRef<number | null>(null);
+  useEffect(() => {
+    const q = newCompany.trim();
+    if (companyDebounceRef.current) {
+      window.clearTimeout(companyDebounceRef.current);
+    }
+    if (q.length < 2) {
+      setCompanySuggestions([]);
+      return;
+    }
+    companyDebounceRef.current = window.setTimeout(async () => {
+      const esc = q.replace(/[,%]/g, "");
+      const { data } = await supabase
+        .from("customers")
+        .select("company_name")
+        .ilike("company_name", `%${esc}%`)
+        .not("company_name", "is", null)
+        .limit(30);
+      const unique = Array.from(
+        new Set(
+          (data || [])
+            .map((r: any) => (r.company_name || "").trim())
+            .filter(Boolean),
+        ),
+      ).slice(0, 8);
+      setCompanySuggestions(unique);
+    }, 200);
+    return () => {
+      if (companyDebounceRef.current) {
+        window.clearTimeout(companyDebounceRef.current);
+      }
+    };
+  }, [newCompany]);
 
   // ── Load reference data once ──
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [svcRes, langRes] = await Promise.all([
+      const [svcRes, langRes, brRes, taxRes] = await Promise.all([
         supabase
           .from("services")
           .select(
@@ -142,10 +212,26 @@ export default function AdminCreateOrder() {
           .select("id, name, code, is_source_available, is_target_available")
           .eq("is_active", true)
           .order("sort_order"),
+        supabase
+          .from("branches")
+          .select("id, code, legal_name, is_default, is_active")
+          .eq("is_active", true)
+          .order("id"),
+        supabase
+          .from("tax_rates")
+          .select("id, region_code, region_name, tax_name, rate, is_active")
+          .eq("is_active", true)
+          .order("region_name"),
       ]);
       if (cancelled) return;
       setServices((svcRes.data as ServiceRow[]) ?? []);
       setLanguages((langRes.data as LanguageRow[]) ?? []);
+      const br = (brRes.data as BranchRow[]) ?? [];
+      setBranches(br);
+      // Default branch = the one flagged is_default; else the first active
+      const def = br.find((b) => b.is_default) || br[0] || null;
+      if (def) setBranchId(def.id);
+      setTaxRates((taxRes.data as TaxRateRow[]) ?? []);
       setLoadingRefs(false);
     })();
     return () => {
@@ -221,15 +307,20 @@ export default function AdminCreateOrder() {
             newCustomerType !== "individual" ? newCompany.trim() || null : null,
           is_ar_customer: newIsAR,
           payment_terms: newIsAR ? newPaymentTerms : "immediate",
+          currency: newCurrency,
+          default_tax_rate_id: newTaxRateId || null,
+          invoicing_branch_id: newBranchId ?? branchId,
         })
         .select(
-          "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency",
+          "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency, default_tax_rate_id, invoicing_branch_id, requires_po, requires_client_project_number",
         )
         .single();
       if (error || !data) {
         throw new Error(error?.message || "Failed to create customer");
       }
-      setCustomer(data as ARCustomer);
+      const c = data as ARCustomer;
+      setCustomer(c);
+      inheritFromCustomer(c);
       setCreatingCustomer(false);
       // Reset fields
       setNewFullName("");
@@ -244,13 +335,23 @@ export default function AdminCreateOrder() {
     }
   };
 
+  // Helper: inherit per-customer defaults onto the project form
+  const inheritFromCustomer = (c: ARCustomer) => {
+    if (c.currency) setCurrency(c.currency);
+    if (c.invoicing_branch_id) setBranchId(c.invoicing_branch_id);
+    if (c.default_tax_rate_id) {
+      setSelectedTaxRateId(c.default_tax_rate_id);
+      const tr = taxRates.find((t) => t.id === c.default_tax_rate_id);
+      if (tr) setTaxRate(String(tr.rate));
+    }
+  };
+
   // ── Customer selection ──
   const handleCustomerSelect = async (hit: CustomerHit) => {
-    // Fetch full AR fields
     const { data, error } = await supabase
       .from("customers")
       .select(
-        "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency",
+        "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency, default_tax_rate_id, invoicing_branch_id, requires_po, requires_client_project_number",
       )
       .eq("id", hit.id)
       .maybeSingle();
@@ -258,7 +359,9 @@ export default function AdminCreateOrder() {
       toast.error("Failed to load customer");
       return;
     }
-    setCustomer(data as ARCustomer);
+    const c = data as ARCustomer;
+    setCustomer(c);
+    inheritFromCustomer(c);
   };
 
   const customerLabel = customer
@@ -294,8 +397,18 @@ export default function AdminCreateOrder() {
     if (!serviceId) return "Pick a service";
     if (!sourceLanguageId) return "Pick a source language";
     if (!targetLanguageId) return "Pick a target language";
+    if (!branchId) return "Pick an invoicing branch";
     if (mode === "direct_order" && !customer.is_ar_customer) {
       return "Direct orders require an AR-approved customer";
+    }
+    if (customer.requires_po && !poNumber.trim()) {
+      return `${customer.full_name || "Customer"} requires a PO number`;
+    }
+    if (
+      customer.requires_client_project_number &&
+      !clientProjectNumber.trim()
+    ) {
+      return `${customer.full_name || "Customer"} requires a client project number`;
     }
     for (const li of lineItems) {
       if (!li.description.trim()) return "Every line item needs a description";
@@ -304,6 +417,57 @@ export default function AdminCreateOrder() {
       if (num(li.baseRate) <= 0) return "Every line item needs a positive rate";
     }
     return null;
+  };
+
+  // Warn (non-blocking) if PO / project # are blank and the customer doesn't
+  // strictly require them. Returns false if the user cancelled.
+  const confirmMissingReferences = (): boolean => {
+    if (!customer) return true;
+    const missing: string[] = [];
+    if (!customer.requires_po && !poNumber.trim()) missing.push("PO number");
+    if (
+      !customer.requires_client_project_number &&
+      !clientProjectNumber.trim()
+    ) {
+      missing.push("Client project number");
+    }
+    if (missing.length === 0) return true;
+    return window.confirm(
+      `No ${missing.join(" or ")} entered. These are recommended for AR reconciliation. Continue anyway?`,
+    );
+  };
+
+  // Upload attached files into quote_files after the quote has been created.
+  const uploadAttachedFiles = async (quoteId: string) => {
+    if (files.length === 0) return;
+    setUploadingFiles(true);
+    try {
+      for (const f of files) {
+        const safeName = f.name.replace(/[^A-Za-z0-9._-]/g, "_");
+        const storagePath = `quote/${quoteId}/${Date.now()}_${safeName}`;
+        const { error: upErr } = await supabase.storage
+          .from("quote-files")
+          .upload(storagePath, f, {
+            contentType: f.type || "application/octet-stream",
+            upsert: false,
+          });
+        if (upErr) {
+          console.error("File upload failed:", upErr.message);
+          continue;
+        }
+        await supabase.from("quote_files").insert({
+          quote_id: quoteId,
+          original_filename: f.name,
+          storage_path: storagePath,
+          file_size: f.size,
+          mime_type: f.type || "application/octet-stream",
+          upload_status: "uploaded",
+          is_staff_created: true,
+        });
+      }
+    } finally {
+      setUploadingFiles(false);
+    }
   };
 
   // ── Submit ──
@@ -317,6 +481,7 @@ export default function AdminCreateOrder() {
       toast.error("You must be logged in");
       return;
     }
+    if (!confirmMissingReferences()) return;
 
     setSubmitting(true);
     try {
@@ -340,6 +505,7 @@ export default function AdminCreateOrder() {
         taxRate: totals.rate,
         taxAmount: totals.tax,
         total: totals.total,
+        currency,
       };
 
       if (mode === "quote") {
@@ -359,12 +525,17 @@ export default function AdminCreateOrder() {
             targetLanguageId,
             specialInstructions: specialInstructions.trim() || null,
             taxRate: totals.rate,
+            taxRateId: selectedTaxRateId || null,
             rushFee: totals.rush,
             deliveryFee: totals.delivery,
             isRush: totals.rush > 0,
             promisedDeliveryDate: promisedDeliveryDate || null,
             entryPoint: "admin_non_certified",
             manualQuoteNotes: specialInstructions.trim() || null,
+            currency,
+            invoicingBranchId: branchId,
+            poNumber: poNumber.trim() || null,
+            clientProjectNumber: clientProjectNumber.trim() || null,
           },
           documents,
           pricing,
@@ -384,6 +555,7 @@ export default function AdminCreateOrder() {
         if (!data?.success) {
           throw new Error(data?.error || "Quote creation failed");
         }
+        await uploadAttachedFiles(data.quoteId);
         toast.success(`Quote ${data.quoteNumber} created`);
         navigate(`/admin/quotes/${data.quoteId}`);
         return;
@@ -401,6 +573,11 @@ export default function AdminCreateOrder() {
           promisedDeliveryDate: promisedDeliveryDate || null,
           isRush: totals.rush > 0,
           notes: specialInstructions.trim() || null,
+          taxRateId: selectedTaxRateId || null,
+          currency,
+          invoicingBranchId: branchId,
+          poNumber: poNumber.trim() || null,
+          clientProjectNumber: clientProjectNumber.trim() || null,
         },
         documents,
         pricing,
@@ -420,6 +597,7 @@ export default function AdminCreateOrder() {
       if (!data?.success) {
         throw new Error(data?.error || "Direct order creation failed");
       }
+      if (data.quoteId) await uploadAttachedFiles(data.quoteId);
       toast.success(`Order ${data.orderNumber} created`);
       navigate(`/admin/orders/${data.orderId}`);
     } catch (e: any) {
@@ -675,18 +853,128 @@ export default function AdminCreateOrder() {
                     />
                   </div>
                   {newCustomerType !== "individual" && (
-                    <div className="md:col-span-2">
+                    <div className="md:col-span-2 relative">
                       <label className="block text-[11px] text-gray-500 mb-1">
                         Company name
                       </label>
                       <input
                         type="text"
                         value={newCompany}
-                        onChange={(e) => setNewCompany(e.target.value)}
+                        onChange={(e) => {
+                          setNewCompany(e.target.value);
+                          setCompanyDropdownOpen(true);
+                        }}
+                        onFocus={() =>
+                          companySuggestions.length > 0 &&
+                          setCompanyDropdownOpen(true)
+                        }
+                        onBlur={() =>
+                          // Delay close to allow click on suggestion
+                          setTimeout(() => setCompanyDropdownOpen(false), 150)
+                        }
+                        placeholder="Start typing — existing companies will appear"
                         className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                       />
+                      {companyDropdownOpen &&
+                        companySuggestions.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-20 max-h-56 overflow-y-auto">
+                            <ul className="divide-y divide-gray-100">
+                              {companySuggestions.map((name) => (
+                                <li key={name}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setNewCompany(name);
+                                      setCompanyDropdownOpen(false);
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-teal-50"
+                                  >
+                                    {name}
+                                  </button>
+                                </li>
+                              ))}
+                              {newCompany.trim() &&
+                                !companySuggestions.some(
+                                  (n) =>
+                                    n.toLowerCase() ===
+                                    newCompany.trim().toLowerCase(),
+                                ) && (
+                                  <li>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setCompanyDropdownOpen(false)
+                                      }
+                                      className="w-full text-left px-3 py-1.5 text-xs text-teal-700 bg-teal-50/50 hover:bg-teal-50"
+                                    >
+                                      + Create new: “{newCompany.trim()}”
+                                    </button>
+                                  </li>
+                                )}
+                            </ul>
+                          </div>
+                        )}
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Existing companies load as you type. A new name is
+                        saved when you create the customer.
+                      </p>
                     </div>
                   )}
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-1">
+                      Currency
+                    </label>
+                    <select
+                      value={newCurrency}
+                      onChange={(e) => setNewCurrency(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                      <option value="CAD">CAD</option>
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                      <option value="GBP">GBP</option>
+                      <option value="AUD">AUD</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-1">
+                      Default tax rate
+                    </label>
+                    <select
+                      value={newTaxRateId}
+                      onChange={(e) => setNewTaxRateId(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                      <option value="">— none —</option>
+                      {taxRates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.region_name || t.region_code} · {t.tax_name}{" "}
+                          {(Number(t.rate) * 100).toFixed(2)}%
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-[11px] text-gray-500 mb-1">
+                      Invoicing branch
+                    </label>
+                    <select
+                      value={newBranchId ?? branchId ?? ""}
+                      onChange={(e) =>
+                        setNewBranchId(
+                          e.target.value ? Number(e.target.value) : null,
+                        )
+                      }
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.legal_name || b.code}
+                          {b.is_default ? " (default)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="md:col-span-2 flex items-center gap-3 pt-1">
                     <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                       <input
@@ -913,10 +1201,144 @@ export default function AdminCreateOrder() {
             </div>
           </section>
 
+          {/* Admin fields: branch + PO + client project number */}
+          <section className="bg-white border rounded-lg p-4 space-y-4">
+            <h2 className="text-sm font-semibold text-gray-700">Admin fields</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Invoicing branch
+                </label>
+                <select
+                  value={branchId ?? ""}
+                  onChange={(e) =>
+                    setBranchId(e.target.value ? Number(e.target.value) : null)
+                  }
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="">— pick branch —</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.legal_name || b.code}
+                      {b.is_default ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">
+                  PO number{" "}
+                  {customer?.requires_po && (
+                    <span className="text-red-500">*</span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  value={poNumber}
+                  onChange={(e) => setPoNumber(e.target.value)}
+                  placeholder={
+                    customer?.requires_po ? "Required by this customer" : "Optional — recommended"
+                  }
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Client project number{" "}
+                  {customer?.requires_client_project_number && (
+                    <span className="text-red-500">*</span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  value={clientProjectNumber}
+                  onChange={(e) => setClientProjectNumber(e.target.value)}
+                  placeholder={
+                    customer?.requires_client_project_number
+                      ? "Required by this customer"
+                      : "Optional — recommended"
+                  }
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Files */}
+          <section className="bg-white border rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-700">
+                Source files
+              </h2>
+              <label className="text-xs text-teal-600 hover:text-teal-700 cursor-pointer flex items-center gap-1">
+                <Plus className="w-3 h-3" />
+                Attach files
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const chosen = Array.from(e.target.files || []);
+                    if (chosen.length) setFiles((prev) => [...prev, ...chosen]);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {files.length === 0 ? (
+              <p className="text-xs text-gray-500">
+                No files attached. Source documents, reference material, TMs,
+                glossaries — all welcome.
+              </p>
+            ) : (
+              <ul className="divide-y divide-gray-100 border rounded-md">
+                {files.map((f, i) => (
+                  <li
+                    key={`${f.name}-${i}`}
+                    className="flex items-center justify-between px-3 py-2 text-sm"
+                  >
+                    <div className="truncate mr-2">
+                      <span className="text-gray-900">{f.name}</span>
+                      <span className="text-xs text-gray-500 ml-2">
+                        {(f.size / 1024).toFixed(1)} KB
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFiles((prev) => prev.filter((_, idx) => idx !== i))
+                      }
+                      className="text-gray-400 hover:text-red-600 p-1"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           {/* Extras + totals */}
           <section className="bg-white border rounded-lg p-4 space-y-3">
             <h2 className="text-sm font-semibold text-gray-700">Totals</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Currency
+                </label>
+                <select
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="CAD">CAD</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="GBP">GBP</option>
+                  <option value="AUD">AUD</option>
+                </select>
+              </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">
                   Rush fee
@@ -945,16 +1367,26 @@ export default function AdminCreateOrder() {
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">
-                  Tax rate (decimal)
+                  Tax rate
                 </label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={taxRate}
-                  onChange={(e) => setTaxRate(e.target.value)}
-                  placeholder="0.05"
+                <select
+                  value={selectedTaxRateId}
+                  onChange={(e) => {
+                    setSelectedTaxRateId(e.target.value);
+                    const tr = taxRates.find((t) => t.id === e.target.value);
+                    if (tr) setTaxRate(String(tr.rate));
+                    else if (!e.target.value) setTaxRate("0");
+                  }}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
+                >
+                  <option value="">Manual ({(Number(taxRate) * 100).toFixed(2)}%)</option>
+                  {taxRates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.region_name || t.region_code} · {t.tax_name}{" "}
+                      {(Number(t.rate) * 100).toFixed(2)}%
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -977,8 +1409,7 @@ export default function AdminCreateOrder() {
               <div className="text-right">${totals.tax.toFixed(2)}</div>
               <div className="font-semibold">Total</div>
               <div className="text-right font-semibold">
-                ${totals.total.toFixed(2)}{" "}
-                {customer?.currency || "CAD"}
+                ${totals.total.toFixed(2)} {currency}
               </div>
             </div>
           </section>
@@ -1011,8 +1442,14 @@ export default function AdminCreateOrder() {
               disabled={submitting}
               className="px-5 py-2 rounded-md bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {mode === "quote" ? "Create quote" : "Create direct order"}
+              {(submitting || uploadingFiles) && (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              )}
+              {uploadingFiles
+                ? "Uploading files…"
+                : mode === "quote"
+                ? "Create quote"
+                : "Create direct order"}
             </button>
           </div>
         </>

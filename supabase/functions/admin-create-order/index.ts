@@ -93,7 +93,9 @@ serve(async (req: Request) => {
     const customerId = customer.existingCustomerId as string;
     const { data: custRec, error: custErr } = await sb
       .from("customers")
-      .select("id, is_ar_customer, payment_terms, currency, customer_type, full_name")
+      .select(
+        "id, is_ar_customer, payment_terms, currency, customer_type, full_name, invoicing_branch_id, default_tax_rate_id",
+      )
       .eq("id", customerId)
       .maybeSingle();
     if (custErr || !custRec) {
@@ -155,7 +157,6 @@ serve(async (req: Request) => {
         country_of_issue: order.countryOfIssue || null,
         special_instructions: order.specialInstructions || null,
         tax_rate: pricing.taxRate || 0,
-        tax_rate_id: order.taxRateId || null,
         is_rush: order.isRush || false,
         rush_fee: pricing.rushFee || 0,
         delivery_fee: pricing.deliveryFee || 0,
@@ -185,6 +186,8 @@ serve(async (req: Request) => {
         promised_delivery_date: order.promisedDeliveryDate || null,
         turnaround_type: order.turnaroundType || "standard",
         paid_at: new Date().toISOString(),
+        currency: order.currency || custRec.currency || "CAD",
+        tax_rate_id: order.taxRateId || custRec.default_tax_rate_id || null,
       })
       .select("id, quote_number")
       .single();
@@ -288,7 +291,7 @@ serve(async (req: Request) => {
         total_amount: pricing.total,
         amount_paid: amountPaid,
         balance_due: balanceDue,
-        currency: custRec.currency || pricing.currency || "CAD",
+        currency: order.currency || pricing.currency || custRec.currency || "CAD",
         is_rush: order.isRush || false,
         delivery_option: order.deliveryOption || null,
         estimated_delivery_date: order.promisedDeliveryDate || null,
@@ -299,6 +302,10 @@ serve(async (req: Request) => {
         discount_value: pricing.discountValue || 0,
         discount_total: pricing.discountAmount || 0,
         paid_at: amountPaid > 0 ? new Date().toISOString() : null,
+        invoicing_branch_id:
+          order.invoicingBranchId ?? custRec.invoicing_branch_id ?? 2,
+        po_number: order.poNumber || null,
+        client_project_number: order.clientProjectNumber || null,
       })
       .select("id, order_number")
       .single();
