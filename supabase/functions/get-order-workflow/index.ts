@@ -173,6 +173,23 @@ serve(async (req: Request) => {
       }
     }
 
+    // Fetch language names (source_language / target_language are UUIDs on
+    // order_workflow_steps). Build a uuid → display name map.
+    const langIds = [
+      ...(rawSteps ?? []).map((s: any) => s.source_language),
+      ...(rawSteps ?? []).map((s: any) => s.target_language),
+    ].filter(Boolean);
+    let langNameMap: Record<string, string> = {};
+    if (langIds.length > 0) {
+      const { data: langs } = await supabase
+        .from("languages")
+        .select("id, name")
+        .in("id", [...new Set(langIds)]);
+      for (const l of langs ?? []) {
+        langNameMap[l.id] = l.name;
+      }
+    }
+
     const steps: any[] = [];
 
     for (const s of rawSteps ?? []) {
@@ -270,6 +287,8 @@ serve(async (req: Request) => {
         revision_count: s.revision_count ?? 0,
         source_language: s.source_language,
         target_language: s.target_language,
+        source_language_name: langNameMap[s.source_language] || null,
+        target_language_name: langNameMap[s.target_language] || null,
         service_id: s.service_id,
         service_name: serviceNameMap[s.service_id] || null,
         order_document_id: s.order_document_id,

@@ -314,6 +314,80 @@ serve(async (req: Request) => {
       throw new Error(`Failed to create order: ${orderErr?.message}`);
     }
 
+    // ── Optional: assign a workflow template up-front ──
+    let workflowId: string | null = null;
+    if (order.workflowTemplateCode) {
+      const { data: tpl } = await sb
+        .from("workflow_templates")
+        .select("id, code, name")
+        .eq("code", order.workflowTemplateCode)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (!tpl) {
+        console.warn(
+          `workflow template '${order.workflowTemplateCode}' not found — skipped`,
+        );
+      } else {
+        const { data: templateSteps } = await sb
+          .from("workflow_template_steps")
+          .select(
+            "step_number, name, actor_type, assignment_mode, auto_advance, is_optional, requires_file_upload, instructions, service_id, allowed_actor_types, approval_depends_on_step",
+          )
+          .eq("template_id", tpl.id)
+          .order("step_number");
+
+        if (templateSteps && templateSteps.length > 0) {
+          const { data: wf, error: wfErr } = await sb
+            .from("order_workflows")
+            .insert({
+              order_id: orderRec.id,
+              template_id: tpl.id,
+              template_code: tpl.code,
+              template_name: tpl.name,
+              status: "not_started",
+              current_step_number: 1,
+              total_steps: templateSteps.length,
+            })
+            .select("id")
+            .single();
+          if (wfErr || !wf) {
+            console.warn("workflow insert failed:", wfErr?.message);
+          } else {
+            workflowId = wf.id;
+            const stepInserts = templateSteps.map((ts: any) => ({
+              workflow_id: wf.id,
+              order_id: orderRec.id,
+              step_number: ts.step_number,
+              name: ts.name,
+              actor_type: ts.actor_type,
+              assignment_mode: ts.assignment_mode || "manual",
+              auto_advance: ts.auto_advance ?? false,
+              is_optional: ts.is_optional ?? false,
+              requires_file_upload: ts.requires_file_upload ?? false,
+              instructions: ts.instructions,
+              service_id: ts.service_id,
+              allowed_actor_types: ts.allowed_actor_types,
+              status: "pending",
+              vendor_currency:
+                order.currency || pricing.currency || custRec.currency || "CAD",
+              revision_count: 0,
+              source_language: order.sourceLanguageId,
+              target_language: order.targetLanguageId,
+              approval_depends_on_step: ts.approval_depends_on_step ?? null,
+            }));
+            const { error: stepsErr } = await sb
+              .from("order_workflow_steps")
+              .insert(stepInserts);
+            if (stepsErr) {
+              console.warn("workflow steps insert failed:", stepsErr.message);
+              await sb.from("order_workflows").delete().eq("id", wf.id);
+              workflowId = null;
+            }
+          }
+        }
+      }
+    }
+
     // ── Optional: record payment ──
     let paymentId: string | null = null;
     if (amountPaid > 0 && payment) {
@@ -402,6 +476,8 @@ serve(async (req: Request) => {
       amountPaid,
       balanceDue,
       serviceCode: service.code,
+      workflowId,
+      workflowTemplateCode: order.workflowTemplateCode || null,
     });
   } catch (error: any) {
     console.error("admin-create-order error:", error?.message);

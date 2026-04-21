@@ -2512,11 +2512,13 @@ function WorkflowPipeline({
                 )}
 
                 {/* Line 4: Language pair */}
-                {step.source_language && step.target_language && (
-                  <div className="text-sm text-gray-500 mt-1">
-                    {step.source_language} → {step.target_language}
-                  </div>
-                )}
+                {(step.source_language_name || step.source_language) &&
+                  (step.target_language_name || step.target_language) && (
+                    <div className="text-sm text-gray-500 mt-1">
+                      {step.source_language_name || step.source_language} →{" "}
+                      {step.target_language_name || step.target_language}
+                    </div>
+                  )}
 
                 {/* Line 5: Key dates */}
                 {(step.deadline || step.delivered_at || step.approved_at) && (

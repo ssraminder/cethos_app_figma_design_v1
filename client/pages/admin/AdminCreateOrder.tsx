@@ -73,6 +73,17 @@ interface TaxRateRow {
   is_active: boolean;
 }
 
+interface WorkflowTemplateRow {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  service_id: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  step_count?: number;
+}
+
 interface LineItem {
   id: string;
   description: string;
@@ -119,6 +130,8 @@ export default function AdminCreateOrder() {
   const [languages, setLanguages] = useState<LanguageRow[]>([]);
   const [branches, setBranches] = useState<BranchRow[]>([]);
   const [taxRates, setTaxRates] = useState<TaxRateRow[]>([]);
+  const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplateRow[]>([]);
+  const [workflowTemplateCode, setWorkflowTemplateCode] = useState<string>("");
   const [loadingRefs, setLoadingRefs] = useState(true);
 
   // ── Form state ──
@@ -198,7 +211,7 @@ export default function AdminCreateOrder() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [svcRes, langRes, brRes, taxRes] = await Promise.all([
+      const [svcRes, langRes, brRes, taxRes, tmplRes] = await Promise.all([
         supabase
           .from("services")
           .select(
@@ -222,6 +235,11 @@ export default function AdminCreateOrder() {
           .select("id, region_code, region_name, tax_name, rate, is_active")
           .eq("is_active", true)
           .order("region_name"),
+        supabase
+          .from("workflow_templates")
+          .select("id, code, name, description, service_id, is_default, is_active")
+          .eq("is_active", true)
+          .order("name"),
       ]);
       if (cancelled) return;
       setServices((svcRes.data as ServiceRow[]) ?? []);
@@ -232,6 +250,24 @@ export default function AdminCreateOrder() {
       const def = br.find((b) => b.is_default) || br[0] || null;
       if (def) setBranchId(def.id);
       setTaxRates((taxRes.data as TaxRateRow[]) ?? []);
+      const templates = (tmplRes.data as WorkflowTemplateRow[]) ?? [];
+      // Enrich with step count
+      if (templates.length > 0) {
+        const { data: stepCounts } = await supabase
+          .from("workflow_template_steps")
+          .select("template_id")
+          .in(
+            "template_id",
+            templates.map((t) => t.id),
+          );
+        const countMap: Record<string, number> = {};
+        for (const row of stepCounts || []) {
+          countMap[(row as any).template_id] =
+            (countMap[(row as any).template_id] || 0) + 1;
+        }
+        for (const t of templates) t.step_count = countMap[t.id] || 0;
+      }
+      setWorkflowTemplates(templates);
       setLoadingRefs(false);
     })();
     return () => {
@@ -390,6 +426,33 @@ export default function AdminCreateOrder() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceId]);
+
+  // When service changes, auto-pick the matching default workflow template
+  useEffect(() => {
+    if (!serviceId || workflowTemplates.length === 0) return;
+    const forService = workflowTemplates.filter(
+      (t) => t.service_id === serviceId,
+    );
+    const pick =
+      forService.find((t) => t.is_default) ||
+      forService[0] ||
+      workflowTemplates.find((t) => t.is_default) ||
+      null;
+    if (pick && !workflowTemplateCode) setWorkflowTemplateCode(pick.code);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceId, workflowTemplates]);
+
+  // Templates to display in the dropdown: service-matched first, then others
+  const workflowTemplateOptions = useMemo(() => {
+    const matching = workflowTemplates.filter(
+      (t) => t.service_id === serviceId,
+    );
+    const other = workflowTemplates.filter((t) => t.service_id !== serviceId);
+    return [
+      ...matching.map((t) => ({ ...t, group: "Matches service" })),
+      ...other.map((t) => ({ ...t, group: "Other templates" })),
+    ];
+  }, [workflowTemplates, serviceId]);
 
   // ── Validation ──
   const validate = (): string | null => {
@@ -578,6 +641,7 @@ export default function AdminCreateOrder() {
           invoicingBranchId: branchId,
           poNumber: poNumber.trim() || null,
           clientProjectNumber: clientProjectNumber.trim() || null,
+          workflowTemplateCode: workflowTemplateCode || null,
         },
         documents,
         pricing,
@@ -1083,6 +1147,43 @@ export default function AdminCreateOrder() {
                   onChange={(e) => setPromisedDeliveryDate(e.target.value)}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
+              </div>
+              <div className="md:col-span-3">
+                <label className="block text-xs text-gray-600 mb-1">
+                  Workflow template
+                </label>
+                <select
+                  value={workflowTemplateCode}
+                  onChange={(e) => setWorkflowTemplateCode(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="">
+                    — pick later on the order page —
+                  </option>
+                  {["Matches service", "Other templates"].map((grp) => {
+                    const rows = workflowTemplateOptions.filter(
+                      (t) => t.group === grp,
+                    );
+                    if (rows.length === 0) return null;
+                    return (
+                      <optgroup key={grp} label={grp}>
+                        {rows.map((t) => (
+                          <option key={t.id} value={t.code}>
+                            {t.name}
+                            {typeof t.step_count === "number"
+                              ? ` · ${t.step_count} steps`
+                              : ""}
+                            {t.is_default ? " · default" : ""}
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
+                </select>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Applied to direct orders immediately. For quotes, we'll
+                  suggest it again when the quote converts to an order.
+                </p>
               </div>
             </div>
           </section>
