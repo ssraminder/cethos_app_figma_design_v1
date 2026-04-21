@@ -2688,56 +2688,59 @@ function WorkflowPipeline({
                     </button>
                   )}
 
-                  {/* Find Vendor: pending + vendor + no vendor_id */}
-                  {step.status === "pending" && step.actor_type === "external_vendor" && !step.vendor_id && (
-                    <button
-                      className="text-xs px-3 py-1 border border-blue-400 text-blue-600 rounded hover:bg-blue-50"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onFindVendor(step);
-                      }}
-                    >
-                      Find Vendor
-                    </button>
-                  )}
-
-                  {/* Assign Staff: pending + internal + no assigned_staff_id */}
-                  {step.status === "pending" && ['internal_work', 'internal_review'].includes(step.actor_type) && !step.assigned_staff_id && (
-                    <StaffPickerDropdown
-                      onSelect={(staffId) =>
-                        handleStepAction(step.id, "direct_assign", { vendor_id: staffId })
-                      }
-                    />
-                  )}
-
-                  {/* Fallback: automated/customer steps that landed pending +
-                      unassigned (usually because auto-match produced nothing
-                      or the template had no resolver). Offer both vendor and
-                      staff so admin can manually pick whoever should own it. */}
-                  {step.status === "pending" &&
-                    !step.vendor_id &&
-                    !step.assigned_staff_id &&
-                    !['external_vendor', 'internal_work', 'internal_review'].includes(step.actor_type) && (
+                  {/* Assign controls. We compute the set of actor types this
+                      step allows; a step with allowed_actor_types populated
+                      overrides the single actor_type. Vendor picker shows when
+                      external_vendor is allowed; Staff picker shows when any
+                      internal actor is allowed. Steps whose only type is
+                      automated/customer fall through with no picker (they
+                      either run themselves or wait on the customer). */}
+                  {(() => {
+                    if (step.status !== "pending") return null;
+                    if (step.vendor_id || step.assigned_staff_id) return null;
+                    const allowed: string[] =
+                      (Array.isArray(step.allowed_actor_types) &&
+                        step.allowed_actor_types.length > 0
+                        ? step.allowed_actor_types
+                        : [step.actor_type]) as string[];
+                    const canVendor = allowed.includes("external_vendor");
+                    const canStaff =
+                      allowed.includes("internal_work") ||
+                      allowed.includes("internal_review");
+                    // If the step is automated/customer AND no other types
+                    // are allowed, surface both pickers as an override so the
+                    // step doesn't get stuck.
+                    const isFallback =
+                      !canVendor &&
+                      !canStaff &&
+                      !["external_vendor", "internal_work", "internal_review"].includes(
+                        step.actor_type,
+                      );
+                    return (
                       <>
-                        <button
-                          className="text-xs px-3 py-1 border border-blue-400 text-blue-600 rounded hover:bg-blue-50"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onFindVendor(step);
-                          }}
-                          title="Pick a vendor (overrides the template's actor type)"
-                        >
-                          Find Vendor
-                        </button>
-                        <StaffPickerDropdown
-                          onSelect={(staffId) =>
-                            handleStepAction(step.id, "direct_assign", {
-                              vendor_id: staffId,
-                            })
-                          }
-                        />
+                        {(canVendor || isFallback) && (
+                          <button
+                            className="text-xs px-3 py-1 border border-blue-400 text-blue-600 rounded hover:bg-blue-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onFindVendor(step);
+                            }}
+                          >
+                            Find Vendor
+                          </button>
+                        )}
+                        {(canStaff || isFallback) && (
+                          <StaffPickerDropdown
+                            onSelect={(staffId) =>
+                              handleStepAction(step.id, "direct_assign", {
+                                vendor_id: staffId,
+                              })
+                            }
+                          />
+                        )}
                       </>
-                    )}
+                    );
+                  })()}
 
                   {/* Send More Offers + Retract Offers: offered */}
                   {step.status === "offered" && (
