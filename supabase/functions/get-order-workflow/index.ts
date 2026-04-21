@@ -49,10 +49,18 @@ serve(async (req: Request) => {
       .maybeSingle();
 
     if (!workflow) {
-      // No workflow — return available templates
+      // No workflow — return available templates with suggestions scoped to
+      // the order's service_id.
+      const { data: orderForService } = await supabase
+        .from("orders")
+        .select("service_id")
+        .eq("id", order_id)
+        .single();
+      const orderServiceId = orderForService?.service_id ?? null;
+
       const { data: templates } = await supabase
         .from("workflow_templates")
-        .select("id, code, name, description, is_default")
+        .select("id, code, name, description, is_default, service_id")
         .eq("is_active", true)
         .order("name");
 
@@ -65,19 +73,16 @@ serve(async (req: Request) => {
           .eq("template_id", t.id)
           .order("step_number");
 
-        // Determine if template is suggested for this order
-        const { data: order } = await supabase
-          .from("orders")
-          .select("quote_id, quotes(service_type)")
-          .eq("id", order_id)
-          .single();
-
-        const serviceType = (order?.quotes as any)?.service_type;
-        const isSuggested = t.is_default || (serviceType && t.code?.includes(serviceType));
+        // A template is "suggested" when it targets this order's service, or
+        // when it is flagged as the default.
+        const matchesService =
+          !!orderServiceId && t.service_id === orderServiceId;
+        const isSuggested = matchesService || t.is_default === true;
 
         enriched.push({
           ...t,
-          is_suggested: !!isSuggested,
+          is_suggested: isSuggested,
+          matches_service: matchesService,
           steps: steps ?? [],
         });
       }

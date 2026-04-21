@@ -125,6 +125,27 @@ export default function AccountsReceivable() {
   const dateTo = searchParams.get("to") || "";
   const paymentType = searchParams.get("payment_type") || "";
   const paymentStatus = searchParams.get("payment_status") || "";
+  const serviceFilter = (searchParams.get("service") || "all") as
+    | "all"
+    | "certified"
+    | "non_certified";
+
+  // Resolve certified_translation service UUID once; used to split AR rows.
+  const [certifiedServiceId, setCertifiedServiceId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("services")
+        .select("id")
+        .eq("code", "certified_translation")
+        .maybeSingle();
+      if (!cancelled) setCertifiedServiceId((data?.id as string) || null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [searchInput, setSearchInput] = useState(search);
   const [showFilters, setShowFilters] = useState(false);
@@ -341,6 +362,12 @@ export default function AccountsReceivable() {
       if (dateTo) {
         query = query.lte("created_at", dateTo + "T23:59:59");
       }
+      if (serviceFilter !== "all" && certifiedServiceId) {
+        query =
+          serviceFilter === "certified"
+            ? query.eq("service_id", certifiedServiceId)
+            : query.neq("service_id", certifiedServiceId);
+      }
 
       query = query.order("expires_at", { ascending: true }).range(from, to);
 
@@ -403,6 +430,13 @@ export default function AccountsReceivable() {
         } else {
           query = query.ilike("order_number", `%${search}%`);
         }
+      }
+
+      if (serviceFilter !== "all" && certifiedServiceId) {
+        query =
+          serviceFilter === "certified"
+            ? query.eq("service_id", certifiedServiceId)
+            : query.neq("service_id", certifiedServiceId);
       }
 
       query = query.order("created_at", { ascending: false }).range(from, to);
@@ -657,6 +691,24 @@ export default function AccountsReceivable() {
         query = query.lte("created_at", dateTo + "T23:59:59");
       }
 
+      // Service filter: narrow to orders matching certified / non_certified.
+      // accounts_receivable has no service_id column, so pre-resolve order_ids.
+      if (serviceFilter !== "all" && certifiedServiceId) {
+        const serviceQuery = supabase.from("orders").select("id");
+        const filtered =
+          serviceFilter === "certified"
+            ? serviceQuery.eq("service_id", certifiedServiceId)
+            : serviceQuery.neq("service_id", certifiedServiceId);
+        const { data: orderIdRows } = await filtered;
+        const ids = (orderIdRows || []).map((r: any) => r.id);
+        if (ids.length === 0) {
+          setARInvoices([]);
+          setARInvoicesCount(0);
+          return;
+        }
+        query = query.in("order_id", ids);
+      }
+
       query = query.order("due_date", { ascending: true }).range(from, to);
 
       const { data, count, error } = await query;
@@ -732,7 +784,7 @@ export default function AccountsReceivable() {
 
   useEffect(() => {
     fetchData();
-  }, [activeTab, page, search, dateFrom, dateTo, paymentType, paymentStatus]);
+  }, [activeTab, page, search, dateFrom, dateTo, paymentType, paymentStatus, serviceFilter, certifiedServiceId]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -1079,6 +1131,20 @@ export default function AccountsReceivable() {
                   onChange={(e) => updateFilter("to", e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Service
+                </label>
+                <select
+                  value={serviceFilter}
+                  onChange={(e) => updateFilter("service", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="all">All</option>
+                  <option value="certified">Certified only</option>
+                  <option value="non_certified">Non-certified only</option>
+                </select>
               </div>
               {activeTab === "payments" && (
                 <>

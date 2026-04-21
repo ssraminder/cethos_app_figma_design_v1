@@ -121,6 +121,7 @@ serve(async (req: Request) => {
         quote_number: quoteNumber,
         customer_id: customerId,
         status: "quote_ready",
+        service_id: quote.serviceId || null,
         source_language_id: quote.sourceLanguageId,
         target_language_id: quote.targetLanguageId,
         intended_use_id: quote.intendedUseId || null,
@@ -166,7 +167,19 @@ serve(async (req: Request) => {
     const quoteId = quoteRecord.id;
 
     // 4. INSERT ai_analysis_results rows (one per document)
+    const validUnits = ["per_page", "per_word", "per_hour", "per_minute", "flat"];
     for (const doc of documents) {
+      const unit = doc.calculationUnit || "per_page";
+      if (!validUnits.includes(unit)) {
+        throw new Error(
+          `Invalid calculation_unit '${unit}' (valid: ${validUnits.join(", ")})`,
+        );
+      }
+      const quantity =
+        unit === "flat"
+          ? 1
+          : Number(doc.unitQuantity ?? doc.billablePages ?? 0);
+
       const { error: docError } = await supabaseAdmin
         .from("ai_analysis_results")
         .insert({
@@ -176,10 +189,16 @@ serve(async (req: Request) => {
           detected_document_type: doc.documentType || null,
           assessed_complexity: doc.complexity || "easy",
           complexity_multiplier: doc.complexityMultiplier || 1.0,
-          word_count: doc.wordCount || 0,
+          word_count:
+            doc.wordCount ?? (unit === "per_word" ? quantity : 0),
           page_count: doc.pageCount || 1,
-          billable_pages: doc.billablePages || 1,
-          base_rate: doc.perPageRate || 65,
+          billable_pages:
+            unit === "per_page"
+              ? quantity
+              : doc.billablePages || 0,
+          calculation_unit: unit,
+          unit_quantity: quantity,
+          base_rate: doc.baseRate ?? doc.perPageRate ?? 65,
           line_total: doc.lineTotal || 0,
           certification_type_id: doc.certificationTypeId || null,
           certification_price: doc.certificationPrice || 0,

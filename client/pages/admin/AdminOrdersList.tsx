@@ -454,6 +454,12 @@ export default function AdminOrdersList() {
             <Settings2 className="w-4 h-4" />
             Columns
           </button>
+          <Link
+            to="/admin/orders/new"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+          >
+            New project
+          </Link>
         </div>
       </div>
 

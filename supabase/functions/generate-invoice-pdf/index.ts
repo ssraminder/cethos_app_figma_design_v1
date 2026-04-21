@@ -159,12 +159,31 @@ serve(async (req: Request) => {
       quoteFiles = files || [];
     }
 
+    // Resolve service (certified vs non-cert) for the line-item fallback label.
+    // Prefer the order's service; fall back to the quote's.
+    let serviceName: string | null = null;
+    let serviceCode: string | null = null;
+    const svcSourceId = (order as any)?.service_id || null;
+    if (svcSourceId) {
+      const { data: svc } = await supabase
+        .from("services")
+        .select("code, name")
+        .eq("id", svcSourceId)
+        .maybeSingle();
+      if (svc) {
+        serviceName = (svc as any).name || null;
+        serviceCode = (svc as any).code || null;
+      }
+    }
+
     // Build PDF content as a simple text-based PDF
     const pdfBytes = buildInvoicePdf(invoice, order, customer, quoteFiles, {
       preferredMethodName,
       preferredMethodInstructions,
       backupMethodName,
       backupMethodInstructions,
+      serviceName,
+      serviceCode,
     });
 
     // Upload to storage
@@ -307,6 +326,8 @@ function buildInvoicePdf(
     preferredMethodInstructions: string | null;
     backupMethodName: string | null;
     backupMethodInstructions: string | null;
+    serviceName?: string | null;
+    serviceCode?: string | null;
   },
 ): Uint8Array {
   const lines: string[] = [];
@@ -481,7 +502,13 @@ function buildInvoicePdf(
       yPos -= 16;
     }
   } else {
-    addText(leftMargin + 5, yPos, "Translation Services", 9);
+    const fallbackLabel =
+      paymentInfo.serviceName ||
+      (paymentInfo.serviceCode === "certified_translation" ||
+      !paymentInfo.serviceCode
+        ? "Translation Services"
+        : "Services");
+    addText(leftMargin + 5, yPos, fallbackLabel, 9);
     addText(
       470,
       yPos,

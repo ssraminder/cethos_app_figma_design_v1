@@ -28,7 +28,6 @@ import {
   Files,
   ArrowLeftRight,
   Tablet,
-  KeyRound,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -130,13 +129,6 @@ const NAV_ITEMS: NavItem[] = [
     path: "/admin/kiosk-devices",
     icon: Tablet,
     section: "Management",
-  },
-  {
-    label: "My Kiosk PIN",
-    path: "/admin/my-kiosk-pin",
-    icon: KeyRound,
-    section: "Management",
-    isChild: true,
   },
   {
     label: "Customers",

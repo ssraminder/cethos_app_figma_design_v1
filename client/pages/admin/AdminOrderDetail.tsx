@@ -2636,6 +2636,29 @@ export default function AdminOrderDetail() {
                   )}
                 </div>
               )}
+
+              {/* Direct Order + Progress-Invoice Badges (non-cert projects) */}
+              {(order as any).is_direct_order && (
+                <div className="flex items-center gap-2 pb-1">
+                  <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 text-indigo-700">
+                    Direct Order
+                  </span>
+                </div>
+              )}
+              {(() => {
+                const invTotal = parseFloat(String((order as any).invoiced_total ?? 0)) || 0;
+                const total = parseFloat(String(order.total_amount ?? 0)) || 0;
+                if (invTotal <= 0 || invTotal >= total) return null;
+                const remaining = Math.max(0, total - invTotal);
+                return (
+                  <div className="flex items-center gap-2 pb-1">
+                    <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-amber-50 text-amber-700">
+                      Progress invoiced: ${invTotal.toFixed(2)} of ${total.toFixed(2)}
+                    </span>
+                    <span className="text-xs text-gray-500">${remaining.toFixed(2)} remaining</span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

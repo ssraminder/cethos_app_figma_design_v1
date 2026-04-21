@@ -57,6 +57,8 @@ interface QuoteData {
   turnaround_type: string;
   estimated_delivery_date: string;
   expires_at: string;
+  service_code: string | null;
+  service_name: string | null;
   customer: {
     full_name: string;
     email: string;
@@ -188,6 +190,10 @@ export default function QuoteReviewPage() {
           ),
           target_language:languages!quotes_target_language_id_fkey (
             name
+          ),
+          service:services (
+            code,
+            name
           )
         `
         )
@@ -302,6 +308,8 @@ export default function QuoteReviewPage() {
         target_language_name: (quoteData.target_language as any)?.name || "",
         intended_use_name: intendedUseName,
         delivery_option_name: deliveryOptionName,
+        service_code: (quoteData.service as any)?.code || null,
+        service_name: (quoteData.service as any)?.name || null,
         subtotal: totals.subtotal,
         certification_total: totals.certification_total,
         rush_fee: totals.rush_fee,
@@ -515,7 +523,15 @@ export default function QuoteReviewPage() {
               <h1 className="text-2xl font-bold text-gray-900">
                 Quote {quote.quote_number}
               </h1>
-              <p className="text-gray-500 mt-1">{quote.customer?.full_name}</p>
+              <p className="text-gray-500 mt-1">
+                {quote.customer?.full_name}
+                {quote.service_name && (
+                  <>
+                    <span className="mx-2 text-gray-300">·</span>
+                    <span>{quote.service_name}</span>
+                  </>
+                )}
+              </p>
             </div>
             <div
               className={`px-4 py-2 rounded-full text-sm font-medium ${
@@ -747,14 +763,18 @@ export default function QuoteReviewPage() {
                         {doc.assessed_complexity || "Standard"}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-gray-500">Certification:</span>
-                      <span className="ml-1 text-gray-700">
-                        {doc.certification_name || "Standard"}
-                        {doc.certification_price > 0 &&
-                          ` (+$${doc.certification_price.toFixed(2)})`}
-                      </span>
-                    </div>
+                    {(quote.service_code === "certified_translation" ||
+                      doc.certification_name ||
+                      doc.certification_price > 0) && (
+                      <div>
+                        <span className="text-gray-500">Certification:</span>
+                        <span className="ml-1 text-gray-700">
+                          {doc.certification_name || "Standard"}
+                          {doc.certification_price > 0 &&
+                            ` (+$${doc.certification_price.toFixed(2)})`}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
@@ -770,8 +790,12 @@ export default function QuoteReviewPage() {
           <div className="px-6 py-4 space-y-3">
             <div className="flex justify-between text-gray-600">
               <span>
-                Translation ({quote.documents.length} document
-                {quote.documents.length !== 1 ? "s" : ""})
+                {quote.service_code && quote.service_code !== "certified_translation"
+                  ? quote.service_name || "Service"
+                  : "Translation"}
+                {" ("}
+                {quote.documents.length}{" "}
+                {quote.documents.length !== 1 ? "items" : "item"})
               </span>
               <span>
                 ${(quote.subtotal - quote.certification_total).toFixed(2)}

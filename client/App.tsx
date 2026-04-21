@@ -59,6 +59,7 @@ import AdminQuoteDetail from "./pages/admin/AdminQuoteDetail";
 import PurgeDraftQuotes from "./pages/admin/PurgeDraftQuotes";
 import AdminOrderDetail from "./pages/admin/AdminOrderDetail";
 import AdminOrdersList from "./pages/admin/AdminOrdersList";
+import AdminCreateOrder from "./pages/admin/AdminCreateOrder";
 import StaffTasks from "./pages/admin/StaffTasks";
 import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
 import AdminAIAnalytics from "./pages/admin/AdminAIAnalytics";
@@ -87,7 +88,6 @@ import AdminVendorDetail from "./pages/admin/AdminVendorDetail";
 import AdminVendorNew from "./pages/admin/AdminVendorNew";
 import FastQuoteCreate from "./pages/admin/FastQuoteCreate";
 import AdminKioskDevices from "./pages/admin/AdminKioskDevices";
-import AdminMyKioskPin from "./pages/admin/AdminMyKioskPin";
 import KioskPairing from "./pages/kiosk/KioskPairing";
 import KioskShell from "./pages/kiosk/KioskShell";
 import VendorInvoices from "./pages/admin/invoices/VendorInvoices";
@@ -335,6 +335,7 @@ const App = () => (
                     <Route path="messages" element={<AdminMessages />} />
                     <Route path="tasks" element={<StaffTasks />} />
                     <Route path="orders" element={<AdminOrdersList />} />
+                    <Route path="orders/new" element={<AdminCreateOrder />} />
                     <Route path="orders/:id" element={<AdminOrderDetail />} />
                     <Route path="partners" element={<AdminPartners />} />
                     <Route path="settings" element={<AdminSettings />} />
@@ -350,7 +351,6 @@ const App = () => (
                     <Route path="ai/knowledge" element={<AIKnowledgeBase />} />
                     <Route path="staff" element={<AdminStaffManagement />} />
                     <Route path="kiosk-devices" element={<AdminKioskDevices />} />
-                    <Route path="my-kiosk-pin" element={<AdminMyKioskPin />} />
                     <Route path="reports" element={<AdminReports />} />
                     <Route path="ar" element={<AccountsReceivable />} />
                     <Route path="customers" element={<CustomersList />} />
