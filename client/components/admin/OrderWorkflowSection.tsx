@@ -1768,16 +1768,18 @@ function StaffPickerDropdown({ onSelect }: { onSelect: (staffId: string) => void
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchStaff = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("staff_users")
+      .select("id, full_name, email")
+      .eq("is_active", true)
+      .order("full_name");
+    setStaff(data || []);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchStaff = async () => {
-      const { data } = await supabase
-        .from("staff_users")
-        .select("id, full_name, email")
-        .eq("is_active", true)
-        .order("full_name");
-      setStaff(data || []);
-      setLoading(false);
-    };
     fetchStaff();
   }, []);
 
@@ -1785,11 +1787,15 @@ function StaffPickerDropdown({ onSelect }: { onSelect: (staffId: string) => void
     <select
       className="text-sm border border-gray-300 rounded px-2 py-1"
       defaultValue=""
+      onFocus={fetchStaff}
+      onMouseDown={fetchStaff}
       onChange={(e) => e.target.value && onSelect(e.target.value)}
-      disabled={loading}
+      disabled={loading && staff.length === 0}
     >
       <option value="" disabled>
-        {loading ? "Loading..." : "Select staff member..."}
+        {loading && staff.length === 0
+          ? "Loading..."
+          : "Select staff member..."}
       </option>
       {staff.map((s) => (
         <option key={s.id} value={s.id}>
