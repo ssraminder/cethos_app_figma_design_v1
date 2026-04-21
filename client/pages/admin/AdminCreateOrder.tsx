@@ -113,6 +113,17 @@ export default function AdminCreateOrder() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // ── New-customer inline form ──
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [newFullName, setNewFullName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newCompany, setNewCompany] = useState("");
+  const [newCustomerType, setNewCustomerType] = useState<string>("business");
+  const [newIsAR, setNewIsAR] = useState(false);
+  const [newPaymentTerms, setNewPaymentTerms] = useState<string>("net_30");
+  const [savingCustomer, setSavingCustomer] = useState(false);
+
   // ── Load reference data once ──
   useEffect(() => {
     let cancelled = false;
@@ -176,6 +187,62 @@ export default function AdminCreateOrder() {
     const total = Math.round((preTax + tax) * 100) / 100;
     return { lineTotals, subtotal, rush, delivery, rate, tax, total };
   }, [lineItems, rushFee, deliveryFee, taxRate]);
+
+  // ── New customer: when Direct Order is active, default to AR-approved ──
+  useEffect(() => {
+    if (mode === "direct_order" && creatingCustomer && !newIsAR) {
+      setNewIsAR(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, creatingCustomer]);
+
+  const handleCreateCustomer = async () => {
+    const name = newFullName.trim();
+    const email = newEmail.trim().toLowerCase();
+    const phone = newPhone.trim();
+    if (!name) {
+      toast.error("Full name is required");
+      return;
+    }
+    if (!email && !phone) {
+      toast.error("Email or phone is required");
+      return;
+    }
+    setSavingCustomer(true);
+    try {
+      const { data, error } = await supabase
+        .from("customers")
+        .insert({
+          full_name: name,
+          email: email || null,
+          phone: phone || null,
+          customer_type: newCustomerType,
+          company_name:
+            newCustomerType !== "individual" ? newCompany.trim() || null : null,
+          is_ar_customer: newIsAR,
+          payment_terms: newIsAR ? newPaymentTerms : "immediate",
+        })
+        .select(
+          "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency",
+        )
+        .single();
+      if (error || !data) {
+        throw new Error(error?.message || "Failed to create customer");
+      }
+      setCustomer(data as ARCustomer);
+      setCreatingCustomer(false);
+      // Reset fields
+      setNewFullName("");
+      setNewEmail("");
+      setNewPhone("");
+      setNewCompany("");
+      toast.success(`Customer ${data.full_name || data.email} created`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create customer");
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
 
   // ── Customer selection ──
   const handleCustomerSelect = async (hit: CustomerHit) => {
@@ -490,7 +557,19 @@ export default function AdminCreateOrder() {
         <>
           {/* Customer */}
           <section className="bg-white border rounded-lg p-4 space-y-3">
-            <h2 className="text-sm font-semibold text-gray-700">Customer</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-700">Customer</h2>
+              {!customer && !creatingCustomer && (
+                <button
+                  type="button"
+                  onClick={() => setCreatingCustomer(true)}
+                  className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> Add new customer
+                </button>
+              )}
+            </div>
+
             {customer ? (
               <div className="flex items-center justify-between rounded-md border bg-gray-50 px-3 py-2">
                 <div className="text-sm">
@@ -516,6 +595,142 @@ export default function AdminCreateOrder() {
                 >
                   Change
                 </button>
+              </div>
+            ) : creatingCustomer ? (
+              <div className="rounded-md border border-gray-200 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-700">
+                    New customer
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCreatingCustomer(false)}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-1">
+                      Full name *
+                    </label>
+                    <input
+                      type="text"
+                      value={newFullName}
+                      onChange={(e) => setNewFullName(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-1">
+                      Customer type
+                    </label>
+                    <select
+                      value={newCustomerType}
+                      onChange={(e) => setNewCustomerType(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                      <option value="individual">Individual</option>
+                      <option value="business">Business</option>
+                      <option value="corporate">Corporate</option>
+                      <option value="sme">SME</option>
+                      <option value="lsp">LSP</option>
+                      <option value="legal">Legal</option>
+                      <option value="immigration">Immigration</option>
+                      <option value="educational">Educational</option>
+                      <option value="non_profit">Non-profit</option>
+                      <option value="government_federal">
+                        Government · federal
+                      </option>
+                      <option value="government_provincial">
+                        Government · provincial
+                      </option>
+                      <option value="government_municipal">
+                        Government · municipal
+                      </option>
+                      <option value="registry">Registry</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-1">
+                      Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                  {newCustomerType !== "individual" && (
+                    <div className="md:col-span-2">
+                      <label className="block text-[11px] text-gray-500 mb-1">
+                        Company name
+                      </label>
+                      <input
+                        type="text"
+                        value={newCompany}
+                        onChange={(e) => setNewCompany(e.target.value)}
+                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                  )}
+                  <div className="md:col-span-2 flex items-center gap-3 pt-1">
+                    <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={newIsAR}
+                        onChange={(e) => setNewIsAR(e.target.checked)}
+                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                      />
+                      AR-approved (net-terms invoicing)
+                    </label>
+                    {newIsAR && (
+                      <select
+                        value={newPaymentTerms}
+                        onChange={(e) => setNewPaymentTerms(e.target.value)}
+                        className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      >
+                        <option value="immediate">Immediate</option>
+                        <option value="net_15">Net 15</option>
+                        <option value="net_30">Net 30</option>
+                        <option value="net_60">Net 60</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCreatingCustomer(false)}
+                    className="text-xs text-gray-600 hover:text-gray-800 px-3 py-1.5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreateCustomer}
+                    disabled={savingCustomer}
+                    className="rounded-md bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium px-3 py-1.5 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {savingCustomer && (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    )}
+                    Create customer
+                  </button>
+                </div>
               </div>
             ) : (
               <CustomerSearch
