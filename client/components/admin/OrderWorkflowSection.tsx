@@ -1935,35 +1935,53 @@ function WorkflowPipeline({
 
   const { session: currentStaff } = useAdminAuthContext();
 
-  const handleStaffDeliver = async (stepId: string) => {
-    if (staffDeliveryFiles.length === 0) {
-      toast.error('Please select at least one file');
+  const handleStaffDeliver = async (
+    stepId: string,
+    opts: { requiresFile?: boolean } = {},
+  ) => {
+    if (opts.requiresFile && staffDeliveryFiles.length === 0) {
+      toast.error("This step requires at least one file.");
       return;
     }
     setStaffDeliveryLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('step_id', stepId);
-      if (staffDeliveryNotes) formData.append('notes', staffDeliveryNotes);
-      staffDeliveryFiles.forEach(f => formData.append('files', f));
-      if (currentStaff?.id) formData.append('staff_id', currentStaff.id);
+      // With files: go through the multipart staff-deliver-step edge fn.
+      // Without files: just flip the step status via update-workflow-step
+      // (change_status → delivered). This is the "Mark Delivered" path.
+      if (staffDeliveryFiles.length > 0) {
+        const formData = new FormData();
+        formData.append("step_id", stepId);
+        if (staffDeliveryNotes) formData.append("notes", staffDeliveryNotes);
+        staffDeliveryFiles.forEach((f) => formData.append("files", f));
+        if (currentStaff?.id) formData.append("staff_id", currentStaff.id);
 
-      const { data, error } = await supabase.functions.invoke('staff-deliver-step', {
-        body: formData,
-      });
-
-      if (error || !data?.success) {
-        toast.error(data?.error || 'Failed to deliver files');
-        return;
+        const { data, error } = await supabase.functions.invoke(
+          "staff-deliver-step",
+          { body: formData },
+        );
+        if (error || !data?.success) {
+          toast.error(data?.error || "Failed to deliver files");
+          return;
+        }
+        toast.success(`Delivered v${data.delivery_version}`);
+      } else {
+        const { data, error } = await supabase.functions.invoke(
+          "update-workflow-step",
+          { body: { step_id: stepId, action: "change_status", status: "delivered" } },
+        );
+        if (error || !data?.success) {
+          toast.error(data?.error || "Failed to mark delivered");
+          return;
+        }
+        toast.success("Marked delivered");
       }
 
-      toast.success(`Delivered v${data.delivery_version}`);
       setStaffDeliveryStepId(null);
       setStaffDeliveryFiles([]);
-      setStaffDeliveryNotes('');
+      setStaffDeliveryNotes("");
       if (onRefresh) await onRefresh();
     } catch (err) {
-      toast.error('Failed to deliver files');
+      toast.error("Failed to deliver");
     } finally {
       setStaffDeliveryLoading(false);
     }
@@ -3083,6 +3101,30 @@ function WorkflowPipeline({
                       </div>
                     )}
 
+                    {/* File-upload-required toggle (always visible on expanded
+                        step so admin can flip the policy mid-flight). */}
+                    <div className="flex items-center gap-2 text-xs text-gray-600 mb-2">
+                      <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!step.requires_file_upload}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleStepAction(step.id, "update_config", {
+                              requires_file_upload: e.target.checked,
+                            });
+                          }}
+                          className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                        />
+                        File upload required
+                      </label>
+                      {!step.requires_file_upload && (
+                        <span className="text-[11px] text-gray-400">
+                          — step can be marked delivered without a file
+                        </span>
+                      )}
+                    </div>
+
                     {/* Staff Delivery Upload (internal_work steps) */}
                     {step.actor_type === 'internal_work' && ['in_progress', 'revision_requested'].includes(step.status) && (
                       <div className="border border-purple-200 rounded p-3 bg-purple-50">
@@ -3154,12 +3196,31 @@ function WorkflowPipeline({
                               </button>
                               <button
                                 className="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
-                                disabled={staffDeliveryFiles.length === 0 || staffDeliveryLoading}
-                                onClick={() => handleStaffDeliver(step.id)}
+                                disabled={
+                                  staffDeliveryLoading ||
+                                  (step.requires_file_upload && staffDeliveryFiles.length === 0)
+                                }
+                                onClick={() =>
+                                  handleStaffDeliver(step.id, {
+                                    requiresFile: step.requires_file_upload,
+                                  })
+                                }
+                                title={
+                                  step.requires_file_upload && staffDeliveryFiles.length === 0
+                                    ? "This step is marked as file-upload-required"
+                                    : undefined
+                                }
                               >
                                 {staffDeliveryLoading ? (
-                                  <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</span>
-                                ) : `Submit Delivery (${staffDeliveryFiles.length} file${staffDeliveryFiles.length !== 1 ? 's' : ''})`}
+                                  <span className="flex items-center gap-1">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    {staffDeliveryFiles.length > 0 ? "Uploading..." : "Marking..."}
+                                  </span>
+                                ) : staffDeliveryFiles.length > 0 ? (
+                                  `Submit Delivery (${staffDeliveryFiles.length} file${staffDeliveryFiles.length !== 1 ? 's' : ''})`
+                                ) : (
+                                  "Mark Delivered"
+                                )}
                               </button>
                             </div>
                           </div>

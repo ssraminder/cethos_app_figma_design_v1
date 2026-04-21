@@ -607,6 +607,28 @@ serve(async (req: Request) => {
         return json({ success: true });
       }
 
+      // ── Update step config (actor_type, requires_file_upload, etc.) ──
+      case "update_config": {
+        const update: Record<string, unknown> = {};
+        if (body.actor_type !== undefined) update.actor_type = body.actor_type;
+        if (body.requires_file_upload !== undefined) update.requires_file_upload = !!body.requires_file_upload;
+        if (body.allowed_actor_types !== undefined) update.allowed_actor_types = body.allowed_actor_types;
+        if (body.is_optional !== undefined) update.is_optional = !!body.is_optional;
+        if (body.auto_advance !== undefined) update.auto_advance = !!body.auto_advance;
+        if (body.instructions !== undefined) update.instructions = body.instructions;
+
+        if (Object.keys(update).length === 0) {
+          return json({ success: false, error: "No updatable fields provided" }, 400);
+        }
+
+        await supabase
+          .from("order_workflow_steps")
+          .update(update)
+          .eq("id", step_id);
+
+        return json({ success: true });
+      }
+
       // ── Adjust payable ──
       case "adjust_payable": {
         const { payable_id, new_rate, new_subtotal } = body;

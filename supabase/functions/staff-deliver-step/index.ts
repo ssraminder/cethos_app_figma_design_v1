@@ -40,12 +40,11 @@ serve(async (req: Request) => {
     const files = formData.getAll("files") as File[];
 
     if (!stepId) return json({ success: false, error: "Missing step_id" }, 400);
-    if (!files.length) return json({ success: false, error: "No files provided" }, 400);
 
-    // Fetch step
+    // Fetch step (table is order_workflow_steps, not workflow_steps).
     const { data: step, error: stepErr } = await supabase
-      .from("workflow_steps")
-      .select("id, workflow_id, order_id, step_number, step_name, delivered_file_paths")
+      .from("order_workflow_steps")
+      .select("id, workflow_id, order_id, step_number, name, delivered_file_paths, requires_file_upload")
       .eq("id", stepId)
       .single();
 
@@ -53,11 +52,17 @@ serve(async (req: Request) => {
       return json({ success: false, error: "Step not found" }, 404);
     }
 
+    // Files are only required when the step's requires_file_upload flag is on.
+    // Otherwise a "Mark Delivered" action with no files is allowed.
+    if (step.requires_file_upload && !files.length) {
+      return json({ success: false, error: "This step requires at least one file." }, 400);
+    }
+
     // Get staff name
     let staffName = "Staff";
     if (staffId) {
       const { data: staff } = await supabase
-        .from("staff")
+        .from("staff_users")
         .select("full_name")
         .eq("id", staffId)
         .single();
@@ -120,7 +125,7 @@ serve(async (req: Request) => {
     const allPaths = [...(step.delivered_file_paths || []), ...uploadedPaths];
 
     await supabase
-      .from("workflow_steps")
+      .from("order_workflow_steps")
       .update({
         status: "delivered",
         delivered_at: new Date().toISOString(),
