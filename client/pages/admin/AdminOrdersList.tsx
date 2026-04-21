@@ -1,6 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { useAdminAuthContext } from "../../context/AdminAuthContext";
+import { toast } from "sonner";
 import {
   Search,
   Filter,
@@ -33,6 +35,10 @@ interface Order {
   estimated_delivery_date: string;
   customer_email: string;
   customer_name: string;
+  customer_company_name: string | null;
+  customer_type: string | null;
+  service_id: string | null;
+  service_code: string | null;
   document_count: number;
   xtrf_invoice_id: number | null;
   xtrf_invoice_number: string | null;
@@ -43,6 +49,11 @@ interface Order {
   xtrf_project_currency_code: string | null;
   xtrf_project_number: string | null;
   xtrf_project_status: string | null;
+}
+
+interface CompanyOption {
+  id: string;
+  name: string;
 }
 
 const STATUS_OPTIONS = [
@@ -133,9 +144,14 @@ export default function AdminOrdersList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [restoredFromSession, setRestoredFromSession] = useState(false);
 
+  const filterKeys = [
+    "search", "status", "work_status", "from", "to", "rush",
+    "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus",
+    "service", "company",
+  ];
+
   // Restore filters from sessionStorage on mount if URL has no filter params
   useEffect(() => {
-    const filterKeys = ["search", "status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus"];
     const hasUrlFilters = filterKeys.some(k => searchParams.has(k));
     if (!hasUrlFilters) {
       try {
@@ -152,6 +168,70 @@ export default function AdminOrdersList() {
     setRestoredFromSession(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Per-staff UI preferences — load defaults once, then never overwrite.
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  useEffect(() => {
+    if (!staffId || prefsLoaded) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("staff_users")
+        .select("ui_preferences")
+        .eq("id", staffId)
+        .maybeSingle();
+      if (cancelled) return;
+      setPrefsLoaded(true);
+      const saved = (data?.ui_preferences as any)?.ordersListFilters;
+      // Only apply if the URL has no active filter params (i.e. we haven't
+      // also restored from sessionStorage or landed here with explicit URL).
+      const hasAny = filterKeys.some((k) => searchParams.has(k));
+      if (!hasAny && saved && typeof saved === "object") {
+        const next = new URLSearchParams();
+        for (const [k, v] of Object.entries(saved)) {
+          if (v !== null && v !== undefined && v !== "") next.set(k, String(v));
+        }
+        if ([...next.keys()].length > 0) {
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staffId]);
+
+  const handleSaveFilterDefault = async () => {
+    if (!staffId) return;
+    setSavingPrefs(true);
+    try {
+      const snapshot: Record<string, string> = {};
+      for (const k of filterKeys) {
+        const v = searchParams.get(k);
+        if (v) snapshot[k] = v;
+      }
+      // Read-modify-write so we don't clobber other ui_preferences.
+      const { data } = await supabase
+        .from("staff_users")
+        .select("ui_preferences")
+        .eq("id", staffId)
+        .maybeSingle();
+      const existing = (data?.ui_preferences as any) || {};
+      const next = { ...existing, ordersListFilters: snapshot };
+      const { error } = await supabase
+        .from("staff_users")
+        .update({ ui_preferences: next })
+        .eq("id", staffId);
+      if (error) throw error;
+      toast.success("Saved as your default filter");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save filters");
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -166,7 +246,79 @@ export default function AdminOrdersList() {
   const xtrfStatus = searchParams.get("xtrfStatus") || "";
   const xtrfInvoiceStatuses = searchParams.get("xtrfInvStatus")?.split(",").filter(Boolean) || [];
   const xtrfPaymentStatuses = searchParams.get("xtrfPayStatus")?.split(",").filter(Boolean) || [];
+  const serviceFilter = (searchParams.get("service") || "all") as
+    | "all"
+    | "certified"
+    | "non_certified";
+  const companyFilter = searchParams.get("company") || ""; // companies.id
   const page = parseInt(searchParams.get("page") || "1", 10);
+
+  // Staff session (for ui_preferences persistence)
+  const { session } = useAdminAuthContext();
+  const staffId = session?.staffId || null;
+
+  // Certified service UUID (for "certified / non-certified" filtering)
+  const [certifiedServiceId, setCertifiedServiceId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("services")
+        .select("id")
+        .eq("code", "certified_translation")
+        .maybeSingle();
+      if (!cancelled) setCertifiedServiceId((data?.id as string) || null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Company filter lookup + autocomplete
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [companySearch, setCompanySearch] = useState("");
+  const [selectedCompanyName, setSelectedCompanyName] = useState<string>("");
+  const companyDebounceRef = useRef<number | null>(null);
+  useEffect(() => {
+    const q = companySearch.trim();
+    if (companyDebounceRef.current) window.clearTimeout(companyDebounceRef.current);
+    if (q.length < 2) {
+      setCompanies([]);
+      return;
+    }
+    companyDebounceRef.current = window.setTimeout(async () => {
+      const { data } = await supabase
+        .from("companies")
+        .select("id, name")
+        .ilike("name", `%${q.replace(/[,%]/g, "")}%`)
+        .order("name")
+        .limit(10);
+      setCompanies((data as CompanyOption[]) || []);
+    }, 200);
+    return () => {
+      if (companyDebounceRef.current) window.clearTimeout(companyDebounceRef.current);
+    };
+  }, [companySearch]);
+
+  // Resolve current companyFilter → display name for chip rendering
+  useEffect(() => {
+    if (!companyFilter) {
+      setSelectedCompanyName("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("companies")
+        .select("id, name")
+        .eq("id", companyFilter)
+        .maybeSingle();
+      if (!cancelled && data) setSelectedCompanyName(data.name);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyFilter]);
 
   // Persist filters to sessionStorage whenever they change
   useEffect(() => {
@@ -227,9 +379,11 @@ export default function AdminOrdersList() {
           is_rush,
           created_at,
           estimated_delivery_date,
+          service_id,
           xtrf_invoice_id, xtrf_invoice_number, xtrf_invoice_status, xtrf_invoice_payment_status,
           xtrf_project_number, xtrf_project_total_agreed, xtrf_project_total_cost, xtrf_project_currency_code, xtrf_project_status,
-          customers!inner(email, full_name)
+          customers!inner(email, full_name, company_name, customer_type, company_id),
+          service:services(code)
         `,
         { count: "exact" },
       );
@@ -289,6 +443,27 @@ export default function AdminOrdersList() {
       if (xtrfPaymentStatuses.length > 0) {
         query = query.in("xtrf_invoice_payment_status", xtrfPaymentStatuses);
       }
+      if (serviceFilter !== "all" && certifiedServiceId) {
+        query =
+          serviceFilter === "certified"
+            ? query.eq("service_id", certifiedServiceId)
+            : query.neq("service_id", certifiedServiceId);
+      }
+      if (companyFilter) {
+        // Resolve to customer ids with that company, then filter the orders.
+        const { data: matchingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("company_id", companyFilter);
+        const customerIds = (matchingCustomers || []).map((c: any) => c.id);
+        if (customerIds.length === 0) {
+          setOrders([]);
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
+        query = query.in("customer_id", customerIds);
+      }
 
       // Pagination
       const from = (page - 1) * PAGE_SIZE;
@@ -313,6 +488,10 @@ export default function AdminOrdersList() {
           estimated_delivery_date: order.estimated_delivery_date,
           customer_email: (order.customers as any)?.email || "",
           customer_name: (order.customers as any)?.full_name || "",
+          customer_company_name: (order.customers as any)?.company_name || null,
+          customer_type: (order.customers as any)?.customer_type || null,
+          service_id: (order as any).service_id || null,
+          service_code: (order.service as any)?.code || null,
           document_count: 0, // TODO: Add document count
           xtrf_project_number: order.xtrf_project_number,
           xtrf_invoice_id: order.xtrf_invoice_id,
@@ -337,7 +516,7 @@ export default function AdminOrdersList() {
   useEffect(() => {
     if (!restoredFromSession) return;
     fetchOrders();
-  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page]);
+  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, certifiedServiceId]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -654,6 +833,88 @@ export default function AdminOrdersList() {
                 </label>
               </div>
 
+              {/* Service type (certified vs non-certified) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Service type
+                </label>
+                <select
+                  value={serviceFilter}
+                  onChange={(e) => updateFilter("service", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All services</option>
+                  <option value="certified">Certified translations</option>
+                  <option value="non_certified">Non-certified / other</option>
+                </select>
+              </div>
+
+              {/* Company (business) filter */}
+              <div className="relative">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Company
+                </label>
+                {companyFilter && selectedCompanyName ? (
+                  <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg bg-teal-50">
+                    <span className="text-sm text-teal-800 flex-1 truncate">
+                      {selectedCompanyName}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => updateFilter("company", "")}
+                      className="text-gray-400 hover:text-red-600"
+                      title="Clear company filter"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={companySearch}
+                      onChange={(e) => setCompanySearch(e.target.value)}
+                      placeholder="Search by company…"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    {companies.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-20 max-h-56 overflow-y-auto">
+                        <ul className="divide-y divide-gray-100">
+                          {companies.map((co) => (
+                            <li key={co.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateFilter("company", co.id);
+                                  setCompanySearch("");
+                                  setCompanies([]);
+                                }}
+                                className="w-full text-left px-3 py-1.5 text-sm hover:bg-teal-50"
+                              >
+                                {co.name}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Save current filters as personal default */}
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={handleSaveFilterDefault}
+                  disabled={!staffId || savingPrefs}
+                  className="px-3 py-2 text-sm border border-teal-300 text-teal-700 rounded-lg hover:bg-teal-50 disabled:opacity-50"
+                  title="Save these filters to your profile so they load every time you open Orders"
+                >
+                  {savingPrefs ? "Saving…" : "Save as my default"}
+                </button>
+              </div>
+
               {/* XTRF Invoice Status */}
               <div className="md:col-span-3">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -746,10 +1007,18 @@ export default function AdminOrdersList() {
                     </td>
                   </tr>
                 ) : (
-                  orders.map((order) => (
+                  orders.map((order) => {
+                    const isNonCertified =
+                      !!order.service_code &&
+                      order.service_code !== "certified_translation";
+                    return (
                     <tr
                       key={order.id}
-                      className="hover:bg-gray-50 transition-colors"
+                      className={`transition-colors ${
+                        isNonCertified
+                          ? "bg-indigo-50/60 hover:bg-indigo-100/70"
+                          : "hover:bg-gray-50"
+                      }`}
                     >
                       {/* Order Details */}
                       {isColVisible("orderDetails") && (
@@ -771,6 +1040,11 @@ export default function AdminOrdersList() {
                       {isColVisible("customer") && (
                         <td className="px-4 py-3">
                           <p className="text-sm font-medium text-gray-900">{order.customer_name || "—"}</p>
+                          {order.customer_company_name && (
+                            <p className="text-xs text-gray-700 mt-0.5 font-medium">
+                              {order.customer_company_name}
+                            </p>
+                          )}
                           <p className="text-xs text-gray-500 mt-0.5">{order.customer_email || "—"}</p>
                         </td>
                       )}
@@ -924,7 +1198,8 @@ export default function AdminOrdersList() {
                         )}
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1178,3 +1453,4 @@ function XtrfPaymentStatusBadge({ status }: { status?: string | null }) {
     </span>
   );
 }
+
