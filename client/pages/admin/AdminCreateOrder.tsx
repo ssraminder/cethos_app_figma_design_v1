@@ -379,8 +379,22 @@ export default function AdminCreateOrder() {
       setSelectedTaxRateId(c.default_tax_rate_id);
       const tr = taxRates.find((t) => t.id === c.default_tax_rate_id);
       if (tr) setTaxRate(String(tr.rate));
+    } else if (c.currency && c.currency !== "CAD") {
+      // Non-CAD customer with no configured tax rate → start at 0 instead
+      // of the CAD GST default. Admin can still type a rate in manually.
+      setSelectedTaxRateId("");
+      setTaxRate("0");
     }
   };
+
+  // When the user flips currency to non-CAD and hasn't picked a specific
+  // tax rate, reset to 0 — CAD GST shouldn't land on a USD/EUR invoice.
+  useEffect(() => {
+    if (currency !== "CAD" && !selectedTaxRateId) {
+      setTaxRate("0");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currency]);
 
   // ── Customer selection ──
   const handleCustomerSelect = async (hit: CustomerHit) => {

@@ -523,6 +523,7 @@ export default function OrderInvoiceCard({ orderId, customerId, staffId }: Order
           invoiceId={invoice.id}
           balanceDue={invoice.balance_due}
           customerId={customerId}
+          currency={invoice.currency || "CAD"}
         />
       )}
 
@@ -854,10 +855,12 @@ function InvoicePaymentsSection({
   invoiceId,
   balanceDue,
   customerId,
+  currency = "CAD",
 }: {
   invoiceId: string;
   balanceDue: number;
   customerId: string;
+  currency?: string;
 }) {
   const [allocations, setAllocations] = useState<PaymentAllocationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -924,7 +927,7 @@ function InvoicePaymentsSection({
                 to={`/admin/payments/${a.payment?.id}`}
                 className="font-medium text-gray-900 hover:text-teal-600"
               >
-                {fmtPayCurrency(a.allocated_amount)}
+                {fmtPayCurrency(a.allocated_amount, currency)}
               </Link>
             </div>
           ))}
@@ -935,7 +938,8 @@ function InvoicePaymentsSection({
         <span className="text-gray-500">
           Total Paid:{" "}
           {fmtPayCurrency(
-            allocations.reduce((s, a) => s + a.allocated_amount, 0)
+            allocations.reduce((s, a) => s + a.allocated_amount, 0),
+            currency,
           )}
         </span>
         <span
@@ -943,7 +947,7 @@ function InvoicePaymentsSection({
             balanceDue > 0 ? "text-red-600" : "text-green-600"
           }
         >
-          Balance: {fmtPayCurrency(balanceDue)}
+          Balance: {fmtPayCurrency(balanceDue, currency)}
         </span>
       </div>
 

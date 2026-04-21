@@ -30,12 +30,12 @@ export async function callPaymentApi(
   return data;
 }
 
-/** Format a number as $1,234.56 CAD */
-export function formatCurrency(amount: number): string {
+/** Format a number as $1,234.56 CAD. Accepts an optional currency tag. */
+export function formatCurrency(amount: number, currency = "CAD"): string {
   return `$${amount.toLocaleString("en-CA", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })} CAD`;
+  })} ${currency}`;
 }
 
 /** Format a date string as "Mar 26, 2026" */

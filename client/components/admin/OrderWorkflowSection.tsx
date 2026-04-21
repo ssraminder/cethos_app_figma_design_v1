@@ -1768,33 +1768,55 @@ function StaffPickerDropdown({ onSelect }: { onSelect: (staffId: string) => void
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchStaff = async () => {
-    setLoading(true);
-    const { data } = await supabase
-      .from("staff_users")
-      .select("id, full_name, email")
-      .eq("is_active", true)
-      .order("full_name");
-    setStaff(data || []);
-    setLoading(false);
-  };
-
   useEffect(() => {
+    let cancelled = false;
+
+    const fetchStaff = async () => {
+      const { data } = await supabase
+        .from("staff_users")
+        .select("id, full_name, email")
+        .eq("is_active", true)
+        .order("full_name");
+      if (!cancelled) {
+        setStaff(data || []);
+        setLoading(false);
+      }
+    };
+
     fetchStaff();
+
+    // Subscribe to realtime changes so new/updated staff appear without
+    // a page refresh. Any INSERT/UPDATE/DELETE on staff_users just re-runs
+    // the query — cheap and keeps filter semantics (is_active=true) honest.
+    const channel = supabase
+      .channel("staff_users_picker")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "staff_users" },
+        () => {
+          fetchStaff();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (
     <select
       className="text-sm border border-gray-300 rounded px-2 py-1"
       defaultValue=""
-      onFocus={fetchStaff}
-      onMouseDown={fetchStaff}
       onChange={(e) => e.target.value && onSelect(e.target.value)}
       disabled={loading && staff.length === 0}
     >
       <option value="" disabled>
         {loading && staff.length === 0
           ? "Loading..."
+          : staff.length === 0
+          ? "No active staff"
           : "Select staff member..."}
       </option>
       {staff.map((s) => (
