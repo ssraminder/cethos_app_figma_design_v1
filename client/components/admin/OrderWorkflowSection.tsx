@@ -1767,29 +1767,33 @@ function TemplateSelector({
 function StaffPickerDropdown({ onSelect }: { onSelect: (staffId: string) => void }) {
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const fetchRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
 
     const fetchStaff = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("staff_users")
         .select("id, full_name, email")
         .eq("is_active", true)
         .order("full_name");
       if (!cancelled) {
+        if (error) {
+          console.error("StaffPicker fetch error:", error.message);
+        }
         setStaff(data || []);
         setLoading(false);
       }
     };
 
+    fetchRef.current = fetchStaff;
     fetchStaff();
 
-    // Subscribe to realtime changes so new/updated staff appear without
-    // a page refresh. Any INSERT/UPDATE/DELETE on staff_users just re-runs
-    // the query — cheap and keeps filter semantics (is_active=true) honest.
+    // Unique channel name so multiple dropdown instances don't collide.
+    const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel("staff_users_picker")
+      .channel(`staff_users_picker_${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "staff_users" },
@@ -1809,6 +1813,8 @@ function StaffPickerDropdown({ onSelect }: { onSelect: (staffId: string) => void
     <select
       className="text-sm border border-gray-300 rounded px-2 py-1"
       defaultValue=""
+      onFocus={() => fetchRef.current()}
+      onMouseDown={() => fetchRef.current()}
       onChange={(e) => e.target.value && onSelect(e.target.value)}
       disabled={loading && staff.length === 0}
     >
