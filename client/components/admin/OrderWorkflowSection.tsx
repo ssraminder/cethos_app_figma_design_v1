@@ -2850,6 +2850,26 @@ function WorkflowPipeline({
                     </button>
                   )}
 
+                  {/* Mark Delivered: in_progress / revision_requested. Only
+                      available when the step doesn't require a file upload
+                      (the file-upload panel owns delivery when it does). */}
+                  {["in_progress", "revision_requested"].includes(step.status) &&
+                    !step.requires_file_upload && (
+                      <button
+                        className="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                        disabled={actionLoading === step.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStepAction(step.id, "change_status", {
+                            status: "delivered",
+                          });
+                        }}
+                        title="Mark delivered without a file"
+                      >
+                        {actionLoading === step.id ? "..." : "Mark Delivered"}
+                      </button>
+                    )}
+
                   {/* Approve + Request Revision: delivered */}
                   {step.status === "delivered" && (() => {
                     // Check if approval is gated by another step
