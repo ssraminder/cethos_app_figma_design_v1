@@ -170,15 +170,25 @@ export default function AdminCreateOrder() {
   const [newBranchId, setNewBranchId] = useState<number | null>(null);
   const [savingCustomer, setSavingCustomer] = useState(false);
 
-  // ── Company name autocomplete (typeahead on existing customers.company_name) ──
-  const [companySuggestions, setCompanySuggestions] = useState<string[]>([]);
+  // ── Company autocomplete (companies table is the source of truth for
+  //    shared currency/tax/branch/terms across employees of the same biz) ──
+  interface CompanyRow {
+    id: string;
+    name: string;
+    currency: string | null;
+    default_tax_rate_id: string | null;
+    invoicing_branch_id: number | null;
+    payment_terms: string | null;
+    is_ar_customer: boolean | null;
+  }
+  const [companySuggestions, setCompanySuggestions] = useState<CompanyRow[]>([]);
   const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
+  const [linkedCompanyId, setLinkedCompanyId] = useState<string | null>(null);
   const companyDebounceRef = useRef<number | null>(null);
+
   useEffect(() => {
     const q = newCompany.trim();
-    if (companyDebounceRef.current) {
-      window.clearTimeout(companyDebounceRef.current);
-    }
+    if (companyDebounceRef.current) window.clearTimeout(companyDebounceRef.current);
     if (q.length < 2) {
       setCompanySuggestions([]);
       return;
@@ -186,26 +196,33 @@ export default function AdminCreateOrder() {
     companyDebounceRef.current = window.setTimeout(async () => {
       const esc = q.replace(/[,%]/g, "");
       const { data } = await supabase
-        .from("customers")
-        .select("company_name")
-        .ilike("company_name", `%${esc}%`)
-        .not("company_name", "is", null)
-        .limit(30);
-      const unique = Array.from(
-        new Set(
-          (data || [])
-            .map((r: any) => (r.company_name || "").trim())
-            .filter(Boolean),
-        ),
-      ).slice(0, 8);
-      setCompanySuggestions(unique);
+        .from("companies")
+        .select(
+          "id, name, currency, default_tax_rate_id, invoicing_branch_id, payment_terms, is_ar_customer",
+        )
+        .ilike("name", `%${esc}%`)
+        .limit(8);
+      setCompanySuggestions((data as CompanyRow[]) || []);
     }, 200);
     return () => {
-      if (companyDebounceRef.current) {
-        window.clearTimeout(companyDebounceRef.current);
-      }
+      if (companyDebounceRef.current) window.clearTimeout(companyDebounceRef.current);
     };
   }, [newCompany]);
+
+  // Apply a picked company's shared settings into the new-customer form.
+  const applyCompanyDefaults = (c: CompanyRow) => {
+    setNewCompany(c.name);
+    setLinkedCompanyId(c.id);
+    if (c.currency) setNewCurrency(c.currency);
+    if (c.default_tax_rate_id) setNewTaxRateId(c.default_tax_rate_id);
+    if (c.invoicing_branch_id !== null && c.invoicing_branch_id !== undefined) {
+      setNewBranchId(c.invoicing_branch_id);
+    }
+    if (c.payment_terms) setNewPaymentTerms(c.payment_terms);
+    if (c.is_ar_customer !== null && c.is_ar_customer !== undefined) {
+      setNewIsAR(!!c.is_ar_customer);
+    }
+  };
 
   // ── Load reference data once ──
   useEffect(() => {
@@ -332,6 +349,58 @@ export default function AdminCreateOrder() {
     }
     setSavingCustomer(true);
     try {
+      // For business types, find-or-create a company row so currency/tax/
+      // branch/terms are stored once and shared across employees.
+      let companyId: string | null = null;
+      const isBusiness =
+        newCustomerType !== "individual" && newCompany.trim().length > 0;
+      if (isBusiness) {
+        if (linkedCompanyId) {
+          companyId = linkedCompanyId;
+          // Keep the company row in sync if the user tweaked AR/terms inline.
+          await supabase
+            .from("companies")
+            .update({
+              currency: newCurrency,
+              default_tax_rate_id: newTaxRateId || null,
+              invoicing_branch_id: newBranchId ?? branchId,
+              payment_terms: newIsAR ? newPaymentTerms : "immediate",
+              is_ar_customer: newIsAR,
+            })
+            .eq("id", linkedCompanyId);
+        } else {
+          // Try to find an existing company by case-insensitive name first
+          // (the autocomplete may not have surfaced it).
+          const { data: existing } = await supabase
+            .from("companies")
+            .select("id")
+            .ilike("name", newCompany.trim())
+            .maybeSingle();
+          if (existing?.id) {
+            companyId = existing.id;
+          } else {
+            const { data: created, error: coErr } = await supabase
+              .from("companies")
+              .insert({
+                name: newCompany.trim(),
+                currency: newCurrency,
+                default_tax_rate_id: newTaxRateId || null,
+                invoicing_branch_id: newBranchId ?? branchId,
+                payment_terms: newIsAR ? newPaymentTerms : "immediate",
+                is_ar_customer: newIsAR,
+              })
+              .select("id")
+              .single();
+            if (coErr || !created) {
+              throw new Error(
+                coErr?.message || "Failed to create company record",
+              );
+            }
+            companyId = created.id;
+          }
+        }
+      }
+
       const { data, error } = await supabase
         .from("customers")
         .insert({
@@ -341,6 +410,7 @@ export default function AdminCreateOrder() {
           customer_type: newCustomerType,
           company_name:
             newCustomerType !== "individual" ? newCompany.trim() || null : null,
+          company_id: companyId,
           is_ar_customer: newIsAR,
           payment_terms: newIsAR ? newPaymentTerms : "immediate",
           currency: newCurrency,
@@ -358,6 +428,7 @@ export default function AdminCreateOrder() {
       setCustomer(c);
       inheritFromCustomer(c);
       setCreatingCustomer(false);
+      setLinkedCompanyId(null);
       // Reset fields
       setNewFullName("");
       setNewEmail("");
@@ -957,32 +1028,41 @@ export default function AdminCreateOrder() {
                         companySuggestions.length > 0 && (
                           <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-20 max-h-56 overflow-y-auto">
                             <ul className="divide-y divide-gray-100">
-                              {companySuggestions.map((name) => (
-                                <li key={name}>
+                              {companySuggestions.map((co) => (
+                                <li key={co.id}>
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setNewCompany(name);
+                                      applyCompanyDefaults(co);
                                       setCompanyDropdownOpen(false);
                                     }}
                                     className="w-full text-left px-3 py-1.5 text-sm hover:bg-teal-50"
                                   >
-                                    {name}
+                                    <div className="font-medium">{co.name}</div>
+                                    <div className="text-[11px] text-gray-500 flex gap-2">
+                                      <span>{co.currency || "CAD"}</span>
+                                      {co.is_ar_customer && (
+                                        <span className="text-teal-700">
+                                          AR · {co.payment_terms || "net_30"}
+                                        </span>
+                                      )}
+                                    </div>
                                   </button>
                                 </li>
                               ))}
                               {newCompany.trim() &&
                                 !companySuggestions.some(
-                                  (n) =>
-                                    n.toLowerCase() ===
+                                  (c) =>
+                                    c.name.toLowerCase() ===
                                     newCompany.trim().toLowerCase(),
                                 ) && (
                                   <li>
                                     <button
                                       type="button"
-                                      onClick={() =>
-                                        setCompanyDropdownOpen(false)
-                                      }
+                                      onClick={() => {
+                                        setLinkedCompanyId(null);
+                                        setCompanyDropdownOpen(false);
+                                      }}
                                       className="w-full text-left px-3 py-1.5 text-xs text-teal-700 bg-teal-50/50 hover:bg-teal-50"
                                     >
                                       + Create new: “{newCompany.trim()}”
