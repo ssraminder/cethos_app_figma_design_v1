@@ -1928,6 +1928,47 @@ function WorkflowPipeline({
   // Approve/Revise modal state
   const [approveModalStep, setApproveModalStep] = useState<WorkflowStep | null>(null);
   const [reviseModalStep, setReviseModalStep] = useState<WorkflowStep | null>(null);
+  // Admin "upload files on behalf" modal — separate from the internal_work
+  // inline deliver panel so it can be opened for any step that requires a
+  // file upload, regardless of actor_type.
+  const [uploadModalStep, setUploadModalStep] = useState<WorkflowStep | null>(null);
+  const [uploadModalFiles, setUploadModalFiles] = useState<File[]>([]);
+  const [uploadModalNotes, setUploadModalNotes] = useState("");
+  const [uploadModalLoading, setUploadModalLoading] = useState(false);
+
+  const handleAdminUpload = async () => {
+    if (!uploadModalStep) return;
+    if (uploadModalFiles.length === 0) {
+      toast.error("Pick at least one file to upload");
+      return;
+    }
+    setUploadModalLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("step_id", uploadModalStep.id);
+      if (uploadModalNotes) formData.append("notes", uploadModalNotes);
+      uploadModalFiles.forEach((f) => formData.append("files", f));
+      if (currentStaff?.staffId) formData.append("staff_id", currentStaff.staffId);
+
+      const { data, error } = await supabase.functions.invoke(
+        "staff-deliver-step",
+        { body: formData },
+      );
+      if (error || !data?.success) {
+        toast.error(data?.error || "Failed to upload files");
+        return;
+      }
+      toast.success(`Uploaded v${data.delivery_version}`);
+      setUploadModalStep(null);
+      setUploadModalFiles([]);
+      setUploadModalNotes("");
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      toast.error("Failed to upload");
+    } finally {
+      setUploadModalLoading(false);
+    }
+  };
   const [reviseFeedback, setReviseFeedback] = useState('');
 
   // Actor type switcher state
@@ -2870,6 +2911,29 @@ function WorkflowPipeline({
                       </button>
                     )}
 
+                  {/* Upload Files (admin, any actor_type): visible whenever
+                      the step requires files AND is in a pre-approval status.
+                      Opens a dedicated modal so admin can upload on behalf
+                      of a vendor / reviewer without toggling the inline
+                      internal_work panel. */}
+                  {step.requires_file_upload &&
+                    ["accepted", "in_progress", "revision_requested"].includes(
+                      step.status,
+                    ) && (
+                      <button
+                        className="text-xs px-3 py-1 border border-purple-400 text-purple-700 rounded hover:bg-purple-50 flex items-center gap-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setUploadModalStep(step);
+                          setUploadModalFiles([]);
+                          setUploadModalNotes("");
+                        }}
+                        title="Upload files on behalf of the assignee"
+                      >
+                        <Upload className="w-3 h-3" /> Upload Files
+                      </button>
+                    )}
+
                   {/* Approve + Request Revision: delivered */}
                   {step.status === "delivered" && (() => {
                     // Check if approval is gated by another step
@@ -3311,6 +3375,138 @@ function WorkflowPipeline({
           );
         })}
       </div>
+
+      {/* Admin file-upload modal (available on any step that requires files) */}
+      {uploadModalStep && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => !uploadModalLoading && setUploadModalStep(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-800">
+                Upload files — Step {uploadModalStep.step_number}:{" "}
+                {uploadModalStep.name}
+              </h3>
+              <button
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => !uploadModalLoading && setUploadModalStep(null)}
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-gray-500">
+                Files upload against this step's delivery history as the next
+                version and mark the step as <strong>delivered</strong>.
+              </p>
+
+              <label className="block border-2 border-dashed border-purple-300 rounded p-4 text-center cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors">
+                <Upload className="w-5 h-5 mx-auto text-purple-500 mb-1" />
+                <div className="text-sm text-purple-700">
+                  Click to pick files — or drag-drop below
+                </div>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      setUploadModalFiles((prev) => [
+                        ...prev,
+                        ...Array.from(e.target.files!),
+                      ]);
+                    }
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+
+              <div
+                className="border border-gray-200 rounded p-3 min-h-[60px] text-xs"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const files = Array.from(e.dataTransfer.files);
+                  if (files.length)
+                    setUploadModalFiles((prev) => [...prev, ...files]);
+                }}
+              >
+                {uploadModalFiles.length === 0 ? (
+                  <span className="text-gray-400">No files selected</span>
+                ) : (
+                  <ul className="space-y-1">
+                    {uploadModalFiles.map((f, i) => (
+                      <li
+                        key={`${f.name}-${i}`}
+                        className="flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1 text-gray-800 truncate">
+                          <FileText className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{f.name}</span>
+                          <span className="text-gray-400">
+                            ({(f.size / 1024).toFixed(1)} KB)
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setUploadModalFiles((prev) =>
+                              prev.filter((_, idx) => idx !== i),
+                            )
+                          }
+                          className="text-gray-400 hover:text-red-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <textarea
+                className="w-full text-sm border border-gray-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                rows={2}
+                placeholder="Notes (optional)…"
+                value={uploadModalNotes}
+                onChange={(e) => setUploadModalNotes(e.target.value)}
+              />
+            </div>
+            <div className="p-4 border-t flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                onClick={() => setUploadModalStep(null)}
+                disabled={uploadModalLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-4 py-1.5 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded disabled:opacity-50 flex items-center gap-2"
+                disabled={
+                  uploadModalLoading || uploadModalFiles.length === 0
+                }
+                onClick={handleAdminUpload}
+              >
+                {uploadModalLoading && (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                )}
+                Upload {uploadModalFiles.length > 0 ? `(${uploadModalFiles.length})` : ""}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Approve Confirmation Modal */}
       {approveModalStep && (
