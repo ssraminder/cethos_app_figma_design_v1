@@ -2710,6 +2710,35 @@ function WorkflowPipeline({
                     />
                   )}
 
+                  {/* Fallback: automated/customer steps that landed pending +
+                      unassigned (usually because auto-match produced nothing
+                      or the template had no resolver). Offer both vendor and
+                      staff so admin can manually pick whoever should own it. */}
+                  {step.status === "pending" &&
+                    !step.vendor_id &&
+                    !step.assigned_staff_id &&
+                    !['external_vendor', 'internal_work', 'internal_review'].includes(step.actor_type) && (
+                      <>
+                        <button
+                          className="text-xs px-3 py-1 border border-blue-400 text-blue-600 rounded hover:bg-blue-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onFindVendor(step);
+                          }}
+                          title="Pick a vendor (overrides the template's actor type)"
+                        >
+                          Find Vendor
+                        </button>
+                        <StaffPickerDropdown
+                          onSelect={(staffId) =>
+                            handleStepAction(step.id, "direct_assign", {
+                              vendor_id: staffId,
+                            })
+                          }
+                        />
+                      </>
+                    )}
+
                   {/* Send More Offers + Retract Offers: offered */}
                   {step.status === "offered" && (
                     <>
