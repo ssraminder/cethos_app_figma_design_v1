@@ -200,14 +200,6 @@ export default function AdminCreateOrder() {
 
   const canDirectOrder = !!customer?.is_ar_customer;
 
-  // Force mode=quote if customer ineligible
-  useEffect(() => {
-    if (mode === "direct_order" && customer && !customer.is_ar_customer) {
-      setMode("quote");
-      toast.info("Customer is not AR-approved — switched to Quote mode.");
-    }
-  }, [customer, mode]);
-
   // ── Line-item handlers ──
   const addLine = () =>
     setLineItems((prev) => [...prev, newLine(allowedUnits[0] ?? "per_word")]);
@@ -455,28 +447,13 @@ export default function AdminCreateOrder() {
           </button>
           <button
             type="button"
-            onClick={() => {
-              if (!canDirectOrder) {
-                toast.info(
-                  customer
-                    ? "Customer must be AR-approved first"
-                    : "Pick a customer first",
-                );
-                return;
-              }
-              setMode("direct_order");
-            }}
-            disabled={!canDirectOrder}
+            onClick={() => setMode("direct_order")}
             className={`flex-1 flex items-center gap-2 rounded-md border px-4 py-3 text-sm font-medium transition ${
               mode === "direct_order"
                 ? "border-teal-500 bg-teal-50 text-teal-900"
                 : "border-gray-200 bg-white hover:border-gray-300"
-            } ${!canDirectOrder ? "opacity-50 cursor-not-allowed" : ""}`}
-            title={
-              !canDirectOrder
-                ? "Requires an AR-approved customer"
-                : "Create an open order — invoice on delivery"
-            }
+            }`}
+            title="Create an open order — invoice on delivery (AR customers only)"
           >
             <Briefcase className="w-4 h-4" />
             <div className="text-left">
@@ -487,6 +464,22 @@ export default function AdminCreateOrder() {
             </div>
           </button>
         </div>
+        {mode === "direct_order" && customer && !customer.is_ar_customer && (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <strong>{customerLabel}</strong> is not AR-approved. Either mark
+              them as AR on the{" "}
+              <Link
+                to={`/admin/customers/${customer.id}`}
+                className="underline"
+              >
+                customer page
+              </Link>
+              , pick a different customer, or switch back to Quote mode.
+            </div>
+          </div>
+        )}
       </div>
 
       {loadingRefs ? (
