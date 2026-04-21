@@ -75,6 +75,44 @@ serve(async (req: Request) => {
         });
       }
 
+      // ── Direct assign a staff member (internal work / internal review) ──
+      case "assign_staff": {
+        const { staff_id, deadline, instructions } = body;
+        if (!staff_id) return json({ success: false, error: "Missing staff_id" }, 400);
+
+        // Verify the staff user exists + is active
+        const { data: staffRow } = await supabase
+          .from("staff_users")
+          .select("id, full_name, is_active")
+          .eq("id", staff_id)
+          .maybeSingle();
+        if (!staffRow || staffRow.is_active === false) {
+          return json({ success: false, error: "Staff user not found or inactive" }, 404);
+        }
+
+        await supabase
+          .from("order_workflow_steps")
+          .update({
+            assigned_staff_id: staff_id,
+            status: "accepted",
+            deadline: deadline || null,
+            instructions: instructions || null,
+            accepted_at: new Date().toISOString(),
+            assigned_by: body.staff_id_actor || body.acting_staff_id || null,
+          })
+          .eq("id", step_id);
+
+        // Kick the parent workflow into in_progress if it was still queued.
+        if (workflow.status === "not_started") {
+          await supabase
+            .from("order_workflows")
+            .update({ status: "in_progress" })
+            .eq("id", step.workflow_id);
+        }
+
+        return json({ success: true });
+      }
+
       // ── Direct assign vendor ──
       case "direct_assign": {
         const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions } = body;

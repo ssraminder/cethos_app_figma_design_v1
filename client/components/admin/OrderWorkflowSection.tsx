@@ -2766,8 +2766,8 @@ function WorkflowPipeline({
                         {(canStaff || isFallback) && (
                           <StaffPickerDropdown
                             onSelect={(staffId) =>
-                              handleStepAction(step.id, "direct_assign", {
-                                vendor_id: staffId,
+                              handleStepAction(step.id, "assign_staff", {
+                                staff_id: staffId,
                               })
                             }
                           />
