@@ -9,16 +9,19 @@ import {
   FileText,
   Loader2,
   Mail,
+  Pencil,
   Plus,
   RefreshCw,
   Send,
   Sparkles,
+  Tag,
   Upload,
   X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
+import JSZip from "jszip";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 
@@ -33,6 +36,7 @@ interface Attachment {
   storage_path: string;
   mime_type: string | null;
   file_size: number | null;
+  tags: string | null;
 }
 
 interface Communication {
@@ -43,7 +47,10 @@ interface Communication {
   email_date: string | null;
   created_at: string;
   created_by: string | null;
+  last_edited_at: string | null;
+  last_edited_by: string | null;
   author?: { full_name: string } | null;
+  editor?: { full_name: string } | null;
   attachments: Attachment[];
 }
 
@@ -79,6 +86,7 @@ export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) 
   const [history, setHistory] = useState<InstructionsRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingCommId, setEditingCommId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -95,9 +103,11 @@ export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) 
           .from("order_communications")
           .select(
             `id, kind, subject, body, email_date, created_at, created_by,
-             author:staff_users(full_name),
+             last_edited_at, last_edited_by,
+             author:staff_users!order_communications_created_by_fkey(full_name),
+             editor:staff_users!order_communications_last_edited_by_fkey(full_name),
              attachments:order_communication_attachments(
-               id, original_filename, storage_path, mime_type, file_size
+               id, original_filename, storage_path, mime_type, file_size, tags
              )`,
           )
           .eq("order_id", orderId)
@@ -577,7 +587,7 @@ export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) 
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-500 mt-1 flex items-center gap-3">
+                      <p className="text-xs text-gray-500 mt-1 flex items-center gap-3 flex-wrap">
                         <span className="inline-flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           {c.email_date
@@ -593,14 +603,29 @@ export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) 
                         {c.author?.full_name && (
                           <span>logged by {c.author.full_name}</span>
                         )}
+                        {c.last_edited_at && (
+                          <span className="italic text-gray-400">
+                            · edited {format(new Date(c.last_edited_at), "MMM d, h:mm a")}
+                            {c.editor?.full_name ? ` by ${c.editor.full_name}` : ""}
+                          </span>
+                        )}
                       </p>
                     </div>
-                    <button
-                      onClick={() => toggleExpanded(c.id)}
-                      className="text-xs text-gray-500 hover:text-gray-900"
-                    >
-                      {expanded ? "Collapse" : "Expand"}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setEditingCommId(c.id)}
+                        className="p-1 text-gray-400 hover:text-gray-700 rounded"
+                        title="Edit"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => toggleExpanded(c.id)}
+                        className="text-xs text-gray-500 hover:text-gray-900"
+                      >
+                        {expanded ? "Collapse" : "Expand"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-2 text-sm text-gray-700 whitespace-pre-wrap break-words">
@@ -614,7 +639,7 @@ export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) 
                           key={a.id}
                           onClick={() => downloadAttachment(a)}
                           className="inline-flex items-center gap-1.5 px-2 py-1 text-xs bg-gray-50 border border-gray-200 rounded hover:bg-gray-100"
-                          title={a.original_filename}
+                          title={a.tags ? `${a.original_filename} — ${a.tags}` : a.original_filename}
                         >
                           <FileText className="w-3.5 h-3.5 text-gray-500" />
                           <span className="max-w-[200px] truncate">
@@ -623,6 +648,12 @@ export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) 
                           {a.file_size != null && (
                             <span className="text-gray-400">
                               ({Math.round(a.file_size / 1024)} KB)
+                            </span>
+                          )}
+                          {a.tags && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-medium">
+                              <Tag className="w-2.5 h-2.5" />
+                              {a.tags}
                             </span>
                           )}
                           <Download className="w-3 h-3 text-gray-400" />
@@ -639,10 +670,12 @@ export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) 
 
       {/* ADD COMMUNICATION MODAL */}
       {showAddModal && (
-        <AddCommunicationModal
+        <CommunicationModal
+          mode="add"
           orderId={orderId}
           orderNumber={orderNumber}
           staffId={staff?.staffId || null}
+          existing={null}
           onClose={() => setShowAddModal(false)}
           onSaved={() => {
             setShowAddModal(false);
@@ -650,55 +683,169 @@ export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) 
           }}
         />
       )}
+
+      {/* EDIT COMMUNICATION MODAL */}
+      {editingCommId && (() => {
+        const existing = comms.find((c) => c.id === editingCommId);
+        if (!existing) return null;
+        return (
+          <CommunicationModal
+            mode="edit"
+            orderId={orderId}
+            orderNumber={orderNumber}
+            staffId={staff?.staffId || null}
+            existing={existing}
+            onClose={() => setEditingCommId(null)}
+            onSaved={() => {
+              setEditingCommId(null);
+              refresh();
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
 
-// ───────────────────────────── Add Modal ─────────────────────────────
+// ─────────────────────── Communication Modal (Add + Edit) ───────────────────────
 
-interface AddProps {
+interface ModalProps {
+  mode: "add" | "edit";
   orderId: string;
   orderNumber: string;
   staffId: string | null;
+  existing: Communication | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
 interface PendingFile {
+  // Local files queued for upload. `tags` is editable in the modal before save.
   file: File;
+  tags: string;
   status: "pending" | "uploading" | "success" | "error";
   error?: string;
 }
 
-function AddCommunicationModal({
+interface ExistingFile {
+  // Already-uploaded attachment. Staff can edit tags or mark for deletion.
+  id: string;
+  original_filename: string;
+  file_size: number | null;
+  storage_path: string;
+  tags: string;
+  toDelete: boolean;
+  originalTags: string;
+}
+
+function CommunicationModal({
+  mode,
   orderId,
   orderNumber,
   staffId,
+  existing,
   onClose,
   onSaved,
-}: AddProps) {
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+}: ModalProps) {
+  const isEdit = mode === "edit" && existing != null;
+
+  const [subject, setSubject] = useState(existing?.subject || "");
+  const [body, setBody] = useState(existing?.body || "");
   const [emailDate, setEmailDate] = useState<string>(
-    new Date().toISOString().slice(0, 16),
+    existing?.email_date
+      ? new Date(existing.email_date).toISOString().slice(0, 16)
+      : new Date().toISOString().slice(0, 16),
   );
   const [files, setFiles] = useState<PendingFile[]>([]);
+  const [existingFiles, setExistingFiles] = useState<ExistingFile[]>(
+    (existing?.attachments || []).map((a) => ({
+      id: a.id,
+      original_filename: a.original_filename,
+      file_size: a.file_size,
+      storage_path: a.storage_path,
+      tags: a.tags || "",
+      originalTags: a.tags || "",
+      toDelete: false,
+    })),
+  );
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const onPickFiles = (selected: FileList | null) => {
-    if (!selected) return;
-    setFiles((prev) => [
-      ...prev,
-      ...Array.from(selected).map((f) => ({
-        file: f,
-        status: "pending" as const,
-      })),
-    ]);
+  // Expand zip files client-side so each entry becomes its own attachment.
+  // Non-zip files pass through unchanged.
+  const expandFiles = async (selected: File[]): Promise<File[]> => {
+    const out: File[] = [];
+    for (const f of selected) {
+      const isZip =
+        f.type === "application/zip" ||
+        f.type === "application/x-zip-compressed" ||
+        f.name.toLowerCase().endsWith(".zip");
+      if (!isZip) {
+        out.push(f);
+        continue;
+      }
+      try {
+        const zip = await JSZip.loadAsync(f);
+        const entries = Object.values(zip.files).filter((e) => !e.dir);
+        if (entries.length === 0) {
+          toast.warning(`${f.name} is empty — skipping.`);
+          continue;
+        }
+        for (const entry of entries) {
+          const blob = await entry.async("blob");
+          // Use just the basename so the original folder structure inside the
+          // zip isn't preserved in the attachment list.
+          const name = entry.name.split("/").pop() || entry.name;
+          // Best-effort MIME from extension (browsers don't infer from blob).
+          const mime = blob.type || guessMime(name);
+          out.push(new File([blob], name, { type: mime }));
+        }
+        toast.success(
+          `Expanded ${f.name} → ${entries.length} file${entries.length === 1 ? "" : "s"}.`,
+        );
+      } catch (err) {
+        console.error("Zip extraction failed:", err);
+        toast.error(`Could not read ${f.name} — adding as-is.`);
+        out.push(f);
+      }
+    }
+    return out;
+  };
+
+  const onPickFiles = async (selected: FileList | null) => {
+    if (!selected || selected.length === 0) return;
+    setExtracting(true);
+    try {
+      const expanded = await expandFiles(Array.from(selected));
+      setFiles((prev) => [
+        ...prev,
+        ...expanded.map((f) => ({
+          file: f,
+          tags: "",
+          status: "pending" as const,
+        })),
+      ]);
+    } finally {
+      setExtracting(false);
+    }
   };
 
   const removeFile = (i: number) =>
     setFiles((prev) => prev.filter((_, idx) => idx !== i));
+
+  const updatePendingTags = (i: number, tags: string) =>
+    setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, tags } : f)));
+
+  const updateExistingTags = (id: string, tags: string) =>
+    setExistingFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, tags } : f)),
+    );
+
+  const toggleExistingDelete = (id: string) =>
+    setExistingFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, toDelete: !f.toDelete } : f)),
+    );
 
   const handleSave = async () => {
     if (!body.trim()) {
@@ -707,22 +854,58 @@ function AddCommunicationModal({
     }
     setSaving(true);
     try {
-      // 1. Insert communication.
-      const { data: commRow, error: commErr } = await supabase
-        .from("order_communications")
-        .insert({
-          order_id: orderId,
-          kind: "client_email",
-          subject: subject.trim() || null,
-          body: body.trim(),
-          email_date: emailDate ? new Date(emailDate).toISOString() : null,
-          created_by: staffId,
-        })
-        .select()
-        .single();
-      if (commErr) throw commErr;
+      let commId: string;
 
-      // 2. Upload files + record attachments.
+      if (isEdit && existing) {
+        // ── Edit path ──
+        const { error: updErr } = await supabase
+          .from("order_communications")
+          .update({
+            subject: subject.trim() || null,
+            body: body.trim(),
+            email_date: emailDate ? new Date(emailDate).toISOString() : null,
+            last_edited_at: new Date().toISOString(),
+            last_edited_by: staffId,
+          })
+          .eq("id", existing.id);
+        if (updErr) throw updErr;
+        commId = existing.id;
+
+        // Apply tag edits + deletions to existing attachments.
+        for (const ef of existingFiles) {
+          if (ef.toDelete) {
+            // Remove storage object (best-effort) then DB row.
+            await supabase.storage.from(STORAGE_BUCKET).remove([ef.storage_path]);
+            await supabase
+              .from("order_communication_attachments")
+              .delete()
+              .eq("id", ef.id);
+          } else if (ef.tags !== ef.originalTags) {
+            await supabase
+              .from("order_communication_attachments")
+              .update({ tags: ef.tags || null })
+              .eq("id", ef.id);
+          }
+        }
+      } else {
+        // ── Add path ──
+        const { data: commRow, error: commErr } = await supabase
+          .from("order_communications")
+          .insert({
+            order_id: orderId,
+            kind: "client_email",
+            subject: subject.trim() || null,
+            body: body.trim(),
+            email_date: emailDate ? new Date(emailDate).toISOString() : null,
+            created_by: staffId,
+          })
+          .select()
+          .single();
+        if (commErr) throw commErr;
+        commId = commRow.id;
+      }
+
+      // Upload any new files (same flow for both add & edit).
       for (let i = 0; i < files.length; i++) {
         const item = files[i];
         if (item.status !== "pending") continue;
@@ -734,7 +917,7 @@ function AddCommunicationModal({
         try {
           const ts = Date.now();
           const safeName = item.file.name.replace(/[^\w.\-]+/g, "_");
-          const storagePath = `orders/${orderId}/communications/${commRow.id}/${ts}_${safeName}`;
+          const storagePath = `orders/${orderId}/communications/${commId}/${ts}_${safeName}`;
           const { error: upErr } = await supabase.storage
             .from(STORAGE_BUCKET)
             .upload(storagePath, item.file);
@@ -742,11 +925,12 @@ function AddCommunicationModal({
           const { error: attErr } = await supabase
             .from("order_communication_attachments")
             .insert({
-              communication_id: commRow.id,
+              communication_id: commId,
               original_filename: item.file.name,
               storage_path: storagePath,
               mime_type: item.file.type || null,
               file_size: item.file.size,
+              tags: item.tags.trim() || null,
             });
           if (attErr) throw attErr;
           setFiles((prev) =>
@@ -773,10 +957,10 @@ function AddCommunicationModal({
       const failed = files.filter((f) => f.status === "error").length;
       if (failed > 0) {
         toast.warning(
-          `Saved communication, but ${failed} attachment${failed === 1 ? "" : "s"} failed to upload.`,
+          `Saved, but ${failed} attachment${failed === 1 ? "" : "s"} failed to upload.`,
         );
       } else {
-        toast.success("Client communication saved.");
+        toast.success(isEdit ? "Communication updated." : "Client communication saved.");
       }
       onSaved();
     } catch (err) {
@@ -795,10 +979,13 @@ function AddCommunicationModal({
         <div className="flex items-center justify-between p-5 border-b">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
-              Add client email
+              {isEdit ? "Edit client email" : "Add client email"}
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Order {orderNumber} · paste exactly what the client sent.
+              Order {orderNumber} ·{" "}
+              {isEdit
+                ? "edits will be reflected next time you regenerate instructions."
+                : "paste exactly what the client sent."}
             </p>
           </div>
           <button
@@ -850,9 +1037,59 @@ function AddCommunicationModal({
             />
           </div>
 
+          {/* Existing attachments (edit mode only) */}
+          {isEdit && existingFiles.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Existing attachments
+              </label>
+              <ul className="space-y-1.5">
+                {existingFiles.map((ef) => (
+                  <li
+                    key={ef.id}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm ${
+                      ef.toDelete
+                        ? "bg-red-50 line-through text-gray-400"
+                        : "bg-gray-50"
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <span className="truncate flex-1" title={ef.original_filename}>
+                      {ef.original_filename}
+                    </span>
+                    {ef.file_size != null && (
+                      <span className="text-xs text-gray-400">
+                        {Math.round(ef.file_size / 1024)} KB
+                      </span>
+                    )}
+                    <input
+                      type="text"
+                      value={ef.tags}
+                      onChange={(e) => updateExistingTags(ef.id, e.target.value)}
+                      placeholder="tags…"
+                      disabled={ef.toDelete}
+                      className="px-2 py-1 text-xs border border-gray-300 rounded w-44 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+                    />
+                    <button
+                      onClick={() => toggleExistingDelete(ef.id)}
+                      className="p-0.5 text-gray-400 hover:text-red-500"
+                      title={ef.toDelete ? "Keep" : "Remove on save"}
+                    >
+                      {ef.toDelete ? (
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      ) : (
+                        <X className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
-              Attachments (optional)
+              {isEdit ? "Add more attachments" : "Attachments (optional)"}
             </label>
             <div
               onDragOver={(e) => e.preventDefault()}
@@ -863,13 +1100,17 @@ function AddCommunicationModal({
               onClick={() => fileInputRef.current?.click()}
               className="border-2 border-dashed border-gray-300 rounded-lg p-5 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/40 transition-colors"
             >
-              <Upload className="w-7 h-7 mx-auto text-gray-400 mb-2" />
+              {extracting ? (
+                <Loader2 className="w-7 h-7 mx-auto text-blue-500 animate-spin mb-2" />
+              ) : (
+                <Upload className="w-7 h-7 mx-auto text-gray-400 mb-2" />
+              )}
               <p className="text-sm text-gray-600">
                 Drag & drop or{" "}
                 <span className="text-blue-600 font-medium">browse</span>
               </p>
               <p className="text-xs text-gray-400 mt-0.5">
-                Word docs, PDFs, images, plain text
+                Word docs, PDFs, images, plain text · .zip files are auto-expanded
               </p>
               <input
                 ref={fileInputRef}
@@ -888,10 +1129,19 @@ function AddCommunicationModal({
                     className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-md text-sm"
                   >
                     <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                    <span className="flex-1 truncate">{f.file.name}</span>
+                    <span className="flex-1 truncate" title={f.file.name}>
+                      {f.file.name}
+                    </span>
                     <span className="text-xs text-gray-400">
                       {Math.round(f.file.size / 1024)} KB
                     </span>
+                    <input
+                      type="text"
+                      value={f.tags}
+                      onChange={(e) => updatePendingTags(i, e.target.value)}
+                      placeholder="tags (e.g. change log, source EN)"
+                      className="px-2 py-1 text-xs border border-gray-300 rounded w-56 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
                     {f.status === "pending" && (
                       <button
                         onClick={(e) => {
@@ -931,14 +1181,45 @@ function AddCommunicationModal({
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || !body.trim()}
+            disabled={saving || extracting || !body.trim()}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-2"
           >
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-            Save communication
+            {isEdit ? "Save changes" : "Save communication"}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+// Best-effort MIME guess from filename extension. Used after extracting
+// files from a zip (where the blob doesn't carry a type).
+function guessMime(filename: string): string {
+  const ext = filename.toLowerCase().split(".").pop() || "";
+  const map: Record<string, string> = {
+    pdf: "application/pdf",
+    txt: "text/plain",
+    csv: "text/csv",
+    md: "text/markdown",
+    html: "text/html",
+    htm: "text/html",
+    json: "application/json",
+    xml: "application/xml",
+    docx:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    doc: "application/msword",
+    xlsx:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    xls: "application/vnd.ms-excel",
+    pptx:
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+  };
+  return map[ext] || "application/octet-stream";
 }

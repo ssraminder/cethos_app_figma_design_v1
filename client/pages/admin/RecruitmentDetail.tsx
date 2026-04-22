@@ -331,17 +331,68 @@ export default function RecruitmentDetail() {
     setSavingTier(false);
   };
 
-  const handleDecision = async (decision: "approved" | "rejected" | "waitlisted" | "info_requested") => {
-    setActionLoading(decision);
-    const updates: Record<string, unknown> = { status: decision };
-    if (decision === "rejected") {
-      updates.rejection_reason = "Staff decision";
-      updates.rejection_email_status = "queued";
-      updates.rejection_email_queued_at = new Date().toISOString();
-      updates.can_reapply_after = format(addMonths(new Date(), 6), "yyyy-MM-dd");
+  const callEdgeFunction = async (fnSlug: string, body: Record<string, unknown>) => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://lmzoyezvsjgsxveoakdr.supabase.co";
+    const resp = await fetch(`${supabaseUrl}/functions/v1/${fnSlug}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json = await resp.json();
+    if (!resp.ok || json?.success === false) {
+      throw new Error(json?.error || `HTTP ${resp.status}`);
     }
-    await updateApplication(updates, `Application ${decision}`);
-    setActionLoading(null);
+    return json;
+  };
+
+  const handleDecision = async (decision: "approved" | "rejected" | "waitlisted" | "info_requested") => {
+    if (!id) return;
+    setActionLoading(decision);
+    try {
+      if (decision === "approved") {
+        // Full approval flow via edge fn: creates vendor + cvp_translator,
+        // issues password-setup token, sends V11.
+        await callEdgeFunction("cvp-approve-application", {
+          applicationId: id,
+          staffId: session?.staffId,
+        });
+        toast.success("Application approved — welcome email sent to applicant");
+        await fetchData();
+      } else if (decision === "info_requested") {
+        // Prompt staff for the details to include in V17.
+        const details = window.prompt(
+          "What information do you need from the applicant? This message will be included in the email.",
+          staffNotes || ""
+        );
+        if (!details || details.trim().length < 10) {
+          toast.error("Please enter at least 10 characters describing what you need.");
+          setActionLoading(null);
+          return;
+        }
+        await callEdgeFunction("cvp-request-info", {
+          applicationId: id,
+          requestDetails: details.trim(),
+          staffId: session?.staffId,
+        });
+        toast.success("Info request sent to applicant");
+        await fetchData();
+      } else if (decision === "rejected") {
+        // Queue rejection — pg_cron sends V12 after 48hr intercept window.
+        await updateApplication({
+          status: "rejected",
+          rejection_reason: "Staff decision",
+          rejection_email_status: "queued",
+          rejection_email_queued_at: new Date().toISOString(),
+          can_reapply_after: format(addMonths(new Date(), 6), "yyyy-MM-dd"),
+        }, "Application rejected — email queued for 48hr intercept window");
+      } else if (decision === "waitlisted") {
+        await updateApplication({ status: "waitlisted" }, "Application waitlisted");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleIntercept = async () => {

@@ -57,7 +57,7 @@ serve(async (req: Request) => {
         `id, kind, subject, body, email_date, created_at,
          author:staff_users(full_name),
          attachments:order_communication_attachments(
-           id, original_filename, storage_path, mime_type, file_size
+           id, original_filename, storage_path, mime_type, file_size, tags
          )`,
       )
       .eq("order_id", order_id)
@@ -128,7 +128,11 @@ serve(async (req: Request) => {
         const attachLine =
           c.attachments && c.attachments.length > 0
             ? `\n_Attachments:_ ${c.attachments
-                .map((a: { original_filename: string }) => a.original_filename)
+                .map((a: { original_filename: string; tags?: string | null }) =>
+                  a.tags
+                    ? `${a.original_filename} (tags: ${a.tags})`
+                    : a.original_filename,
+                )
                 .join(", ")}`
             : "";
         const subject = c.subject ? `\n**Subject:** ${c.subject}` : "";
@@ -169,6 +173,7 @@ serve(async (req: Request) => {
         storage_path: string;
         mime_type: string | null;
         file_size: number | null;
+        tags: string | null;
       }>,
     );
 
@@ -192,14 +197,24 @@ serve(async (req: Request) => {
       const arrayBuf = await fileBlob.arrayBuffer();
       const base64 = bytesToBase64(new Uint8Array(arrayBuf));
       const mime = (att.mime_type || "").toLowerCase();
+      const tagSuffix = att.tags ? ` (tags: ${att.tags})` : "";
+      const titleWithTags = `${att.original_filename}${tagSuffix}`;
 
       if (mime === "application/pdf") {
         contentBlocks.push({
           type: "document",
           source: { type: "base64", media_type: "application/pdf", data: base64 },
-          title: att.original_filename,
+          title: titleWithTags,
         });
       } else if (mime.startsWith("image/")) {
+        // Image content blocks can't carry a title, so prepend a text marker
+        // so the model knows what it's looking at.
+        if (att.tags) {
+          contentBlocks.push({
+            type: "text",
+            text: `\n\n_(Next image: ${att.original_filename} — tags: ${att.tags})_`,
+          });
+        }
         contentBlocks.push({
           type: "image",
           source: {
@@ -229,7 +244,7 @@ serve(async (req: Request) => {
         if (extracted) {
           contentBlocks.push({
             type: "text",
-            text: `\n\n## Attachment: ${att.original_filename}\n\n${extracted}`,
+            text: `\n\n## Attachment: ${titleWithTags}\n\n${extracted}`,
           });
         } else {
           skippedAttachments.push(
@@ -240,7 +255,7 @@ serve(async (req: Request) => {
         const text = new TextDecoder().decode(arrayBuf);
         contentBlocks.push({
           type: "text",
-          text: `\n\n## Attachment: ${att.original_filename}\n\n${text}`,
+          text: `\n\n## Attachment: ${titleWithTags}\n\n${text}`,
         });
       } else {
         skippedAttachments.push(
