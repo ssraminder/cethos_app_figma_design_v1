@@ -8,6 +8,13 @@ import {
   COMPLEXITY_MULTIPLIERS,
   DEFAULT_PRICING_SETTINGS
 } from '../types';
+import {
+  CHAT_SCREENSHOT_DOC_TYPE,
+  ChatScreenshotSettings,
+  DEFAULT_CHAT_SCREENSHOT_SETTINGS,
+  applyChatScreenshotRule,
+  chatScreenshotQuoteMinimumDelta,
+} from '@/utils/pricing';
 
 /**
  * Calculate billable pages for a single page
@@ -121,7 +128,11 @@ export function calculatePricingTotals(
 }
 
 /**
- * Recalculate a document group with new data
+ * Recalculate a document group with new data.
+ *
+ * When `group.document_type === 'chat_screenshot'` and the chat-screenshot
+ * rule is enabled, this bypasses the words/225 × language formula and uses
+ * a flat per-screenshot rate (count = number of pages on the group).
  */
 export function recalculateGroup(
   group: DocumentGroup,
@@ -129,9 +140,34 @@ export function recalculateGroup(
   languageMultiplier: number,
   certificationPrice: number,
   settings: PricingSettings = DEFAULT_PRICING_SETTINGS,
-  isManualOverride: boolean = false
+  isManualOverride: boolean = false,
+  chatScreenshotSettings: ChatScreenshotSettings = DEFAULT_CHAT_SCREENSHOT_SETTINGS,
 ): DocumentGroup {
   const totalWords = group.pages.reduce((sum, p) => sum + p.word_count, 0);
+
+  // Chat-screenshot rule: each page = one screenshot, charged at flat rate.
+  // Skip when staff has manually overridden (caller signals via
+  // isManualOverride) — staff intent wins.
+  if (
+    !isManualOverride &&
+    group.document_type === CHAT_SCREENSHOT_DOC_TYPE &&
+    chatScreenshotSettings.enabled
+  ) {
+    const screenshotCount = group.pages.length;
+    const priced = applyChatScreenshotRule(screenshotCount, chatScreenshotSettings);
+    if (priced) {
+      const groupTotal = calculateGroupTotal(priced.line_total, certificationPrice);
+      return {
+        ...group,
+        total_words: totalWords,
+        total_billable_pages: priced.billable_pages,
+        certification_price: certificationPrice,
+        translation_cost: priced.line_total,
+        group_total: groupTotal,
+      };
+    }
+  }
+
   const totalBillable = calculateDocumentBillable(group.pages, settings);
   const translationCost = calculateTranslationCost(totalBillable, baseRate, languageMultiplier, isManualOverride);
   const groupTotal = calculateGroupTotal(translationCost, certificationPrice);
@@ -144,4 +180,20 @@ export function recalculateGroup(
     translation_cost: translationCost,
     group_total: groupTotal,
   };
+}
+
+/**
+ * Compute the chat-screenshot quote-minimum top-up across all groups.
+ * Returns the additional dollar amount needed to bring the sum of all
+ * chat_screenshot translation_cost lines up to the configured minimum.
+ * Callers add this as a separate adjustment line on the quote.
+ */
+export function calculateChatScreenshotMinimumAdjustment(
+  groups: DocumentGroup[],
+  chatScreenshotSettings: ChatScreenshotSettings = DEFAULT_CHAT_SCREENSHOT_SETTINGS,
+): number {
+  const screenshotLineTotals = groups
+    .filter((g) => g.document_type === CHAT_SCREENSHOT_DOC_TYPE)
+    .map((g) => g.translation_cost);
+  return chatScreenshotQuoteMinimumDelta(screenshotLineTotals, chatScreenshotSettings);
 }

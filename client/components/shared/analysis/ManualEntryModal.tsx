@@ -439,6 +439,9 @@ export default function ManualEntryModal({
         processing_status: "completed",
         is_staff_created: true,
         created_by_staff_id: staffId || null,
+        // Mark as overridden so auto-rules (e.g. chat_screenshot) don't
+        // overwrite staff-entered pricing on subsequent recalculations.
+        is_pricing_overridden: true,
         updated_at: new Date().toISOString(),
       };
 

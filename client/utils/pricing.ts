@@ -3,6 +3,164 @@
 // and includes the language multiplier adjustment (e.g., $75 for Arabic 1.15×).
 export const BASE_RATE_PER_PAGE = 65.00;
 
+// ============================================================================
+// Chat-screenshot pricing rule
+// ----------------------------------------------------------------------------
+// Files detected as `chat_screenshot` use a flat per-screenshot rate (with a
+// quote-level minimum), bypassing the words/225 × language × complexity
+// formula. Settings are stored in app_settings so admins can tune them at
+// runtime — see `screenshot_*` keys.
+// ============================================================================
+
+export const CHAT_SCREENSHOT_DOC_TYPE = "chat_screenshot";
+export const CHAT_SCREENSHOT_UNIT = "per_screenshot";
+
+export interface ChatScreenshotSettings {
+  enabled: boolean;
+  ratePerScreenshot: number;
+  quoteMinimum: number;
+  screenshotsPerBusinessDay: number;
+  standardBaselineDays: number;
+  rushBusinessDays: number;
+}
+
+export const DEFAULT_CHAT_SCREENSHOT_SETTINGS: ChatScreenshotSettings = {
+  enabled: true,
+  ratePerScreenshot: 12.0,
+  quoteMinimum: 120.0,
+  screenshotsPerBusinessDay: 5,
+  standardBaselineDays: 1,
+  rushBusinessDays: 1,
+};
+
+/**
+ * Parse the relevant rows from app_settings into a typed settings object.
+ * Pass an array of `{setting_key, setting_value}` objects loaded from the
+ * `app_settings` table; missing keys fall back to the defaults.
+ */
+export function parseChatScreenshotSettings(
+  rows: Array<{ setting_key: string; setting_value: string }>,
+): ChatScreenshotSettings {
+  const map = new Map(rows.map((r) => [r.setting_key, r.setting_value]));
+  const num = (k: string, fallback: number) => {
+    const v = map.get(k);
+    if (v == null) return fallback;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const bool = (k: string, fallback: boolean) => {
+    const v = map.get(k);
+    if (v == null) return fallback;
+    return v === "true" || v === "1";
+  };
+  return {
+    enabled: bool("screenshot_pricing_enabled", DEFAULT_CHAT_SCREENSHOT_SETTINGS.enabled),
+    ratePerScreenshot: num("screenshot_rate", DEFAULT_CHAT_SCREENSHOT_SETTINGS.ratePerScreenshot),
+    quoteMinimum: num("screenshot_quote_minimum", DEFAULT_CHAT_SCREENSHOT_SETTINGS.quoteMinimum),
+    screenshotsPerBusinessDay: num(
+      "screenshot_per_business_day",
+      DEFAULT_CHAT_SCREENSHOT_SETTINGS.screenshotsPerBusinessDay,
+    ),
+    standardBaselineDays: num(
+      "screenshot_standard_baseline_days",
+      DEFAULT_CHAT_SCREENSHOT_SETTINGS.standardBaselineDays,
+    ),
+    rushBusinessDays: num(
+      "screenshot_rush_business_days",
+      DEFAULT_CHAT_SCREENSHOT_SETTINGS.rushBusinessDays,
+    ),
+  };
+}
+
+export interface ChatScreenshotPricedLine {
+  billable_pages: number;
+  base_rate: number;
+  line_total: number;
+  calculation_unit: typeof CHAT_SCREENSHOT_UNIT;
+  unit_quantity: number;
+  complexity_multiplier: number;
+}
+
+/**
+ * Compute the chat-screenshot pricing for a single file/line.
+ *
+ * @param screenshotCount  Number of screenshots (typically `page_count`)
+ * @param settings         Chat-screenshot settings (from app_settings)
+ * @returns                Pricing fields ready to write to ai_analysis_results,
+ *                         OR null if the rule shouldn't apply (disabled, zero count).
+ */
+export function applyChatScreenshotRule(
+  screenshotCount: number,
+  settings: ChatScreenshotSettings,
+): ChatScreenshotPricedLine | null {
+  if (!settings.enabled) return null;
+  if (!Number.isFinite(screenshotCount) || screenshotCount <= 0) return null;
+  return {
+    billable_pages: screenshotCount,
+    base_rate: settings.ratePerScreenshot,
+    line_total: Math.round(screenshotCount * settings.ratePerScreenshot * 100) / 100,
+    calculation_unit: CHAT_SCREENSHOT_UNIT,
+    unit_quantity: screenshotCount,
+    complexity_multiplier: 1.0,
+  };
+}
+
+/**
+ * Decide whether a row qualifies for the chat_screenshot auto-rule.
+ * Skip when staff has manually overridden the pricing (`is_pricing_overridden`)
+ * or staff has explicitly chosen a non-screenshot calculation unit.
+ */
+export function shouldApplyChatScreenshotRule(row: {
+  detected_document_type?: string | null;
+  is_pricing_overridden?: boolean | null;
+  calculation_unit?: string | null;
+}): boolean {
+  if (row.detected_document_type !== CHAT_SCREENSHOT_DOC_TYPE) return false;
+  if (row.is_pricing_overridden) return false;
+  // If a non-screenshot unit is already set explicitly, treat as override.
+  if (row.calculation_unit && row.calculation_unit !== "per_page" && row.calculation_unit !== CHAT_SCREENSHOT_UNIT) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Apply the per-quote minimum to a list of chat_screenshot line totals.
+ * Returns the difference to add as a "minimum top-up" line OR returns the
+ * adjusted lines, depending on caller preference.
+ *
+ * Convention: returns `0` if the sum already meets/exceeds the minimum,
+ * otherwise returns the additional amount needed.
+ */
+export function chatScreenshotQuoteMinimumDelta(
+  chatScreenshotLineTotals: number[],
+  settings: ChatScreenshotSettings,
+): number {
+  if (!settings.enabled || chatScreenshotLineTotals.length === 0) return 0;
+  const sum = chatScreenshotLineTotals.reduce((a, b) => a + b, 0);
+  if (sum >= settings.quoteMinimum) return 0;
+  return Math.round((settings.quoteMinimum - sum) * 100) / 100;
+}
+
+/**
+ * Compute business days needed for a given number of chat screenshots.
+ *
+ *   standard: ceil(count / screenshotsPerBusinessDay) + standardBaselineDays
+ *   rush:     rushBusinessDays (flat)
+ *
+ * Returns 0 when count is 0 or the rule is disabled.
+ */
+export function chatScreenshotTurnaroundDays(
+  screenshotCount: number,
+  isRush: boolean,
+  settings: ChatScreenshotSettings,
+): number {
+  if (!settings.enabled || screenshotCount <= 0) return 0;
+  if (isRush) return settings.rushBusinessDays;
+  const perDay = Math.max(1, settings.screenshotsPerBusinessDay);
+  return Math.ceil(screenshotCount / perDay) + settings.standardBaselineDays;
+}
+
 /**
  * Round a number UP to the next $2.50 increment
  * Examples:

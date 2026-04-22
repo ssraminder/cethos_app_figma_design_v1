@@ -215,6 +215,13 @@ export default function Step4ReviewCheckout() {
   const [rushTurnaroundDays, setRushTurnaroundDays] = useState(1);
   const [dailyCutoffHour, setDailyCutoffHour] = useState(21); // 9 PM MST
 
+  // Chat-screenshot rule (loaded from app_settings; defaults match the
+  // settings we seed in the migration)
+  const [screenshotPricingEnabled, setScreenshotPricingEnabled] = useState(true);
+  const [screenshotPerBusinessDay, setScreenshotPerBusinessDay] = useState(5);
+  const [screenshotStandardBaselineDays, setScreenshotStandardBaselineDays] = useState(1);
+  const [screenshotRushBusinessDays, setScreenshotRushBusinessDays] = useState(1);
+
   // Availability checks
   const [isSameDayEligible, setIsSameDayEligible] = useState(false);
   const [isRushAvailable, setIsRushAvailable] = useState(true);
@@ -350,6 +357,15 @@ export default function Step4ReviewCheckout() {
     }
   }, [sourceLanguage, targetLanguage, documentType, intendedUse, standardDays]);
 
+  // Force-disable same-day if the quote contains chat screenshots — staff
+  // could otherwise have it pre-selected from session state.
+  useEffect(() => {
+    if (turnaroundType === "same_day" && hasChatScreenshots()) {
+      setTurnaroundType("standard");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documents, screenshotPricingEnabled, turnaroundType]);
+
   // effectiveRate is now set from the first document's stored base_rate in fetchAnalysisData
 
   // Auto-polling effect
@@ -484,7 +500,21 @@ export default function Step4ReviewCheckout() {
           "same_day_cutoff_minute",
           "rush_turnaround_days",
           "daily_cutoff_hour",
+          "screenshot_pricing_enabled",
+          "screenshot_per_business_day",
+          "screenshot_standard_baseline_days",
+          "screenshot_rush_business_days",
         ]);
+
+      // Capture booleans before the numeric reduce drops them.
+      const enabledRow = (settingsData || []).find(
+        (s) => s.setting_key === "screenshot_pricing_enabled",
+      );
+      if (enabledRow) {
+        setScreenshotPricingEnabled(
+          enabledRow.setting_value === "true" || enabledRow.setting_value === "1",
+        );
+      }
 
       const settings = (settingsData || []).reduce(
         (acc: Record<string, number>, setting) => {
@@ -496,6 +526,16 @@ export default function Step4ReviewCheckout() {
         },
         {},
       );
+
+      if (settings.screenshot_per_business_day !== undefined) {
+        setScreenshotPerBusinessDay(settings.screenshot_per_business_day);
+      }
+      if (settings.screenshot_standard_baseline_days !== undefined) {
+        setScreenshotStandardBaselineDays(settings.screenshot_standard_baseline_days);
+      }
+      if (settings.screenshot_rush_business_days !== undefined) {
+        setScreenshotRushBusinessDays(settings.screenshot_rush_business_days);
+      }
 
       const nextRushMultiplier = settings.rush_multiplier || rushMultiplier;
       const nextSameDayMultiplier =
@@ -799,7 +839,7 @@ export default function Step4ReviewCheckout() {
           const days = calculateStandardDays(1);
           setStandardDays(days);
           const standardDate = await getDeliveryDate(days);
-          const rushDate = await getDeliveryDate(Math.max(1, days - 1));
+          const rushDate = await getDeliveryDate(calculateRushDays(days));
           setStandardDeliveryDate(standardDate);
           setRushDeliveryDate(rushDate);
 
@@ -980,9 +1020,40 @@ export default function Step4ReviewCheckout() {
     }
   };
 
-  // Calculate turnaround days: 2 + floor((pages-1)/2)
+  // Count screenshots across all chat_screenshot documents on the quote.
+  // Used by the chat-screenshot delivery rule.
+  const getScreenshotCount = (): number => {
+    return documents
+      .filter((d) => d.detected_document_type === "chat_screenshot")
+      .reduce((sum, d) => sum + (d.page_count || 0), 0);
+  };
+
+  // Whether the quote contains any chat_screenshot document. When true, we
+  // hide the Same Day turnaround option (formatting can't be done in hours)
+  // and apply the chat-screenshot turnaround rule.
+  const hasChatScreenshots = (): boolean =>
+    screenshotPricingEnabled && getScreenshotCount() > 0;
+
+  // Calculate turnaround days. When the quote contains chat screenshots,
+  // take the MAX of the standard formula and the chat-screenshot formula
+  // so neither route gets accidentally shortened.
+  //   standard formula:    2 + floor((pages-1)/2)
+  //   chat-screenshot fmt: ceil(count / screenshot_per_business_day) + standard_baseline_days
   const calculateStandardDays = (pages: number): number => {
-    return 2 + Math.floor((pages - 1) / 2);
+    const baseDays = 2 + Math.floor((pages - 1) / 2);
+    if (!hasChatScreenshots()) return baseDays;
+    const perBd = Math.max(1, screenshotPerBusinessDay);
+    const screenshotDays =
+      Math.ceil(getScreenshotCount() / perBd) + screenshotStandardBaselineDays;
+    return Math.max(baseDays, screenshotDays);
+  };
+
+  // Rush days: take MAX of the standard rush (= standard - 1, min 1) and
+  // the configured chat-screenshot rush days when screenshots are present.
+  const calculateRushDays = (standardDays: number): number => {
+    const baseRush = Math.max(1, standardDays - 1);
+    if (!hasChatScreenshots()) return baseRush;
+    return Math.max(baseRush, screenshotRushBusinessDays);
   };
 
   // Calculate delivery date (skip weekends and holidays)
@@ -2400,8 +2471,9 @@ export default function Step4ReviewCheckout() {
             </label>
           )}
 
-          {/* Same-Day Option — hidden for partner quotes */}
-          {!quotePartnerId && sameDayOption && isSameDayEligible && (
+          {/* Same-Day Option — hidden for partner quotes and for chat-screenshot
+              quotes (formatting effort can't be done in hours) */}
+          {!quotePartnerId && sameDayOption && isSameDayEligible && !hasChatScreenshots() && (
             <label
               className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
                 turnaroundType === "same_day"
