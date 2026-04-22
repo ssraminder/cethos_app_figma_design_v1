@@ -144,6 +144,12 @@ export default function AdminOrdersList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [restoredFromSession, setRestoredFromSession] = useState(false);
 
+  // Staff session (needs to be declared before any effect that reads staffId;
+  // minified prod builds enforce TDZ and will throw "Cannot access 'F'
+  // before initialization" if this lives further down).
+  const { session } = useAdminAuthContext();
+  const staffId = session?.staffId || null;
+
   const filterKeys = [
     "search", "status", "work_status", "from", "to", "rush",
     "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus",
@@ -252,10 +258,6 @@ export default function AdminOrdersList() {
     | "non_certified";
   const companyFilter = searchParams.get("company") || ""; // companies.id
   const page = parseInt(searchParams.get("page") || "1", 10);
-
-  // Staff session (for ui_preferences persistence)
-  const { session } = useAdminAuthContext();
-  const staffId = session?.staffId || null;
 
   // Certified service UUID (for "certified / non-certified" filtering)
   const [certifiedServiceId, setCertifiedServiceId] = useState<string | null>(null);

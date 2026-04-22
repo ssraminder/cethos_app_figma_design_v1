@@ -100,7 +100,8 @@
       "Bash(rmdir supabase/functions/set-staff-kiosk-pin supabase/functions/kiosk-staff-unlock)",
       "Bash(git pull *)",
       "Bash(python3 -c ' *)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "mcp__e57307c9-7b40-4813-8a14-89d468c2681f__list_migrations"
     ]
   }
 }
