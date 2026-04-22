@@ -57,6 +57,7 @@ import OrderWorkflowSection from "@/components/admin/OrderWorkflowSection";
 import OrderFinanceSection from "@/components/admin/OrderFinanceSection";
 import OrderFinanceTab from "@/components/admin/OrderFinanceTab";
 import OrderInvoiceCard from "@/components/admin/OrderInvoiceCard";
+import OrderCommunicationsTab from "@/components/admin/OrderCommunicationsTab";
 
 interface OrderDetail {
   id: string;
@@ -431,7 +432,7 @@ export default function AdminOrderDetail() {
   const [workflowData, setWorkflowData] = useState<any>(null);
   const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0);
   const [refunds, setRefunds] = useState<any[]>([]);
-  const [activeMainTab, setActiveMainTab] = useState<"workflow" | "finance">("workflow");
+  const [activeMainTab, setActiveMainTab] = useState<"workflow" | "finance" | "communications">("workflow");
   const messagesBottomRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -4014,6 +4015,7 @@ export default function AdminOrderDetail() {
             <div className="flex border-b border-gray-200 px-2">
               {([
                 { key: "workflow" as const, label: "Workflow" },
+                { key: "communications" as const, label: "Client Communications" },
                 { key: "finance" as const, label: "Finance" },
               ]).map((tab) => (
                 <button
@@ -4047,7 +4049,12 @@ export default function AdminOrderDetail() {
             </>
           )}
 
-          {/* Tab Content: Workflow (also renders when finance tab is active but hidden, to keep data loaded) */}
+          {/* Tab Content: Client Communications */}
+          {activeMainTab === "communications" && id && order && (
+            <OrderCommunicationsTab orderId={id} orderNumber={order.order_number} />
+          )}
+
+          {/* Tab Content: Workflow (also renders when other tabs are active but hidden, to keep data loaded) */}
           <div className={activeMainTab !== "workflow" ? "hidden" : ""}>
             {id && <OrderWorkflowSection orderId={id} onWorkflowLoaded={setWorkflowData} refreshKey={workflowRefreshKey} />}
           </div>

@@ -1,0 +1,49 @@
+CETHOS VENDOR PORTAL
+Instructions updated - Action required
+
+===========================================================
+
+UPDATED INSTRUCTIONS FOR {{order_number}}
+
+Hi {{vendor_name}},
+
+The client's instructions for this order have just been
+updated. Please review the latest brief below before you
+continue work - even small revisions can affect terminology,
+tone, or delivery expectations.
+
+-----------------------------------------------------------
+ORDER DETAILS
+-----------------------------------------------------------
+  Order:       {{order_number}}
+  Project:     {{project_number}}
+  Updated by:  {{updated_by_staff_name}}
+  Updated at:  {{updated_at}}
+
+-----------------------------------------------------------
+WHAT CHANGED
+-----------------------------------------------------------
+  {{change_summary}}
+
+-----------------------------------------------------------
+REVIEW THE UPDATE
+-----------------------------------------------------------
+Open the order in the vendor portal to see the full
+updated brief and any attached reference files:
+
+  {{vendor_portal_url}}
+
+You can keep going with any in-progress work - just please
+align your output with the latest instructions before
+delivery. If anything is unclear, reply to this email or
+reach out to us before continuing.
+
+===========================================================
+
+Questions? Contact {{support_email}}
+
+You're receiving this because you're an active vendor on
+the Cethos platform.
+
+(c) 2026 Cethos Translations
+Global communication. Local precision.
