@@ -55,7 +55,7 @@ serve(async (req: Request) => {
       .from("order_communications")
       .select(
         `id, kind, subject, body, email_date, created_at,
-         author:staff_users(full_name),
+         author:staff_users!order_communications_created_by_fkey(full_name),
          attachments:order_communication_attachments(
            id, original_filename, storage_path, mime_type, file_size, tags
          )`,
