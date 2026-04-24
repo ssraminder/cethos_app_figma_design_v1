@@ -7,6 +7,7 @@ import type { VendorPageData, Currency, Service } from "./vendor-detail/types";
 import VendorDetailHeader from "./vendor-detail/VendorDetailHeader";
 import VendorProfileTab from "./vendor-detail/VendorProfileTab";
 import VendorLanguagesTab from "./vendor-detail/VendorLanguagesTab";
+import VendorDomainsTab from "./vendor-detail/VendorDomainsTab";
 import VendorRatesTab from "./vendor-detail/VendorRatesTab";
 import VendorPaymentTab from "./vendor-detail/VendorPaymentTab";
 import VendorAuthTab from "./vendor-detail/VendorAuthTab";
@@ -15,6 +16,7 @@ import VendorJobsTab from "./vendor-detail/VendorJobsTab";
 const TAB_KEYS = [
   "profile",
   "languages",
+  "domains",
   "rates",
   "payment",
   "auth",
@@ -26,6 +28,7 @@ type TabKey = (typeof TAB_KEYS)[number];
 const TAB_LABELS: Record<TabKey, string> = {
   profile: "Profile",
   languages: "Languages",
+  domains: "Domains",
   rates: "Rates",
   payment: "Payment",
   auth: "Auth / Invitation",
@@ -177,6 +180,13 @@ export default function AdminVendorDetail() {
 
         <TabsContent value="languages">
           <VendorLanguagesTab
+            vendorData={vendorData}
+            onRefresh={refreshVendorData}
+          />
+        </TabsContent>
+
+        <TabsContent value="domains">
+          <VendorDomainsTab
             vendorData={vendorData}
             onRefresh={refreshVendorData}
           />
