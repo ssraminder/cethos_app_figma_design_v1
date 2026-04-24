@@ -440,10 +440,20 @@ const DECISION_CONFIGS: Record<DecisionType, DecisionModalConfig> = {
   },
 };
 
+interface DecisionPreview {
+  subject: string;
+  html: string;
+  aiOutput: string | null;
+  aiError: string | null;
+}
+
 interface DecisionModalProps {
   decision: DecisionType;
   onClose: () => void;
-  onSubmit: (notes: string) => Promise<void>;
+  /** Preview: runs AI + renders email without sending. */
+  onPreview: (notes: string) => Promise<DecisionPreview>;
+  /** Send: uses edited subject/body if provided, else AI output. */
+  onSend: (args: { notes: string; editedSubject: string; editedContent: string }) => Promise<void>;
   busy: boolean;
   initialNotes?: string;
 }
@@ -451,13 +461,57 @@ interface DecisionModalProps {
 function DecisionModal({
   decision,
   onClose,
-  onSubmit,
+  onPreview,
+  onSend,
   busy,
   initialNotes,
 }: DecisionModalProps) {
   const cfg = DECISION_CONFIGS[decision];
+  const [step, setStep] = useState<"notes" | "preview">("notes");
   const [notes, setNotes] = useState(initialNotes ?? "");
+  const [preview, setPreview] = useState<DecisionPreview | null>(null);
+  const [editedSubject, setEditedSubject] = useState("");
+  const [editedContent, setEditedContent] = useState("");
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const tooShort = notes.trim().length < cfg.minLength;
+
+  const handleGoToPreview = async () => {
+    setPreviewBusy(true);
+    setPreviewError(null);
+    try {
+      const p = await onPreview(notes.trim());
+      setPreview(p);
+      setEditedSubject(p.subject);
+      setEditedContent(p.aiOutput ?? "");
+      setStep("preview");
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
+
+  const handleRefreshPreview = async () => {
+    setPreviewBusy(true);
+    setPreviewError(null);
+    try {
+      // Re-run dry-run so the iframe reflects current edits.
+      const p = await onPreview(notes.trim());
+      // Keep staff's edits for subject + body; only update the rendered html.
+      setPreview({ ...p, subject: editedSubject, aiOutput: editedContent || p.aiOutput });
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
+
+  // When iframe needs to reflect edited body, pass a "preview with edits"
+  // variant. For now, the iframe shows the AI-rendered version; staff sees a
+  // warning if they've edited the body.
+  const bodyWasEdited = preview?.aiOutput !== editedContent && editedContent.length > 0;
+  const subjectWasEdited = preview ? editedSubject !== preview.subject : false;
 
   return (
     <div
@@ -465,11 +519,20 @@ function DecisionModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6"
+        className={`bg-white rounded-lg shadow-xl w-full p-6 ${
+          step === "preview" ? "max-w-3xl" : "max-w-lg"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-3">
-          <h2 className="text-lg font-semibold text-gray-900">{cfg.title}</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {cfg.title}
+            {step === "preview" && (
+              <span className="ml-2 text-xs font-normal text-gray-500">
+                · Preview &amp; edit email
+              </span>
+            )}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -479,47 +542,159 @@ function DecisionModal({
             <XCircle className="w-5 h-5" />
           </button>
         </div>
-        <p className="text-sm text-gray-600 mb-3">{cfg.intro}</p>
 
-        <label className="block text-xs font-medium text-gray-700 mb-1">
-          {cfg.minLength > 0 ? "Staff notes (required)" : "Staff notes (optional)"}
-        </label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder={cfg.placeholder}
-          rows={6}
-          disabled={busy}
-          className="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
-        />
+        {step === "notes" && (
+          <>
+            <p className="text-sm text-gray-600 mb-3">{cfg.intro}</p>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              {cfg.minLength > 0 ? "Staff notes (required)" : "Staff notes (optional)"}
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={cfg.placeholder}
+              rows={6}
+              disabled={previewBusy}
+              className="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+            />
+            <div className="mt-3 p-2.5 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600">
+              <strong className="text-gray-700">How AI uses this:</strong> {cfg.aiBehaviour}
+            </div>
+            {previewError && (
+              <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                Preview failed: {previewError}
+              </p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={previewBusy}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleGoToPreview}
+                disabled={previewBusy || tooShort}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-50 ${cfg.submitClassName}`}
+              >
+                {previewBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {previewBusy ? "Generating preview…" : "Preview email →"}
+              </button>
+            </div>
+            {tooShort && cfg.minLength > 0 && notes.length > 0 && (
+              <p className="mt-2 text-xs text-amber-700">
+                Add at least {cfg.minLength} characters of context.
+              </p>
+            )}
+          </>
+        )}
 
-        <div className="mt-3 p-2.5 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600">
-          <strong className="text-gray-700">How AI uses this:</strong> {cfg.aiBehaviour}
-        </div>
+        {step === "preview" && preview && (
+          <>
+            <p className="text-sm text-gray-600 mb-3">
+              AI drafted the applicant-facing copy below. Edit the subject or body
+              before sending — your raw staff notes stay internal.
+            </p>
 
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => onSubmit(notes.trim())}
-            disabled={busy || tooShort}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-50 ${cfg.submitClassName}`}
-          >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {busy ? "Submitting…" : cfg.submitLabel}
-          </button>
-        </div>
-        {tooShort && cfg.minLength > 0 && notes.length > 0 && (
-          <p className="mt-2 text-xs text-amber-700">
-            Add at least {cfg.minLength} characters of context.
-          </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Subject {subjectWasEdited && <span className="text-teal-600">(edited)</span>}
+                </label>
+                <input
+                  type="text"
+                  value={editedSubject}
+                  onChange={(e) => setEditedSubject(e.target.value)}
+                  disabled={busy}
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Applicant-facing message {bodyWasEdited && <span className="text-teal-600">(edited)</span>}
+                  <span className="text-gray-400 font-normal"> — goes into the email body</span>
+                </label>
+                <textarea
+                  value={editedContent}
+                  onChange={(e) => setEditedContent(e.target.value)}
+                  rows={4}
+                  disabled={busy}
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+                />
+                {preview.aiError && (
+                  <p className="text-[11px] text-amber-600 mt-0.5">
+                    AI rewrite failed ({preview.aiError}); using fallback copy. Edit above if needed.
+                  </p>
+                )}
+              </div>
+
+              <details className="group">
+                <summary className="cursor-pointer text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1">
+                  <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
+                  Rendered preview (click to expand)
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); handleRefreshPreview(); }}
+                    disabled={previewBusy}
+                    className="ml-auto text-[11px] text-teal-600 hover:text-teal-800 underline disabled:opacity-50"
+                  >
+                    {previewBusy ? "Refreshing…" : "Refresh with my edits"}
+                  </button>
+                </summary>
+                <div className="mt-2 border border-gray-200 rounded overflow-hidden">
+                  <iframe
+                    title="Email preview"
+                    srcDoc={preview.html}
+                    className="w-full"
+                    style={{ height: "400px" }}
+                  />
+                </div>
+                {(bodyWasEdited || subjectWasEdited) && (
+                  <p className="text-[11px] text-amber-700 mt-1">
+                    Your edits are NOT yet reflected in this preview. Click "Refresh with my edits" to regenerate, or Send to apply them.
+                  </p>
+                )}
+              </details>
+            </div>
+
+            <div className="mt-4 flex justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setStep("notes")}
+                disabled={busy}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+              >
+                ← Back to notes
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={busy}
+                  className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSend({
+                    notes: notes.trim(),
+                    editedSubject: editedSubject.trim(),
+                    editedContent: editedContent.trim(),
+                  })}
+                  disabled={busy}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-50 ${cfg.submitClassName}`}
+                >
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {busy ? "Sending…" : cfg.submitLabel}
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -959,47 +1134,73 @@ export default function RecruitmentDetail() {
     }
   };
 
-  // Decision-modal flow: every action button opens a modal for staff notes,
-  // then the matching edge function processes those notes through Claude
-  // (rejection/waitlist/request-info → AI rewrites for the applicant; approve
-  // → AI optionally injects a warm welcome line). All raw notes + AI output
-  // are stored in cvp_application_decisions for the learning loop.
+  // Decision-modal flow: every action button opens a 2-step modal.
+  // Step 1: staff types notes. Step 2: modal fetches dryRun preview from the
+  // matching edge function, shows the rendered email with editable subject +
+  // body. On Send, the edge function re-runs with editedSubject + edited
+  // content overrides and performs the real state change + mail send.
+  //
+  // All raw notes + AI output are stored in cvp_application_decisions.
   type Decision = "approved" | "rejected" | "waitlisted" | "info_requested";
   const [decisionModal, setDecisionModal] = useState<Decision | null>(null);
 
-  const submitDecision = async (decision: Decision, notes: string) => {
+  // Maps the generic "editedContent" field in the modal to the per-action
+  // request body parameter name.
+  const editedContentField: Record<Decision, string> = {
+    approved: "editedWelcomeMessage",
+    rejected: "editedReason",
+    waitlisted: "editedMessage",
+    info_requested: "editedRequest",
+  };
+
+  const fnSlug: Record<Decision, string> = {
+    approved: "cvp-approve-application",
+    rejected: "cvp-reject-application",
+    waitlisted: "cvp-waitlist-application",
+    info_requested: "cvp-request-info",
+  };
+
+  const previewDecision = async (
+    decision: Decision,
+    notes: string,
+  ): Promise<DecisionPreview> => {
+    if (!id) throw new Error("No application ID");
+    const res = await callEdgeFunction(fnSlug[decision], {
+      applicationId: id,
+      staffId: session?.staffId,
+      staffNotes: notes,
+      dryRun: true,
+    });
+    const d = (res as { data?: Record<string, unknown> }).data ?? {};
+    return {
+      subject: String(d.subject ?? ""),
+      html: String(d.html ?? ""),
+      aiOutput: d.aiOutput ? String(d.aiOutput) : null,
+      aiError: d.aiError ? String(d.aiError) : null,
+    };
+  };
+
+  const sendDecision = async (
+    decision: Decision,
+    args: { notes: string; editedSubject: string; editedContent: string },
+  ) => {
     if (!id) return;
     setActionLoading(decision);
     try {
-      if (decision === "approved") {
-        await callEdgeFunction("cvp-approve-application", {
-          applicationId: id,
-          staffId: session?.staffId,
-          staffNotes: notes,
-        });
-        toast.success("Application approved — welcome email sent");
-      } else if (decision === "rejected") {
-        await callEdgeFunction("cvp-reject-application", {
-          applicationId: id,
-          staffId: session?.staffId,
-          staffNotes: notes,
-        });
-        toast.success("Rejection queued — V12 sends in 48h unless intercepted");
-      } else if (decision === "waitlisted") {
-        await callEdgeFunction("cvp-waitlist-application", {
-          applicationId: id,
-          staffId: session?.staffId,
-          staffNotes: notes,
-        });
-        toast.success("Application waitlisted — V13 sent");
-      } else if (decision === "info_requested") {
-        await callEdgeFunction("cvp-request-info", {
-          applicationId: id,
-          staffId: session?.staffId,
-          staffNotes: notes,
-        });
-        toast.success("Info request sent — AI rephrased your notes for the applicant");
+      const body: Record<string, unknown> = {
+        applicationId: id,
+        staffId: session?.staffId,
+        staffNotes: args.notes,
+        editedSubject: args.editedSubject || undefined,
+      };
+      if (args.editedContent) {
+        body[editedContentField[decision]] = args.editedContent;
       }
+      await callEdgeFunction(fnSlug[decision], body);
+      if (decision === "approved") toast.success("Application approved — welcome email sent");
+      else if (decision === "rejected") toast.success("Rejection queued — V12 sends in 48h unless intercepted");
+      else if (decision === "waitlisted") toast.success("Application waitlisted — V13 sent");
+      else toast.success("Info request sent");
       setDecisionModal(null);
       await fetchData();
     } catch (err) {
@@ -1970,7 +2171,8 @@ export default function RecruitmentDetail() {
         <DecisionModal
           decision={decisionModal}
           onClose={() => setDecisionModal(null)}
-          onSubmit={(notes) => submitDecision(decisionModal, notes)}
+          onPreview={(notes) => previewDecision(decisionModal, notes)}
+          onSend={(args) => sendDecision(decisionModal, args)}
           busy={actionLoading === decisionModal}
           initialNotes={
             decisionModal === "info_requested" ? staffNotes : ""
