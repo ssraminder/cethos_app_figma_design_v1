@@ -1425,6 +1425,31 @@ export default function RecruitmentDetail() {
                   </div>
                 ) : null}
 
+                {/* Assets — positive signals (v3-assets-aware+). Surfaced first
+                    because staff should see strengths before concerns. */}
+                {Array.isArray((aiResult as Record<string, unknown>).assets) && ((aiResult as Record<string, unknown>).assets as string[]).length > 0 && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-emerald-800">Assets</p>
+                      <span className="text-[11px] text-emerald-700/70">
+                        Positive signals the AI identified
+                      </span>
+                    </div>
+                    <ul className="space-y-2">
+                      {((aiResult as Record<string, unknown>).assets as string[]).map((a, i) => (
+                        <FlagWithFeedback
+                          key={`a-${i}-${a.slice(0, 32)}`}
+                          flagKind="green_flag"
+                          flagText={a}
+                          existing={findFeedback("green_flag", a)}
+                          onSave={(v, n) => saveFlagFeedback("green_flag", a, v, n)}
+                          onClear={() => clearFlagFeedback("green_flag", a)}
+                        />
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 {/* Red flags — staff verdict per flag drives prescreen learning */}
                 {Array.isArray((aiResult as Record<string, unknown>).red_flags) && ((aiResult as Record<string, unknown>).red_flags as string[]).length > 0 && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
