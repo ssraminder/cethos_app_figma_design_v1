@@ -326,6 +326,189 @@ function CvSection({ applicationId, cvStoragePath, callEdgeFunction }: CvSection
   );
 }
 
+function ConversationTimeline({
+  items,
+  onAcknowledge,
+}: {
+  items: ConversationItem[];
+  onAcknowledge: (inboundId: string) => Promise<void>;
+}) {
+  return (
+    <ol className="mt-3 space-y-3">
+      {items.map((it) => (
+        <ConversationRow key={`${it.kind}-${it.id}`} item={it} onAcknowledge={onAcknowledge} />
+      ))}
+    </ol>
+  );
+}
+
+function ConversationRow({
+  item,
+  onAcknowledge,
+}: {
+  item: ConversationItem;
+  onAcknowledge: (inboundId: string) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [ackBusy, setAckBusy] = useState(false);
+  const isOutbound = item.kind === "outbound";
+  const when = format(new Date(item.at), "MMM d, yyyy h:mm a");
+
+  return (
+    <li
+      className={`border rounded-lg p-3 ${
+        isOutbound
+          ? "bg-teal-50/40 border-teal-200"
+          : item.kind === "inbound" && !item.acknowledged_at
+          ? "bg-amber-50 border-amber-300"
+          : "bg-gray-50 border-gray-200"
+      }`}
+    >
+      <div className="flex items-center gap-2 text-xs">
+        <span
+          className={`font-semibold uppercase tracking-wide ${
+            isOutbound ? "text-teal-700" : "text-amber-700"
+          }`}
+        >
+          {isOutbound ? "→ Sent" : "← Received"}
+        </span>
+        {isOutbound && item.template_tag && (
+          <span className="font-mono text-[10px] bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded">
+            {item.template_tag}
+          </span>
+        )}
+        {!isOutbound && item.classified_intent && (
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+              item.classified_intent === "reply_to_outbound"
+                ? "bg-amber-200 text-amber-900"
+                : item.classified_intent === "unsubscribe"
+                ? "bg-red-200 text-red-900"
+                : "bg-gray-200 text-gray-800"
+            }`}
+          >
+            {item.classified_intent.replace(/_/g, " ")}
+          </span>
+        )}
+        {!isOutbound && !item.acknowledged_at && (
+          <span className="text-[10px] bg-amber-600 text-white px-1.5 py-0.5 rounded font-semibold">
+            NEEDS REVIEW
+          </span>
+        )}
+        <span className="ml-auto text-gray-500">{when}</span>
+      </div>
+
+      <div className="mt-1 text-sm font-medium text-gray-900 truncate">
+        {item.subject || "(no subject)"}
+      </div>
+
+      {!isOutbound && (
+        <div className="text-xs text-gray-500 mt-0.5">
+          From: {item.from_name ? `${item.from_name} ` : ""}
+          {"<"}
+          {item.from_email}
+          {">"}
+        </div>
+      )}
+
+      {/* AI reply analysis summary (inbound threaded only) */}
+      {!isOutbound && item.ai_reply_analysis && (
+        <div className="mt-2 p-2 bg-white border border-gray-200 rounded text-xs">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-semibold text-gray-700">AI analysis</span>
+            {item.ai_reply_analysis.sentiment && (
+              <span className="px-1.5 py-0.5 bg-gray-100 rounded capitalize">
+                sentiment: {String(item.ai_reply_analysis.sentiment)}
+              </span>
+            )}
+            {item.ai_reply_analysis.addresses_question && (
+              <span className="px-1.5 py-0.5 bg-gray-100 rounded">
+                addresses q: {String(item.ai_reply_analysis.addresses_question)}
+              </span>
+            )}
+            {item.ai_reply_analysis.recommended_next_action && (
+              <span className="px-1.5 py-0.5 bg-teal-100 text-teal-800 rounded font-medium">
+                → {String(item.ai_reply_analysis.recommended_next_action).replace(/_/g, " ")}
+              </span>
+            )}
+          </div>
+          {item.ai_reply_analysis.summary && (
+            <p className="text-gray-700">{String(item.ai_reply_analysis.summary)}</p>
+          )}
+          {Array.isArray(item.ai_reply_analysis.notes_for_staff) ? null : item.ai_reply_analysis.notes_for_staff && (
+            <p className="text-gray-600 italic mt-1">
+              {String(item.ai_reply_analysis.notes_for_staff)}
+            </p>
+          )}
+          {Array.isArray(item.ai_reply_analysis.open_questions) &&
+            (item.ai_reply_analysis.open_questions as string[]).length > 0 && (
+              <div className="mt-1">
+                <span className="text-gray-500">Open questions:</span>
+                <ul className="list-disc list-inside text-gray-700">
+                  {(item.ai_reply_analysis.open_questions as string[]).map((q, i) => (
+                    <li key={i}>{q}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+        </div>
+      )}
+
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="text-[11px] text-gray-600 hover:text-gray-900 underline"
+        >
+          {open ? "Hide body" : "Show body"}
+        </button>
+        {!isOutbound && !item.acknowledged_at && (
+          <button
+            type="button"
+            disabled={ackBusy}
+            onClick={async () => {
+              setAckBusy(true);
+              try {
+                await onAcknowledge(item.id);
+              } finally {
+                setAckBusy(false);
+              }
+            }}
+            className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded"
+          >
+            {ackBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+            Mark reviewed
+          </button>
+        )}
+        {!isOutbound && item.acknowledged_at && (
+          <span className="text-[11px] text-gray-500">
+            Reviewed {format(new Date(item.acknowledged_at), "MMM d h:mm a")}
+          </span>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-2 border border-gray-200 bg-white rounded overflow-hidden">
+          {isOutbound && item.body_html ? (
+            <iframe
+              title="Email body"
+              srcDoc={item.body_html}
+              className="w-full"
+              style={{ height: "400px" }}
+            />
+          ) : (
+            <pre className="text-xs text-gray-700 whitespace-pre-wrap p-3 max-h-96 overflow-auto">
+              {isOutbound
+                ? item.body_text ?? "(no plain-text version)"
+                : item.stripped_text ?? item.body_plain ?? "(empty body)"}
+            </pre>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   if (value === null || value === undefined || value === "") return null;
   return (
@@ -335,6 +518,32 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
     </div>
   );
 }
+
+// ---------- Conversation items (outbound + inbound interleaved) ----------
+
+type ConversationItem =
+  | {
+      kind: "outbound";
+      id: string;
+      at: string;
+      subject: string | null;
+      body_html: string | null;
+      body_text: string | null;
+      template_tag: string | null;
+    }
+  | {
+      kind: "inbound";
+      id: string;
+      at: string;
+      from_email: string | null;
+      from_name: string | null;
+      subject: string | null;
+      body_plain: string | null;
+      stripped_text: string | null;
+      classified_intent: string | null;
+      ai_reply_analysis: Record<string, unknown> | null;
+      acknowledged_at: string | null;
+    };
 
 // ---------- Flag feedback ----------
 
@@ -892,6 +1101,7 @@ export default function RecruitmentDetail() {
   const [rejectionDraft, setRejectionDraft] = useState("");
   const [savingDraft, setSavingDraft] = useState(false);
   const [flagFeedback, setFlagFeedback] = useState<FlagFeedback[]>([]);
+  const [conversation, setConversation] = useState<ConversationItem[]>([]);
   const [safeMode, setSafeMode] = useState<{
     active: boolean;
     startedAt: string | null;
@@ -1002,6 +1212,53 @@ export default function RecruitmentDetail() {
         .select("flag_kind, flag_text, verdict, staff_notes, updated_at")
         .eq("application_id", id);
       setFlagFeedback((feedback as FlagFeedback[]) ?? []);
+
+      // Fetch conversation: outbound (tracked) + inbound for this app
+      try {
+        const [outboundRes, inboundRes] = await Promise.all([
+          supabase
+            .from("cvp_outbound_messages")
+            .select("id, sent_at, subject, body_html, body_text, template_tag")
+            .eq("application_id", id)
+            .order("sent_at", { ascending: true }),
+          supabase
+            .from("cvp_inbound_emails")
+            .select(
+              "id, received_at, from_email, from_name, subject, body_plain, stripped_text, classified_intent, ai_reply_analysis, acknowledged_at",
+            )
+            .eq("matched_application_id", id)
+            .order("received_at", { ascending: true }),
+        ]);
+        const outbound: ConversationItem[] = (outboundRes.data ?? []).map((r) => ({
+          kind: "outbound" as const,
+          id: r.id as string,
+          at: r.sent_at as string,
+          subject: r.subject as string | null,
+          body_html: r.body_html as string | null,
+          body_text: r.body_text as string | null,
+          template_tag: r.template_tag as string | null,
+        }));
+        const inbound: ConversationItem[] = (inboundRes.data ?? []).map((r) => ({
+          kind: "inbound" as const,
+          id: r.id as string,
+          at: r.received_at as string,
+          from_email: r.from_email as string | null,
+          from_name: r.from_name as string | null,
+          subject: r.subject as string | null,
+          body_plain: r.body_plain as string | null,
+          stripped_text: r.stripped_text as string | null,
+          classified_intent: r.classified_intent as string | null,
+          ai_reply_analysis: r.ai_reply_analysis as Record<string, unknown> | null,
+          acknowledged_at: r.acknowledged_at as string | null,
+        }));
+        setConversation(
+          [...outbound, ...inbound].sort(
+            (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime(),
+          ),
+        );
+      } catch (_e) {
+        /* tables may not exist yet — silent */
+      }
 
       // Resolve language names
       const langIds = new Set<string>();
@@ -2140,6 +2397,30 @@ export default function RecruitmentDetail() {
                 <InfoRow label="Language Pair" value={app.waitlist_language_pair} />
                 <InfoRow label="Notes" value={app.waitlist_notes} />
               </dl>
+            </Section>
+          )}
+
+          {/* Conversation — outbound + inbound interleaved */}
+          {conversation.length > 0 && (
+            <Section title={`Conversation (${conversation.length})`}>
+              <ConversationTimeline
+                items={conversation}
+                onAcknowledge={async (inboundId) => {
+                  try {
+                    await supabase
+                      .from("cvp_inbound_emails")
+                      .update({
+                        acknowledged_at: new Date().toISOString(),
+                        acknowledged_by: session?.staffId,
+                      })
+                      .eq("id", inboundId);
+                    toast.success("Marked reviewed");
+                    await fetchData();
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Failed");
+                  }
+                }}
+              />
             </Section>
           )}
 
