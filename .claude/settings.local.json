@@ -101,7 +101,27 @@
       "Bash(git pull *)",
       "Bash(python3 -c ' *)",
       "Read(//tmp/**)",
-      "mcp__e57307c9-7b40-4813-8a14-89d468c2681f__list_migrations"
+      "mcp__e57307c9-7b40-4813-8a14-89d468c2681f__list_migrations",
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
+      "Bash(git -C /d/cethos/portal/cethos_app_figma_design_v1 log --oneline --all --grep=\"file-upload\\\\|staff session\")",
+      "Bash(git -C /d/cethos/portal/cethos_app_figma_design_v1 show acff676:client/components/admin/OrderUploadModal.tsx)",
+      "Bash(find /d/cethos/portal/cethos_app_figma_design_v1/supabase/migrations -name \"*.sql\" -exec grep -l \"CREATE TABLE.*quotes\\\\|CREATE TABLE.*orders\" {} \\\\;)",
+      "Bash(grep -E \"\\\\.\\(sql|ts\\)$\")",
+      "Bash(find /d/cethos/portal/cethos_app_figma_design_v1/supabase/migrations -name \"*.sql\" -exec grep -l \"order_workflow_steps\\\\|vendors\" {} \\\\;)",
+      "Bash(find /d/cethos/portal/cethos_app_figma_design_v1 -name \"*.sql\" -exec grep -l \"CREATE TABLE.*vendors\\\\|vendor_email\" {} \\\\;)",
+      "Read(//c/Users/RaminderShah/Downloads/**)",
+      "Bash(unzip -l \"/c/Users/RaminderShah/Downloads/Vendor Facing Emails.zip\")",
+      "Bash(mkdir -p /tmp/vendor-emails)",
+      "Bash(unzip -o \"/c/Users/RaminderShah/Downloads/Vendor Facing Emails.zip\" -d /tmp/vendor-emails/)",
+      "Bash(mkdir -p \"C:/temp/notify-deploy\")",
+      "Read(//c/temp/notify-deploy/**)",
+      "Bash(command -v supabase)",
+      "Bash(grep -vE \"\\\\.select|\\\\.from.*//|^Binary\")",
+      "mcp__e57307c9-7b40-4813-8a14-89d468c2681f__get_publishable_keys",
+      "Bash(curl -s -w \"\\\\n---HTTP_STATUS: %{http_code}---\\\\n\" -X POST \"https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/generate-order-instructions\" -H \"Content-Type: application/json\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c\" -d '{\"order_id\":\"8344310e-c810-451f-aa2f-76ca66f68efa\"}')",
+      "Bash(curl -s -w \"\\\\n---HTTP_STATUS: %{http_code}---\\\\n\" -X POST \"https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/generate-order-instructions\" -H \"Content-Type: application/json\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c\" -d '{\"order_id\":\"8344310e-c810-451f-aa2f-76ca66f68efa\"}' --max-time 120)",
+      "Bash(curl -s -X POST \"https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/generate-order-instructions\" -H \"Content-Type: application/json\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c\" -d '{\"order_id\":\"8344310e-c810-451f-aa2f-76ca66f68efa\"}' --max-time 120)",
+      "Bash(python3 -c \"import sys, json; d = json.load\\(sys.stdin\\); print\\(d['row']['instructions_text']\\) if d.get\\('success'\\) else print\\('ERR:', d\\)\")"
     ]
   }
 }

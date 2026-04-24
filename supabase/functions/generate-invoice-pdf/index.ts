@@ -383,7 +383,7 @@ function buildInvoicePdf(
   // ---- Invoice title ----
   yPos = 760;
   addText(leftMargin, yPos, "INVOICE", 24, "F2");
-  yPos -= 20;
+  yPos -= 25;
 
   addText(leftMargin, yPos, `Invoice #: ${invoice.invoice_number}`, 10, "F2");
   addText(
@@ -396,15 +396,14 @@ function buildInvoicePdf(
 
   if (order?.order_number) {
     addText(leftMargin, yPos, `Order #: ${order.order_number}`, 10);
-    yPos -= 15;
   }
-
   addText(
     rightCol,
-    yPos + 15,
+    yPos,
     `Due Date: ${new Date(invoice.due_date).toLocaleDateString("en-US")}`,
     10,
   );
+  yPos -= 15;
 
   // Status badge
   const statusText = `Status: ${(invoice.status || "draft").toUpperCase()}`;
@@ -581,8 +580,9 @@ function buildInvoicePdf(
   }
 
   // Total line
-  addLine(totalsX, yPos + 2, pageWidth - leftMargin, yPos + 2);
-  yPos -= 4;
+  yPos -= 2;
+  addLine(totalsX, yPos, pageWidth - leftMargin, yPos);
+  yPos -= 14;
   addText(totalsX, yPos, "Total:", 12, "F2");
   addText(
     totalsValX,
