@@ -96,6 +96,10 @@ import CreateInvoice from "./pages/admin/invoices/CreateInvoice";
 import AdminInvoiceDetail from "./pages/admin/AdminInvoiceDetail";
 import AdminMessages from "./pages/admin/AdminMessages";
 import PdfManager from "./pages/admin/PdfManager";
+import TrainingsList from "./pages/admin/trainings/TrainingsList";
+import TrainingOverview from "./pages/admin/trainings/TrainingOverview";
+import TrainingLesson from "./pages/admin/trainings/TrainingLesson";
+import TrainingAssign from "./pages/admin/trainings/TrainingAssign";
 import ExchangeRates from "./pages/admin/ExchangeRates";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
@@ -364,6 +368,10 @@ const App = () => (
                     <Route path="vendors/:vendorId" element={<AdminVendorDetail />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
+                    <Route path="trainings" element={<TrainingsList />} />
+                    <Route path="trainings/:slug" element={<TrainingOverview />} />
+                    <Route path="trainings/:slug/assign" element={<TrainingAssign />} />
+                    <Route path="trainings/:slug/:lessonSlug" element={<TrainingLesson />} />
                     <Route path="quick-payment" element={<AdminQuickPayment />} />
                     <Route path="quick-payment/history" element={<AdminPaymentHistory />} />
                     <Route path="payments" element={<PaymentsList />} />

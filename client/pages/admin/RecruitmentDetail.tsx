@@ -21,6 +21,7 @@ import {
   ExternalLink,
   FileText,
   Ban,
+  RefreshCw,
 } from "lucide-react";
 import { format, formatDistanceToNow, differenceInHours, addMonths } from "date-fns";
 
@@ -345,6 +346,25 @@ export default function RecruitmentDetail() {
     return json;
   };
 
+  const [rerunPrescreenBusy, setRerunPrescreenBusy] = useState(false);
+  const handleRerunPrescreen = async () => {
+    if (!id) return;
+    setRerunPrescreenBusy(true);
+    try {
+      await callEdgeFunction("cvp-prescreen-application", { applicationId: id });
+      toast.success("AI pre-screen re-queued — refreshing in a moment");
+      // Prescreen takes ~5–15s. Give it a beat, then reload.
+      setTimeout(() => {
+        fetchData();
+        setRerunPrescreenBusy(false);
+      }, 8000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to re-run pre-screen: ${msg}`);
+      setRerunPrescreenBusy(false);
+    }
+  };
+
   const handleDecision = async (decision: "approved" | "rejected" | "waitlisted" | "info_requested") => {
     if (!id) return;
     setActionLoading(decision);
@@ -571,9 +591,22 @@ export default function RecruitmentDetail() {
             ) : (aiResult as Record<string, unknown>).error === "ai_fallback" ? (
               <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mt-2">
                 <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-medium text-amber-800">AI Pre-screening Failed</p>
-                  <p className="text-xs text-amber-600 mt-1">{(aiResult as Record<string, unknown>).reason as string}</p>
+                  <p className="text-xs text-amber-600 mt-1 break-words">{(aiResult as Record<string, unknown>).reason as string}</p>
+                  <button
+                    type="button"
+                    onClick={handleRerunPrescreen}
+                    disabled={rerunPrescreenBusy}
+                    className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-medium rounded-md"
+                  >
+                    {rerunPrescreenBusy ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    )}
+                    {rerunPrescreenBusy ? "Re-running…" : "Re-run AI pre-screen"}
+                  </button>
                 </div>
               </div>
             ) : (
@@ -593,6 +626,55 @@ export default function RecruitmentDetail() {
                     )}
                   </div>
                 </div>
+
+                {/* AI-recommended rejection callout — visible when AI says reject
+                    but staff hasn't decided yet. Clicking Approve runs the same
+                    rejection flow as the right-panel Reject button (queues V12
+                    inside 48hr intercept). AI never auto-emails on rejection. */}
+                {(() => {
+                  const r = aiResult as Record<string, unknown>;
+                  if (r.recommendation !== "reject") return null;
+                  if (app.status === "rejected") return null;
+                  if (app.status === "approved") return null;
+                  return (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-red-800">AI recommends rejection</p>
+                          <p className="text-xs text-red-700 mt-1">
+                            {r.notes ? String(r.notes) : "Score below the auto-advance threshold."}
+                            {" "}
+                            No email is sent until you approve below.
+                          </p>
+                          <div className="flex gap-2 mt-3">
+                            <button
+                              type="button"
+                              disabled={actionLoading === "rejected"}
+                              onClick={() => handleDecision("rejected")}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-medium rounded-md"
+                            >
+                              {actionLoading === "rejected" ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Ban className="w-3.5 h-3.5" />
+                              )}
+                              Approve rejection (queues 48h intercept)
+                            </button>
+                            <button
+                              type="button"
+                              disabled={actionLoading === "info_requested"}
+                              onClick={() => handleDecision("info_requested")}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-xs font-medium rounded-md"
+                            >
+                              Request more info instead
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Score badges */}
                 {isTranslator ? (
@@ -652,6 +734,83 @@ export default function RecruitmentDetail() {
                     <p className="text-sm text-gray-700 mt-1">{String((aiResult as Record<string, unknown>).notes)}</p>
                   </div>
                 )}
+
+                {/* CV-aware fields (v2-cv-aware prompt and later). Older results
+                    won't have these — render only when present. */}
+                {(() => {
+                  const r = aiResult as Record<string, unknown>;
+                  const hasAnyCv =
+                    r.cv_quality !== undefined ||
+                    r.cv_corroborates_form !== undefined ||
+                    Array.isArray(r.cv_unique_signals);
+                  if (!hasAnyCv) return null;
+
+                  const corrobColor =
+                    r.cv_corroborates_form === "fully"
+                      ? "bg-green-50 text-green-700 border-green-200"
+                      : r.cv_corroborates_form === "partially"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : r.cv_corroborates_form === "contradicts"
+                      ? "bg-red-50 text-red-700 border-red-200"
+                      : "bg-gray-50 text-gray-600 border-gray-200";
+                  const qualityColor =
+                    r.cv_quality === "high"
+                      ? "bg-green-50 text-green-700 border-green-200"
+                      : r.cv_quality === "medium"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : r.cv_quality === "low"
+                      ? "bg-red-50 text-red-700 border-red-200"
+                      : "bg-gray-50 text-gray-600 border-gray-200";
+
+                  return (
+                    <div className="space-y-3 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-2 text-xs">
+                        <FileText className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-gray-500 uppercase tracking-wide font-medium">CV signals</span>
+                        {r.cv_read === false && (
+                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[11px]">
+                            CV not read{r.cv_read_error ? ` — ${String(r.cv_read_error)}` : ""}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {r.cv_quality && (
+                          <span className={`px-2 py-1 rounded border text-xs ${qualityColor}`}>
+                            CV Quality: <span className="font-semibold capitalize">{String(r.cv_quality).replace("_", " ")}</span>
+                          </span>
+                        )}
+                        {r.cv_corroborates_form && (
+                          <span className={`px-2 py-1 rounded border text-xs ${corrobColor}`}>
+                            Corroborates form: <span className="font-semibold capitalize">{String(r.cv_corroborates_form).replace("_", " ")}</span>
+                          </span>
+                        )}
+                      </div>
+                      {Array.isArray(r.cv_unique_signals) && (r.cv_unique_signals as string[]).length > 0 && (
+                        <div>
+                          <span className="text-xs text-gray-500">Unique CV signals (not in form)</span>
+                          <ul className="list-disc list-inside text-sm text-gray-700 mt-1 space-y-0.5">
+                            {(r.cv_unique_signals as string[]).map((s, i) => (
+                              <li key={i}>{s}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Observability footer — only render when v2+ */}
+                {(() => {
+                  const r = aiResult as Record<string, unknown>;
+                  if (!r.prompt_version && !r.model_used) return null;
+                  return (
+                    <p className="text-[11px] text-gray-400 mt-2">
+                      {r.model_used ? <>model: <span className="font-mono">{String(r.model_used)}</span></> : null}
+                      {r.model_used && r.prompt_version ? " · " : ""}
+                      {r.prompt_version ? <>prompt: <span className="font-mono">{String(r.prompt_version)}</span></> : null}
+                    </p>
+                  );
+                })()}
               </div>
             )}
           </Section>
