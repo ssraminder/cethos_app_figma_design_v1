@@ -602,14 +602,21 @@ function SendTestsControls({
 function ConversationTimeline({
   items,
   onAcknowledge,
+  onReply,
 }: {
   items: ConversationItem[];
   onAcknowledge: (inboundId: string) => Promise<void>;
+  onReply: (inboundId: string) => void;
 }) {
   return (
     <ol className="mt-3 space-y-3">
       {items.map((it) => (
-        <ConversationRow key={`${it.kind}-${it.id}`} item={it} onAcknowledge={onAcknowledge} />
+        <ConversationRow
+          key={`${it.kind}-${it.id}`}
+          item={it}
+          onAcknowledge={onAcknowledge}
+          onReply={onReply}
+        />
       ))}
     </ol>
   );
@@ -618,9 +625,11 @@ function ConversationTimeline({
 function ConversationRow({
   item,
   onAcknowledge,
+  onReply,
 }: {
   item: ConversationItem;
   onAcknowledge: (inboundId: string) => Promise<void>;
+  onReply: (inboundId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [ackBusy, setAckBusy] = useState(false);
@@ -735,6 +744,16 @@ function ConversationRow({
         >
           {open ? "Hide body" : "Show body"}
         </button>
+        {!isOutbound && (
+          <button
+            type="button"
+            onClick={() => onReply(item.id)}
+            className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded"
+          >
+            <Mail className="w-3 h-3" />
+            Reply
+          </button>
+        )}
         {!isOutbound && !item.acknowledged_at && (
           <button
             type="button"
@@ -779,6 +798,262 @@ function ConversationRow({
         </div>
       )}
     </li>
+  );
+}
+
+// ---------- Staff reply compose modal (Phase C.2) ----------
+
+interface StaffReplyModalProps {
+  applicationId: string;
+  inboundEmailId: string;
+  onClose: () => void;
+  onSent: () => Promise<void>;
+  callEdgeFunction: (
+    fnSlug: string,
+    body: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  staffId?: string;
+}
+
+function StaffReplyModal({
+  applicationId,
+  inboundEmailId,
+  onClose,
+  onSent,
+  callEdgeFunction,
+  staffId,
+}: StaffReplyModalProps) {
+  const [instructions, setInstructions] = useState("");
+  const [subject, setSubject] = useState("");
+  const [bodyDraft, setBodyDraft] = useState("");
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"none" | "draft" | "preview" | "send">("none");
+  const [mode, setMode] = useState<"compose" | "preview">("compose");
+
+  const handleDraftWithAI = async () => {
+    setBusy("draft");
+    setAiError(null);
+    try {
+      const res = await callEdgeFunction("cvp-staff-reply", {
+        applicationId,
+        inboundEmailId,
+        useAIDraft: true,
+        aiInstructions: instructions,
+        dryRun: true,
+      });
+      const d = (res as { data?: Record<string, unknown> }).data ?? {};
+      if (d.aiDraftPlain) {
+        setBodyDraft(String(d.aiDraftPlain));
+        if (!subject && d.subject) setSubject(String(d.subject));
+      } else if (d.aiError) {
+        setAiError(String(d.aiError));
+      }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy("none");
+    }
+  };
+
+  const handlePreview = async () => {
+    if (bodyDraft.trim().length < 10) {
+      toast.error("Body too short");
+      return;
+    }
+    setBusy("preview");
+    try {
+      const res = await callEdgeFunction("cvp-staff-reply", {
+        applicationId,
+        inboundEmailId,
+        body: bodyDraft,
+        editedSubject: subject,
+        dryRun: true,
+      });
+      const d = (res as { data?: Record<string, unknown> }).data ?? {};
+      if (d.html) {
+        setPreviewHtml(String(d.html));
+        setMode("preview");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Preview failed");
+    } finally {
+      setBusy("none");
+    }
+  };
+
+  const handleSend = async () => {
+    setBusy("send");
+    try {
+      await callEdgeFunction("cvp-staff-reply", {
+        applicationId,
+        inboundEmailId,
+        body: bodyDraft,
+        editedSubject: subject,
+        staffId,
+      });
+      toast.success("Reply sent");
+      onClose();
+      await onSent();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setBusy("none");
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl w-full max-w-3xl p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Reply to applicant
+            {mode === "preview" && (
+              <span className="ml-2 text-xs font-normal text-gray-500">· Preview</span>
+            )}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy !== "none"}
+            className="text-gray-400 hover:text-gray-700 disabled:opacity-50"
+          >
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        {mode === "compose" && (
+          <>
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Optional: guide the AI draft (internal — not sent to applicant)
+              </label>
+              <textarea
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                placeholder="e.g. 'Confirm we received their clarification on the years discrepancy; ask them to send 2 references'"
+                rows={2}
+                disabled={busy !== "none"}
+                className="w-full p-2 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+              />
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleDraftWithAI}
+                  disabled={busy !== "none"}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-md disabled:opacity-50"
+                >
+                  {busy === "draft" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  {busy === "draft" ? "Drafting…" : "Draft with AI (Opus)"}
+                </button>
+              </div>
+              {aiError && (
+                <p className="mt-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                  AI draft failed: {aiError}. You can still type the body manually below.
+                </p>
+              )}
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Subject</label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Leave blank for default 'Re: …'"
+                disabled={busy !== "none"}
+                className="w-full p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Body (plain text — goes inside our standard email template)
+              </label>
+              <textarea
+                value={bodyDraft}
+                onChange={(e) => setBodyDraft(e.target.value)}
+                placeholder="Type your reply, or click 'Draft with AI' above to generate one."
+                rows={10}
+                disabled={busy !== "none"}
+                className="w-full p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50 font-mono"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={busy !== "none"}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePreview}
+                disabled={busy !== "none" || bodyDraft.trim().length < 10}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md disabled:opacity-50"
+              >
+                {busy === "preview" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Preview →
+              </button>
+            </div>
+          </>
+        )}
+
+        {mode === "preview" && previewHtml && (
+          <>
+            <p className="text-xs text-gray-600 mb-2">
+              <strong>Subject:</strong> {subject || "Re: Your message"}
+            </p>
+            <div className="mb-3 border border-gray-200 rounded overflow-hidden">
+              <iframe
+                title="Reply preview"
+                srcDoc={previewHtml}
+                className="w-full"
+                style={{ height: "420px" }}
+              />
+            </div>
+            <div className="flex justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setMode("compose")}
+                disabled={busy !== "none"}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+              >
+                ← Edit
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={busy !== "none"}
+                  className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={busy !== "none"}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md disabled:opacity-50"
+                >
+                  {busy === "send" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {busy === "send" ? "Sending…" : "Send reply"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1713,6 +1988,8 @@ export default function RecruitmentDetail() {
   // All raw notes + AI output are stored in cvp_application_decisions.
   type Decision = "approved" | "rejected" | "waitlisted" | "info_requested";
   const [decisionModal, setDecisionModal] = useState<Decision | null>(null);
+  // Phase C.2 — staff reply modal is keyed by the inbound we're replying to.
+  const [replyInboundId, setReplyInboundId] = useState<string | null>(null);
 
   // Maps the generic "editedContent" field in the modal to the per-action
   // request body parameter name.
@@ -2743,6 +3020,7 @@ export default function RecruitmentDetail() {
             <Section title={`Conversation (${conversation.length})`}>
               <ConversationTimeline
                 items={conversation}
+                onReply={(inboundId) => setReplyInboundId(inboundId)}
                 onAcknowledge={async (inboundId) => {
                   try {
                     await supabase
@@ -2796,6 +3074,17 @@ export default function RecruitmentDetail() {
           initialNotes={
             decisionModal === "info_requested" ? staffNotes : ""
           }
+        />
+      )}
+
+      {replyInboundId && id && (
+        <StaffReplyModal
+          applicationId={id}
+          inboundEmailId={replyInboundId}
+          onClose={() => setReplyInboundId(null)}
+          onSent={fetchData}
+          callEdgeFunction={callEdgeFunction}
+          staffId={session?.staffId}
         />
       )}
     </div>
