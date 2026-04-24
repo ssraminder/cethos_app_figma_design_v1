@@ -32,7 +32,9 @@ import {
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
+import { Folder } from "lucide-react";
 import CustomerARSummary from "@/components/admin/CustomerARSummary";
+import CustomerFilesTab from "@/components/admin/CustomerFilesTab";
 
 interface Customer {
   id: string;
@@ -140,7 +142,7 @@ interface CustomerStats {
   lastOrderDate: string | null;
 }
 
-const TABS = ["profile", "quotes", "orders", "payments", "stats"] as const;
+const TABS = ["profile", "quotes", "orders", "payments", "files", "stats"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function CustomerDetail() {
@@ -709,6 +711,17 @@ export default function CustomerDetail() {
               <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
                 {payments.length}
               </span>
+            </button>
+            <button
+              onClick={() => setActiveTab("files")}
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "files"
+                  ? "border-teal-500 text-teal-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <Folder className="w-4 h-4 inline mr-2" />
+              Files
             </button>
           </nav>
         </div>
@@ -1512,6 +1525,11 @@ export default function CustomerDetail() {
                 </table>
               )}
             </div>
+          )}
+
+          {/* Files Tab */}
+          {activeTab === "files" && customer?.id && (
+            <CustomerFilesTab customerId={customer.id} />
           )}
         </div>
       </div>

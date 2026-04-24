@@ -6,7 +6,7 @@
 // a real quote.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   FileText,
@@ -50,6 +50,7 @@ interface Submission {
   reviewed_by: string | null;
   reviewed_at: string | null;
   converted_to_quote_id: string | null;
+  customer_id: string | null;
   created_at: string;
 }
 
@@ -221,7 +222,19 @@ export default function PublicSubmissionsPage() {
                     {formatDate(r.created_at)}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-medium">{r.full_name}</div>
+                    <div className="font-medium flex items-center gap-1.5">
+                      {r.full_name}
+                      {r.customer_id && (
+                        <Link
+                          to={`/admin/customers/${r.customer_id}`}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] uppercase tracking-wide hover:bg-blue-100"
+                          title="Linked to existing customer record"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Customer
+                        </Link>
+                      )}
+                    </div>
                     <div className="text-xs text-muted-foreground flex items-center gap-2">
                       <Mail className="w-3 h-3" />
                       {r.email}

@@ -44,6 +44,7 @@ import CustomerQuoteDetail from "./pages/customer/CustomerQuoteDetail";
 import CustomerOrders from "./pages/customer/CustomerOrders";
 import CustomerOrderDetail from "./pages/customer/CustomerOrderDetail";
 import CustomerDocuments from "./pages/customer/CustomerDocuments";
+import CustomerUpload from "./pages/customer/CustomerUpload";
 import CustomerMessages from "./pages/customer/CustomerMessages";
 import CustomerProfile from "./pages/customer/CustomerProfile";
 import CustomerInvoicePayment from "./pages/customer/CustomerInvoicePayment";
@@ -288,6 +289,16 @@ const App = () => (
                       <CustomerAuthProvider>
                         <ProtectedCustomerRoute>
                           <CustomerDocuments />
+                        </ProtectedCustomerRoute>
+                      </CustomerAuthProvider>
+                    }
+                  />
+                  <Route
+                    path="/dashboard/upload"
+                    element={
+                      <CustomerAuthProvider>
+                        <ProtectedCustomerRoute>
+                          <CustomerUpload />
                         </ProtectedCustomerRoute>
                       </CustomerAuthProvider>
                     }

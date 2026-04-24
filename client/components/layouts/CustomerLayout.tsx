@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   X,
+  Upload,
 } from "lucide-react";
 import { useAuth } from "../../context/CustomerAuthContext";
 import { useBranding } from "../../context/BrandingContext";
@@ -38,6 +39,7 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
     { path: "/dashboard/quotes", label: "Quotes", icon: FileText },
     { path: "/dashboard/orders", label: "Orders", icon: Package },
     { path: "/dashboard/documents", label: "Documents", icon: File },
+    { path: "/dashboard/upload", label: "Upload", icon: Upload },
     { path: "/dashboard/messages", label: "Messages", icon: MessageSquare },
     { path: "/dashboard/profile", label: "Profile", icon: User },
   ];
