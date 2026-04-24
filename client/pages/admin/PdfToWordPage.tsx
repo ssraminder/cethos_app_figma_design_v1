@@ -1,10 +1,14 @@
 // client/pages/admin/PdfToWordPage.tsx
 //
 // Admin utility: upload scanned PDFs, convert each to DOCX with preserved
-// layout via Adobe PDF Services OCR (edge function: pdf-to-word-convert),
-// then download the .docx. Standalone — not tied to quotes/orders.
+// layout. Two engines:
+//   - Standard (Adobe PDF Services — pdf-to-word-convert) — fast, best for
+//     clean printed English/Latin docs.
+//   - AI (Mistral OCR + Pixtral — pdf-to-word-mistral) — slower but handles
+//     multilingual, mixed-script, and handwritten documents much better.
+// Output always DOCX. Standalone — not tied to quotes/orders.
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 import {
@@ -17,12 +21,20 @@ import {
   XCircle,
   RefreshCw,
   FileType2,
+  Sparkles,
+  Zap,
+  X as XIcon,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
 const BUCKET = "pdf-to-word";
 const MAX_FILE_SIZE_MB = 100;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+type Engine = "adobe" | "mistral";
+type QualityMode = "fast" | "thorough";
+type Formatting = "preserve" | "clean";
+type PageSize = "source" | "letter" | "a4" | "legal";
 
 type JobStatus =
   | "queued"
@@ -43,7 +55,7 @@ interface Job {
   error?: string;
 }
 
-const OCR_LANGS: { value: string; label: string }[] = [
+const ADOBE_LANGS: { value: string; label: string }[] = [
   { value: "en-US", label: "English (US)" },
   { value: "en-GB", label: "English (UK)" },
   { value: "fr-FR", label: "French" },
@@ -57,10 +69,60 @@ const OCR_LANGS: { value: string; label: string }[] = [
   { value: "ko-KR", label: "Korean" },
 ];
 
+// Common languages for the Mistral chip input; users can also type any free-form name.
+const MISTRAL_SUGGESTIONS = [
+  "English",
+  "French",
+  "Spanish",
+  "German",
+  "Italian",
+  "Portuguese",
+  "Dutch",
+  "Arabic",
+  "Hindi",
+  "Punjabi",
+  "Urdu",
+  "Bengali",
+  "Gujarati",
+  "Tamil",
+  "Telugu",
+  "Marathi",
+  "Nepali",
+  "Chinese (Simplified)",
+  "Chinese (Traditional)",
+  "Japanese",
+  "Korean",
+  "Vietnamese",
+  "Thai",
+  "Russian",
+  "Ukrainian",
+  "Polish",
+  "Turkish",
+  "Persian",
+  "Hebrew",
+  "Tagalog",
+];
+
 export default function PdfToWordPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [ocrLang, setOcrLang] = useState<string>("en-US");
+
+  // Shared
+  const [engine, setEngine] = useState<Engine>("adobe");
+
+  // Adobe
+  const [adobeOcrLang, setAdobeOcrLang] = useState<string>("en-US");
+
+  // Mistral
+  const [mistralLangs, setMistralLangs] = useState<string[]>(["English"]);
+  const [mistralLangInput, setMistralLangInput] = useState<string>("");
+  const [qualityMode, setQualityMode] = useState<QualityMode>("thorough");
+  const [autoRotate, setAutoRotate] = useState<boolean>(true);
+  const [formatting, setFormatting] = useState<Formatting>("preserve");
+  const [pageSize, setPageSize] = useState<PageSize>("source");
+
   const isProcessingRef = useRef(false);
+  const jobsRef = useRef<Job[]>(jobs);
+  jobsRef.current = jobs;
 
   const onDrop = useCallback((accepted: File[]) => {
     const valid: Job[] = [];
@@ -70,9 +132,7 @@ export default function PdfToWordPage() {
         continue;
       }
       if (file.size > MAX_FILE_SIZE_BYTES) {
-        toast.error(
-          `${file.name}: exceeds ${MAX_FILE_SIZE_MB}MB limit`,
-        );
+        toast.error(`${file.name}: exceeds ${MAX_FILE_SIZE_MB}MB limit`);
         continue;
       }
       valid.push({
@@ -96,13 +156,23 @@ export default function PdfToWordPage() {
   });
 
   const updateJob = (id: string, patch: Partial<Job>) => {
-    setJobs((prev) =>
-      prev.map((j) => (j.id === id ? { ...j, ...patch } : j)),
-    );
+    setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, ...patch } : j)));
   };
 
   const removeJob = (id: string) => {
     setJobs((prev) => prev.filter((j) => j.id !== id));
+  };
+
+  const addLang = (raw: string) => {
+    const lang = raw.trim();
+    if (!lang) return;
+    if (mistralLangs.some((l) => l.toLowerCase() === lang.toLowerCase())) return;
+    setMistralLangs((prev) => [...prev, lang]);
+    setMistralLangInput("");
+  };
+
+  const removeLang = (lang: string) => {
+    setMistralLangs((prev) => prev.filter((l) => l !== lang));
   };
 
   const processJob = async (job: Job) => {
@@ -110,7 +180,6 @@ export default function PdfToWordPage() {
 
     try {
       updateJob(job.id, { status: "uploading", progressMsg: "Uploading PDF…" });
-
       const { error: uploadErr } = await supabase.storage
         .from(BUCKET)
         .upload(inputPath, job.file, {
@@ -119,41 +188,66 @@ export default function PdfToWordPage() {
         });
       if (uploadErr) throw new Error(uploadErr.message);
 
-      updateJob(job.id, {
-        status: "converting",
-        progressMsg: "Running OCR + layout extraction…",
-      });
-
-      const { data, error } = await supabase.functions.invoke(
-        "pdf-to-word-convert",
-        {
-          body: {
-            jobId: job.id,
-            storagePath: inputPath,
-            filename: job.name,
-            ocrLang,
+      if (engine === "adobe") {
+        updateJob(job.id, {
+          status: "converting",
+          progressMsg: "Running Adobe OCR + layout…",
+        });
+        const { data, error } = await supabase.functions.invoke(
+          "pdf-to-word-convert",
+          {
+            body: {
+              jobId: job.id,
+              storagePath: inputPath,
+              filename: job.name,
+              ocrLang: adobeOcrLang,
+            },
           },
-        },
-      );
-
-      if (error) throw new Error(error.message || "Conversion failed");
-      if (!data?.success) {
-        throw new Error(data?.error || "Conversion failed");
+        );
+        if (error) throw new Error(error.message || "Conversion failed");
+        if (!data?.success) throw new Error(data?.error || "Conversion failed");
+        updateJob(job.id, {
+          status: "done",
+          progressMsg: "Ready to download",
+          outputSignedUrl: data.signedUrl,
+          outputSizeBytes: data.sizeBytes,
+        });
+      } else {
+        // Mistral
+        updateJob(job.id, {
+          status: "converting",
+          progressMsg:
+            qualityMode === "thorough"
+              ? "AI OCR + Pixtral correction…"
+              : "AI OCR (fast)…",
+        });
+        const { data, error } = await supabase.functions.invoke(
+          "pdf-to-word-mistral",
+          {
+            body: {
+              jobId: job.id,
+              storagePath: inputPath,
+              filename: job.name,
+              sourceLanguages: mistralLangs,
+              qualityMode,
+              autoRotate,
+              formatting,
+              pageSize,
+            },
+          },
+        );
+        if (error) throw new Error(error.message || "Conversion failed");
+        if (!data?.success) throw new Error(data?.error || "Conversion failed");
+        updateJob(job.id, {
+          status: "done",
+          progressMsg: `Ready to download (${data.pages || "?"} pages)`,
+          outputSignedUrl: data.signedUrl,
+          outputSizeBytes: data.sizeBytes,
+        });
       }
-
-      updateJob(job.id, {
-        status: "done",
-        progressMsg: "Ready to download",
-        outputSignedUrl: data.signedUrl,
-        outputSizeBytes: data.sizeBytes,
-      });
     } catch (err: any) {
       const msg = err?.message || "Unknown error";
-      updateJob(job.id, {
-        status: "error",
-        progressMsg: "Failed",
-        error: msg,
-      });
+      updateJob(job.id, { status: "error", progressMsg: "Failed", error: msg });
       toast.error(`${job.name}: ${msg}`);
     }
   };
@@ -172,13 +266,13 @@ export default function PdfToWordPage() {
     }
   };
 
-  // keep a ref mirror so runQueue sees the latest list
-  const jobsRef = useRef<Job[]>(jobs);
-  jobsRef.current = jobs;
-
-  const startAll = async () => {
+  const startAll = () => {
     if (jobs.every((j) => j.status !== "queued")) {
       toast.info("Nothing to convert");
+      return;
+    }
+    if (engine === "mistral" && mistralLangs.length === 0) {
+      toast.error("Add at least one source language");
       return;
     }
     runQueue();
@@ -203,8 +297,7 @@ export default function PdfToWordPage() {
     if (!job.outputSignedUrl) return;
     const a = document.createElement("a");
     a.href = job.outputSignedUrl;
-    const docxName = job.name.replace(/\.pdf$/i, "") + ".docx";
-    a.download = docxName;
+    a.download = job.name.replace(/\.pdf$/i, "") + ".docx";
     a.rel = "noopener";
     document.body.appendChild(a);
     a.click();
@@ -218,6 +311,18 @@ export default function PdfToWordPage() {
   const doneCount = jobs.filter((j) => j.status === "done").length;
   const errorCount = jobs.filter((j) => j.status === "error").length;
 
+  const remainingSuggestions = useMemo(
+    () =>
+      MISTRAL_SUGGESTIONS.filter(
+        (s) =>
+          !mistralLangs.some((l) => l.toLowerCase() === s.toLowerCase()) &&
+          s.toLowerCase().includes(mistralLangInput.toLowerCase()),
+      ).slice(0, 6),
+    [mistralLangs, mistralLangInput],
+  );
+
+  const disabledBecauseActive = activeCount > 0;
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6">
@@ -226,30 +331,207 @@ export default function PdfToWordPage() {
           PDF → Word (OCR)
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Upload scanned PDFs and download editable .docx files with the
-          original layout preserved. Powered by Adobe PDF Services OCR.
+          Upload scanned PDFs and download editable .docx files. Choose the
+          engine that best matches your documents.
         </p>
       </div>
 
-      {/* Language selector */}
-      <div className="mb-4 flex items-center gap-3">
-        <label className="text-sm font-medium">OCR language:</label>
-        <select
-          value={ocrLang}
-          onChange={(e) => setOcrLang(e.target.value)}
-          className="border rounded-md px-3 py-1.5 text-sm bg-background"
-          disabled={activeCount > 0}
-        >
-          {OCR_LANGS.map((lang) => (
-            <option key={lang.value} value={lang.value}>
-              {lang.label}
-            </option>
-          ))}
-        </select>
-        <span className="text-xs text-muted-foreground">
-          Applies to all files in the current queue
-        </span>
+      {/* Engine toggle */}
+      <div className="mb-4 border rounded-lg p-4 bg-muted/30">
+        <div className="text-sm font-medium mb-3">OCR engine</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <EngineCard
+            active={engine === "adobe"}
+            disabled={disabledBecauseActive}
+            onClick={() => setEngine("adobe")}
+            icon={<Zap className="w-5 h-5" />}
+            title="Standard (Adobe)"
+            subtitle="Fast. Best for clean typed documents in a single language."
+            meta="~30–60s per doc · $0.05/doc"
+          />
+          <EngineCard
+            active={engine === "mistral"}
+            disabled={disabledBecauseActive}
+            onClick={() => setEngine("mistral")}
+            icon={<Sparkles className="w-5 h-5" />}
+            title="AI (Mistral)"
+            subtitle="Multilingual, mixed scripts, and handwritten documents."
+            meta={
+              qualityMode === "thorough"
+                ? "~30s/page · ~$0.003/page (thorough)"
+                : "~10s/page · ~$0.001/page (fast)"
+            }
+          />
+        </div>
       </div>
+
+      {/* Config — Adobe */}
+      {engine === "adobe" && (
+        <div className="mb-4 border rounded-lg p-4 space-y-3">
+          <div className="text-sm font-medium">Adobe options</div>
+          <div className="flex items-center gap-3">
+            <label className="text-sm min-w-[140px]">Source language</label>
+            <select
+              value={adobeOcrLang}
+              onChange={(e) => setAdobeOcrLang(e.target.value)}
+              className="border rounded-md px-3 py-1.5 text-sm bg-background"
+              disabled={disabledBecauseActive}
+            >
+              {ADOBE_LANGS.map((lang) => (
+                <option key={lang.value} value={lang.value}>
+                  {lang.label}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-muted-foreground">
+              Adobe supports a single language per job.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Config — Mistral */}
+      {engine === "mistral" && (
+        <div className="mb-4 border rounded-lg p-4 space-y-4">
+          <div className="text-sm font-medium">AI options</div>
+
+          {/* Source languages chip input */}
+          <div>
+            <label className="text-sm block mb-1.5">
+              Source language(s) in document
+            </label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {mistralLangs.map((l) => (
+                <span
+                  key={l}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full"
+                >
+                  {l}
+                  <button
+                    type="button"
+                    onClick={() => removeLang(l)}
+                    className="hover:bg-primary/20 rounded-full p-0.5"
+                    disabled={disabledBecauseActive}
+                    aria-label={`Remove ${l}`}
+                  >
+                    <XIcon className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="relative">
+              <input
+                value={mistralLangInput}
+                onChange={(e) => setMistralLangInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    addLang(mistralLangInput);
+                  } else if (
+                    e.key === "Backspace" &&
+                    !mistralLangInput &&
+                    mistralLangs.length > 0
+                  ) {
+                    removeLang(mistralLangs[mistralLangs.length - 1]);
+                  }
+                }}
+                placeholder="Type a language and press Enter (e.g. Hindi)"
+                className="w-full border rounded-md px-3 py-1.5 text-sm bg-background"
+                disabled={disabledBecauseActive}
+              />
+              {mistralLangInput && remainingSuggestions.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-background border rounded-md shadow-md">
+                  {remainingSuggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => addLang(s)}
+                      className="block w-full text-left px-3 py-1.5 text-sm hover:bg-muted"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Used as hints — AI will still auto-detect, but hints improve
+              mixed-script accuracy.
+            </p>
+          </div>
+
+          {/* Quality, format, page size */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm block mb-1.5">Quality</label>
+              <div className="flex gap-1.5">
+                <QualityButton
+                  active={qualityMode === "fast"}
+                  onClick={() => setQualityMode("fast")}
+                  disabled={disabledBecauseActive}
+                  label="Fast"
+                  hint="OCR only"
+                />
+                <QualityButton
+                  active={qualityMode === "thorough"}
+                  onClick={() => setQualityMode("thorough")}
+                  disabled={disabledBecauseActive}
+                  label="Thorough"
+                  hint="+ vision correction"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm block mb-1.5">Formatting</label>
+              <div className="flex gap-1.5">
+                <QualityButton
+                  active={formatting === "preserve"}
+                  onClick={() => setFormatting("preserve")}
+                  disabled={disabledBecauseActive}
+                  label="Preserve"
+                  hint="tables + structure"
+                />
+                <QualityButton
+                  active={formatting === "clean"}
+                  onClick={() => setFormatting("clean")}
+                  disabled={disabledBecauseActive}
+                  label="Clean"
+                  hint="flat paragraphs"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm block mb-1.5">Output page size</label>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(e.target.value as PageSize)}
+                className="border rounded-md px-3 py-1.5 text-sm bg-background w-full"
+                disabled={disabledBecauseActive}
+              >
+                <option value="source">Match source</option>
+                <option value="letter">Letter (8.5 × 11 in)</option>
+                <option value="a4">A4 (210 × 297 mm)</option>
+                <option value="legal">Legal (8.5 × 14 in)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm block mb-1.5">Page orientation</label>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={autoRotate}
+                  onChange={(e) => setAutoRotate(e.target.checked)}
+                  disabled={disabledBecauseActive}
+                />
+                Auto-rotate sideways / upside-down pages
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Dropzone */}
       <div
@@ -263,9 +545,7 @@ export default function PdfToWordPage() {
         <input {...getInputProps()} />
         <Upload className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
         <p className="text-sm font-medium">
-          {isDragActive
-            ? "Drop PDFs here"
-            : "Drag PDFs here, or click to select"}
+          {isDragActive ? "Drop PDFs here" : "Drag PDFs here, or click to select"}
         </p>
         <p className="text-xs text-muted-foreground mt-1">
           Max {MAX_FILE_SIZE_MB}MB per file · PDF only
@@ -276,9 +556,8 @@ export default function PdfToWordPage() {
       {jobs.length > 0 && (
         <div className="flex items-center justify-between mt-4">
           <div className="text-sm text-muted-foreground">
-            {jobs.length} file{jobs.length !== 1 ? "s" : ""} · {queuedCount}{" "}
-            queued · {activeCount} running · {doneCount} done · {errorCount}{" "}
-            failed
+            {jobs.length} file{jobs.length !== 1 ? "s" : ""} · {queuedCount} queued
+            · {activeCount} running · {doneCount} done · {errorCount} failed
           </div>
           <div className="flex gap-2">
             <button
@@ -324,6 +603,76 @@ export default function PdfToWordPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function EngineCard({
+  active,
+  disabled,
+  onClick,
+  icon,
+  title,
+  subtitle,
+  meta,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  meta: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`text-left p-3 rounded-lg border transition-colors ${
+        active
+          ? "border-primary bg-primary/5"
+          : "border-muted hover:border-primary/40"
+      } disabled:opacity-50 disabled:cursor-not-allowed`}
+    >
+      <div className="flex items-center gap-2 font-medium">
+        <span className={active ? "text-primary" : "text-muted-foreground"}>
+          {icon}
+        </span>
+        {title}
+      </div>
+      <div className="text-xs text-muted-foreground mt-1">{subtitle}</div>
+      <div className="text-xs text-muted-foreground/70 mt-0.5">{meta}</div>
+    </button>
+  );
+}
+
+function QualityButton({
+  active,
+  onClick,
+  disabled,
+  label,
+  hint,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex-1 text-left px-3 py-1.5 text-sm rounded-md border transition-colors ${
+        active
+          ? "border-primary bg-primary/5 text-primary"
+          : "border-muted hover:border-primary/40"
+      } disabled:opacity-50 disabled:cursor-not-allowed`}
+    >
+      <div className="font-medium">{label}</div>
+      <div className="text-xs text-muted-foreground">{hint}</div>
+    </button>
   );
 }
 

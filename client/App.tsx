@@ -76,6 +76,7 @@ import OCRWordCountPage from "./pages/admin/OCRWordCountPage";
 import OCRBatchResultsPage from "./pages/admin/OCRBatchResultsPage";
 import PreprocessOCRPage from "./pages/admin/PreprocessOCRPage";
 import PdfToWordPage from "./pages/admin/PdfToWordPage";
+import PublicSubmissionsPage from "./pages/admin/PublicSubmissionsPage";
 import AdminPartners from "./pages/admin/AdminPartners";
 import RecruitmentList from "./pages/admin/RecruitmentList";
 import RecruitmentDetail from "./pages/admin/RecruitmentDetail";
@@ -364,6 +365,7 @@ const App = () => (
                     <Route path="ocr-word-count/:batchId" element={<OCRBatchResultsPage />} />
                     <Route path="preprocess-ocr" element={<PreprocessOCRPage />} />
                     <Route path="pdf-to-word" element={<PdfToWordPage />} />
+                    <Route path="public-submissions" element={<PublicSubmissionsPage />} />
                     <Route path="pdf-manager" element={<PdfManager />} />
                     <Route path="vendors" element={<AdminVendorsList />} />
                     <Route path="vendors/new" element={<AdminVendorNew />} />
