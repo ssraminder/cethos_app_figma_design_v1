@@ -924,6 +924,41 @@ export default function RecruitmentDetail() {
     }
   };
 
+  const [reassessBusy, setReassessBusy] = useState(false);
+  const handleReassess = async () => {
+    if (!id) return;
+    const feedbackCount = flagFeedback.length;
+    if (
+      !window.confirm(
+        `Reassess this application using your ${feedbackCount} flag verdict(s) + any decision notes + any inbound replies as context?\n\nThis overwrites the current prescreen score with a refined version. Takes ~15 seconds.`,
+      )
+    ) {
+      return;
+    }
+    setReassessBusy(true);
+    try {
+      const res = await callEdgeFunction("cvp-prescreen-application", {
+        applicationId: id,
+        includeStaffContext: true,
+      });
+      const data = (res as { data?: { score?: number; tier?: string } }).data;
+      const scoreLine =
+        data?.score !== undefined
+          ? ` — new score ${data.score}${data.tier ? ` (${data.tier})` : ""}`
+          : "";
+      toast.success(`Reassessed with your feedback${scoreLine}`);
+      // Give it a beat to settle, then reload
+      setTimeout(() => {
+        fetchData();
+        setReassessBusy(false);
+      }, 1500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Reassess failed: ${msg}`);
+      setReassessBusy(false);
+    }
+  };
+
   // Decision-modal flow: every action button opens a modal for staff notes,
   // then the matching edge function processes those notes through Claude
   // (rejection/waitlist/request-info → AI rewrites for the applicant; approve
@@ -1243,6 +1278,47 @@ export default function RecruitmentDetail() {
         <div className="lg:col-span-5 space-y-4">
           {/* AI Pre-screening */}
           <Section title="AI Pre-screening">
+            {/* Reassess button — visible once there's staff context for this app */}
+            {aiResult && (flagFeedback.length > 0 || (() => {
+              const r = aiResult as Record<string, unknown>;
+              return !!r.reassessed_with_staff_context;
+            })()) && (
+              <div className="mt-2 flex items-center justify-between gap-2 p-2.5 bg-teal-50 border border-teal-200 rounded-md">
+                <div className="text-xs text-teal-800">
+                  {(() => {
+                    const r = aiResult as Record<string, unknown>;
+                    const wasReassessed = !!r.reassessed_with_staff_context;
+                    const ctx = (r.per_app_context as Record<string, number> | undefined) ?? {};
+                    if (wasReassessed) {
+                      return (
+                        <>
+                          <strong>Reassessed with staff context</strong>
+                          {ctx.flag_feedback_count !== undefined && (
+                            <span className="text-teal-700">
+                              {" "}· {ctx.flag_feedback_count} verdicts, {ctx.decision_count ?? 0} decisions, {ctx.inbound_count ?? 0} replies folded in
+                            </span>
+                          )}
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        <strong>{flagFeedback.length}</strong> flag verdict{flagFeedback.length === 1 ? "" : "s"} recorded on this app. Want AI to refine the score?
+                      </>
+                    );
+                  })()}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleReassess}
+                  disabled={reassessBusy}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-medium rounded-md flex-shrink-0"
+                >
+                  {reassessBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  {reassessBusy ? "Reassessing…" : "Reassess with my feedback"}
+                </button>
+              </div>
+            )}
             {!aiResult ? (
               <p className="text-sm text-gray-500 mt-2">No AI pre-screening data available.</p>
             ) : (aiResult as Record<string, unknown>).error === "ai_fallback" ? (
