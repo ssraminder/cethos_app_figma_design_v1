@@ -129,6 +129,7 @@ interface Application {
   can_reapply_after: string | null;
   waitlist_language_pair: string | null;
   waitlist_notes: string | null;
+  cv_storage_path: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -204,6 +205,127 @@ function Section({ title, defaultOpen = true, children }: { title: string; defau
   );
 }
 
+interface CvSectionProps {
+  applicationId: string;
+  cvStoragePath: string | null;
+  callEdgeFunction: (
+    fnSlug: string,
+    body: Record<string, unknown>,
+  ) => Promise<{ data?: { signedUrl?: string; previewUrl?: string; filename?: string; expiresInSeconds?: number } } & Record<string, unknown>>;
+}
+
+function CvSection({ applicationId, cvStoragePath, callEdgeFunction }: CvSectionProps) {
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [filename, setFilename] = useState<string>("cv.pdf");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  useEffect(() => {
+    if (!cvStoragePath) {
+      setError("No CV was uploaded with this application.");
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    callEdgeFunction("cvp-get-cv-url", { applicationId })
+      .then((res) => {
+        if (cancelled) return;
+        const d = (res as { data?: { signedUrl?: string; previewUrl?: string; filename?: string } }).data;
+        if (d?.signedUrl) {
+          setDownloadUrl(d.signedUrl);
+          setPreviewUrl(d.previewUrl ?? d.signedUrl);
+          if (d.filename) setFilename(d.filename);
+        } else {
+          setError("Could not generate signed URL.");
+        }
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId, cvStoragePath, callEdgeFunction]);
+
+  if (!cvStoragePath) {
+    return (
+      <p className="text-sm text-gray-500 mt-2">
+        No CV was uploaded with this application.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex items-center gap-2 text-sm">
+        <FileText className="w-4 h-4 text-gray-400" />
+        <span className="font-mono text-xs text-gray-600 truncate flex-1">{filename}</span>
+      </div>
+
+      {loading && <p className="text-xs text-gray-500">Loading CV…</p>}
+      {error && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+          {error}
+        </p>
+      )}
+
+      {downloadUrl && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowPreview((v) => !v)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-md"
+          >
+            {showPreview ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            {showPreview ? "Hide preview" : "Preview inline"}
+          </button>
+          <a
+            href={downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-xs font-medium rounded-md"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Download
+          </a>
+          {previewUrl && (
+            <a
+              href={previewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-xs font-medium rounded-md"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Open in new tab
+            </a>
+          )}
+        </div>
+      )}
+
+      {showPreview && previewUrl && (
+        <div className="mt-2 border border-gray-200 rounded overflow-hidden">
+          <iframe
+            src={previewUrl}
+            title="Applicant CV"
+            className="w-full"
+            style={{ height: "600px" }}
+          />
+        </div>
+      )}
+      <p className="text-[11px] text-gray-400">
+        Signed URL expires in ~10 minutes. Reload to refresh.
+      </p>
+    </div>
+  );
+}
+
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   if (value === null || value === undefined || value === "") return null;
   return (
@@ -211,6 +333,321 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="text-xs text-gray-500">{label}</dt>
       <dd className="text-sm text-gray-900 mt-0.5">{value}</dd>
     </div>
+  );
+}
+
+// ---------- Flag feedback ----------
+
+type FlagKind = "red_flag" | "green_flag";
+type FlagVerdict = "valid" | "invalid" | "low_weight" | "context_dependent";
+
+interface FlagFeedback {
+  flag_kind: FlagKind;
+  flag_text: string;
+  verdict: FlagVerdict;
+  staff_notes: string | null;
+  updated_at: string;
+}
+
+const VERDICT_LABELS: Record<FlagVerdict, string> = {
+  valid: "Valid",
+  low_weight: "Low weight",
+  context_dependent: "Context",
+  invalid: "Invalid",
+};
+
+const VERDICT_STYLES: Record<FlagVerdict, { active: string; idle: string }> = {
+  valid: {
+    active: "bg-red-600 text-white border-red-600",
+    idle: "bg-white text-gray-600 hover:bg-red-50 hover:text-red-700 border-gray-200",
+  },
+  low_weight: {
+    active: "bg-amber-500 text-white border-amber-500",
+    idle: "bg-white text-gray-600 hover:bg-amber-50 hover:text-amber-700 border-gray-200",
+  },
+  context_dependent: {
+    active: "bg-blue-500 text-white border-blue-500",
+    idle: "bg-white text-gray-600 hover:bg-blue-50 hover:text-blue-700 border-gray-200",
+  },
+  invalid: {
+    active: "bg-emerald-600 text-white border-emerald-600",
+    idle: "bg-white text-gray-600 hover:bg-emerald-50 hover:text-emerald-700 border-gray-200",
+  },
+};
+
+// ---------- Decision modal ----------
+
+type DecisionType = "approved" | "rejected" | "waitlisted" | "info_requested";
+
+interface DecisionModalConfig {
+  title: string;
+  intro: string;
+  placeholder: string;
+  aiBehaviour: string;
+  submitLabel: string;
+  submitClassName: string;
+  minLength: number;
+}
+
+const DECISION_CONFIGS: Record<DecisionType, DecisionModalConfig> = {
+  approved: {
+    title: "Approve application",
+    intro:
+      "The applicant will get the V11 welcome email with their password-setup link.",
+    placeholder:
+      "Optional. Anything to highlight (e.g. \"strong MQM scores on legal test — proceed to mid-tier rate\"). Notes are stored privately and may be AI-summarised into a warm welcome line in the email.",
+    aiBehaviour:
+      "Notes are stored for the learning loop. If substantive, AI may add a short personal line to the welcome email — never copy your raw notes into the email.",
+    submitLabel: "Approve & send welcome",
+    submitClassName: "bg-emerald-600 hover:bg-emerald-700",
+    minLength: 0,
+  },
+  rejected: {
+    title: "Reject application",
+    intro:
+      "AI will rephrase your notes into one polite applicant-facing sentence. The V12 email is queued and only sends after a 48-hour intercept window.",
+    placeholder:
+      "Required. Internal reason in plain language (e.g. \"CV contradicts form on years of experience; sample translation has accuracy errors\"). AI will not copy your raw notes — it produces a polished neutral summary.",
+    aiBehaviour:
+      "AI generates the applicant-facing reason (no internal jargon, no scores). Your raw notes are stored for learning. You have 48h to intercept the email from this page.",
+    submitLabel: "Queue rejection (48h intercept)",
+    submitClassName: "bg-red-600 hover:bg-red-700",
+    minLength: 5,
+  },
+  waitlisted: {
+    title: "Waitlist application",
+    intro:
+      "The applicant gets V13 immediately, including a short AI-rephrased line explaining the wait.",
+    placeholder:
+      "Required. Why are they being waitlisted (e.g. \"Strong CV but no demand on this pair this quarter — revisit Q3\"). AI will produce a soft applicant-facing sentence; your raw notes stay internal.",
+    aiBehaviour:
+      "AI rewrites your notes into a polite waitlist explanation. Raw notes stored for learning.",
+    submitLabel: "Waitlist & send",
+    submitClassName: "bg-amber-600 hover:bg-amber-700",
+    minLength: 5,
+  },
+  info_requested: {
+    title: "Request more info",
+    intro:
+      "AI will rephrase your notes into the V17 email body so the applicant sees a polished message instead of your raw working notes.",
+    placeholder:
+      "Required. What do you need (e.g. \"Need updated CV showing 2023–present employment dates; clarify whether ATA cert is current\"). AI rephrases this for the applicant.",
+    aiBehaviour:
+      "AI rewrites your notes into a polite request. Your raw notes are stored for learning. The applicant sees the AI-rephrased version.",
+    submitLabel: "Send request",
+    submitClassName: "bg-teal-600 hover:bg-teal-700",
+    minLength: 5,
+  },
+};
+
+interface DecisionModalProps {
+  decision: DecisionType;
+  onClose: () => void;
+  onSubmit: (notes: string) => Promise<void>;
+  busy: boolean;
+  initialNotes?: string;
+}
+
+function DecisionModal({
+  decision,
+  onClose,
+  onSubmit,
+  busy,
+  initialNotes,
+}: DecisionModalProps) {
+  const cfg = DECISION_CONFIGS[decision];
+  const [notes, setNotes] = useState(initialNotes ?? "");
+  const tooShort = notes.trim().length < cfg.minLength;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <h2 className="text-lg font-semibold text-gray-900">{cfg.title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="text-gray-400 hover:text-gray-700 disabled:opacity-50"
+          >
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+        <p className="text-sm text-gray-600 mb-3">{cfg.intro}</p>
+
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          {cfg.minLength > 0 ? "Staff notes (required)" : "Staff notes (optional)"}
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder={cfg.placeholder}
+          rows={6}
+          disabled={busy}
+          className="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+        />
+
+        <div className="mt-3 p-2.5 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600">
+          <strong className="text-gray-700">How AI uses this:</strong> {cfg.aiBehaviour}
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onSubmit(notes.trim())}
+            disabled={busy || tooShort}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-50 ${cfg.submitClassName}`}
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {busy ? "Submitting…" : cfg.submitLabel}
+          </button>
+        </div>
+        {tooShort && cfg.minLength > 0 && notes.length > 0 && (
+          <p className="mt-2 text-xs text-amber-700">
+            Add at least {cfg.minLength} characters of context.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface FlagWithFeedbackProps {
+  flagKind: FlagKind;
+  flagText: string;
+  existing: FlagFeedback | undefined;
+  onSave: (verdict: FlagVerdict, notes: string | null) => Promise<void>;
+  onClear: () => Promise<void>;
+}
+
+function FlagWithFeedback({
+  flagKind,
+  flagText,
+  existing,
+  onSave,
+  onClear,
+}: FlagWithFeedbackProps) {
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesDraft, setNotesDraft] = useState(existing?.staff_notes ?? "");
+  const [saving, setSaving] = useState<FlagVerdict | null>(null);
+  const [savingNotes, setSavingNotes] = useState(false);
+  const isRed = flagKind === "red_flag";
+
+  useEffect(() => {
+    setNotesDraft(existing?.staff_notes ?? "");
+  }, [existing?.staff_notes]);
+
+  const handleVerdictClick = async (verdict: FlagVerdict) => {
+    if (saving) return;
+    setSaving(verdict);
+    try {
+      // Toggle off if clicking the same verdict
+      if (existing?.verdict === verdict && !notesDraft) {
+        await onClear();
+      } else {
+        await onSave(verdict, notesDraft || null);
+      }
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleNotesSave = async () => {
+    if (!existing?.verdict) {
+      // Need a verdict before notes can be saved alone
+      return;
+    }
+    setSavingNotes(true);
+    try {
+      await onSave(existing.verdict, notesDraft || null);
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
+  return (
+    <li
+      className={`px-3 py-2 rounded-md border ${
+        isRed ? "bg-red-50/50 border-red-100" : "bg-emerald-50/50 border-emerald-100"
+      }`}
+    >
+      <div
+        className={`text-sm ${isRed ? "text-red-800" : "text-emerald-900"}`}
+      >
+        {flagText}
+      </div>
+      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+        {(Object.keys(VERDICT_LABELS) as FlagVerdict[]).map((v) => {
+          const active = existing?.verdict === v;
+          const styles = VERDICT_STYLES[v];
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => handleVerdictClick(v)}
+              disabled={saving !== null}
+              className={`px-2 py-0.5 text-[11px] font-medium rounded-full border transition disabled:opacity-50 ${
+                active ? styles.active : styles.idle
+              }`}
+            >
+              {saving === v ? "…" : VERDICT_LABELS[v]}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setNotesOpen((o) => !o)}
+          className="ml-auto text-[11px] text-gray-500 hover:text-gray-700 underline"
+        >
+          {notesOpen ? "Hide notes" : existing?.staff_notes ? "Edit notes" : "+ notes"}
+        </button>
+      </div>
+      {notesOpen && (
+        <div className="mt-2 space-y-1.5">
+          <textarea
+            value={notesDraft}
+            onChange={(e) => setNotesDraft(e.target.value)}
+            placeholder="Why? e.g. 'Cost of certification too high vs avg income — not a real signal'"
+            rows={2}
+            className="w-full text-xs p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500"
+          />
+          <div className="flex justify-end gap-2">
+            {!existing?.verdict && (
+              <span className="text-[11px] text-gray-500 self-center">
+                Pick a verdict above first to save notes.
+              </span>
+            )}
+            <button
+              type="button"
+              disabled={savingNotes || !existing?.verdict}
+              onClick={handleNotesSave}
+              className="px-2 py-1 text-[11px] bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-md"
+            >
+              {savingNotes ? "Saving…" : "Save notes"}
+            </button>
+          </div>
+        </div>
+      )}
+      {existing?.staff_notes && !notesOpen && (
+        <div className="mt-1.5 text-[11px] text-gray-600 italic">
+          “{existing.staff_notes}”
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -234,6 +671,16 @@ export default function RecruitmentDetail() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [rejectionDraft, setRejectionDraft] = useState("");
   const [savingDraft, setSavingDraft] = useState(false);
+  const [flagFeedback, setFlagFeedback] = useState<FlagFeedback[]>([]);
+  const [safeMode, setSafeMode] = useState<{
+    active: boolean;
+    startedAt: string | null;
+    targetDays: number;
+    targetApps: number;
+    daysRemaining: number | null;
+    appsRemaining: number | null;
+    manualOverride: "on" | "off" | null;
+  } | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -268,6 +715,73 @@ export default function RecruitmentDetail() {
         .eq("application_id", id)
         .order("created_at", { ascending: true });
       setSubmissions((subs as TestSubmission[]) || []);
+
+      // Fetch safe-mode config + approved-count to render the status banner.
+      // Mirrors the server-side logic in _shared/safe-mode.ts so the UI can
+      // show "(12 days remaining, 42 apps remaining)" without an RPC round-trip.
+      try {
+        const { data: cfgRow } = await supabase
+          .from("cvp_system_config")
+          .select("value")
+          .eq("key", "safe_mode")
+          .maybeSingle();
+        if (cfgRow?.value) {
+          const cfg = cfgRow.value as {
+            manual_override?: "on" | "off" | null;
+            started_at?: string;
+            target_days?: number;
+            target_apps?: number;
+          };
+          const targetDays = cfg.target_days ?? 30;
+          const targetApps = cfg.target_apps ?? 200;
+          const startedAt = cfg.started_at ?? null;
+          const manualOverride = cfg.manual_override ?? null;
+          let daysRemaining: number | null = null;
+          if (startedAt) {
+            const elapsedMs = Date.now() - Date.parse(startedAt);
+            const daysElapsed = Math.floor(elapsedMs / (1000 * 60 * 60 * 24));
+            daysRemaining = Math.max(0, targetDays - daysElapsed);
+          }
+          const { count: approvedCount } = await supabase
+            .from("cvp_applications")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "approved");
+          const appsRemaining = Math.max(0, targetApps - (approvedCount ?? 0));
+          const auto =
+            (daysRemaining !== null && daysRemaining > 0) && appsRemaining > 0;
+          const active =
+            manualOverride === "on" ||
+            (manualOverride !== "off" && auto);
+          setSafeMode({
+            active,
+            startedAt,
+            targetDays,
+            targetApps,
+            daysRemaining,
+            appsRemaining,
+            manualOverride,
+          });
+        } else {
+          setSafeMode({
+            active: true,
+            startedAt: null,
+            targetDays: 30,
+            targetApps: 200,
+            daysRemaining: null,
+            appsRemaining: null,
+            manualOverride: null,
+          });
+        }
+      } catch (_e) {
+        /* non-fatal — banner just hides if we can't read config */
+      }
+
+      // Fetch existing flag-feedback verdicts for this app
+      const { data: feedback } = await supabase
+        .from("cvp_prescreen_flag_feedback")
+        .select("flag_kind, flag_text, verdict, staff_notes, updated_at")
+        .eq("application_id", id);
+      setFlagFeedback((feedback as FlagFeedback[]) ?? []);
 
       // Resolve language names
       const langIds = new Set<string>();
@@ -365,49 +879,49 @@ export default function RecruitmentDetail() {
     }
   };
 
-  const handleDecision = async (decision: "approved" | "rejected" | "waitlisted" | "info_requested") => {
+  // Decision-modal flow: every action button opens a modal for staff notes,
+  // then the matching edge function processes those notes through Claude
+  // (rejection/waitlist/request-info → AI rewrites for the applicant; approve
+  // → AI optionally injects a warm welcome line). All raw notes + AI output
+  // are stored in cvp_application_decisions for the learning loop.
+  type Decision = "approved" | "rejected" | "waitlisted" | "info_requested";
+  const [decisionModal, setDecisionModal] = useState<Decision | null>(null);
+
+  const submitDecision = async (decision: Decision, notes: string) => {
     if (!id) return;
     setActionLoading(decision);
     try {
       if (decision === "approved") {
-        // Full approval flow via edge fn: creates vendor + cvp_translator,
-        // issues password-setup token, sends V11.
         await callEdgeFunction("cvp-approve-application", {
           applicationId: id,
           staffId: session?.staffId,
+          staffNotes: notes,
         });
-        toast.success("Application approved — welcome email sent to applicant");
-        await fetchData();
+        toast.success("Application approved — welcome email sent");
+      } else if (decision === "rejected") {
+        await callEdgeFunction("cvp-reject-application", {
+          applicationId: id,
+          staffId: session?.staffId,
+          staffNotes: notes,
+        });
+        toast.success("Rejection queued — V12 sends in 48h unless intercepted");
+      } else if (decision === "waitlisted") {
+        await callEdgeFunction("cvp-waitlist-application", {
+          applicationId: id,
+          staffId: session?.staffId,
+          staffNotes: notes,
+        });
+        toast.success("Application waitlisted — V13 sent");
       } else if (decision === "info_requested") {
-        // Prompt staff for the details to include in V17.
-        const details = window.prompt(
-          "What information do you need from the applicant? This message will be included in the email.",
-          staffNotes || ""
-        );
-        if (!details || details.trim().length < 10) {
-          toast.error("Please enter at least 10 characters describing what you need.");
-          setActionLoading(null);
-          return;
-        }
         await callEdgeFunction("cvp-request-info", {
           applicationId: id,
-          requestDetails: details.trim(),
           staffId: session?.staffId,
+          staffNotes: notes,
         });
-        toast.success("Info request sent to applicant");
-        await fetchData();
-      } else if (decision === "rejected") {
-        // Queue rejection — pg_cron sends V12 after 48hr intercept window.
-        await updateApplication({
-          status: "rejected",
-          rejection_reason: "Staff decision",
-          rejection_email_status: "queued",
-          rejection_email_queued_at: new Date().toISOString(),
-          can_reapply_after: format(addMonths(new Date(), 6), "yyyy-MM-dd"),
-        }, "Application rejected — email queued for 48hr intercept window");
-      } else if (decision === "waitlisted") {
-        await updateApplication({ status: "waitlisted" }, "Application waitlisted");
+        toast.success("Info request sent — AI rephrased your notes for the applicant");
       }
+      setDecisionModal(null);
+      await fetchData();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Action failed");
     } finally {
@@ -415,11 +929,85 @@ export default function RecruitmentDetail() {
     }
   };
 
+  const handleDecision = (decision: Decision) => {
+    setDecisionModal(decision);
+  };
+
   const handleIntercept = async () => {
     setActionLoading("intercept");
     await updateApplication({ rejection_email_status: "intercepted" }, "Rejection email intercepted");
     setActionLoading(null);
   };
+
+  const saveFlagFeedback = async (
+    flagKind: FlagKind,
+    flagText: string,
+    verdict: FlagVerdict,
+    notes: string | null,
+  ) => {
+    if (!id) return;
+    try {
+      await callEdgeFunction("cvp-save-flag-feedback", {
+        applicationId: id,
+        flagKind,
+        flagText,
+        verdict,
+        staffNotes: notes,
+        staffUserId: session?.staffId,
+        prescreenAt: app?.ai_prescreening_at ?? null,
+        promptVersion:
+          app?.ai_prescreening_result &&
+          typeof (app.ai_prescreening_result as Record<string, unknown>).prompt_version === "string"
+            ? String((app.ai_prescreening_result as Record<string, unknown>).prompt_version)
+            : null,
+      });
+      // Optimistic local update so the UI feels snappy
+      setFlagFeedback((prev) => {
+        const without = prev.filter(
+          (f) => !(f.flag_kind === flagKind && f.flag_text === flagText),
+        );
+        return [
+          ...without,
+          {
+            flag_kind: flagKind,
+            flag_text: flagText,
+            verdict,
+            staff_notes: notes,
+            updated_at: new Date().toISOString(),
+          },
+        ];
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save verdict");
+    }
+  };
+
+  const clearFlagFeedback = async (flagKind: FlagKind, flagText: string) => {
+    if (!id) return;
+    try {
+      await callEdgeFunction("cvp-save-flag-feedback", {
+        applicationId: id,
+        flagKind,
+        flagText,
+        remove: true,
+      });
+      setFlagFeedback((prev) =>
+        prev.filter(
+          (f) => !(f.flag_kind === flagKind && f.flag_text === flagText),
+        ),
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to clear verdict");
+    }
+  };
+
+  const findFeedback = (
+    flagKind: FlagKind,
+    flagText: string,
+  ): FlagFeedback | undefined =>
+    flagFeedback.find(
+      (f) => f.flag_kind === flagKind && f.flag_text === flagText,
+    );
 
   const handleSaveDraft = async () => {
     setSavingDraft(true);
@@ -457,6 +1045,23 @@ export default function RecruitmentDetail() {
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto">
+      {/* Safe-mode banner — shows while pipeline is gated on staff approval */}
+      {safeMode?.active && (
+        <div className="mb-4 flex items-start gap-2 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm">
+          <Shield className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <span className="font-medium text-indigo-900">Safe mode active</span>
+            <span className="text-indigo-800">
+              {" "}— no decisive email goes to an applicant without your explicit approval.{" "}
+              {safeMode.manualOverride === "on"
+                ? "Admin has manually enabled safe mode."
+                : safeMode.daysRemaining !== null
+                ? `Lifts in ${safeMode.daysRemaining} days or after ${safeMode.appsRemaining} more approvals, whichever comes first.`
+                : "Lifts on configured thresholds."}
+            </span>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="mb-6">
         <Link to="/admin/recruitment" className="flex items-center gap-1 text-sm text-gray-500 hover:text-teal-600 mb-3">
@@ -547,6 +1152,11 @@ export default function RecruitmentDetail() {
             </Section>
           )}
 
+          {/* CV / Resume — preview + download */}
+          <Section title="Resume / CV">
+            <CvSection applicationId={app.id} cvStoragePath={app.cv_storage_path} callEdgeFunction={callEdgeFunction} />
+          </Section>
+
           {/* Rate & Referral */}
           <Section title="Rate & Referral">
             <dl className="space-y-1 mt-2">
@@ -626,6 +1236,104 @@ export default function RecruitmentDetail() {
                     )}
                   </div>
                 </div>
+
+                {/* Safe-mode prescreen-outcome callout — visible when AI says
+                    proceed or staff_review but status hasn't advanced yet.
+                    Under safe mode (first 30d / 200 apps) AI never auto-sends
+                    V2/V8; staff must explicitly approve the outbound. */}
+                {(() => {
+                  const r = aiResult as Record<string, unknown>;
+                  const rec = r.recommendation;
+                  if (rec !== "proceed" && rec !== "staff_review") return null;
+                  if (app.status === "rejected" || app.status === "approved" || app.status === "prescreened") return null;
+                  // Already sent V8 / moved forward? Skip.
+                  const isAdvance = rec === "proceed";
+                  const isManual = rec === "staff_review";
+                  const colorWrapper = isAdvance
+                    ? "bg-green-50 border-green-200"
+                    : "bg-amber-50 border-amber-200";
+                  const headingColor = isAdvance ? "text-green-800" : "text-amber-800";
+                  const noteColor = isAdvance ? "text-green-700" : "text-amber-700";
+                  const primaryBtn = isAdvance
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-amber-600 hover:bg-amber-700";
+                  const primaryLabel = isAdvance
+                    ? "Approve advance — send V2 (passed pre-screen)"
+                    : "Acknowledge — send V8 (under manual review)";
+                  const outcomeValue = isAdvance ? "prescreened" : "staff_review_notice";
+                  const loadingKey = `presc-${outcomeValue}`;
+                  const busy = actionLoading === loadingKey;
+                  return (
+                    <div className={`p-3 border rounded-lg ${colorWrapper}`}>
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${isAdvance ? "text-green-500" : "text-amber-500"}`} />
+                        <div className="flex-1">
+                          <p className={`text-sm font-semibold ${headingColor}`}>
+                            {isAdvance
+                              ? "AI recommends advancing to testing"
+                              : "AI recommends manual staff review"}
+                          </p>
+                          <p className={`text-xs mt-1 ${noteColor}`}>
+                            {r.notes ? String(r.notes) : ""}{" "}
+                            <strong>No email has been sent to the applicant yet.</strong>{" "}
+                            Approve one of the actions below to communicate.
+                          </p>
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={async () => {
+                                if (!id) return;
+                                setActionLoading(loadingKey);
+                                try {
+                                  await callEdgeFunction("cvp-approve-prescreen-outcome", {
+                                    applicationId: id,
+                                    outcome: outcomeValue,
+                                    staffId: session?.staffId,
+                                  });
+                                  toast.success(isAdvance ? "V2 sent — applicant advanced" : "V8 sent — applicant notified of manual review");
+                                  await fetchData();
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : "Failed");
+                                } finally {
+                                  setActionLoading(null);
+                                }
+                              }}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-md disabled:opacity-50 ${primaryBtn}`}
+                            >
+                              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                              {primaryLabel}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={actionLoading === "presc-silent"}
+                              onClick={async () => {
+                                if (!id) return;
+                                setActionLoading("presc-silent");
+                                try {
+                                  await callEdgeFunction("cvp-approve-prescreen-outcome", {
+                                    applicationId: id,
+                                    outcome: "silent",
+                                    staffId: session?.staffId,
+                                  });
+                                  toast.success("Acknowledged silently — no email sent");
+                                  await fetchData();
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : "Failed");
+                                } finally {
+                                  setActionLoading(null);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-xs font-medium rounded-md disabled:opacity-50"
+                            >
+                              Acknowledge silently (no email)
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* AI-recommended rejection callout — visible when AI says reject
                     but staff hasn't decided yet. Clicking Approve runs the same
@@ -717,12 +1425,26 @@ export default function RecruitmentDetail() {
                   </div>
                 ) : null}
 
-                {/* Red flags */}
+                {/* Red flags — staff verdict per flag drives prescreen learning */}
                 {Array.isArray((aiResult as Record<string, unknown>).red_flags) && ((aiResult as Record<string, unknown>).red_flags as string[]).length > 0 && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-xs font-medium text-red-700 mb-1">Red Flags</p>
-                    <ul className="list-disc list-inside text-sm text-red-600 space-y-0.5">
-                      {((aiResult as Record<string, unknown>).red_flags as string[]).map((f, i) => <li key={i}>{f}</li>)}
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-red-700">Red Flags</p>
+                      <span className="text-[11px] text-red-500/70">
+                        Verdict each flag — feeds prescreener learning
+                      </span>
+                    </div>
+                    <ul className="space-y-2">
+                      {((aiResult as Record<string, unknown>).red_flags as string[]).map((f, i) => (
+                        <FlagWithFeedback
+                          key={`r-${i}-${f.slice(0, 32)}`}
+                          flagKind="red_flag"
+                          flagText={f}
+                          existing={findFeedback("red_flag", f)}
+                          onSave={(v, n) => saveFlagFeedback("red_flag", f, v, n)}
+                          onClear={() => clearFlagFeedback("red_flag", f)}
+                        />
+                      ))}
                     </ul>
                   </div>
                 )}
@@ -787,10 +1509,22 @@ export default function RecruitmentDetail() {
                       </div>
                       {Array.isArray(r.cv_unique_signals) && (r.cv_unique_signals as string[]).length > 0 && (
                         <div>
-                          <span className="text-xs text-gray-500">Unique CV signals (not in form)</span>
-                          <ul className="list-disc list-inside text-sm text-gray-700 mt-1 space-y-0.5">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-gray-500">Green flags — unique CV signals (not in form)</span>
+                            <span className="text-[11px] text-gray-400">
+                              Verdict each — feeds prescreener learning
+                            </span>
+                          </div>
+                          <ul className="space-y-2">
                             {(r.cv_unique_signals as string[]).map((s, i) => (
-                              <li key={i}>{s}</li>
+                              <FlagWithFeedback
+                                key={`g-${i}-${s.slice(0, 32)}`}
+                                flagKind="green_flag"
+                                flagText={s}
+                                existing={findFeedback("green_flag", s)}
+                                onSave={(v, n) => saveFlagFeedback("green_flag", s, v, n)}
+                                onClear={() => clearFlagFeedback("green_flag", s)}
+                              />
                             ))}
                           </ul>
                         </div>
@@ -1083,6 +1817,18 @@ export default function RecruitmentDetail() {
           </Section>
         </div>
       </div>
+
+      {decisionModal && (
+        <DecisionModal
+          decision={decisionModal}
+          onClose={() => setDecisionModal(null)}
+          onSubmit={(notes) => submitDecision(decisionModal, notes)}
+          busy={actionLoading === decisionModal}
+          initialNotes={
+            decisionModal === "info_requested" ? staffNotes : ""
+          }
+        />
+      )}
     </div>
   );
 }
