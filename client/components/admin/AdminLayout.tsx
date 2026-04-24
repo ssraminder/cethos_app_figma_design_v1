@@ -35,6 +35,7 @@ import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { StaffNotificationProvider, useStaffNotifications } from "../../context/StaffNotificationContext";
 import NotificationProvider from "./NotificationProvider";
 import { countIncompleteAssignments } from "../../lib/trainings";
+import { supabase } from "../../lib/supabase";
 
 interface NavItem {
   label: string;
@@ -228,6 +229,7 @@ function AdminLayoutInner() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [incompleteTrainings, setIncompleteTrainings] = useState(0);
+  const [unackedInbound, setUnackedInbound] = useState(0);
   const location = useLocation();
   const branding = useBranding();
   const { session, signOut } = useAdminAuthContext();
@@ -245,6 +247,33 @@ function AdminLayoutInner() {
       });
     return () => {
       cancelled = true;
+    };
+  }, [session, location.pathname]);
+
+  // Recruitment sidebar badge: count inbound emails from applicants that
+  // haven't yet been acknowledged by staff. Refreshes on route change and
+  // polls every 60s so staff see new replies without a full reload.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    const fetchUnacked = async () => {
+      try {
+        const { count, error } = await supabase
+          .from("cvp_inbound_emails")
+          .select("id", { count: "exact", head: true })
+          .is("acknowledged_at", null);
+        if (!cancelled && !error && typeof count === "number") {
+          setUnackedInbound(count);
+        }
+      } catch {
+        /* silent — nice-to-have */
+      }
+    };
+    fetchUnacked();
+    const interval = window.setInterval(fetchUnacked, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
     };
   }, [session, location.pathname]);
 
@@ -347,6 +376,15 @@ function AdminLayoutInner() {
                 sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
               }`}>
                 {(sidebarOpen || isMobile) ? (newQuoteCount > 99 ? "99+" : newQuoteCount) : ""}
+              </span>
+            )}
+            {item.path === "/admin/recruitment" && unackedInbound > 0 && (
+              <span className={`flex-shrink-0 bg-amber-500 text-white text-xs font-bold rounded-full ${
+                sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
+              }`}
+                title="Unacknowledged applicant replies"
+              >
+                {(sidebarOpen || isMobile) ? (unackedInbound > 99 ? "99+" : unackedInbound) : ""}
               </span>
             )}
             {item.path === "/admin/trainings" && incompleteTrainings > 0 && (
