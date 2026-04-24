@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { RefreshCw, ShieldCheck, ShieldAlert, ShieldX, Clock } from "lucide-react";
+import { toast } from "sonner";
+import { RefreshCw, ShieldCheck, ShieldAlert, ShieldX, Clock, Ban, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import type { TabProps } from "./types";
 import { getLanguageName } from "./data/languages";
@@ -122,6 +123,31 @@ export default function VendorDomainsTab({ vendorData }: TabProps) {
   const [rows, setRows] = useState<TranslatorDomainRow[]>([]);
   const [translatorId, setTranslatorId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const handleRevoke = async (rowId: string, domainLabel: string) => {
+    if (!confirm(`Revoke the ${domainLabel} approval? The vendor will no longer be eligible for jobs in this domain on this language pair.`)) {
+      return;
+    }
+    setRevoking(rowId);
+    try {
+      const { error: updErr } = await supabase
+        .from("cvp_translator_domains")
+        .update({
+          status: "revoked",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", rowId);
+      if (updErr) throw new Error(updErr.message);
+      toast.success(`${domainLabel} revoked`);
+      setReloadKey((n) => n + 1);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to revoke");
+    } finally {
+      setRevoking(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -194,7 +220,7 @@ export default function VendorDomainsTab({ vendorData }: TabProps) {
     return () => {
       cancelled = true;
     };
-  }, [vendor.email]);
+  }, [vendor.email, reloadKey]);
 
   // Group rows by lang pair for the matrix view.
   const grouped = useMemo(() => {
@@ -307,6 +333,9 @@ export default function VendorDomainsTab({ vendorData }: TabProps) {
                   <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase">
                     When
                   </th>
+                  <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-right">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -345,6 +374,24 @@ export default function VendorDomainsTab({ vendorData }: TabProps) {
                           : r.status === "rejected" && r.rejected_at
                           ? `Rejected ${format(new Date(r.rejected_at), "MMM d, yyyy")}`
                           : `Created ${format(new Date(r.created_at), "MMM d, yyyy")}`}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {(r.status === "approved" || r.status === "skip_manual_review") && (
+                          <button
+                            type="button"
+                            onClick={() => handleRevoke(r.id, DOMAIN_LABELS[r.domain] ?? r.domain)}
+                            disabled={revoking === r.id}
+                            className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                            title="Revoke this domain approval"
+                          >
+                            {revoking === r.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Ban className="w-3.5 h-3.5" />
+                            )}
+                            Revoke
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
