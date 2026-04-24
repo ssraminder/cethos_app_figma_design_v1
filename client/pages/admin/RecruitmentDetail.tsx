@@ -405,6 +405,12 @@ function SendTestsControls({
 
   // Pending combinations are the only ones eligible for a test send.
   const pending = combinations.filter((c) => c.status === "pending");
+  // Certified combos never run a test — staff approves them manually from
+  // the preview step. Cards show per-pair so staff can see exactly what
+  // they're granting.
+  const skipManualCombos = combinations.filter(
+    (c) => c.status === "skip_manual_review",
+  );
 
   useEffect(() => {
     // Pre-select all pending combinations by default when the panel opens;
@@ -423,7 +429,9 @@ function SendTestsControls({
   // allow staff_review for flexibility.
   const eligibleStatuses = ["prescreened", "staff_review"];
   if (!eligibleStatuses.includes(app.status)) return null;
-  if (pending.length === 0) return null;
+  // Hide only if there's nothing actionable — pending tests OR certified
+  // combos waiting to be manually approved.
+  if (pending.length === 0 && skipManualCombos.length === 0) return null;
 
   const toggle = (id: string) => {
     setSelectedIds((prev) => {
@@ -589,7 +597,32 @@ function SendTestsControls({
         </button>
       </div>
 
-      {mode === "send" && step === "compose" && (
+      {mode === "send" && step === "compose" && skipManualCombos.length > 0 && (
+        <div className="mb-4 p-3 bg-sky-50 border border-sky-200 rounded text-xs">
+          <strong className="text-sky-900">
+            {skipManualCombos.length} certified combination{skipManualCombos.length === 1 ? "" : "s"} — no test
+          </strong>
+          <p className="text-sky-800 mt-1">
+            Certified translation isn't tested in CETHOS (direction + formatting aren't in scope yet). These combinations are auto-approved when you approve the application via the decision modal — no test needed.
+          </p>
+          <ul className="mt-2 list-disc list-inside text-sky-800">
+            {skipManualCombos.map((c) => (
+              <li key={c.id}>
+                {languages[c.source_language_id] || "?"} → {languages[c.target_language_id] || "?"}
+                {c.domain ? ` · ${c.domain}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {mode === "send" && step === "compose" && pending.length === 0 && skipManualCombos.length > 0 && (
+        <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700">
+          No testable combinations remain — only certified translation, which is handled via the main Approve action on the application.
+        </div>
+      )}
+
+      {mode === "send" && step === "compose" && pending.length > 0 && (
         <>
           <div className="mb-3">
             <label className="block text-xs font-medium text-gray-700 mb-1">Difficulty</label>
@@ -680,6 +713,17 @@ function SendTestsControls({
                 ))}
               </ul>
               <p className="mt-1 text-red-700">Add a test to `cvp_test_library` for these, or uncheck them and come back.</p>
+            </div>
+          )}
+
+          {skipManualCombos.length > 0 && (
+            <div className="mb-3 p-2.5 bg-sky-50 border border-sky-200 rounded text-xs">
+              <strong className="text-sky-900">
+                {skipManualCombos.length} certified combination{skipManualCombos.length === 1 ? "" : "s"} — auto-approved
+              </strong>
+              <p className="text-sky-800 mt-1">
+                These aren't tested; they auto-approve with the application's main Approve action.
+              </p>
             </div>
           )}
 
