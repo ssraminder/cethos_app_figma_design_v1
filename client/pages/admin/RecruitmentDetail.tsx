@@ -350,6 +350,7 @@ function SendTestsControls({
 }: SendTestsControlsProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"send" | "skip">("send");
+  const [step, setStep] = useState<"compose" | "preview">("compose");
   const [difficulty, setDifficulty] = useState<"beginner" | "intermediate" | "advanced">(
     (app.ai_prescreening_result as Record<string, unknown> | null)?.suggested_test_difficulty as
       | "beginner"
@@ -361,12 +362,59 @@ function SendTestsControls({
   const [skipNotes, setSkipNotes] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Phase — preview state. `picks` is the dryRun response; each entry
+  // represents one combination + the test we'd send + alternatives from the
+  // library if staff wants to swap.
+  interface PickAlternative {
+    id: string;
+    title: string;
+    difficulty: string;
+    timesUsed: number;
+    lastUsedAt: string | null;
+  }
+  interface PreviewPick {
+    combinationId: string;
+    sourceLanguage: string;
+    targetLanguage: string;
+    domain: string;
+    serviceType: string;
+    test: {
+      id: string;
+      title: string;
+      difficulty: string;
+      instructions: string | null;
+      sourceText: string | null;
+      sourceFilePath: string | null;
+      timesUsed: number;
+      lastUsedAt: string | null;
+    };
+    selectionReason: "override" | "difficulty-match" | "fallback";
+    alternatives: PickAlternative[];
+  }
+  interface PreviewNoTest {
+    combinationId: string;
+    sourceLanguage: string;
+    targetLanguage: string;
+    domain: string;
+    serviceType: string;
+  }
+  const [picks, setPicks] = useState<PreviewPick[]>([]);
+  const [noTests, setNoTests] = useState<PreviewNoTest[]>([]);
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [expandedCombo, setExpandedCombo] = useState<string | null>(null);
+
   // Pending combinations are the only ones eligible for a test send.
   const pending = combinations.filter((c) => c.status === "pending");
 
   useEffect(() => {
-    // Pre-select all pending combinations by default when the panel opens.
+    // Pre-select all pending combinations by default when the panel opens;
+    // reset preview state so reopening always lands on the compose step.
     setSelectedIds(new Set(pending.map((c) => c.id)));
+    setStep("compose");
+    setPicks([]);
+    setNoTests([]);
+    setOverrides({});
+    setExpandedCombo(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -386,29 +434,82 @@ function SendTestsControls({
     });
   };
 
-  const handleSend = async () => {
+  const handlePreview = async () => {
     if (selectedIds.size === 0) {
       toast.error("Pick at least one combination to test");
       return;
     }
     setBusy(true);
     try {
-      await callEdgeFunction("cvp-send-tests", {
+      const res = (await callEdgeFunction("cvp-send-tests", {
         applicationId: app.id,
         combinationIds: Array.from(selectedIds),
         difficulty,
+        dryRun: true,
+        staffId,
+      })) as { data?: { picks?: PreviewPick[]; noTestAvailable?: PreviewNoTest[] } };
+      setPicks(res.data?.picks ?? []);
+      setNoTests(res.data?.noTestAvailable ?? []);
+      setOverrides({});
+      setExpandedCombo(null);
+      setStep("preview");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Preview failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSend = async () => {
+    setBusy(true);
+    try {
+      await callEdgeFunction("cvp-send-tests", {
+        applicationId: app.id,
+        combinationIds: picks.map((p) => p.combinationId),
+        difficulty,
+        overrides,
         staffId,
       });
       toast.success(
-        `V3 test invitation sent — ${selectedIds.size} combination${selectedIds.size === 1 ? "" : "s"} assigned at ${difficulty} difficulty`,
+        `V3 test invitation sent — ${picks.length} combination${picks.length === 1 ? "" : "s"} at ${difficulty} difficulty`,
       );
       setOpen(false);
+      setStep("compose");
       await onAfterAction();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Send failed");
     } finally {
       setBusy(false);
     }
+  };
+
+  const changeOverride = (combinationId: string, testId: string | null) => {
+    setOverrides((prev) => {
+      const next = { ...prev };
+      if (testId) next[combinationId] = testId;
+      else delete next[combinationId];
+      return next;
+    });
+  };
+
+  // The effective test shown for a combo = override pick from alternatives,
+  // else the server-chosen pick.
+  const effectiveTestForCombo = (p: PreviewPick) => {
+    const overrideId = overrides[p.combinationId];
+    if (!overrideId || overrideId === p.test.id) return p.test;
+    const alt = p.alternatives.find((a) => a.id === overrideId);
+    return alt
+      ? {
+          id: alt.id,
+          title: alt.title,
+          difficulty: alt.difficulty,
+          instructions: null,
+          sourceText: null,
+          sourceFilePath: null,
+          timesUsed: alt.timesUsed,
+          lastUsedAt: alt.lastUsedAt,
+        }
+      : p.test;
   };
 
   const handleSkipToApprove = async () => {
@@ -488,7 +589,7 @@ function SendTestsControls({
         </button>
       </div>
 
-      {mode === "send" && (
+      {mode === "send" && step === "compose" && (
         <>
           <div className="mb-3">
             <label className="block text-xs font-medium text-gray-700 mb-1">Difficulty</label>
@@ -547,13 +648,189 @@ function SendTestsControls({
             </button>
             <button
               type="button"
-              onClick={handleSend}
+              onClick={handlePreview}
               disabled={busy || selectedIds.size === 0}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-md disabled:opacity-50"
             >
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              Send V3 ({selectedIds.size} combo{selectedIds.size === 1 ? "" : "s"}, {difficulty})
+              Preview tests ({selectedIds.size} combo{selectedIds.size === 1 ? "" : "s"}, {difficulty}) →
             </button>
+          </div>
+        </>
+      )}
+
+      {mode === "send" && step === "preview" && (
+        <>
+          <div className="mb-3 p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-900">
+            Review the exact test that will be sent for each combination. Click a card to expand the source text + instructions. You can swap to a different test from the library where alternatives exist. Nothing has been sent yet.
+          </div>
+
+          {picks.length === 0 && noTests.length === 0 && (
+            <p className="text-xs text-gray-600">No combinations returned from preview.</p>
+          )}
+
+          {noTests.length > 0 && (
+            <div className="mb-3 p-2.5 bg-red-50 border border-red-200 rounded text-xs">
+              <strong className="text-red-800">{noTests.length} combination{noTests.length === 1 ? "" : "s"} have no matching test in the library:</strong>
+              <ul className="mt-1 list-disc list-inside text-red-700">
+                {noTests.map((n) => (
+                  <li key={n.combinationId}>
+                    {n.sourceLanguage} → {n.targetLanguage} · {n.domain} · {n.serviceType}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-red-700">Add a test to `cvp_test_library` for these, or uncheck them and come back.</p>
+            </div>
+          )}
+
+          <div className="space-y-2 max-h-[480px] overflow-y-auto">
+            {picks.map((p) => {
+              const eff = effectiveTestForCombo(p);
+              const isExpanded = expandedCombo === p.combinationId;
+              const overridden = overrides[p.combinationId] && overrides[p.combinationId] !== p.test.id;
+              return (
+                <div
+                  key={p.combinationId}
+                  className={`border rounded-md ${
+                    overridden ? "border-amber-400 bg-amber-50/40" : "border-gray-200 bg-white"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setExpandedCombo(isExpanded ? null : p.combinationId)}
+                    className="w-full text-left p-3 flex items-start gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-gray-600 mb-0.5">
+                        <span className="font-medium text-gray-900">
+                          {p.sourceLanguage} → {p.targetLanguage}
+                        </span>
+                        <span className="px-1.5 py-0.5 bg-gray-100 rounded">{p.domain}</span>
+                        <span className="px-1.5 py-0.5 bg-teal-50 text-teal-700 rounded">{p.serviceType}</span>
+                        <span className={`px-1.5 py-0.5 rounded capitalize ${
+                          p.selectionReason === "difficulty-match"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : p.selectionReason === "override"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-gray-200 text-gray-700"
+                        }`}>
+                          {p.selectionReason === "difficulty-match"
+                            ? `${eff.difficulty} match`
+                            : p.selectionReason === "override"
+                            ? "manual pick"
+                            : `${eff.difficulty} (fallback)`}
+                        </span>
+                        {overridden && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 font-semibold">
+                            SWAPPED
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm font-medium text-gray-900 truncate">{eff.title}</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">
+                        Used {eff.timesUsed}× · {eff.lastUsedAt ? `last ${format(new Date(eff.lastUsedAt), "MMM d yyyy")}` : "never used"}
+                      </div>
+                    </div>
+                    <span className="text-gray-400 text-xs flex-shrink-0 pt-1">
+                      {isExpanded ? "▾" : "▸"}
+                    </span>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-200 p-3 space-y-3 bg-gray-50/60">
+                      {p.alternatives.length > 0 && (
+                        <div>
+                          <label className="block text-[11px] font-medium text-gray-700 mb-1">
+                            Swap to different test ({p.alternatives.length} alternative{p.alternatives.length === 1 ? "" : "s"})
+                          </label>
+                          <select
+                            value={overrides[p.combinationId] ?? p.test.id}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              changeOverride(p.combinationId, v === p.test.id ? null : v);
+                            }}
+                            disabled={busy}
+                            className="w-full text-xs p-1.5 border border-gray-300 rounded bg-white"
+                          >
+                            <option value={p.test.id}>
+                              {p.test.title} — {p.test.difficulty} (server pick)
+                            </option>
+                            {p.alternatives.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.title} — {a.difficulty} · used {a.timesUsed}×
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {eff.instructions && (
+                        <div>
+                          <div className="text-[11px] font-medium text-gray-700 mb-1">Instructions to applicant</div>
+                          <div className="text-xs text-gray-800 whitespace-pre-wrap bg-white border border-gray-200 rounded p-2">
+                            {eff.instructions}
+                          </div>
+                        </div>
+                      )}
+
+                      {eff.sourceText && (
+                        <div>
+                          <div className="text-[11px] font-medium text-gray-700 mb-1">Source text (what the applicant will see)</div>
+                          <pre className="text-xs text-gray-800 whitespace-pre-wrap bg-white border border-gray-200 rounded p-2 max-h-60 overflow-y-auto font-mono">
+                            {eff.sourceText}
+                          </pre>
+                        </div>
+                      )}
+
+                      {!eff.sourceText && eff.sourceFilePath && (
+                        <div className="text-[11px] text-gray-600 italic">
+                          Test source is a file (<code>{eff.sourceFilePath}</code>) — applicant downloads it from the test page.
+                        </div>
+                      )}
+
+                      {/* Alt was picked but we don't have the full text client-side;
+                          show a hint. Backend always sends the full text; we just
+                          can't preview swapped text without an extra fetch. */}
+                      {overridden && (
+                        <p className="text-[11px] text-amber-800 italic">
+                          Note: the preview above shows the server-picked test's content. Your swap will be honoured at send time — the actual source + instructions of "{picks.find(pp => pp.combinationId === p.combinationId)?.alternatives.find(a => a.id === overrides[p.combinationId])?.title}" will be used in the applicant's test.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setStep("compose")}
+              disabled={busy}
+              className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+            >
+              ← Edit selection
+            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={busy}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={busy || picks.length === 0}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-md disabled:opacity-50"
+              >
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Send V3 to applicant ({picks.length} test{picks.length === 1 ? "" : "s"})
+              </button>
+            </div>
           </div>
         </>
       )}
