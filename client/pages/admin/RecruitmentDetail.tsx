@@ -1378,6 +1378,497 @@ function StaffReplyModal({
   );
 }
 
+// ---------- References section (Phase E) ----------
+
+interface ReferenceRequestRow {
+  id: string;
+  request_token: string;
+  request_token_expires_at: string;
+  status: "sent" | "contacts_received" | "expired" | "cancelled";
+  staff_message: string | null;
+  contacts_submitted_at: string | null;
+  created_at: string;
+}
+
+interface ReferenceRow {
+  id: string;
+  request_id: string;
+  reference_name: string;
+  reference_email: string;
+  reference_company: string | null;
+  reference_relationship: string | null;
+  status: "requested" | "received" | "declined" | "expired" | "invalid";
+  feedback_text: string | null;
+  feedback_rating: number | null;
+  feedback_received_at: string | null;
+  declined_at: string | null;
+  decline_reason: string | null;
+  ai_analysis: {
+    sentiment?: string;
+    strength_score?: number;
+    themes?: string[];
+    red_flags?: string[];
+    summary?: string;
+    verifies_relationship?: boolean;
+  } | null;
+  ai_analysis_error: string | null;
+  created_at: string;
+}
+
+function ReferencesSection({
+  applicationId,
+  callEdgeFunction,
+  staffId,
+}: {
+  applicationId: string;
+  callEdgeFunction: (
+    fnSlug: string,
+    body: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  staffId?: string;
+}) {
+  const [requests, setRequests] = useState<ReferenceRequestRow[]>([]);
+  const [refs, setRefs] = useState<ReferenceRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [{ data: reqs }, { data: rs }] = await Promise.all([
+          supabase
+            .from("cvp_application_reference_requests")
+            .select("id, request_token, request_token_expires_at, status, staff_message, contacts_submitted_at, created_at")
+            .eq("application_id", applicationId)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("cvp_application_references")
+            .select("id, request_id, reference_name, reference_email, reference_company, reference_relationship, status, feedback_text, feedback_rating, feedback_received_at, declined_at, decline_reason, ai_analysis, ai_analysis_error, created_at")
+            .eq("application_id", applicationId)
+            .order("created_at", { ascending: false }),
+        ]);
+        if (cancelled) return;
+        setRequests((reqs ?? []) as ReferenceRequestRow[]);
+        setRefs((rs ?? []) as ReferenceRow[]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId, reloadKey]);
+
+  const refresh = () => setReloadKey((n) => n + 1);
+
+  return (
+    <Section title={`References (${refs.length})`}>
+      <div className="mt-2 flex items-center justify-between mb-3">
+        <p className="text-xs text-gray-600">
+          {requests.length === 0
+            ? "No reference requests sent yet."
+            : `${requests.length} request${requests.length === 1 ? "" : "s"} sent · ${refs.length} reference${refs.length === 1 ? "" : "s"} captured`}
+        </p>
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-md"
+        >
+          <Mail className="w-3.5 h-3.5" />
+          Request references
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="text-xs text-gray-500">Loading…</p>
+      ) : (
+        <div className="space-y-2">
+          {requests.map((req) => (
+            <div
+              key={req.id}
+              className="border border-gray-200 rounded p-3 bg-white"
+            >
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-gray-900">
+                  Request sent {format(new Date(req.created_at), "MMM d, yyyy")}
+                </span>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                    req.status === "contacts_received"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : req.status === "sent"
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-gray-100 text-gray-700"
+                  }`}
+                >
+                  {req.status.replace(/_/g, " ")}
+                </span>
+              </div>
+              {req.contacts_submitted_at && (
+                <div className="mt-1 text-[11px] text-gray-500">
+                  Applicant submitted contacts {format(new Date(req.contacts_submitted_at), "MMM d, yyyy h:mm a")}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {refs.map((r) => (
+            <div
+              key={r.id}
+              className={`border rounded p-3 ${
+                r.status === "received"
+                  ? "border-emerald-200 bg-emerald-50/40"
+                  : r.status === "declined"
+                  ? "border-gray-300 bg-gray-50"
+                  : "border-gray-200 bg-white"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 truncate">
+                    {r.reference_name}
+                    <span className="ml-2 text-xs text-gray-500 font-normal">
+                      &lt;{r.reference_email}&gt;
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-gray-600">
+                    {r.reference_company || "—"}
+                    {r.reference_relationship ? ` · ${r.reference_relationship}` : ""}
+                  </div>
+                </div>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                    r.status === "received"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : r.status === "declined"
+                      ? "bg-gray-200 text-gray-700"
+                      : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {r.status}
+                </span>
+              </div>
+
+              {r.status === "received" && (
+                <div className="mt-2 text-xs">
+                  {r.ai_analysis && (
+                    <div className="mb-2 p-2 bg-white border border-gray-200 rounded">
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                        <span className="font-semibold text-gray-700">AI analysis</span>
+                        {r.ai_analysis.sentiment && (
+                          <span className="px-1.5 py-0.5 bg-gray-100 rounded capitalize">
+                            {r.ai_analysis.sentiment}
+                          </span>
+                        )}
+                        {typeof r.ai_analysis.strength_score === "number" && (
+                          <span className="px-1.5 py-0.5 bg-teal-100 text-teal-800 rounded">
+                            score {r.ai_analysis.strength_score}/5
+                          </span>
+                        )}
+                        {r.feedback_rating !== null && (
+                          <span className="px-1.5 py-0.5 bg-gray-100 rounded">
+                            ref rated {r.feedback_rating}/5
+                          </span>
+                        )}
+                      </div>
+                      {r.ai_analysis.summary && (
+                        <p className="text-gray-800">{r.ai_analysis.summary}</p>
+                      )}
+                      {Array.isArray(r.ai_analysis.themes) && r.ai_analysis.themes.length > 0 && (
+                        <div className="mt-1">
+                          <span className="text-gray-500">Themes:</span>{" "}
+                          {r.ai_analysis.themes.join(" · ")}
+                        </div>
+                      )}
+                      {Array.isArray(r.ai_analysis.red_flags) && r.ai_analysis.red_flags.length > 0 && (
+                        <div className="mt-1 text-red-700">
+                          <strong>Red flags:</strong>
+                          <ul className="list-disc list-inside">
+                            {r.ai_analysis.red_flags.map((f, i) => (
+                              <li key={i}>{f}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {r.ai_analysis_error && !r.ai_analysis && (
+                    <div className="mb-2 text-amber-700">
+                      AI analysis failed: {r.ai_analysis_error}
+                    </div>
+                  )}
+                  {r.feedback_text && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-gray-600 hover:text-gray-900">
+                        Show full reference text
+                      </summary>
+                      <pre className="mt-1 p-2 bg-gray-50 border border-gray-200 rounded whitespace-pre-wrap text-gray-800">
+                        {r.feedback_text}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              )}
+
+              {r.status === "declined" && r.decline_reason && (
+                <p className="mt-2 text-xs italic text-gray-600">
+                  Declined: {r.decline_reason}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showModal && (
+        <RequestReferencesModal
+          applicationId={applicationId}
+          staffId={staffId}
+          callEdgeFunction={callEdgeFunction}
+          onClose={() => setShowModal(false)}
+          onSent={async () => {
+            setShowModal(false);
+            refresh();
+          }}
+        />
+      )}
+    </Section>
+  );
+}
+
+function RequestReferencesModal({
+  applicationId,
+  staffId,
+  callEdgeFunction,
+  onClose,
+  onSent,
+}: {
+  applicationId: string;
+  staffId?: string;
+  callEdgeFunction: (
+    fnSlug: string,
+    body: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  onClose: () => void;
+  onSent: () => Promise<void>;
+}) {
+  const [instructions, setInstructions] = useState("");
+  const [bodyDraft, setBodyDraft] = useState("");
+  const [subject, setSubject] = useState("");
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"none" | "draft" | "preview" | "send">("none");
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [step, setStep] = useState<"compose" | "preview">("compose");
+
+  const handleDraftWithAI = async () => {
+    setBusy("draft");
+    setAiError(null);
+    try {
+      const res = await callEdgeFunction("cvp-request-references", {
+        applicationId,
+        useAIDraft: true,
+        aiInstructions: instructions,
+        dryRun: true,
+      });
+      const d = (res as { data?: Record<string, unknown> }).data ?? {};
+      if (d.aiDraftMessage) setBodyDraft(String(d.aiDraftMessage));
+      if (d.subject && !subject) setSubject(String(d.subject));
+      if (d.aiError) setAiError(String(d.aiError));
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy("none");
+    }
+  };
+
+  const handlePreview = async () => {
+    setBusy("preview");
+    try {
+      const res = await callEdgeFunction("cvp-request-references", {
+        applicationId,
+        staffMessage: bodyDraft,
+        editedSubject: subject,
+        dryRun: true,
+      });
+      const d = (res as { data?: Record<string, unknown> }).data ?? {};
+      if (d.html) {
+        setPreviewHtml(String(d.html));
+        setStep("preview");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Preview failed");
+    } finally {
+      setBusy("none");
+    }
+  };
+
+  const handleSend = async () => {
+    setBusy("send");
+    try {
+      await callEdgeFunction("cvp-request-references", {
+        applicationId,
+        staffMessage: bodyDraft,
+        editedSubject: subject,
+        staffId,
+      });
+      toast.success("V18 sent — applicant will fill in their references");
+      await onSent();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setBusy("none");
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl w-full max-w-3xl p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Request references
+            {step === "preview" && (
+              <span className="ml-2 text-xs font-normal text-gray-500">· Preview</span>
+            )}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy !== "none"}
+            className="text-gray-400 hover:text-gray-700 disabled:opacity-50"
+          >
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        {step === "compose" && (
+          <>
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Optional: guide the AI draft (internal — not sent to applicant)
+              </label>
+              <textarea
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                placeholder="e.g. 'Ask specifically about Spanish→English medical work; mention we're targeting clinical-trial localisation'"
+                rows={2}
+                disabled={busy !== "none"}
+                className="w-full p-2 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+              />
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleDraftWithAI}
+                  disabled={busy !== "none"}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-md disabled:opacity-50"
+                >
+                  {busy === "draft" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  {busy === "draft" ? "Drafting…" : "Draft with AI (Opus)"}
+                </button>
+              </div>
+              {aiError && (
+                <p className="mt-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                  AI draft failed: {aiError}. Type the body manually below.
+                </p>
+              )}
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Subject</label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Leave blank for default 'Please share your references'"
+                disabled={busy !== "none"}
+                className="w-full p-2 border border-gray-300 rounded-md text-sm disabled:opacity-50"
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Body (plain text — wraps inside our standard email)
+              </label>
+              <textarea
+                value={bodyDraft}
+                onChange={(e) => setBodyDraft(e.target.value)}
+                placeholder="Type the body, or click Draft with AI above."
+                rows={8}
+                disabled={busy !== "none"}
+                className="w-full p-2 border border-gray-300 rounded-md text-sm disabled:opacity-50 font-mono"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={busy !== "none"}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePreview}
+                disabled={busy !== "none"}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md disabled:opacity-50"
+              >
+                {busy === "preview" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Preview →
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "preview" && previewHtml && (
+          <>
+            <p className="text-xs text-gray-600 mb-2">
+              <strong>Subject:</strong> {subject || "Please share your references"}
+            </p>
+            <div className="mb-3 border border-gray-200 rounded overflow-hidden">
+              <iframe
+                title="V18 preview"
+                srcDoc={previewHtml}
+                className="w-full"
+                style={{ height: "440px" }}
+              />
+            </div>
+            <div className="flex justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setStep("compose")}
+                disabled={busy !== "none"}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+              >
+                ← Edit
+              </button>
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={busy !== "none"}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-md disabled:opacity-50"
+              >
+                {busy === "send" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {busy === "send" ? "Sending…" : "Send V18 to applicant"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   if (value === null || value === undefined || value === "") return null;
   return (
@@ -3359,6 +3850,15 @@ export default function RecruitmentDetail() {
                 }}
               />
             </Section>
+          )}
+
+          {/* References (Phase E) */}
+          {id && (
+            <ReferencesSection
+              applicationId={id}
+              callEdgeFunction={callEdgeFunction}
+              staffId={session?.staffId}
+            />
           )}
 
           {/* Timeline */}
