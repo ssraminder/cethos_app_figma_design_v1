@@ -556,6 +556,39 @@ interface FlagFeedback {
   verdict: FlagVerdict;
   staff_notes: string | null;
   updated_at: string;
+  /** When the verdict was matched via similarity rather than exact flag_text
+   *  (e.g. AI reworded the flag on a reassess) the UI flags it so staff can
+   *  see provenance. */
+  _matchedViaFuzzy?: boolean;
+  _matchedFromText?: string;
+}
+
+// Tokenise a flag string for similarity matching: lowercase, drop punctuation,
+// drop short stopwords. Phrases like "Canadian clients" and "clients in Canada"
+// still overlap meaningfully.
+function tokensOf(s: string): Set<string> {
+  const stop = new Set([
+    "the", "a", "an", "and", "or", "of", "to", "for", "in", "on", "at", "by",
+    "is", "was", "has", "have", "had", "be", "been", "with", "from", "as",
+    "this", "that", "these", "those", "their", "its", "it", "but", "not",
+  ]);
+  return new Set(
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((t) => t.length > 2 && !stop.has(t)),
+  );
+}
+
+function jaccard(a: string, b: string): number {
+  const ta = tokensOf(a);
+  const tb = tokensOf(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let intersect = 0;
+  for (const t of ta) if (tb.has(t)) intersect += 1;
+  const union = ta.size + tb.size - intersect;
+  return intersect / union;
 }
 
 const VERDICT_LABELS: Record<FlagVerdict, string> = {
@@ -992,9 +1025,16 @@ function FlagWithFeedback({
           {flagText}
         </div>
         {hasAnyFeedback && (
-          <span className="flex-shrink-0 inline-flex items-center gap-0.5 text-[10px] font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5">
+          <span
+            className="flex-shrink-0 inline-flex items-center gap-0.5 text-[10px] font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5"
+            title={
+              existing?._matchedViaFuzzy
+                ? `Verdict migrated from an earlier (reworded) version of this flag: "${existing._matchedFromText}"`
+                : undefined
+            }
+          >
             <CheckCircle className="w-3 h-3" />
-            Verdicted
+            {existing?._matchedViaFuzzy ? "Verdicted (migrated)" : "Verdicted"}
           </span>
         )}
       </div>
@@ -1541,13 +1581,30 @@ export default function RecruitmentDetail() {
     }
   };
 
+  // Exact match first, then fuzzy (Jaccard similarity ≥ 0.5). Fuzzy keeps
+  // prior verdicts attached to flags that AI reworded during a reassess.
   const findFeedback = (
     flagKind: FlagKind,
     flagText: string,
-  ): FlagFeedback | undefined =>
-    flagFeedback.find(
+  ): FlagFeedback | undefined => {
+    const exact = flagFeedback.find(
       (f) => f.flag_kind === flagKind && f.flag_text === flagText,
     );
+    if (exact) return exact;
+    const candidates = flagFeedback.filter((f) => f.flag_kind === flagKind);
+    let best: FlagFeedback | null = null;
+    let bestScore = 0.5; // threshold
+    for (const c of candidates) {
+      const s = jaccard(flagText, c.flag_text);
+      if (s > bestScore) {
+        best = c;
+        bestScore = s;
+      }
+    }
+    return best
+      ? { ...best, _matchedViaFuzzy: true, _matchedFromText: best.flag_text }
+      : undefined;
+  };
 
   const handleSaveDraft = async () => {
     setSavingDraft(true);
