@@ -29,6 +29,7 @@ import {
   ArrowLeftRight,
   Tablet,
   GraduationCap,
+  FileType2,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -100,6 +101,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "PDF Manager",
     path: "/admin/pdf-manager",
     icon: Files,
+    section: "Tools",
+  },
+  {
+    label: "PDF → Word (OCR)",
+    path: "/admin/pdf-to-word",
+    icon: FileType2,
     section: "Tools",
   },
   {
