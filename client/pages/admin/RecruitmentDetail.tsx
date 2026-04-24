@@ -326,6 +326,279 @@ function CvSection({ applicationId, cvStoragePath, callEdgeFunction }: CvSection
   );
 }
 
+// ---------- Send Tests controls (Phase D) ----------
+
+interface SendTestsControlsProps {
+  app: Application;
+  combinations: TestCombination[];
+  languages: Record<string, string>;
+  callEdgeFunction: (
+    fnSlug: string,
+    body: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  staffId?: string;
+  onAfterAction: () => Promise<void>;
+}
+
+function SendTestsControls({
+  app,
+  combinations,
+  languages,
+  callEdgeFunction,
+  staffId,
+  onAfterAction,
+}: SendTestsControlsProps) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"send" | "skip">("send");
+  const [difficulty, setDifficulty] = useState<"beginner" | "intermediate" | "advanced">(
+    (app.ai_prescreening_result as Record<string, unknown> | null)?.suggested_test_difficulty as
+      | "beginner"
+      | "intermediate"
+      | "advanced"
+      | undefined ?? "intermediate",
+  );
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [skipNotes, setSkipNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  // Pending combinations are the only ones eligible for a test send.
+  const pending = combinations.filter((c) => c.status === "pending");
+
+  useEffect(() => {
+    // Pre-select all pending combinations by default when the panel opens.
+    setSelectedIds(new Set(pending.map((c) => c.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Only render the controls when the app is in a state where sending tests
+  // makes sense. "prescreened" is the canonical ready-to-test state; also
+  // allow staff_review for flexibility.
+  const eligibleStatuses = ["prescreened", "staff_review"];
+  if (!eligibleStatuses.includes(app.status)) return null;
+  if (pending.length === 0) return null;
+
+  const toggle = (id: string) => {
+    setSelectedIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  };
+
+  const handleSend = async () => {
+    if (selectedIds.size === 0) {
+      toast.error("Pick at least one combination to test");
+      return;
+    }
+    setBusy(true);
+    try {
+      await callEdgeFunction("cvp-send-tests", {
+        applicationId: app.id,
+        combinationIds: Array.from(selectedIds),
+        difficulty,
+        staffId,
+      });
+      toast.success(
+        `V3 test invitation sent — ${selectedIds.size} combination${selectedIds.size === 1 ? "" : "s"} assigned at ${difficulty} difficulty`,
+      );
+      setOpen(false);
+      await onAfterAction();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSkipToApprove = async () => {
+    if (skipNotes.trim().length < 10) {
+      toast.error("Explain why you're skipping testing (min 10 chars)");
+      return;
+    }
+    setBusy(true);
+    try {
+      await callEdgeFunction("cvp-approve-application", {
+        applicationId: app.id,
+        staffId,
+        staffNotes: `[TESTING SKIPPED] ${skipNotes.trim()}`,
+      });
+      toast.success("Application approved without testing — V11 welcome sent");
+      setOpen(false);
+      await onAfterAction();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Approve failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="mt-2 flex items-center justify-between p-3 bg-teal-50 border border-teal-200 rounded-md">
+        <div className="text-sm">
+          <strong className="text-teal-800">{pending.length} combination{pending.length === 1 ? "" : "s"} ready to test.</strong>{" "}
+          <span className="text-teal-700">
+            AI suggests <em>{difficulty}</em> difficulty.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-md flex-shrink-0"
+        >
+          Send tests / skip →
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 p-4 bg-white border-2 border-teal-300 rounded-lg">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-900">Test assignment</h3>
+        <button type="button" onClick={() => setOpen(false)} disabled={busy} className="text-gray-400 hover:text-gray-700 text-xs">
+          Close
+        </button>
+      </div>
+
+      {/* Mode selector */}
+      <div className="flex gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setMode("send")}
+          className={`px-3 py-2 text-xs font-medium rounded-md border ${
+            mode === "send"
+              ? "bg-teal-600 border-teal-600 text-white"
+              : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          Send V3 test invitation
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("skip")}
+          className={`px-3 py-2 text-xs font-medium rounded-md border ${
+            mode === "skip"
+              ? "bg-emerald-600 border-emerald-600 text-white"
+              : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          Skip testing — approve based on experience
+        </button>
+      </div>
+
+      {mode === "send" && (
+        <>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Difficulty</label>
+            <div className="flex gap-2">
+              {(["beginner", "intermediate", "advanced"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDifficulty(d)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md border capitalize ${
+                    difficulty === d
+                      ? "bg-teal-100 border-teal-500 text-teal-800"
+                      : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {d}
+                  {(app.ai_prescreening_result as Record<string, unknown> | null)?.suggested_test_difficulty === d &&
+                    " (AI)"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Combinations to test ({selectedIds.size}/{pending.length})
+            </label>
+            <div className="space-y-1 border border-gray-200 rounded-md p-2 max-h-60 overflow-y-auto">
+              {pending.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 text-xs p-1.5 hover:bg-gray-50 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(c.id)}
+                    onChange={() => toggle(c.id)}
+                    disabled={busy}
+                    className="rounded"
+                  />
+                  <span className="font-medium">
+                    {languages[c.source_language_id] || "?"} → {languages[c.target_language_id] || "?"}
+                  </span>
+                  {c.domain && <span className="px-1.5 py-0.5 bg-gray-100 rounded">{c.domain}</span>}
+                  {c.service_type && <span className="px-1.5 py-0.5 bg-teal-50 text-teal-700 rounded">{c.service_type}</span>}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              disabled={busy}
+              className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={busy || selectedIds.size === 0}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-md disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Send V3 ({selectedIds.size} combo{selectedIds.size === 1 ? "" : "s"}, {difficulty})
+            </button>
+          </div>
+        </>
+      )}
+
+      {mode === "skip" && (
+        <>
+          <div className="mb-3 p-3 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-900">
+            <strong>No test will be sent.</strong> Application goes straight to approved, V11 welcome email fires with the password-setup link, and all pending combinations are approved at their default rates. Use this for senior applicants where the CV + references are enough.
+          </div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Why are you skipping testing? (captured in cvp_application_decisions; AI may use the first line in the welcome email)
+          </label>
+          <textarea
+            value={skipNotes}
+            onChange={(e) => setSkipNotes(e.target.value)}
+            placeholder="e.g. '20+ years verified experience with Kaiser Permanente + HealthLink BC; Canadian references confirmed; no test needed'"
+            rows={3}
+            disabled={busy}
+            className="w-full p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+          />
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              disabled={busy}
+              className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSkipToApprove}
+              disabled={busy || skipNotes.trim().length < 10}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Skip test &amp; approve
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ConversationTimeline({
   items,
   onAcknowledge,
@@ -2214,6 +2487,14 @@ export default function RecruitmentDetail() {
 
           {/* Test Combinations */}
           <Section title={`Test Combinations (${combinations.length})`} defaultOpen={combinations.length > 0}>
+            <SendTestsControls
+              app={app}
+              combinations={combinations}
+              languages={languages}
+              callEdgeFunction={callEdgeFunction}
+              staffId={session?.staffId}
+              onAfterAction={fetchData}
+            />
             {combinations.length === 0 ? (
               <p className="text-sm text-gray-500 mt-2">No test combinations.</p>
             ) : (
