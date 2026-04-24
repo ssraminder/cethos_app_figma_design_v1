@@ -28,11 +28,13 @@ import {
   Files,
   ArrowLeftRight,
   Tablet,
+  GraduationCap,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { StaffNotificationProvider, useStaffNotifications } from "../../context/StaffNotificationContext";
 import NotificationProvider from "./NotificationProvider";
+import { countIncompleteAssignments } from "../../lib/trainings";
 
 interface NavItem {
   label: string;
@@ -123,6 +125,19 @@ const NAV_ITEMS: NavItem[] = [
     icon: UserPlus,
     section: "Vendors",
   },
+  {
+    label: "Trainings",
+    path: "/admin/trainings",
+    icon: GraduationCap,
+    section: "Trainings",
+  },
+  {
+    label: "Vendor Management",
+    path: "/admin/trainings/vendor-management",
+    icon: GraduationCap,
+    section: "Trainings",
+    isChild: true,
+  },
   { label: "Staff", path: "/admin/staff", icon: Users, section: "Management" },
   {
     label: "Kiosk Devices",
@@ -212,10 +227,26 @@ const NAV_ITEMS: NavItem[] = [
 function AdminLayoutInner() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [incompleteTrainings, setIncompleteTrainings] = useState(0);
   const location = useLocation();
   const branding = useBranding();
   const { session, signOut } = useAdminAuthContext();
   const { unreadCount, newOrderCount, resetNewOrders, newQuoteCount, resetNewQuotes } = useStaffNotifications();
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    countIncompleteAssignments()
+      .then((n) => {
+        if (!cancelled) setIncompleteTrainings(n);
+      })
+      .catch(() => {
+        /* silent — badge is nice-to-have */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, location.pathname]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -316,6 +347,13 @@ function AdminLayoutInner() {
                 sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
               }`}>
                 {(sidebarOpen || isMobile) ? (newQuoteCount > 99 ? "99+" : newQuoteCount) : ""}
+              </span>
+            )}
+            {item.path === "/admin/trainings" && incompleteTrainings > 0 && (
+              <span className={`flex-shrink-0 bg-teal-500 text-white text-xs font-bold rounded-full ${
+                sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
+              }`}>
+                {(sidebarOpen || isMobile) ? incompleteTrainings : ""}
               </span>
             )}
           </NavLink>
