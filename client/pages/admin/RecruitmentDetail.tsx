@@ -545,50 +545,74 @@ function FlagWithFeedback({
   const [notesDraft, setNotesDraft] = useState(existing?.staff_notes ?? "");
   const [saving, setSaving] = useState<FlagVerdict | null>(null);
   const [savingNotes, setSavingNotes] = useState(false);
+  // Transient "Saved ✓" indicator. Cleared by a setTimeout after each save.
+  const [justSaved, setJustSaved] = useState<null | "verdict" | "notes" | "cleared" | "error">(null);
   const isRed = flagKind === "red_flag";
 
   useEffect(() => {
     setNotesDraft(existing?.staff_notes ?? "");
   }, [existing?.staff_notes]);
 
+  const flashSaved = (kind: "verdict" | "notes" | "cleared" | "error") => {
+    setJustSaved(kind);
+    window.setTimeout(() => setJustSaved((s) => (s === kind ? null : s)), 2000);
+  };
+
   const handleVerdictClick = async (verdict: FlagVerdict) => {
     if (saving) return;
     setSaving(verdict);
     try {
-      // Toggle off if clicking the same verdict
+      // Toggle off if clicking the same verdict (and no notes) — acts as clear
       if (existing?.verdict === verdict && !notesDraft) {
         await onClear();
+        flashSaved("cleared");
       } else {
         await onSave(verdict, notesDraft || null);
+        flashSaved("verdict");
       }
+    } catch {
+      flashSaved("error");
     } finally {
       setSaving(null);
     }
   };
 
   const handleNotesSave = async () => {
-    if (!existing?.verdict) {
-      // Need a verdict before notes can be saved alone
-      return;
-    }
+    if (!existing?.verdict) return;
     setSavingNotes(true);
     try {
       await onSave(existing.verdict, notesDraft || null);
+      flashSaved("notes");
+    } catch {
+      flashSaved("error");
     } finally {
       setSavingNotes(false);
     }
   };
 
+  // Any non-empty existing means something has been saved by staff.
+  const hasAnyFeedback = Boolean(existing?.verdict);
+
   return (
     <li
-      className={`px-3 py-2 rounded-md border ${
-        isRed ? "bg-red-50/50 border-red-100" : "bg-emerald-50/50 border-emerald-100"
+      className={`px-3 py-2 rounded-md border transition-colors ${
+        hasAnyFeedback
+          ? "bg-white border-teal-300 ring-1 ring-teal-200"
+          : isRed
+          ? "bg-red-50/50 border-red-100"
+          : "bg-emerald-50/50 border-emerald-100"
       }`}
     >
-      <div
-        className={`text-sm ${isRed ? "text-red-800" : "text-emerald-900"}`}
-      >
-        {flagText}
+      <div className="flex items-start gap-2">
+        <div className={`flex-1 text-sm ${isRed ? "text-red-800" : "text-emerald-900"}`}>
+          {flagText}
+        </div>
+        {hasAnyFeedback && (
+          <span className="flex-shrink-0 inline-flex items-center gap-0.5 text-[10px] font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5">
+            <CheckCircle className="w-3 h-3" />
+            Verdicted
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         {(Object.keys(VERDICT_LABELS) as FlagVerdict[]).map((v) => {
@@ -608,6 +632,22 @@ function FlagWithFeedback({
             </button>
           );
         })}
+        {/* Transient save confirmation */}
+        {justSaved === "verdict" && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 animate-in fade-in slide-in-from-right-1">
+            <CheckCircle className="w-3.5 h-3.5" /> Saved
+          </span>
+        )}
+        {justSaved === "cleared" && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-600">
+            <XCircle className="w-3.5 h-3.5" /> Cleared
+          </span>
+        )}
+        {justSaved === "error" && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-600">
+            <AlertTriangle className="w-3.5 h-3.5" /> Save failed
+          </span>
+        )}
         <button
           type="button"
           onClick={() => setNotesOpen((o) => !o)}
@@ -625,10 +665,15 @@ function FlagWithFeedback({
             rows={2}
             className="w-full text-xs p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500"
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end items-center gap-2">
             {!existing?.verdict && (
               <span className="text-[11px] text-gray-500 self-center">
                 Pick a verdict above first to save notes.
+              </span>
+            )}
+            {justSaved === "notes" && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                <CheckCircle className="w-3.5 h-3.5" /> Notes saved
               </span>
             )}
             <button
@@ -945,7 +990,7 @@ export default function RecruitmentDetail() {
     verdict: FlagVerdict,
     notes: string | null,
   ) => {
-    if (!id) return;
+    if (!id) throw new Error("No application ID");
     try {
       await callEdgeFunction("cvp-save-flag-feedback", {
         applicationId: id,
@@ -979,11 +1024,12 @@ export default function RecruitmentDetail() {
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save verdict");
+      throw err; // re-throw so FlagWithFeedback's inline "Save failed" indicator fires
     }
   };
 
   const clearFlagFeedback = async (flagKind: FlagKind, flagText: string) => {
-    if (!id) return;
+    if (!id) throw new Error("No application ID");
     try {
       await callEdgeFunction("cvp-save-flag-feedback", {
         applicationId: id,
@@ -998,6 +1044,7 @@ export default function RecruitmentDetail() {
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to clear verdict");
+      throw err; // re-throw so FlagWithFeedback's inline indicator fires
     }
   };
 
