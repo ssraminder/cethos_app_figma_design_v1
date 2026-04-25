@@ -84,6 +84,13 @@ serve(async (req) => {
     const files = (body.files || []) as FileRequest[];
     const customerToken = (body.customerToken as string) || "";
     const targetCustomerId = (body.targetCustomerId as string) || "";
+    const verificationToken = (body.verificationToken as string) || "";
+
+    // Diagnostic: log the incoming manifest so production failures are debuggable
+    try {
+      const manifest = (files || []).slice(0, 5).map((f) => ({ name: f?.name, size: f?.size, type: f?.type }));
+      console.log("upload-start incoming", JSON.stringify({ count: Array.isArray(files) ? files.length : null, manifest }));
+    } catch {}
 
     if (!Array.isArray(files) || files.length === 0) {
       return jsonResponse(400, { success: false, error: "No files specified" });
@@ -110,12 +117,18 @@ serve(async (req) => {
           error: `${f.name}: exceeds 100 MB`,
         });
       }
-      if (!ACCEPTED_MIME_TYPES.has(f.type)) {
+      // Browsers sometimes send an empty/odd content-type (especially for
+      // .heic, .tif, older .doc). Fall back to file-extension lookup.
+      const effectiveMime = ACCEPTED_MIME_TYPES.has(f.type)
+        ? f.type
+        : inferMimeFromName(f.name);
+      if (!effectiveMime || !ACCEPTED_MIME_TYPES.has(effectiveMime)) {
         return jsonResponse(400, {
           success: false,
-          error: `${f.name}: file type not allowed`,
+          error: `${f.name}: file type not allowed (received "${f.type || "unknown"}")`,
         });
       }
+      f.type = effectiveMime;
     }
 
     // Resolve context. Order matters: explicit admin (staff JWT + targetCustomerId)
@@ -154,6 +167,24 @@ serve(async (req) => {
         success: false,
         error: "Admin uploads require targetCustomerId",
       });
+    }
+
+    // Anon flow requires a fresh OTP-derived verification token. Customer and
+    // admin contexts are already authenticated and skip this check.
+    if (context === "anon") {
+      if (!verificationToken) {
+        return jsonResponse(401, {
+          success: false,
+          error: "Verification required — please verify your email or phone first",
+        });
+      }
+      const ok = await isValidVerificationToken(supabaseAdmin, verificationToken);
+      if (!ok) {
+        return jsonResponse(401, {
+          success: false,
+          error: "Verification expired — please request a new code",
+        });
+      }
     }
 
     const submissionId = crypto.randomUUID();
@@ -275,6 +306,25 @@ async function getCustomerIdFromToken(
   }
 }
 
+async function isValidVerificationToken(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  token: string,
+): Promise<boolean> {
+  try {
+    const tokenHash = await sha256(token);
+    const { data } = await supabaseAdmin
+      .from("secure_upload_otps")
+      .select("id, verification_expires_at")
+      .eq("verification_token_hash", tokenHash)
+      .gt("verification_expires_at", new Date().toISOString())
+      .limit(1)
+      .maybeSingle();
+    return !!data;
+  } catch {
+    return false;
+  }
+}
+
 async function customerExists(
   supabaseAdmin: ReturnType<typeof createClient>,
   customerId: string,
@@ -295,6 +345,28 @@ async function sha256(input: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuf))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+const EXT_TO_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  heic: "image/heic",
+  heif: "image/heif",
+  docx:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  doc: "application/msword",
+};
+
+function inferMimeFromName(name: string): string | null {
+  const dot = name.lastIndexOf(".");
+  if (dot === -1) return null;
+  const ext = name.slice(dot + 1).toLowerCase();
+  return EXT_TO_MIME[ext] || null;
 }
 
 function sanitizeFilename(name: string): string {

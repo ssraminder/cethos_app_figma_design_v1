@@ -28,6 +28,7 @@ import {
   Packer,
   Paragraph,
   TextRun,
+  ImageRun,
   HeadingLevel,
   Table,
   TableRow,
@@ -68,6 +69,7 @@ interface RequestBody {
   autoRotate: boolean;
   formatting: Formatting;
   pageSize: PageSize;
+  embedPageImages: boolean;
 }
 
 interface MistralPage {
@@ -104,6 +106,7 @@ serve(async (req) => {
       .includes(body.pageSize as PageSize)
       ? (body.pageSize as PageSize)
       : "source";
+    const embedPageImages = body.embedPageImages === true;
 
     if (!jobId || !storagePath) {
       return jsonResponse(400, {
@@ -113,7 +116,7 @@ serve(async (req) => {
     }
 
     console.log(
-      `📄 PDF→Word (Mistral) — job ${jobId} (${filename}) langs=[${sourceLanguages.join(",")}] quality=${qualityMode} autoRotate=${autoRotate} formatting=${formatting} pageSize=${pageSize}`,
+      `📄 PDF→Word (Mistral) — job ${jobId} (${filename}) langs=[${sourceLanguages.join(",")}] quality=${qualityMode} autoRotate=${autoRotate} formatting=${formatting} pageSize=${pageSize} embedImages=${embedPageImages}`,
     );
 
     // 1. Sign the input PDF so Mistral can fetch it
@@ -124,8 +127,9 @@ serve(async (req) => {
       throw new Error(`Failed to sign input URL: ${signErr?.message || "no URL"}`);
     }
 
-    // 2. Run Mistral OCR
-    const includeImages = qualityMode === "thorough";
+    // 2. Run Mistral OCR. Request page images when we need them either for the
+    //    Pixtral correction pass OR for embedding into the DOCX.
+    const includeImages = qualityMode === "thorough" || embedPageImages;
     const ocrResult = await callMistralOcr({
       mistralKey,
       documentUrl: signed.signedUrl,
@@ -134,15 +138,18 @@ serve(async (req) => {
     const ocrPages = ocrResult.pages;
     console.log(`  ↳ Mistral OCR done: ${ocrPages.length} pages`);
 
-    // 3. Optional Pixtral correction pass (thorough mode)
-    let finalPages: Array<{ index: number; markdown: string }> = ocrPages.map((p) => ({
+    // 3. Optional Pixtral correction pass (thorough mode). We carry the
+    //    page image through alongside the markdown so step 5 can embed it.
+    type PageWithImage = { index: number; markdown: string; image_base64?: string };
+    let finalPages: PageWithImage[] = ocrPages.map((p) => ({
       index: p.index,
       markdown: p.markdown || "",
+      image_base64: p.image_base64,
     }));
 
     if (qualityMode === "thorough") {
       console.log(`  ↳ Running Pixtral correction pass on ${ocrPages.length} pages`);
-      const corrected: typeof finalPages = [];
+      const corrected: PageWithImage[] = [];
       for (const page of ocrPages) {
         try {
           const improved = await correctWithPixtral({
@@ -153,23 +160,26 @@ serve(async (req) => {
             formatting,
             autoRotate,
           });
-          corrected.push({ index: page.index, markdown: improved });
+          corrected.push({ index: page.index, markdown: improved, image_base64: page.image_base64 });
         } catch (pixErr) {
           console.warn(`  ↳ Pixtral failed for page ${page.index}:`, pixErr);
-          corrected.push({ index: page.index, markdown: page.markdown || "" });
+          corrected.push({ index: page.index, markdown: page.markdown || "", image_base64: page.image_base64 });
         }
       }
       finalPages = corrected;
     }
 
     // 4. Combine pages — page breaks between them
-    const pagesMarkdown = finalPages
-      .sort((a, b) => a.index - b.index)
-      .map((p) => p.markdown.trim());
+    finalPages.sort((a, b) => a.index - b.index);
+    const pagesMarkdown = finalPages.map((p) => p.markdown.trim());
+    const pageImages = embedPageImages
+      ? finalPages.map((p) => p.image_base64 || null)
+      : null;
 
     // 5. Build DOCX
     const docxBytes = await buildDocx({
       pagesMarkdown,
+      pageImages,
       pageSize,
       formatting,
     });
@@ -206,6 +216,7 @@ serve(async (req) => {
       pages: finalPages.length,
       engine: "mistral",
       qualityMode,
+      embedPageImages,
     });
   } catch (error: unknown) {
     const msg = (error instanceof Error ? error.message : String(error)).slice(0, 500);
@@ -358,6 +369,7 @@ async function correctWithPixtral(args: {
 
 async function buildDocx(args: {
   pagesMarkdown: string[];
+  pageImages: (string | null)[] | null;
   pageSize: PageSize;
   formatting: Formatting;
 }): Promise<Uint8Array> {
@@ -366,6 +378,26 @@ async function buildDocx(args: {
   const children: Array<Paragraph | Table> = [];
 
   for (let i = 0; i < args.pagesMarkdown.length; i++) {
+    // If embedding is on, prepend a heading + the page image before the OCR text.
+    if (args.pageImages && args.pageImages[i]) {
+      const imgPara = makeImageParagraph(args.pageImages[i] as string, args.pageSize);
+      if (imgPara) {
+        children.push(
+          new Paragraph({
+            heading: HeadingLevel.HEADING_3,
+            children: [new TextRun({ text: `Page ${i + 1} — source image` })],
+          }),
+        );
+        children.push(imgPara);
+        children.push(
+          new Paragraph({
+            heading: HeadingLevel.HEADING_3,
+            children: [new TextRun({ text: `Page ${i + 1} — extracted text` })],
+          }),
+        );
+      }
+    }
+
     const md = args.pagesMarkdown[i];
     const parsed = renderMarkdown(md, args.formatting);
     children.push(...parsed);
@@ -408,6 +440,42 @@ async function buildDocx(args: {
 
   const buffer = await Packer.toBuffer(doc);
   return new Uint8Array(buffer);
+}
+
+// Decode a base64 / data-URL string and embed it as an ImageRun sized to fit
+// roughly within the page's printable area (~6.5" wide on Letter/A4).
+function makeImageParagraph(
+  imageBase64OrDataUrl: string,
+  pageSize: PageSize,
+): Paragraph | null {
+  try {
+    const b64 = imageBase64OrDataUrl.startsWith("data:")
+      ? imageBase64OrDataUrl.slice(imageBase64OrDataUrl.indexOf(",") + 1)
+      : imageBase64OrDataUrl;
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    // Width is ~6.3" of printable area at 96 DPI ≈ 605 px. A4 has slightly
+    // narrower printable area but the image scales fine. Height defaults to
+    // letter-aspect; if the original is portrait this looks correct, if it's
+    // landscape it'll just be a bit short — translator can still read it.
+    const widthPx = pageSize === "legal" ? 600 : 605;
+    const heightPx = Math.round(widthPx * 1.29); // 11/8.5 ≈ 1.29
+
+    return new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [
+        new ImageRun({
+          data: bytes,
+          transformation: { width: widthPx, height: heightPx },
+        }),
+      ],
+    });
+  } catch (err) {
+    console.warn("makeImageParagraph: failed to embed image:", err);
+    return null;
+  }
 }
 
 function resolvePageSize(size: PageSize): { width: number; height: number } {

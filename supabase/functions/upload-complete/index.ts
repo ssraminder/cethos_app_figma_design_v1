@@ -110,12 +110,16 @@ serve(async (req) => {
           error: `${f.originalName}: invalid size`,
         });
       }
-      if (!ACCEPTED_MIME_TYPES.has(f.mimeType)) {
+      const effectiveMime = ACCEPTED_MIME_TYPES.has(f.mimeType)
+        ? f.mimeType
+        : inferMimeFromName(f.originalName);
+      if (!effectiveMime || !ACCEPTED_MIME_TYPES.has(effectiveMime)) {
         return jsonResponse(400, {
           success: false,
-          error: `${f.originalName}: file type not allowed`,
+          error: `${f.originalName}: file type not allowed (received "${f.mimeType || "unknown"}")`,
         });
       }
+      f.mimeType = effectiveMime;
     }
 
     // Re-derive context server-side from auth/tokens. We don't trust the
@@ -391,6 +395,28 @@ async function customerExists(
     .limit(1)
     .maybeSingle();
   return !!data;
+}
+
+const EXT_TO_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  heic: "image/heic",
+  heif: "image/heif",
+  docx:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  doc: "application/msword",
+};
+
+function inferMimeFromName(name: string): string | null {
+  const dot = name.lastIndexOf(".");
+  if (dot === -1) return null;
+  const ext = name.slice(dot + 1).toLowerCase();
+  return EXT_TO_MIME[ext] || null;
 }
 
 async function sha256(input: string): Promise<string> {

@@ -119,6 +119,7 @@ export default function PdfToWordPage() {
   const [autoRotate, setAutoRotate] = useState<boolean>(true);
   const [formatting, setFormatting] = useState<Formatting>("preserve");
   const [pageSize, setPageSize] = useState<PageSize>("source");
+  const [embedPageImages, setEmbedPageImages] = useState<boolean>(false);
 
   const isProcessingRef = useRef(false);
   const jobsRef = useRef<Job[]>(jobs);
@@ -233,6 +234,7 @@ export default function PdfToWordPage() {
               autoRotate,
               formatting,
               pageSize,
+              embedPageImages,
             },
           },
         );
@@ -529,6 +531,27 @@ export default function PdfToWordPage() {
                 Auto-rotate sideways / upside-down pages
               </label>
             </div>
+          </div>
+
+          {/* Embed page images — separate row so the explanation has room */}
+          <div className="border-t pt-3">
+            <label className="inline-flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={embedPageImages}
+                onChange={(e) => setEmbedPageImages(e.target.checked)}
+                disabled={disabledBecauseActive}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">Embed source page images in output</span>
+                <span className="block text-xs text-muted-foreground">
+                  Each page&apos;s scanned image is inserted into the DOCX above
+                  the extracted text — so the translator can always cross-reference
+                  the original layout. Larger output file.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
       )}
