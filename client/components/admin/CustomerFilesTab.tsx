@@ -10,6 +10,8 @@ import {
   Upload,
   FileText,
   Download,
+  DownloadCloud,
+  ExternalLink,
   CheckCircle,
   Loader2,
   XCircle,
@@ -21,6 +23,7 @@ import {
   User,
   Briefcase,
 } from "lucide-react";
+import JSZip from "jszip";
 import { supabase } from "@/lib/supabase";
 
 interface CustomerFile {
@@ -73,6 +76,49 @@ export default function CustomerFilesTab({ customerId }: Props) {
   >("idle");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const downloadAll = async (allFiles: CustomerFile[]) => {
+    const downloadable = allFiles.filter((f) => !!f.downloadUrl);
+    if (downloadable.length === 0) {
+      toast.info("No files ready to download");
+      return;
+    }
+    const tid = toast.loading(`Zipping ${downloadable.length} files…`);
+    try {
+      const zip = new JSZip();
+      await Promise.all(
+        downloadable.map(async (f) => {
+          const resp = await fetch(f.downloadUrl as string);
+          if (!resp.ok) throw new Error(`${f.originalFilename}: HTTP ${resp.status}`);
+          const blob = await resp.blob();
+          let name = f.originalFilename;
+          let suffix = 1;
+          while (zip.file(name)) {
+            const dot = f.originalFilename.lastIndexOf(".");
+            name =
+              dot === -1
+                ? `${f.originalFilename} (${suffix})`
+                : `${f.originalFilename.slice(0, dot)} (${suffix})${f.originalFilename.slice(dot)}`;
+            suffix++;
+          }
+          zip.file(name, blob);
+        }),
+      );
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `customer-${customerId.slice(0, 8)}-files.zip`;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Downloaded ${downloadable.length} files`, { id: tid });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to build zip", { id: tid });
+    }
+  };
 
   const fetchFiles = useCallback(async () => {
     setLoading(true);
@@ -401,18 +447,30 @@ export default function CustomerFilesTab({ customerId }: Props) {
           <h3 className="text-sm font-semibold">
             Files ({files.length})
           </h3>
-          <button
-            onClick={fetchFiles}
-            disabled={loading}
-            className="px-2.5 py-1 text-xs border rounded-md hover:bg-muted flex items-center gap-1.5"
-          >
-            {loading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3.5 h-3.5" />
+          <div className="flex gap-1.5">
+            {files.filter((f) => !!f.downloadUrl).length > 1 && (
+              <button
+                onClick={() => downloadAll(files)}
+                className="px-2.5 py-1 text-xs border rounded-md hover:bg-muted flex items-center gap-1.5"
+                title="Download all clean files as a single zip"
+              >
+                <DownloadCloud className="w-3.5 h-3.5" />
+                Download all (zip)
+              </button>
             )}
-            Refresh
-          </button>
+            <button
+              onClick={fetchFiles}
+              disabled={loading}
+              className="px-2.5 py-1 text-xs border rounded-md hover:bg-muted flex items-center gap-1.5"
+            >
+              {loading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              Refresh
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -470,15 +528,30 @@ export default function CustomerFilesTab({ customerId }: Props) {
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       {f.downloadUrl ? (
-                        <a
-                          href={f.downloadUrl}
-                          download={f.originalFilename}
-                          rel="noopener"
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs border rounded-md hover:bg-muted"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          Download
-                        </a>
+                        <div className="inline-flex gap-1">
+                          {(f.mimeType === "application/pdf" ||
+                            f.mimeType.startsWith("image/")) && (
+                            <a
+                              href={f.downloadUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs border rounded-md hover:bg-muted"
+                              title="Open in a new tab"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              Preview
+                            </a>
+                          )}
+                          <a
+                            href={f.downloadUrl}
+                            download={f.originalFilename}
+                            rel="noopener"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs border rounded-md hover:bg-muted"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Download
+                          </a>
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">
                           {f.scanStatus === "scan_pending"

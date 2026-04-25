@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import {
   FileText,
   Download,
+  DownloadCloud,
   CheckCircle,
   ShieldCheck,
   ShieldAlert,
@@ -22,8 +23,10 @@ import {
   Hash,
   RefreshCw,
   Eye,
+  ExternalLink,
   X,
 } from 'lucide-react';
+import JSZip from 'jszip';
 import { supabase } from '../../lib/supabase';
 
 const BUCKET = 'public-submissions';
@@ -123,6 +126,71 @@ export default function PublicSubmissionsPage() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  const previewFile = async (path: string) => {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(path, 300);
+    if (error || !data?.signedUrl) {
+      toast.error(`Couldn't sign preview: ${error?.message || 'no URL'}`);
+      return;
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const downloadAll = async (submission: Submission) => {
+    const downloadable = (submission.file_paths || []).filter(
+      (f) => f.scanStatus === 'scan_clean' || f.scanStatus === 'scan_error',
+    );
+    if (downloadable.length === 0) {
+      toast.info('No files ready to download');
+      return;
+    }
+    const tid = toast.loading(`Zipping ${downloadable.length} files…`);
+    try {
+      const zip = new JSZip();
+      // Resolve signed URLs in parallel, then fetch each blob and add to zip.
+      await Promise.all(
+        downloadable.map(async (f) => {
+          const { data: signed, error: signErr } = await supabase.storage
+            .from(BUCKET)
+            .createSignedUrl(f.path, 300);
+          if (signErr || !signed?.signedUrl) {
+            throw new Error(`${f.originalName}: ${signErr?.message || 'no URL'}`);
+          }
+          const resp = await fetch(signed.signedUrl);
+          if (!resp.ok) throw new Error(`${f.originalName}: HTTP ${resp.status}`);
+          const blob = await resp.blob();
+          // Avoid filename collisions inside the zip
+          let name = f.originalName;
+          let suffix = 1;
+          while (zip.file(name)) {
+            const dot = f.originalName.lastIndexOf('.');
+            name =
+              dot === -1
+                ? `${f.originalName} (${suffix})`
+                : `${f.originalName.slice(0, dot)} (${suffix})${f.originalName.slice(dot)}`;
+            suffix++;
+          }
+          zip.file(name, blob);
+        }),
+      );
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      const safeName = (submission.full_name || 'submission').replace(/[^a-zA-Z0-9]+/g, '_');
+      a.href = url;
+      a.download = `${safeName}-${submission.id.slice(0, 8)}.zip`;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Downloaded ${downloadable.length} files`, { id: tid });
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to build zip', { id: tid });
+    }
   };
 
   const counts = useMemo(() => {
@@ -296,6 +364,8 @@ export default function PublicSubmissionsPage() {
           submission={detail}
           onClose={() => setDetail(null)}
           onDownload={downloadFile}
+          onPreview={previewFile}
+          onDownloadAll={() => downloadAll(detail)}
           onMarkReviewed={markReviewed}
           onCreateQuote={() => {
             navigate(`/admin/orders/new?prefillFromSubmission=${detail.id}`);
@@ -372,12 +442,16 @@ function DetailModal({
   submission,
   onClose,
   onDownload,
+  onPreview,
+  onDownloadAll,
   onMarkReviewed,
   onCreateQuote,
 }: {
   submission: Submission;
   onClose: () => void;
   onDownload: (path: string, filename: string) => void;
+  onPreview: (path: string) => void;
+  onDownloadAll: () => void;
   onMarkReviewed: (id: string) => void;
   onCreateQuote: () => void;
 }) {
@@ -475,15 +549,33 @@ function DetailModal({
 
           {/* Files */}
           <div>
-            <div className="text-xs uppercase text-muted-foreground mb-2">
-              Files ({submission.file_paths?.length || 0})
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs uppercase text-muted-foreground">
+                Files ({submission.file_paths?.length || 0})
+              </div>
+              {(submission.file_paths || []).filter(
+                (f) => f.scanStatus === 'scan_clean' || f.scanStatus === 'scan_error',
+              ).length > 1 && (
+                <button
+                  onClick={onDownloadAll}
+                  className="px-2.5 py-1 text-xs border rounded-md hover:bg-muted flex items-center gap-1"
+                  title="Download all clean files as a single zip"
+                >
+                  <DownloadCloud className="w-3.5 h-3.5" />
+                  Download all (zip)
+                </button>
+              )}
             </div>
             <ul className="space-y-1.5">
               {(submission.file_paths || []).map((f) => {
                 const fileInfected = f.scanStatus === 'scan_infected';
                 const filePending = f.scanStatus === 'scan_pending';
-                const canDownload =
+                const canAccess =
                   f.scanStatus === 'scan_clean' || f.scanStatus === 'scan_error';
+                const previewable =
+                  canAccess &&
+                  (f.mimeType === 'application/pdf' ||
+                    f.mimeType.startsWith('image/'));
                 return (
                   <li
                     key={f.path}
@@ -497,13 +589,21 @@ function DetailModal({
                       </div>
                     </div>
                     <ScanBadge status={f.scanStatus} />
+                    {previewable && (
+                      <button
+                        onClick={() => onPreview(f.path)}
+                        className="px-2.5 py-1 text-xs border rounded-md hover:bg-muted flex items-center gap-1"
+                        title="Open in a new tab"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Preview
+                      </button>
+                    )}
                     <button
-                      disabled={!canDownload}
+                      disabled={!canAccess}
                       onClick={() => onDownload(f.path, f.originalName)}
                       className={`px-2.5 py-1 text-xs border rounded-md flex items-center gap-1 ${
-                        canDownload
-                          ? 'hover:bg-muted'
-                          : 'opacity-40 cursor-not-allowed'
+                        canAccess ? 'hover:bg-muted' : 'opacity-40 cursor-not-allowed'
                       }`}
                       title={
                         fileInfected

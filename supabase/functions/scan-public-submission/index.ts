@@ -41,8 +41,24 @@ const VT_POLL_TIMEOUT_MS = 2 * 60 * 1000;
 
 // Free tier is 4 req/min. We enforce ~16s/file. BATCH_SIZE=3 → ~48s of
 // throttle per invocation, leaving plenty of headroom under the 150s wall.
-const BATCH_SIZE = 3;
+// Edge function wall time on the free tier is 150s. With ~30s/file VT poll
+// and a 16s rate-limit delay, 2 files per invocation fits comfortably and
+// leaves time for the self-reinvocation fetch to flush.
+const BATCH_SIZE = 2;
 const PER_FILE_DELAY_MS = 16 * 1000;
+
+// Use EdgeRuntime.waitUntil when available so the self-fetch survives the
+// outer response. Falls back to a plain catch on older runtimes.
+function scheduleAfterResponse(p: Promise<unknown>): void {
+  try {
+    // @ts-ignore Deno type for EdgeRuntime is not in deno.land/std types
+    if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any).waitUntil) {
+      (EdgeRuntime as any).waitUntil(p);
+      return;
+    }
+  } catch {}
+  p.catch(() => {});
+}
 
 type Kind = "submission" | "customer-batch";
 
@@ -184,19 +200,17 @@ async function handleSubmission(
     })
     .eq("id", submissionId);
 
-  // If more remain, fire self for the next batch (don't await).
   if (remaining > 0) {
-    fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/scan-public-submission`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-      },
-      body: JSON.stringify({ kind: "submission", submissionId }),
-    }).catch(() => {});
+    scheduleAfterResponse(
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/scan-public-submission`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "submission", submissionId }),
+      }),
+    );
   }
 
-  console.log(`anon ${submissionId} batch done, remaining=${remaining}, overall=${overall}`);
+  console.log(`anon ${submissionId} batch done remaining=${remaining} overall=${overall}`);
   return jsonResponse(200, {
     success: true,
     submissionId,
@@ -289,22 +303,21 @@ async function handleCustomerBatch(
     .eq("scan_status", "scan_pending");
 
   if ((remaining ?? 0) > 0) {
-    fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/scan-public-submission`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-      },
-      body: JSON.stringify({
-        kind: "customer-batch",
-        uploadSessionId,
-        customerId,
+    scheduleAfterResponse(
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/scan-public-submission`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "customer-batch",
+          uploadSessionId,
+          customerId,
+        }),
       }),
-    }).catch(() => {});
+    );
   }
 
   console.log(
-    `customer ${uploadSessionId} batch done, remaining=${remaining ?? 0}`,
+    `customer ${uploadSessionId} batch done remaining=${remaining ?? 0}`,
   );
   return jsonResponse(200, {
     success: true,
