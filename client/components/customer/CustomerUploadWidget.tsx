@@ -1,11 +1,12 @@
 // client/components/customer/CustomerUploadWidget.tsx
 //
-// Inline upload widget for the customer portal. Used inside CustomerDocuments
-// (and previously inside the standalone /dashboard/upload page). Sends
-// `customerToken` to upload-start / upload-complete edge functions; files
-// land in customer-files/<customerId>/customer/<sessionId>/...
+// Inline upload widget for the customer portal, used inside CustomerDocuments.
+// Sends `customerToken` to upload-start / upload-complete edge functions;
+// files land in customer-files/<customerId>/customer/<sessionId>/...
+// Mirrors the secure-upload DocsStep folder UX: one card per labelled
+// folder, drop files into the card, "Add another folder" to add more.
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Upload,
   X,
@@ -13,8 +14,10 @@ import {
   Loader2,
   XCircle,
   ShieldCheck,
-  ChevronDown,
   ChevronUp,
+  Folder,
+  FolderPlus,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "../../context/CustomerAuthContext";
 import { supabase } from "../../lib/supabase";
@@ -46,16 +49,26 @@ interface LocalFile {
   error?: string;
 }
 
+interface FolderGroup {
+  id: string;
+  name: string;
+  files: LocalFile[];
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function newGroupId(): string {
+  return `g-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 interface Props {
   /** Called after a successful upload so the parent can refresh its file list. */
   onUploaded?: () => void;
-  /** Start collapsed (compact button) vs expanded (full dropzone). Default: collapsed. */
+  /** Start collapsed (compact button) vs expanded (full dropzones). */
   defaultExpanded?: boolean;
 }
 
@@ -68,9 +81,9 @@ export default function CustomerUploadWidget({
 
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [message, setMessage] = useState("");
-  const [files, setFiles] = useState<LocalFile[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [groups, setGroups] = useState<FolderGroup[]>([
+    { id: newGroupId(), name: "", files: [] },
+  ]);
   const [phase, setPhase] = useState<
     "idle" | "starting" | "uploading" | "finalizing"
   >("idle");
@@ -79,64 +92,82 @@ export default function CustomerUploadWidget({
   const isUploading =
     phase === "starting" || phase === "uploading" || phase === "finalizing";
 
+  const totalFiles = useMemo(
+    () => groups.reduce((sum, g) => sum + g.files.length, 0),
+    [groups],
+  );
+
   const validateFile = (file: File): string | null => {
-    if (!ACCEPTED_MIME_TYPES.has(file.type)) {
+    if (!ACCEPTED_MIME_TYPES.has(file.type))
       return `${file.name}: file type not allowed`;
-    }
     if (file.size > MAX_FILE_SIZE) return `${file.name}: exceeds 100 MB`;
     if (file.size === 0) return `${file.name}: empty file`;
     return null;
   };
 
-  const addFiles = useCallback(
-    (incoming: File[]) => {
-      const next: LocalFile[] = [];
+  const addFilesTo = useCallback(
+    (groupId: string, incoming: File[]) => {
       const errs: string[] = [];
+      const newFiles: LocalFile[] = [];
+      const allFiles = groups.flatMap((g) => g.files);
       for (const f of incoming) {
-        if (
-          files.some((x) => x.file.name === f.name && x.file.size === f.size)
-        )
+        if (allFiles.some((x) => x.file.name === f.name && x.file.size === f.size))
           continue;
         const err = validateFile(f);
         if (err) {
           errs.push(err);
           continue;
         }
-        next.push({
+        newFiles.push({
           id: `${f.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           file: f,
           status: "pending",
           progress: 0,
         });
       }
-      if (files.length + next.length > MAX_FILES) {
+      if (totalFiles + newFiles.length > MAX_FILES) {
         errs.push(`At most ${MAX_FILES} files per upload`);
       }
-      if (errs.length > 0) setError(errs.join(" \u00b7 "));
-      else setError(null);
-      if (next.length > 0) {
-        setFiles((prev) => [...prev, ...next].slice(0, MAX_FILES));
+      setError(errs.length > 0 ? errs.join(" \u00b7 ") : null);
+      if (newFiles.length > 0) {
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.id === groupId
+              ? { ...g, files: [...g.files, ...newFiles].slice(0, MAX_FILES) }
+              : g,
+          ),
+        );
       }
     },
-    [files],
+    [groups, totalFiles],
   );
 
-  const removeFile = (id: string) =>
-    setFiles((prev) => prev.filter((f) => f.id !== id));
+  const removeFile = (groupId: string, fileId: string) => {
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id === groupId ? { ...g, files: g.files.filter((f) => f.id !== fileId) } : g,
+      ),
+    );
+  };
 
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
-      if (e.dataTransfer.files) addFiles(Array.from(e.dataTransfer.files));
-    },
-    [addFiles],
-  );
+  const addFolder = () => {
+    setGroups((prev) => [...prev, { id: newGroupId(), name: "", files: [] }]);
+  };
+
+  const renameFolder = (groupId: string, name: string) => {
+    setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, name } : g)));
+  };
+
+  const removeFolder = (groupId: string) => {
+    setGroups((prev) => {
+      if (prev.length <= 1) return prev.map((g) => ({ ...g, name: "", files: [] }));
+      return prev.filter((g) => g.id !== groupId);
+    });
+  };
 
   const handleSubmit = async () => {
     if (isUploading) return;
-    if (files.length === 0) {
+    if (totalFiles === 0) {
       setError("Please attach at least one document");
       return;
     }
@@ -149,10 +180,11 @@ export default function CustomerUploadWidget({
     setError(null);
 
     try {
+      const allFiles = groups.flatMap((g) => g.files);
       const startRes = await supabase.functions.invoke("upload-start", {
         body: {
           customerToken,
-          files: files.map((f) => ({
+          files: allFiles.map((f) => ({
             name: f.file.name,
             size: f.file.size,
             type: f.file.type,
@@ -180,48 +212,88 @@ export default function CustomerUploadWidget({
 
       setPhase("uploading");
       for (const u of uploads) {
-        const localFile = files.find((f) => f.file.name === u.originalName);
-        if (!localFile) continue;
-        setFiles((prev) =>
-          prev.map((f) =>
-            f.id === localFile.id
-              ? { ...f, status: "uploading" as const, progress: 0 }
-              : f,
+        // Find the file in whichever group it's in
+        let localFile: LocalFile | undefined;
+        let groupId: string | undefined;
+        for (const g of groups) {
+          const found = g.files.find((f) => f.file.name === u.originalName);
+          if (found) {
+            localFile = found;
+            groupId = g.id;
+            break;
+          }
+        }
+        if (!localFile || !groupId) continue;
+
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.id === groupId
+              ? {
+                  ...g,
+                  files: g.files.map((f) =>
+                    f.id === localFile!.id
+                      ? { ...f, status: "uploading" as const, progress: 0 }
+                      : f,
+                  ),
+                }
+              : g,
           ),
         );
+
         try {
           await uploadWithProgress({
             url: u.signedUrl,
             file: localFile.file,
             onProgress: (p) =>
-              setFiles((prev) =>
-                prev.map((f) =>
-                  f.id === localFile.id ? { ...f, progress: p } : f,
+              setGroups((prev) =>
+                prev.map((g) =>
+                  g.id === groupId
+                    ? {
+                        ...g,
+                        files: g.files.map((f) =>
+                          f.id === localFile!.id ? { ...f, progress: p } : f,
+                        ),
+                      }
+                    : g,
                 ),
               ),
           });
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === localFile.id
+          setGroups((prev) =>
+            prev.map((g) =>
+              g.id === groupId
                 ? {
-                    ...f,
-                    status: "success" as const,
-                    progress: 100,
-                    storagePath: u.path,
+                    ...g,
+                    files: g.files.map((f) =>
+                      f.id === localFile!.id
+                        ? {
+                            ...f,
+                            status: "success" as const,
+                            progress: 100,
+                            storagePath: u.path,
+                          }
+                        : f,
+                    ),
                   }
-                : f,
+                : g,
             ),
           );
         } catch (err) {
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === localFile.id
+          setGroups((prev) =>
+            prev.map((g) =>
+              g.id === groupId
                 ? {
-                    ...f,
-                    status: "error" as const,
-                    error: (err as Error)?.message || "Upload failed",
+                    ...g,
+                    files: g.files.map((f) =>
+                      f.id === localFile!.id
+                        ? {
+                            ...f,
+                            status: "error" as const,
+                            error: (err as Error)?.message || "Upload failed",
+                          }
+                        : f,
+                    ),
                   }
-                : f,
+                : g,
             ),
           );
           throw err;
@@ -237,12 +309,22 @@ export default function CustomerUploadWidget({
           message: message.trim() || undefined,
           submittedFrom: "customer_portal",
           files: uploads.map((u) => {
-            const lf = files.find((f) => f.file.name === u.originalName);
+            let lf: LocalFile | undefined;
+            let folder = "";
+            for (const g of groups) {
+              const found = g.files.find((f) => f.file.name === u.originalName);
+              if (found) {
+                lf = found;
+                folder = g.name.trim();
+                break;
+              }
+            }
             return {
               path: u.path,
               originalName: u.originalName,
               size: lf?.file.size ?? 0,
               mimeType: lf?.file.type ?? "application/octet-stream",
+              folder: folder || undefined,
             };
           }),
         },
@@ -256,7 +338,7 @@ export default function CustomerUploadWidget({
       }
 
       // Reset
-      setFiles([]);
+      setGroups([{ id: newGroupId(), name: "", files: [] }]);
       setMessage("");
       setPhase("idle");
       onUploaded?.();
@@ -280,8 +362,7 @@ export default function CustomerUploadWidget({
                 Upload documents
               </p>
               <p className="text-xs text-gray-500 truncate">
-                Send PDFs, images, or Word files. Up to {MAX_FILES} files,
-                100 MB each.
+                Group files into folders. Up to {MAX_FILES} files, 100 MB each.
               </p>
             </div>
           </div>
@@ -297,7 +378,6 @@ export default function CustomerUploadWidget({
     );
   }
 
-  // Expanded state — full dropzone
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
@@ -337,103 +417,49 @@ export default function CustomerUploadWidget({
         />
       </div>
 
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDragging(true);
-        }}
-        onDragEnter={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDragging(true);
-        }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDragging(false);
-        }}
-        onDrop={onDrop}
-        onClick={() => !isUploading && fileInputRef.current?.click()}
-        className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-          isDragging
-            ? "border-teal-500 bg-teal-50"
-            : "border-gray-300 hover:border-teal-500 hover:bg-gray-50"
-        } ${isUploading ? "pointer-events-none opacity-50" : ""}`}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={ACCEPTED_EXTENSIONS}
-          multiple
-          onChange={(e) => {
-            if (e.target.files) addFiles(Array.from(e.target.files));
-            e.target.value = "";
-          }}
-          className="hidden"
-          disabled={isUploading}
-        />
-        <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-        <p className="text-sm text-gray-700">
-          <span className="font-semibold text-teal-600">Click to upload</span>{" "}
-          or drag and drop
-        </p>
-        <p className="text-xs text-gray-500 mt-1">
-          PDF, images, Word documents · max 100 MB each · up to {MAX_FILES} files
-        </p>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="block text-xs font-medium text-gray-600">
+          Files
+        </label>
+        <span className="text-xs text-gray-500">
+          {totalFiles}/{MAX_FILES} files
+        </span>
       </div>
 
-      {files.length > 0 && (
-        <ul className="mt-3 space-y-1.5">
-          {files.map((f) => (
-            <li
-              key={f.id}
-              className="flex items-center gap-3 p-2.5 bg-gray-50 rounded-md text-sm"
-            >
-              <StatusIcon status={f.status} />
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-gray-900 truncate">
-                  {f.file.name}
-                </p>
-                <div className="text-xs text-gray-500 flex items-center gap-2">
-                  <span>{formatBytes(f.file.size)}</span>
-                  {f.status === "uploading" && <span>{f.progress}%</span>}
-                  {f.status === "error" && f.error && (
-                    <span className="text-red-500 truncate">{f.error}</span>
-                  )}
-                </div>
-                {f.status === "uploading" && (
-                  <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
-                    <div
-                      className="bg-teal-500 h-1 rounded-full transition-all duration-200"
-                      style={{ width: `${f.progress}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-              {!isUploading && (
-                <button
-                  type="button"
-                  onClick={() => removeFile(f.id)}
-                  className="p-1 hover:bg-gray-200 rounded"
-                  aria-label={`Remove ${f.file.name}`}
-                >
-                  <X className="w-4 h-4 text-gray-500" />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="space-y-3">
+        {groups.map((g, i) => (
+          <FolderCard
+            key={g.id}
+            group={g}
+            index={i}
+            isOnly={groups.length === 1}
+            disabled={isUploading}
+            onRename={(name) => renameFolder(g.id, name)}
+            onRemove={() => removeFolder(g.id)}
+            onAddFiles={(files) => addFilesTo(g.id, files)}
+            onRemoveFile={(fileId) => removeFile(g.id, fileId)}
+          />
+        ))}
+      </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2">
+      <button
+        type="button"
+        onClick={addFolder}
+        disabled={isUploading}
+        className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 text-xs text-teal-700 border border-dashed border-teal-300 rounded-lg hover:bg-teal-50 disabled:opacity-50"
+      >
+        <FolderPlus className="w-3.5 h-3.5" />
+        Add another folder
+      </button>
+
+      <div className="mt-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs text-gray-500">
           <ShieldCheck className="w-3.5 h-3.5 text-green-600" />
           Encrypted · scanned · linked to your account
         </div>
         <button
           onClick={handleSubmit}
-          disabled={isUploading || files.length === 0}
+          disabled={isUploading || totalFiles === 0}
           className="px-4 py-2 rounded-md bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
           {phase === "starting" && (
@@ -457,11 +483,147 @@ export default function CustomerUploadWidget({
           {phase === "idle" && (
             <>
               <Upload className="w-4 h-4" />
-              Upload {files.length > 0 ? `(${files.length})` : ""}
+              Upload {totalFiles > 0 ? `(${totalFiles})` : ""}
             </>
           )}
         </button>
       </div>
+    </div>
+  );
+}
+
+function FolderCard(props: {
+  group: FolderGroup;
+  index: number;
+  isOnly: boolean;
+  disabled: boolean;
+  onRename: (name: string) => void;
+  onRemove: () => void;
+  onAddFiles: (files: File[]) => void;
+  onRemoveFile: (fileId: string) => void;
+}) {
+  const { group, index, isOnly, disabled, onRename, onRemove, onAddFiles, onRemoveFile } = props;
+  const [isDragging, setIsDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="border border-gray-200 rounded-md p-3 bg-white">
+      <div className="flex items-center gap-2 mb-2">
+        <Folder className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <input
+          type="text"
+          value={group.name}
+          onChange={(e) => onRename(e.target.value)}
+          placeholder={
+            index === 0 ? "Folder name (optional, e.g. Project 1)" : `Folder ${index + 1} name`
+          }
+          disabled={disabled}
+          maxLength={80}
+          className="flex-1 px-2 py-1 text-sm border-0 border-b border-transparent focus:border-teal-500 focus:outline-none bg-transparent"
+        />
+        <span className="text-xs text-gray-400 flex-shrink-0">
+          {group.files.length} file{group.files.length === 1 ? "" : "s"}
+        </span>
+        {!isOnly && !disabled && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-red-500"
+            title="Remove this folder and its files"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(true);
+        }}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(false);
+          if (e.dataTransfer.files) onAddFiles(Array.from(e.dataTransfer.files));
+        }}
+        onClick={() => !disabled && inputRef.current?.click()}
+        className={`border-2 border-dashed rounded-md p-4 text-center cursor-pointer transition-colors ${
+          isDragging
+            ? "border-teal-500 bg-teal-50"
+            : "border-gray-300 hover:border-teal-500 hover:bg-gray-50"
+        } ${disabled ? "pointer-events-none opacity-50" : ""}`}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ACCEPTED_EXTENSIONS}
+          multiple
+          onChange={(e) => {
+            if (e.target.files) onAddFiles(Array.from(e.target.files));
+            e.target.value = "";
+          }}
+          className="hidden"
+          disabled={disabled}
+        />
+        <Upload className="w-6 h-6 text-gray-400 mx-auto mb-1" />
+        <p className="text-xs text-gray-700">
+          <span className="font-semibold text-teal-600">Click to upload</span>{" "}
+          or drag and drop
+        </p>
+      </div>
+
+      {group.files.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {group.files.map((f) => (
+            <li
+              key={f.id}
+              className="flex items-center gap-2 p-2 bg-gray-50 rounded-md text-sm"
+            >
+              <StatusIcon status={f.status} />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-gray-900 truncate">{f.file.name}</p>
+                <div className="text-xs text-gray-500 flex items-center gap-2">
+                  <span>{formatBytes(f.file.size)}</span>
+                  {f.status === "uploading" && <span>{f.progress}%</span>}
+                  {f.status === "error" && f.error && (
+                    <span className="text-red-500 truncate">{f.error}</span>
+                  )}
+                </div>
+                {f.status === "uploading" && (
+                  <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
+                    <div
+                      className="bg-teal-500 h-1 rounded-full transition-all duration-200"
+                      style={{ width: `${f.progress}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveFile(f.id)}
+                  className="p-1 hover:bg-gray-200 rounded"
+                  aria-label={`Remove ${f.file.name}`}
+                >
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

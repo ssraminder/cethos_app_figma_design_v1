@@ -11,6 +11,7 @@ import {
   Trophy,
   FilePen,
   File,
+  Folder,
   Loader2,
   ShieldCheck,
   ShieldAlert,
@@ -26,6 +27,7 @@ interface UnassignedFile {
   uploadedByType: "customer" | "admin";
   uploadedByStaffName: string | null;
   scanStatus: "scan_pending" | "scan_clean" | "scan_infected" | "scan_error";
+  folder: string | null;
   createdAt: string;
   downloadUrl: string | null;
 }
@@ -414,70 +416,112 @@ function UnassignedFilesView({
     );
   }
 
+  // Group by folder. Keep insertion order; null/empty folder lands at the end.
+  const groupedByFolder: Array<{ folder: string | null; files: UnassignedFile[] }> = (() => {
+    const map = new Map<string, UnassignedFile[]>();
+    for (const f of files) {
+      const key = f.folder?.trim() || "";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(f);
+    }
+    const out: Array<{ folder: string | null; files: UnassignedFile[] }> = [];
+    for (const [key, arr] of map.entries()) {
+      if (key !== "") out.push({ folder: key, files: arr });
+    }
+    if (map.has("")) out.push({ folder: null, files: map.get("")! });
+    return out;
+  })();
+
+  // Single anonymous group → keep the old flat look for legacy / un-grouped uploads
+  if (groupedByFolder.length === 1 && groupedByFolder[0].folder === null) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-100">
+        {groupedByFolder[0].files.map((f) => (
+          <UnassignedFileRow key={f.id} f={f} />
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-100">
-      {files.map((f) => {
-        const previewable =
-          f.downloadUrl &&
-          (f.mimeType === "application/pdf" || f.mimeType.startsWith("image/"));
-        return (
-          <div key={f.id} className="flex items-center gap-3 px-4 py-3">
-            <div className="flex-shrink-0">
-              <File className="w-5 h-5 text-gray-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-semibold text-gray-900 truncate">
-                  {f.originalFilename}
-                </span>
-                {f.uploadedByType === "admin" && (
-                  <span className="text-xs font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-800">
-                    From {f.uploadedByStaffName || "team"}
-                  </span>
-                )}
-                <ScanBadge status={f.scanStatus} />
-              </div>
-              <div className="text-xs text-gray-400 mt-0.5">
-                {(f.sizeBytes / 1024).toFixed(0)} KB ·{" "}
-                {new Date(f.createdAt).toLocaleDateString()}
-              </div>
-            </div>
-            {f.downloadUrl && (
-              <div className="flex gap-1.5 flex-shrink-0">
-                {previewable && (
-                  <a
-                    href={f.downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Preview
-                  </a>
-                )}
-                <a
-                  href={f.downloadUrl}
-                  download={f.originalFilename}
-                  rel="noopener"
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Download
-                </a>
-              </div>
-            )}
-            {!f.downloadUrl && (
-              <span className="text-xs text-gray-500 flex-shrink-0">
-                {f.scanStatus === "scan_pending"
-                  ? "Scanning…"
-                  : f.scanStatus === "scan_infected"
-                    ? "Quarantined"
-                    : "—"}
-              </span>
-            )}
+    <div className="space-y-4">
+      {groupedByFolder.map((g) => (
+        <div key={g.folder ?? "__none__"}>
+          <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wide py-2">
+            <Folder className="w-3.5 h-3.5" />
+            {g.folder || "(no folder)"}
+            <span className="text-[10px] text-gray-400 font-normal">
+              ({g.files.length})
+            </span>
           </div>
-        );
-      })}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-100">
+            {g.files.map((f) => (
+              <UnassignedFileRow key={f.id} f={f} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UnassignedFileRow({ f }: { f: UnassignedFile }) {
+  const previewable =
+    f.downloadUrl &&
+    (f.mimeType === "application/pdf" || f.mimeType.startsWith("image/"));
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex-shrink-0">
+        <File className="w-5 h-5 text-gray-500" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-gray-900 truncate">
+            {f.originalFilename}
+          </span>
+          {f.uploadedByType === "admin" && (
+            <span className="text-xs font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-800">
+              From {f.uploadedByStaffName || "team"}
+            </span>
+          )}
+          <ScanBadge status={f.scanStatus} />
+        </div>
+        <div className="text-xs text-gray-400 mt-0.5">
+          {(f.sizeBytes / 1024).toFixed(0)} KB · {new Date(f.createdAt).toLocaleDateString()}
+        </div>
+      </div>
+      {f.downloadUrl ? (
+        <div className="flex gap-1.5 flex-shrink-0">
+          {previewable && (
+            <a
+              href={f.downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Preview
+            </a>
+          )}
+          <a
+            href={f.downloadUrl}
+            download={f.originalFilename}
+            rel="noopener"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Download
+          </a>
+        </div>
+      ) : (
+        <span className="text-xs text-gray-500 flex-shrink-0">
+          {f.scanStatus === "scan_pending"
+            ? "Scanning…"
+            : f.scanStatus === "scan_infected"
+              ? "Quarantined"
+              : "—"}
+        </span>
+      )}
     </div>
   );
 }

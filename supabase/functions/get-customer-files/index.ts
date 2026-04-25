@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
     const { data: rows, error } = await supabaseAdmin
       .from("customer_files")
       .select(
-        "id, storage_path, original_filename, size_bytes, mime_type, uploaded_by_type, uploaded_by_staff_id, scan_status, created_at",
+        "id, storage_path, original_filename, size_bytes, mime_type, uploaded_by_type, uploaded_by_staff_id, scan_status, folder, created_at",
       )
       .eq("customer_id", customerId)
       .order("created_at", { ascending: false })
@@ -128,6 +128,7 @@ Deno.serve(async (req) => {
             ? staffMap[r.uploaded_by_staff_id] || null
             : null,
           scanStatus: r.scan_status,
+          folder: r.folder || null,
           createdAt: r.created_at,
           downloadUrl,
         };

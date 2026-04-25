@@ -34,6 +34,7 @@ interface CustomerFile {
   uploadedByType: "customer" | "admin";
   uploadedByStaffName: string | null;
   scanStatus: "scan_pending" | "scan_clean" | "scan_infected" | "scan_error";
+  folder: string | null;
   createdAt: string;
   downloadUrl: string | null;
 }
@@ -487,6 +488,7 @@ export default function CustomerFilesTab({ customerId }: Props) {
               <thead className="bg-muted text-left">
                 <tr>
                   <th className="px-3 py-2 font-medium">File</th>
+                  <th className="px-3 py-2 font-medium">Folder</th>
                   <th className="px-3 py-2 font-medium">Size</th>
                   <th className="px-3 py-2 font-medium">Source</th>
                   <th className="px-3 py-2 font-medium">Scan</th>
@@ -504,6 +506,18 @@ export default function CustomerFilesTab({ customerId }: Props) {
                           {f.originalFilename}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs">
+                      {f.folder ? (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded"
+                          title={f.folder}
+                        >
+                          {f.folder}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap">
                       {formatBytes(f.sizeBytes)}

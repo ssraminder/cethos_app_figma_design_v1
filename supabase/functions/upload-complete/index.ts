@@ -293,6 +293,7 @@ serve(async (req) => {
         uploaded_by_staff_id: context === "admin" ? staffId : null,
         upload_session_id: submissionId,
         scan_status: "scan_pending",
+        folder: (f.folder || "").slice(0, 80) || null,
         notes: message ? message.slice(0, 5000) : null,
       }));
 
