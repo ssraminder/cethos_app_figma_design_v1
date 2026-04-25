@@ -1,32 +1,50 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/CustomerAuthContext";
 import CustomerLayout from "../../components/layouts/CustomerLayout";
+import CustomerUploadWidget from "../../components/customer/CustomerUploadWidget";
 import {
-  FileText,
   Search,
   Download,
+  ExternalLink,
   FolderOpen,
   Trophy,
   FilePen,
   File,
+  Loader2,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldQuestion,
 } from "lucide-react";
+import { supabase } from "../../lib/supabase";
+
+interface UnassignedFile {
+  id: string;
+  originalFilename: string;
+  sizeBytes: number;
+  mimeType: string;
+  uploadedByType: "customer" | "admin";
+  uploadedByStaffName: string | null;
+  scanStatus: "scan_pending" | "scan_clean" | "scan_infected" | "scan_error";
+  createdAt: string;
+  downloadUrl: string | null;
+}
 
 export default function CustomerDocuments() {
-  const { customer } = useAuth();
+  const { customer, session } = useAuth();
+  const customerToken = session?.token || null;
+
   const [files, setFiles] = useState<any[]>([]);
   const [quotes, setQuotes] = useState<any[]>([]);
+  const [unassigned, setUnassigned] = useState<UnassignedFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unassignedLoading, setUnassignedLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
+  const fetchDocuments = useCallback(async () => {
     if (!customer?.id) return;
-    fetchDocuments();
-  }, [customer?.id]);
-
-  const fetchDocuments = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -56,7 +74,32 @@ export default function CustomerDocuments() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [customer?.id]);
+
+  const fetchUnassigned = useCallback(async () => {
+    if (!customerToken) return;
+    setUnassignedLoading(true);
+    try {
+      const { data, error: invokeErr } = await supabase.functions.invoke(
+        "get-customer-files",
+        { body: { customerToken } },
+      );
+      if (invokeErr || !data?.success) {
+        setUnassigned([]);
+      } else {
+        setUnassigned((data.files || []) as UnassignedFile[]);
+      }
+    } catch {
+      setUnassigned([]);
+    } finally {
+      setUnassignedLoading(false);
+    }
+  }, [customerToken]);
+
+  useEffect(() => {
+    fetchDocuments();
+    fetchUnassigned();
+  }, [fetchDocuments, fetchUnassigned]);
 
   const tabs = useMemo(() => {
     const source = files.filter((f) => f.display_category === "source");
@@ -77,12 +120,12 @@ export default function CustomerDocuments() {
       { id: "drafts", label: "Drafts", count: drafts.length },
       { id: "reference", label: "Reference", count: reference.length },
       { id: "staff", label: "Staff Files", count: staff.length },
+      { id: "unassigned", label: "Unassigned", count: unassigned.length },
     ];
-  }, [files]);
+  }, [files, unassigned.length]);
 
   const filteredFiles = useMemo(() => {
     let result = files;
-
     if (activeTab === "source")
       result = result.filter((f) => f.display_category === "source");
     else if (activeTab === "completed")
@@ -103,13 +146,19 @@ export default function CustomerDocuments() {
       const q = searchQuery.toLowerCase();
       result = result.filter((f) => f.filename.toLowerCase().includes(q));
     }
-
     return result;
   }, [files, activeTab, searchQuery]);
 
+  const filteredUnassigned = useMemo(() => {
+    if (!searchQuery.trim()) return unassigned;
+    const q = searchQuery.toLowerCase();
+    return unassigned.filter((f) =>
+      f.originalFilename.toLowerCase().includes(q),
+    );
+  }, [unassigned, searchQuery]);
+
   const groupedFiles = useMemo(() => {
     const groups: Record<string, { quote: any; order: any; files: any[] }> = {};
-
     for (const file of filteredFiles) {
       const key = file.quote_id || "unknown";
       if (!groups[key]) {
@@ -122,7 +171,6 @@ export default function CustomerDocuments() {
       }
       groups[key].files.push(file);
     }
-
     return Object.values(groups);
   }, [filteredFiles, quotes]);
 
@@ -150,6 +198,8 @@ export default function CustomerDocuments() {
     return "";
   };
 
+  const showingUnassigned = activeTab === "unassigned";
+
   return (
     <CustomerLayout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -157,9 +207,12 @@ export default function CustomerDocuments() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">My Documents</h1>
           <p className="text-gray-600 mt-2">
-            All files across your quotes and orders
+            Upload new files and view everything across your quotes and orders
           </p>
         </div>
+
+        {/* Upload widget — collapsed by default; expand to drop files */}
+        <CustomerUploadWidget onUploaded={fetchUnassigned} />
 
         {/* Tabs */}
         <div className="flex gap-0 border-b border-gray-200 overflow-x-auto mb-4">
@@ -203,8 +256,14 @@ export default function CustomerDocuments() {
           </div>
         </div>
 
-        {/* Content */}
-        {loading ? (
+        {/* Unassigned tab — customer_files rows from /secure-upload + customer self-uploads */}
+        {showingUnassigned ? (
+          <UnassignedFilesView
+            files={filteredUnassigned}
+            loading={unassignedLoading}
+            searchActive={!!searchQuery.trim()}
+          />
+        ) : loading ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
             <div className="animate-pulse space-y-4">
               <div className="h-16 bg-gray-200 rounded"></div>
@@ -225,7 +284,7 @@ export default function CustomerDocuments() {
             <p className="text-gray-500 mb-6">
               {searchQuery
                 ? "Try a different search term"
-                : "Your documents will appear here after you submit a quote"}
+                : "Documents linked to your quotes and orders will appear here"}
             </p>
             <Link
               to="/dashboard/quotes"
@@ -315,4 +374,143 @@ export default function CustomerDocuments() {
       </div>
     </CustomerLayout>
   );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Unassigned files (customer_files table) — uploaded but not yet linked
+// to a quote / order
+// ───────────────────────────────────────────────────────────────────────────
+
+function UnassignedFilesView({
+  files,
+  loading,
+  searchActive,
+}: {
+  files: UnassignedFile[];
+  loading: boolean;
+  searchActive: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
+        <Loader2 className="w-6 h-6 text-gray-400 animate-spin mx-auto" />
+      </div>
+    );
+  }
+
+  if (files.length === 0) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+        <FolderOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">
+          No unassigned files
+        </h3>
+        <p className="text-gray-500">
+          {searchActive
+            ? "Try a different search term."
+            : "Files you upload here that aren't yet attached to a quote or order will appear in this tab."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-100">
+      {files.map((f) => {
+        const previewable =
+          f.downloadUrl &&
+          (f.mimeType === "application/pdf" || f.mimeType.startsWith("image/"));
+        return (
+          <div key={f.id} className="flex items-center gap-3 px-4 py-3">
+            <div className="flex-shrink-0">
+              <File className="w-5 h-5 text-gray-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-semibold text-gray-900 truncate">
+                  {f.originalFilename}
+                </span>
+                {f.uploadedByType === "admin" && (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-800">
+                    From {f.uploadedByStaffName || "team"}
+                  </span>
+                )}
+                <ScanBadge status={f.scanStatus} />
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {(f.sizeBytes / 1024).toFixed(0)} KB ·{" "}
+                {new Date(f.createdAt).toLocaleDateString()}
+              </div>
+            </div>
+            {f.downloadUrl && (
+              <div className="flex gap-1.5 flex-shrink-0">
+                {previewable && (
+                  <a
+                    href={f.downloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Preview
+                  </a>
+                )}
+                <a
+                  href={f.downloadUrl}
+                  download={f.originalFilename}
+                  rel="noopener"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download
+                </a>
+              </div>
+            )}
+            {!f.downloadUrl && (
+              <span className="text-xs text-gray-500 flex-shrink-0">
+                {f.scanStatus === "scan_pending"
+                  ? "Scanning…"
+                  : f.scanStatus === "scan_infected"
+                    ? "Quarantined"
+                    : "—"}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ScanBadge({ status }: { status: UnassignedFile["scanStatus"] }) {
+  switch (status) {
+    case "scan_pending":
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded text-xs">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Scanning
+        </span>
+      );
+    case "scan_clean":
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 text-green-700 rounded text-xs">
+          <ShieldCheck className="w-3 h-3" />
+          Clean
+        </span>
+      );
+    case "scan_infected":
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-50 text-red-700 rounded text-xs font-semibold">
+          <ShieldAlert className="w-3 h-3" />
+          INFECTED
+        </span>
+      );
+    case "scan_error":
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">
+          <ShieldQuestion className="w-3 h-3" />
+          Scan error
+        </span>
+      );
+  }
 }

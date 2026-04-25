@@ -7,7 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QuoteProvider } from "./context/QuoteContext";
 import { UploadProvider } from "./context/UploadContext";
 import { StaffAuthProvider } from "./context/StaffAuthContext";
@@ -44,7 +44,8 @@ import CustomerQuoteDetail from "./pages/customer/CustomerQuoteDetail";
 import CustomerOrders from "./pages/customer/CustomerOrders";
 import CustomerOrderDetail from "./pages/customer/CustomerOrderDetail";
 import CustomerDocuments from "./pages/customer/CustomerDocuments";
-import CustomerUpload from "./pages/customer/CustomerUpload";
+// CustomerUpload is now folded into CustomerDocuments. The /dashboard/upload
+// route still exists as a redirect for any deep links / shared URLs.
 import CustomerMessages from "./pages/customer/CustomerMessages";
 import CustomerProfile from "./pages/customer/CustomerProfile";
 import CustomerInvoicePayment from "./pages/customer/CustomerInvoicePayment";
@@ -295,13 +296,7 @@ const App = () => (
                   />
                   <Route
                     path="/dashboard/upload"
-                    element={
-                      <CustomerAuthProvider>
-                        <ProtectedCustomerRoute>
-                          <CustomerUpload />
-                        </ProtectedCustomerRoute>
-                      </CustomerAuthProvider>
-                    }
+                    element={<Navigate to="/dashboard/documents" replace />}
                   />
                   <Route
                     path="/dashboard/messages"

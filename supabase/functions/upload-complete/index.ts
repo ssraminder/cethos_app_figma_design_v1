@@ -86,6 +86,7 @@ serve(async (req) => {
       originalName: string;
       size: number;
       mimeType: string;
+      folder?: string;
     }>;
 
     if (!submissionId || !/^[0-9a-f-]{36}$/i.test(submissionId)) {
@@ -223,6 +224,7 @@ serve(async (req) => {
         originalName: f.originalName.slice(0, 200),
         size: f.size,
         mimeType: f.mimeType,
+        folder: (f.folder || "").slice(0, 80) || null,
         scanStatus: "scan_pending" as const,
       }));
 
@@ -260,6 +262,25 @@ serve(async (req) => {
         },
         body: JSON.stringify({ kind: "submission", submissionId }),
       }).catch(() => {});
+
+      // Email the admin team. Fire-and-forget so a Brevo hiccup doesn't fail
+      // the whole submission. Recipient comes from ADMIN_NOTIFICATION_EMAIL
+      // (comma-separated allowed); falls back to support@cethos.com.
+      void notifyAdminOfSubmission({
+        brevoKey: Deno.env.get("BREVO_API_KEY") ?? "",
+        to:
+          Deno.env.get("ADMIN_NOTIFICATION_EMAIL") ||
+          "support@cethos.com",
+        siteUrl:
+          Deno.env.get("ADMIN_PORTAL_URL") || "https://portal.cethos.com",
+        submissionId,
+        fullName,
+        email,
+        phone,
+        orderOrQuoteId,
+        message,
+        files: filePathsMeta,
+      });
     } else {
       // Customer or admin context — one customer_files row per file
       const rows = files.map((f) => ({
@@ -417,6 +438,132 @@ function inferMimeFromName(name: string): string | null {
   if (dot === -1) return null;
   const ext = name.slice(dot + 1).toLowerCase();
   return EXT_TO_MIME[ext] || null;
+}
+
+async function notifyAdminOfSubmission(args: {
+  brevoKey: string;
+  to: string;
+  siteUrl: string;
+  submissionId: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  orderOrQuoteId: string;
+  message: string;
+  files: Array<{
+    originalName: string;
+    size: number;
+    folder?: string | null;
+  }>;
+}): Promise<void> {
+  if (!args.brevoKey) {
+    console.warn("BREVO_API_KEY not configured — skipping admin email");
+    return;
+  }
+  try {
+    const recipients = args.to
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((email) => ({ email, name: "Cethos Team" }));
+    if (recipients.length === 0) return;
+
+    // Group files by folder for the email body
+    type Group = { folder: string; files: Array<{ name: string; size: number }> };
+    const byFolder = new Map<string, Group>();
+    for (const f of args.files) {
+      const key = f.folder || "(no folder)";
+      if (!byFolder.has(key)) byFolder.set(key, { folder: key, files: [] });
+      byFolder.get(key)!.files.push({ name: f.originalName, size: f.size });
+    }
+
+    const folderHtml = Array.from(byFolder.values())
+      .map((g) => {
+        const fileLines = g.files
+          .map(
+            (f) =>
+              `<li style="margin: 2px 0; font-size: 13px;">${escapeHtml(f.name)} <span style="color:#94a3b8;">(${formatBytes(f.size)})</span></li>`,
+          )
+          .join("");
+        return `
+          <div style="margin: 16px 0;">
+            <div style="font-weight:600; color:#0f172a; font-size:13px; margin-bottom:6px;">
+              ${escapeHtml(g.folder)} <span style="color:#94a3b8; font-weight:400;">(${g.files.length})</span>
+            </div>
+            <ul style="margin:0; padding-left:18px; color:#475569;">${fileLines}</ul>
+          </div>`;
+      })
+      .join("");
+
+    const reviewUrl = `${args.siteUrl.replace(/\/$/, "")}/admin/public-submissions`;
+    const totalCount = args.files.length;
+
+    const htmlContent = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #ffffff;">
+        <div style="padding: 36px 32px 28px; text-align: center; border-bottom: 3px solid #0891b2;">
+          <h1 style="margin:0; font-size:20px; color:#0f172a;">New secure upload</h1>
+        </div>
+        <div style="padding: 32px;">
+          <p style="color:#475569; font-size:14px; line-height:1.7;">
+            A new submission just came in via <code style="background:#f1f5f9; padding:2px 6px; border-radius:4px;">/secure-upload</code>.
+          </p>
+          <table style="width:100%; border-collapse:collapse; margin: 16px 0;">
+            <tr><td style="padding:6px 0; color:#64748b; font-size:13px; width:120px;">From</td><td style="padding:6px 0; color:#0f172a; font-size:13px;"><strong>${escapeHtml(args.fullName)}</strong></td></tr>
+            <tr><td style="padding:6px 0; color:#64748b; font-size:13px;">Email</td><td style="padding:6px 0;"><a href="mailto:${escapeHtml(args.email)}" style="color:#0891b2; text-decoration:none;">${escapeHtml(args.email)}</a></td></tr>
+            <tr><td style="padding:6px 0; color:#64748b; font-size:13px;">Phone</td><td style="padding:6px 0;"><a href="tel:${escapeHtml(args.phone)}" style="color:#0891b2; text-decoration:none;">${escapeHtml(args.phone)}</a></td></tr>
+            ${args.orderOrQuoteId ? `<tr><td style="padding:6px 0; color:#64748b; font-size:13px;">Order / Quote ID</td><td style="padding:6px 0; color:#0f172a; font-size:13px;"><code>${escapeHtml(args.orderOrQuoteId)}</code></td></tr>` : ""}
+            <tr><td style="padding:6px 0; color:#64748b; font-size:13px;">Files</td><td style="padding:6px 0; color:#0f172a; font-size:13px;">${totalCount}</td></tr>
+          </table>
+          ${args.message ? `<div style="background:#f8fafc; border:1px solid #e2e8f0; padding:12px 14px; border-radius:8px; margin: 12px 0;"><div style="font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:4px;">Message</div><div style="color:#0f172a; font-size:13px; white-space:pre-wrap;">${escapeHtml(args.message)}</div></div>` : ""}
+          <div style="margin-top:8px;">${folderHtml}</div>
+          <div style="text-align:center; margin: 28px 0 8px;">
+            <a href="${reviewUrl}" style="display:inline-block; padding:12px 32px; background-color:#0f172a; color:#ffffff; text-decoration:none; border-radius:8px; font-weight:600; font-size:14px;">Open in admin portal</a>
+          </div>
+          <p style="color:#94a3b8; font-size:11px; margin: 16px 0 0; text-align:center;">
+            Files are scanning. Downloads unlock once the scan completes.<br/>
+            Submission ID: <code style="font-size:11px;">${args.submissionId}</code>
+          </p>
+        </div>
+      </div>`;
+
+    const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": args.brevoKey,
+      },
+      body: JSON.stringify({
+        sender: { name: "Cethos Secure Upload", email: "donotreply@cethos.com" },
+        to: recipients,
+        replyTo: { email: args.email, name: args.fullName },
+        subject: `New secure upload: ${args.fullName} (${totalCount} file${totalCount === 1 ? "" : "s"})`,
+        htmlContent,
+      }),
+    });
+    if (!resp.ok) {
+      const t = await resp.text().catch(() => "");
+      console.warn(`Admin notification email failed: ${resp.status} ${t}`);
+    } else {
+      console.log(`Admin notification sent for submission ${args.submissionId}`);
+    }
+  } catch (err) {
+    console.warn("notifyAdminOfSubmission threw:", err);
+  }
+}
+
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 async function sha256(input: string): Promise<string> {

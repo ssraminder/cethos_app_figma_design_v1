@@ -9,7 +9,6 @@ import {
   LogOut,
   Menu,
   X,
-  Upload,
 } from "lucide-react";
 import { useAuth } from "../../context/CustomerAuthContext";
 import { useBranding } from "../../context/BrandingContext";
@@ -34,12 +33,13 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
     }
   };
 
+  // "Upload" is no longer a top-level nav item — it lives on the Documents
+  // page now. Route /dashboard/upload still works (redirects to documents).
   const navItems = [
     { path: "/dashboard", label: "Dashboard", icon: FileText },
     { path: "/dashboard/quotes", label: "Quotes", icon: FileText },
     { path: "/dashboard/orders", label: "Orders", icon: Package },
     { path: "/dashboard/documents", label: "Documents", icon: File },
-    { path: "/dashboard/upload", label: "Upload", icon: Upload },
     { path: "/dashboard/messages", label: "Messages", icon: MessageSquare },
     { path: "/dashboard/profile", label: "Profile", icon: User },
   ];
@@ -83,22 +83,26 @@ export default function CustomerLayout({ children }: CustomerLayoutProps) {
             <div className="md:hidden flex-1"></div>
 
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center space-x-8">
+            <nav className="hidden md:flex items-center gap-1 lg:gap-2">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = location.pathname === item.path;
+                const isActive =
+                  location.pathname === item.path ||
+                  // /dashboard/upload is folded into Documents
+                  (item.path === "/dashboard/documents" &&
+                    location.pathname === "/dashboard/upload");
                 return (
                   <Link
                     key={item.path}
                     to={item.path}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                       isActive
                         ? "bg-teal-50 text-teal-700"
                         : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
-                    {item.label}
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span>{item.label}</span>
                   </Link>
                 );
               })}

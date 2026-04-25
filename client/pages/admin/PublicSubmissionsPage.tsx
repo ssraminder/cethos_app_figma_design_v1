@@ -1,9 +1,10 @@
 // client/pages/admin/PublicSubmissionsPage.tsx
 //
 // Admin review queue for submissions from the public /secure-upload form on
-// the marketing site. Rows land via Next.js API route + scan-public-submission
-// edge function. This page lets staff triage them and optionally convert to
-// a real quote.
+// the marketing site. Rows land via the upload-complete edge function which
+// also pings the scan-public-submission scanner. This page lets staff triage
+// the submissions, preview/download files, and optionally convert to a quote.
+// File list groups by submission-time folder when the customer used folders.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -25,6 +26,7 @@ import {
   Eye,
   ExternalLink,
   X,
+  Folder as FolderIcon,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { supabase } from '../../lib/supabase';
@@ -36,6 +38,7 @@ interface FileMeta {
   originalName: string;
   size: number;
   mimeType: string;
+  folder?: string | null;
   scanStatus: 'scan_pending' | 'scan_clean' | 'scan_infected' | 'scan_error';
 }
 
@@ -547,7 +550,7 @@ function DetailModal({
             </div>
           )}
 
-          {/* Files */}
+          {/* Files — grouped by folder when the submitter used folders */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs uppercase text-muted-foreground">
@@ -566,60 +569,53 @@ function DetailModal({
                 </button>
               )}
             </div>
-            <ul className="space-y-1.5">
-              {(submission.file_paths || []).map((f) => {
-                const fileInfected = f.scanStatus === 'scan_infected';
-                const filePending = f.scanStatus === 'scan_pending';
-                const canAccess =
-                  f.scanStatus === 'scan_clean' || f.scanStatus === 'scan_error';
-                const previewable =
-                  canAccess &&
-                  (f.mimeType === 'application/pdf' ||
-                    f.mimeType.startsWith('image/'));
+            {(() => {
+              // Group files by folder — null/empty folder lands in "(no folder)"
+              const groups = new Map<string, FileMeta[]>();
+              for (const f of submission.file_paths || []) {
+                const key = f.folder?.trim() || '';
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key)!.push(f);
+              }
+              const ordered = Array.from(groups.entries());
+              // Single empty-folder group → render flat (preserves old look for legacy submissions)
+              const singleAnonGroup = ordered.length === 1 && ordered[0][0] === '';
+              if (singleAnonGroup) {
                 return (
-                  <li
-                    key={f.path}
-                    className="flex items-center gap-3 p-2.5 bg-muted/50 rounded"
-                  >
-                    <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{f.originalName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatBytes(f.size)} · {f.mimeType}
-                      </div>
-                    </div>
-                    <ScanBadge status={f.scanStatus} />
-                    {previewable && (
-                      <button
-                        onClick={() => onPreview(f.path)}
-                        className="px-2.5 py-1 text-xs border rounded-md hover:bg-muted flex items-center gap-1"
-                        title="Open in a new tab"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        Preview
-                      </button>
-                    )}
-                    <button
-                      disabled={!canAccess}
-                      onClick={() => onDownload(f.path, f.originalName)}
-                      className={`px-2.5 py-1 text-xs border rounded-md flex items-center gap-1 ${
-                        canAccess ? 'hover:bg-muted' : 'opacity-40 cursor-not-allowed'
-                      }`}
-                      title={
-                        fileInfected
-                          ? 'File is infected and quarantined'
-                          : filePending
-                            ? 'Scan in progress'
-                            : 'Download'
-                      }
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      Download
-                    </button>
-                  </li>
+                  <ul className="space-y-1.5">
+                    {ordered[0][1].map((f) => (
+                      <FileRow
+                        key={f.path}
+                        f={f}
+                        onPreview={onPreview}
+                        onDownload={onDownload}
+                      />
+                    ))}
+                  </ul>
                 );
-              })}
-            </ul>
+              }
+              return ordered.map(([folder, fs]) => (
+                <div key={folder || '__none__'} className="mb-3">
+                  <div className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                    <FolderIcon className="w-3.5 h-3.5" />
+                    {folder || '(no folder)'}
+                    <span className="text-[10px] text-muted-foreground/70 font-normal">
+                      ({fs.length})
+                    </span>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {fs.map((f) => (
+                      <FileRow
+                        key={f.path}
+                        f={f}
+                        onPreview={onPreview}
+                        onDownload={onDownload}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              ));
+            })()}
           </div>
         </div>
 
@@ -649,6 +645,64 @@ function DetailModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function FileRow({
+  f,
+  onPreview,
+  onDownload,
+}: {
+  f: FileMeta;
+  onPreview: (path: string) => void;
+  onDownload: (path: string, filename: string) => void;
+}) {
+  const fileInfected = f.scanStatus === 'scan_infected';
+  const filePending = f.scanStatus === 'scan_pending';
+  const canAccess =
+    f.scanStatus === 'scan_clean' || f.scanStatus === 'scan_error';
+  const previewable =
+    canAccess &&
+    (f.mimeType === 'application/pdf' || f.mimeType.startsWith('image/'));
+
+  return (
+    <li className="flex items-center gap-3 p-2.5 bg-muted/50 rounded">
+      <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium truncate">{f.originalName}</div>
+        <div className="text-xs text-muted-foreground">
+          {formatBytes(f.size)} · {f.mimeType}
+        </div>
+      </div>
+      <ScanBadge status={f.scanStatus} />
+      {previewable && (
+        <button
+          onClick={() => onPreview(f.path)}
+          className="px-2.5 py-1 text-xs border rounded-md hover:bg-muted flex items-center gap-1"
+          title="Open in a new tab"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          Preview
+        </button>
+      )}
+      <button
+        disabled={!canAccess}
+        onClick={() => onDownload(f.path, f.originalName)}
+        className={`px-2.5 py-1 text-xs border rounded-md flex items-center gap-1 ${
+          canAccess ? 'hover:bg-muted' : 'opacity-40 cursor-not-allowed'
+        }`}
+        title={
+          fileInfected
+            ? 'File is infected and quarantined'
+            : filePending
+              ? 'Scan in progress'
+              : 'Download'
+        }
+      >
+        <Download className="w-3.5 h-3.5" />
+        Download
+      </button>
+    </li>
   );
 }
 
