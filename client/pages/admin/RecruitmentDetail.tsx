@@ -388,7 +388,11 @@ function SendTestsControls({
       timesUsed: number;
       lastUsedAt: string | null;
     };
-    selectionReason: "override" | "difficulty-match" | "fallback";
+    selectionReason:
+      | "override"
+      | "difficulty-match"
+      | "fallback"
+      | "wildcard-fallback";
     alternatives: PickAlternative[];
   }
   interface PreviewNoTest {
@@ -647,9 +651,29 @@ function SendTestsControls({
           </div>
 
           <div className="mb-4">
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Combinations to test ({selectedIds.size}/{pending.length})
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-gray-700">
+                Combinations to test ({selectedIds.size}/{pending.length})
+              </label>
+              <div className="flex gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set(pending.map((c) => c.id)))}
+                  disabled={busy || selectedIds.size === pending.length}
+                  className="text-teal-700 hover:text-teal-900 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed"
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  disabled={busy || selectedIds.size === 0}
+                  className="text-gray-600 hover:text-gray-900 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed"
+                >
+                  Unselect all
+                </button>
+              </div>
+            </div>
             <div className="space-y-1 border border-gray-200 rounded-md p-2 max-h-60 overflow-y-auto">
               {pending.map((c) => (
                 <label key={c.id} className="flex items-center gap-2 text-xs p-1.5 hover:bg-gray-50 rounded cursor-pointer">
@@ -756,12 +780,16 @@ function SendTestsControls({
                             ? "bg-emerald-100 text-emerald-800"
                             : p.selectionReason === "override"
                             ? "bg-amber-100 text-amber-800"
+                            : p.selectionReason === "wildcard-fallback"
+                            ? "bg-sky-100 text-sky-800"
                             : "bg-gray-200 text-gray-700"
                         }`}>
                           {p.selectionReason === "difficulty-match"
                             ? `${eff.difficulty} match`
                             : p.selectionReason === "override"
                             ? "manual pick"
+                            : p.selectionReason === "wildcard-fallback"
+                            ? `${eff.difficulty} (any-target)`
                             : `${eff.difficulty} (fallback)`}
                         </span>
                         {overridden && (
