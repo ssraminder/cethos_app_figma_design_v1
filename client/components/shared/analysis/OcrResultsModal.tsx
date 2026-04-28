@@ -1285,11 +1285,7 @@ export default function OcrResultsModal({
 
   useEffect(() => {
     if (!isBatchMode || pricingRatesLoaded) return;
-
-    const completedResults = analysisResults.filter(
-      (r) => r.processingStatus === "completed"
-    );
-    if (completedResults.length === 0) return;
+    if (analysisResults.length === 0) return;
 
     const fetchRates = async () => {
       try {
@@ -1338,13 +1334,20 @@ export default function OcrResultsModal({
   useEffect(() => {
     if (!pricingRatesLoaded || pricingBaseRate === 0) return;
 
-    // Include completed, manual, and failed rows (not just completed)
+    // Include completed, manual, and failed rows. Also treat rows stuck in
+    // pending/processing as failed when the parent analysis job is failed/partial
+    // (the function may have crashed before marking child rows).
+    const jobIsTerminallyFailed =
+      analysisJob?.status === "failed" || analysisJob?.status === "partial";
     const completedResults = analysisResults.filter(
       (r) =>
         r.processingStatus === "completed" ||
         r.processingStatus === "manual" ||
         r.entryMethod === "manual" ||
-        r.processingStatus === "failed"
+        r.processingStatus === "failed" ||
+        (jobIsTerminallyFailed &&
+          (r.processingStatus === "pending" ||
+            r.processingStatus === "processing"))
     );
     if (completedResults.length === 0) {
       setPricingRows([]);
@@ -1491,7 +1494,7 @@ export default function OcrResultsModal({
       )[0];
       setLastSavedAt(new Date(latest.pricingSavedAt!));
     }
-  }, [analysisResults, pricingRatesLoaded, pricingBaseRate, pricingWordsPerPage, certificationTypes, linkedQuoteBaseRateOverride]);
+  }, [analysisResults, pricingRatesLoaded, pricingBaseRate, pricingWordsPerPage, certificationTypes, linkedQuoteBaseRateOverride, analysisJob?.status]);
 
   // -------------------------------------------------------------------------
   // Pricing: computed totals
