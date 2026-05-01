@@ -18,6 +18,12 @@
       "runtimeExecutable": "cmd",
       "runtimeArgs": ["/c", "cd /d D:\\cethos\\main_web && npx next dev --port 5201"],
       "port": 5201
+    },
+    {
+      "name": "recruitment",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d D:\\cethos-vendor\\apps\\recruitment && npx vite --port 5202"],
+      "port": 5202
     }
   ]
 }

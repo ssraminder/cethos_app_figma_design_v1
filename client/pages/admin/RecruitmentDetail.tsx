@@ -193,12 +193,16 @@ interface ErrorFeedbackRow {
 interface FeedbackRoundRow {
   submission_id: string;
   combination_id: string;
+  token: string;
   status: string;
   staff_skip: boolean;
   v12_sent_at: string | null;
   applicant_first_view_at: string | null;
   applicant_submitted_at: string | null;
   expires_at: string;
+  auto_send_at: string | null;
+  auto_sent_at: string | null;
+  manual_send_requested_at: string | null;
 }
 
 interface Language { id: string; name: string }
@@ -347,8 +351,10 @@ function TestAssessmentPanel({
   const [action, setAction] = useState<"none" | "approve" | "reject">("none");
   const [rate, setRate] = useState<string>(combo.approved_rate ? String(combo.approved_rate) : "");
   const [rejectionFeedback, setRejectionFeedback] = useState<string>("");
-  const [smokeBusy, setSmokeBusy] = useState(false);
-  const [smokeResult, setSmokeResult] = useState<{ url: string; sentTo: string } | null>(null);
+  const [sendNowBusy, setSendNowBusy] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewSubject, setPreviewSubject] = useState<string | null>(null);
   const [skipBusy, setSkipBusy] = useState(false);
   const [retriageBusy, setRetriageBusy] = useState(false);
 
@@ -411,30 +417,69 @@ function TestAssessmentPanel({
     }
   };
 
-  const handleSmokeFeedbackRequest = async () => {
+  const handleSendNow = async () => {
     if (!submission?.id) return;
-    setSmokeBusy(true);
-    setSmokeResult(null);
+    if (!confirm("Send V22 to the applicant now? This bypasses the 24-hour auto-send delay.")) return;
+    setSendNowBusy(true);
     try {
+      // Pull auto_send_at forward and stamp manual_send_requested_at so the
+      // override is auditable. cvp-send-test-feedback-request below will
+      // also flip status to 'sent' via its existing forceResend path.
+      if (feedbackRound) {
+        const nowIso = new Date().toISOString();
+        await supabase
+          .from("cvp_test_feedback_rounds")
+          .update({
+            manual_send_requested_at: nowIso,
+            auto_send_at: nowIso,
+            staff_skip: false,
+            updated_at: nowIso,
+          })
+          .eq("submission_id", submission.id);
+      }
       const res = (await callEdgeFunction("cvp-send-test-feedback-request", {
         submissionId: submission.id,
-        recipientOverride: "ss.raminder@gmail.com",
         forceResend: true,
-      })) as { success?: boolean; error?: string; data?: { reviewUrl?: string; sentTo?: string } };
+      })) as { success?: boolean; error?: string; data?: { sentTo?: string } };
       if (!res.success) {
-        toast.error(res.error ?? "Smoke send failed.");
-      } else {
-        const url = res.data?.reviewUrl ?? "";
-        const sentTo = res.data?.sentTo ?? "ss.raminder@gmail.com";
-        setSmokeResult({ url, sentTo });
-        toast.success(`V22 sent to ${sentTo}`);
+        toast.error(res.error ?? "Send failed.");
+        return;
       }
+      toast.success(`V22 sent to ${res.data?.sentTo ?? "applicant"}.`);
+      await onAfterAction();
     } catch (err) {
-      toast.error("Smoke send failed: " + (err instanceof Error ? err.message : String(err)));
+      toast.error("Send failed: " + (err instanceof Error ? err.message : String(err)));
     } finally {
-      setSmokeBusy(false);
+      setSendNowBusy(false);
     }
   };
+
+  const handlePreviewEmail = async () => {
+    if (!submission?.id) return;
+    setPreviewBusy(true);
+    try {
+      const res = (await callEdgeFunction("cvp-render-feedback-email-preview", {
+        submissionId: submission.id,
+      })) as { success?: boolean; error?: string; data?: { html?: string; subject?: string } };
+      if (!res.success || !res.data?.html) {
+        toast.error(res.error ?? "Preview failed.");
+        return;
+      }
+      setPreviewSubject(res.data.subject ?? "V22");
+      setPreviewHtml(res.data.html);
+    } catch (err) {
+      toast.error("Preview failed: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
+
+  const reviewBaseUrl =
+    (import.meta.env.VITE_RECRUITMENT_APP_URL as string | undefined) ??
+    "https://join.cethos.com";
+  const applicantViewUrl = feedbackRound?.token
+    ? `${reviewBaseUrl.replace(/\/$/, "")}/test-feedback/${feedbackRound.token}`
+    : null;
   const [busy, setBusy] = useState<"none" | "approve" | "reject" | "regrade">("none");
 
   const isFinal = combo.status === "approved" || combo.status === "rejected";
@@ -568,12 +613,20 @@ function TestAssessmentPanel({
       </div>
 
       {hasDimensions && (
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+        <div
+          className={`grid grid-cols-1 gap-3 ${
+            a.dimensionScores!.certification_readiness !== undefined
+              ? "sm:grid-cols-5"
+              : "sm:grid-cols-4"
+          }`}
+        >
           <DimensionBar label="Accuracy"  score={a.dimensionScores!.accuracy} />
           <DimensionBar label="Fluency"   score={a.dimensionScores!.fluency} />
           <DimensionBar label="Terminology" score={a.dimensionScores!.terminology} />
           <DimensionBar label="Formatting"  score={a.dimensionScores!.formatting} />
-          <DimensionBar label="Cert-ready"  score={a.dimensionScores!.certification_readiness} />
+          {a.dimensionScores!.certification_readiness !== undefined && (
+            <DimensionBar label="Cert-ready"  score={a.dimensionScores!.certification_readiness} />
+          )}
         </div>
       )}
 
@@ -678,16 +731,27 @@ function TestAssessmentPanel({
         </div>
       )}
 
-      {smokeResult && (
-        <div className="rounded border border-indigo-200 bg-indigo-50 p-2 text-xs space-y-1">
-          <div className="font-semibold text-indigo-900">
-            V22 smoke email sent to <span className="font-mono">{smokeResult.sentTo}</span>
-          </div>
-          <div className="text-indigo-800">
-            Direct review link:{" "}
-            <a href={smokeResult.url} target="_blank" rel="noreferrer" className="font-mono break-all underline">
-              {smokeResult.url}
-            </a>
+      {previewHtml && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200">
+              <div className="text-sm font-semibold text-gray-800">
+                Email preview · <span className="font-mono">{previewSubject}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setPreviewHtml(null); setPreviewSubject(null); }}
+                className="px-2 py-0.5 text-xs rounded border border-gray-300 hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+            <iframe
+              title="V22 email preview"
+              srcDoc={previewHtml}
+              sandbox=""
+              className="flex-1 w-full border-0 rounded-b-lg"
+            />
           </div>
         </div>
       )}
@@ -705,11 +769,23 @@ function TestAssessmentPanel({
                 ? "bg-yellow-100 text-yellow-700"
                 : feedbackRound.status === "expired"
                 ? "bg-red-100 text-red-700"
+                : feedbackRound.status === "pending"
+                ? "bg-amber-100 text-amber-700"
                 : "bg-blue-100 text-blue-700"
             }`}
           >
             {feedbackRound.staff_skip ? "skipped" : feedbackRound.status}
           </span>
+          {feedbackRound.status === "pending" && feedbackRound.auto_send_at && !feedbackRound.staff_skip && (
+            <span className="text-gray-500">
+              auto-sends {format(new Date(feedbackRound.auto_send_at), "MMM d h:mm a")}
+            </span>
+          )}
+          {feedbackRound.auto_sent_at && (
+            <span className="text-gray-500">
+              sent {format(new Date(feedbackRound.auto_sent_at), "MMM d h:mm a")}
+            </span>
+          )}
           {feedbackRound.applicant_submitted_at && (
             <span className="text-gray-500">
               answered {format(new Date(feedbackRound.applicant_submitted_at), "MMM d h:mm a")}
@@ -748,16 +824,41 @@ function TestAssessmentPanel({
             </span>
             <div className="ml-auto flex items-center gap-2">
               {!!submission?.id && a.errors.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleSmokeFeedbackRequest}
-                  disabled={smokeBusy}
-                  title="Send V22 feedback-request email to ss.raminder@gmail.com"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
-                >
-                  {smokeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                  Smoke V22 to me
-                </button>
+                <>
+                  {applicantViewUrl && (
+                    <a
+                      href={applicantViewUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open the applicant-facing review URL in a new tab"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                    >
+                      View applicant view
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handlePreviewEmail}
+                    disabled={previewBusy}
+                    title="Render the V22 email body inline"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {previewBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                    Preview email
+                  </button>
+                  {!feedbackRound?.auto_sent_at && !feedbackRound?.staff_skip && (
+                    <button
+                      type="button"
+                      onClick={handleSendNow}
+                      disabled={sendNowBusy}
+                      title="Send V22 to the applicant now (bypass 24h auto-send delay)"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                    >
+                      {sendNowBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                      Send V22 now
+                    </button>
+                  )}
+                </>
               )}
               {!!submission?.id && a.errors.length > 0 && (
                 <button
@@ -809,16 +910,41 @@ function TestAssessmentPanel({
             </button>
             <div className="ml-auto flex items-center gap-2">
               {!!submission?.id && a.errors.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleSmokeFeedbackRequest}
-                  disabled={smokeBusy}
-                  title="Send V22 feedback-request email to ss.raminder@gmail.com"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
-                >
-                  {smokeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                  Smoke V22 to me
-                </button>
+                <>
+                  {applicantViewUrl && (
+                    <a
+                      href={applicantViewUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open the applicant-facing review URL in a new tab"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                    >
+                      View applicant view
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handlePreviewEmail}
+                    disabled={previewBusy}
+                    title="Render the V22 email body inline"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {previewBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                    Preview email
+                  </button>
+                  {!feedbackRound?.auto_sent_at && !feedbackRound?.staff_skip && (
+                    <button
+                      type="button"
+                      onClick={handleSendNow}
+                      disabled={sendNowBusy}
+                      title="Send V22 to the applicant now (bypass 24h auto-send delay)"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                    >
+                      {sendNowBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                      Send V22 now
+                    </button>
+                  )}
+                </>
               )}
               {!!submission?.id && a.errors.length > 0 && (
                 <button
@@ -3420,7 +3546,7 @@ export default function RecruitmentDetail() {
           supabase
             .from("cvp_test_feedback_rounds")
             .select(
-              "submission_id, combination_id, status, staff_skip, v12_sent_at, applicant_first_view_at, applicant_submitted_at, expires_at",
+              "submission_id, combination_id, token, status, staff_skip, v12_sent_at, applicant_first_view_at, applicant_submitted_at, expires_at, auto_send_at, auto_sent_at, manual_send_requested_at",
             )
             .in("submission_id", submissionIds),
         ]);

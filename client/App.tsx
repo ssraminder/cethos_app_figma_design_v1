@@ -82,6 +82,7 @@ import PublicSubmissionsPage from "./pages/admin/PublicSubmissionsPage";
 import AdminPartners from "./pages/admin/AdminPartners";
 import RecruitmentList from "./pages/admin/RecruitmentList";
 import RecruitmentDetail from "./pages/admin/RecruitmentDetail";
+import RecruitmentRegradeBackfill from "./pages/admin/RecruitmentRegradeBackfill";
 import AdminQuickPayment from "./pages/admin/AdminQuickPayment";
 import AdminPaymentHistory from "./pages/admin/AdminPaymentHistory";
 import PaymentsList from "./pages/admin/PaymentsList";
@@ -377,6 +378,7 @@ const App = () => (
                     <Route path="vendors/new" element={<AdminVendorNew />} />
                     <Route path="vendors/:vendorId" element={<AdminVendorDetail />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
+                    <Route path="recruitment/system/regrade-backfill" element={<RecruitmentRegradeBackfill />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
                     <Route path="trainings" element={<TrainingsList />} />
                     <Route path="trainings/:slug" element={<TrainingOverview />} />
