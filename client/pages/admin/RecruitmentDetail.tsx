@@ -231,6 +231,9 @@ interface ParsedAssessment {
   errors: AssessmentError[];
   strengths: string[];
   feedbackDraft?: string;
+  modelUsed?: string;
+  promptVersion?: string;
+  assessedAt?: string;
 }
 
 function parseAssessment(raw: Record<string, unknown> | null): ParsedAssessment {
@@ -254,6 +257,9 @@ function parseAssessment(raw: Record<string, unknown> | null): ParsedAssessment 
     errors: Array.isArray(r.errors) ? (r.errors as AssessmentError[]) : [],
     strengths: Array.isArray(r.strengths) ? (r.strengths as string[]) : [],
     feedbackDraft: typeof r.feedback_draft === "string" ? r.feedback_draft : undefined,
+    modelUsed: typeof r.model_used === "string" ? r.model_used : undefined,
+    promptVersion: typeof r.prompt_version === "string" ? r.prompt_version : undefined,
+    assessedAt: typeof r.assessed_at === "string" ? r.assessed_at : undefined,
   };
 }
 
@@ -535,6 +541,14 @@ function TestAssessmentPanel({
           <div className="text-xs text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded px-2 py-1.5">
             {submission.submitted_notes}
           </div>
+        </div>
+      )}
+
+      {(a.modelUsed || a.promptVersion || a.assessedAt) && (
+        <div className="text-[10px] text-gray-400 flex flex-wrap gap-x-3 gap-y-0.5">
+          {a.modelUsed && <span>Graded by <span className="font-mono text-gray-500">{a.modelUsed}</span></span>}
+          {a.promptVersion && <span>Prompt <span className="font-mono text-gray-500">{a.promptVersion}</span></span>}
+          {a.assessedAt && <span>{format(new Date(a.assessedAt), "MMM d, yyyy h:mm a")}</span>}
         </div>
       )}
 
