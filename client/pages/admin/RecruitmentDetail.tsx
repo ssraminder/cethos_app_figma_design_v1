@@ -317,6 +317,33 @@ function TestAssessmentPanel({
   const [action, setAction] = useState<"none" | "approve" | "reject">("none");
   const [rate, setRate] = useState<string>(combo.approved_rate ? String(combo.approved_rate) : "");
   const [rejectionFeedback, setRejectionFeedback] = useState<string>("");
+  const [smokeBusy, setSmokeBusy] = useState(false);
+  const [smokeResult, setSmokeResult] = useState<{ url: string; sentTo: string } | null>(null);
+
+  const handleSmokeFeedbackRequest = async () => {
+    if (!submission?.id) return;
+    setSmokeBusy(true);
+    setSmokeResult(null);
+    try {
+      const res = (await callEdgeFunction("cvp-send-test-feedback-request", {
+        submissionId: submission.id,
+        recipientOverride: "ss.raminder@gmail.com",
+        forceResend: true,
+      })) as { success?: boolean; error?: string; data?: { reviewUrl?: string; sentTo?: string } };
+      if (!res.success) {
+        toast.error(res.error ?? "Smoke send failed.");
+      } else {
+        const url = res.data?.reviewUrl ?? "";
+        const sentTo = res.data?.sentTo ?? "ss.raminder@gmail.com";
+        setSmokeResult({ url, sentTo });
+        toast.success(`V22 sent to ${sentTo}`);
+      }
+    } catch (err) {
+      toast.error("Smoke send failed: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSmokeBusy(false);
+    }
+  };
   const [busy, setBusy] = useState<"none" | "approve" | "reject" | "regrade">("none");
 
   const isFinal = combo.status === "approved" || combo.status === "rejected";
@@ -552,6 +579,20 @@ function TestAssessmentPanel({
         </div>
       )}
 
+      {smokeResult && (
+        <div className="rounded border border-indigo-200 bg-indigo-50 p-2 text-xs space-y-1">
+          <div className="font-semibold text-indigo-900">
+            V22 smoke email sent to <span className="font-mono">{smokeResult.sentTo}</span>
+          </div>
+          <div className="text-indigo-800">
+            Direct review link:{" "}
+            <a href={smokeResult.url} target="_blank" rel="noreferrer" className="font-mono break-all underline">
+              {smokeResult.url}
+            </a>
+          </div>
+        </div>
+      )}
+
       <div className="pt-2 border-t border-gray-200 space-y-2">
         {isFinal ? (
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
@@ -564,17 +605,31 @@ function TestAssessmentPanel({
                 ? ` at $${Number(combo.approved_rate).toFixed(3)}/word`
                 : ""}
             </span>
-            {canRegrade && (
-              <button
-                type="button"
-                onClick={handleRegrade}
-                disabled={busy === "regrade"}
-                className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                {busy === "regrade" ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                Re-grade
-              </button>
-            )}
+            <div className="ml-auto flex items-center gap-2">
+              {!!submission?.id && a.errors.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSmokeFeedbackRequest}
+                  disabled={smokeBusy}
+                  title="Send V22 feedback-request email to ss.raminder@gmail.com"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                >
+                  {smokeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  Smoke V22 to me
+                </button>
+              )}
+              {canRegrade && (
+                <button
+                  type="button"
+                  onClick={handleRegrade}
+                  disabled={busy === "regrade"}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {busy === "regrade" ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  Re-grade
+                </button>
+              )}
+            </div>
           </div>
         ) : action === "none" ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -595,17 +650,31 @@ function TestAssessmentPanel({
             >
               Reject
             </button>
-            {canRegrade && (
-              <button
-                type="button"
-                onClick={handleRegrade}
-                disabled={busy === "regrade"}
-                className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                {busy === "regrade" ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                Re-grade
-              </button>
-            )}
+            <div className="ml-auto flex items-center gap-2">
+              {!!submission?.id && a.errors.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSmokeFeedbackRequest}
+                  disabled={smokeBusy}
+                  title="Send V22 feedback-request email to ss.raminder@gmail.com"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                >
+                  {smokeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  Smoke V22 to me
+                </button>
+              )}
+              {canRegrade && (
+                <button
+                  type="button"
+                  onClick={handleRegrade}
+                  disabled={busy === "regrade"}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {busy === "regrade" ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  Re-grade
+                </button>
+              )}
+            </div>
           </div>
         ) : action === "approve" ? (
           <div className="space-y-2 rounded border border-green-200 bg-green-50 p-2.5">
