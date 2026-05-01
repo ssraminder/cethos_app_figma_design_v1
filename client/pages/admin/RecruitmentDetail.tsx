@@ -290,22 +290,123 @@ function DimensionBar({ label, score }: { label: string; score: number | undefin
 
 function TestAssessmentPanel({
   assessment,
+  combo,
   submission,
   test,
+  staffId,
+  onAfterAction,
+  callEdgeFunction,
 }: {
   assessment: Record<string, unknown>;
+  combo: TestCombination;
   submission: TestSubmission | null;
   test: TestLibraryRow | null;
+  staffId?: string;
+  onAfterAction: () => Promise<void> | void;
+  callEdgeFunction: (fnSlug: string, body: Record<string, unknown>) => Promise<unknown>;
 }) {
   const a = parseAssessment(assessment);
   const [showTranslation, setShowTranslation] = useState(false);
   const [showErrors, setShowErrors] = useState(true);
+  const [action, setAction] = useState<"none" | "approve" | "reject">("none");
+  const [rate, setRate] = useState<string>(combo.approved_rate ? String(combo.approved_rate) : "");
+  const [rejectionFeedback, setRejectionFeedback] = useState<string>("");
+  const [busy, setBusy] = useState<"none" | "approve" | "reject" | "regrade">("none");
+
+  const isFinal = combo.status === "approved" || combo.status === "rejected";
+  const canRegrade = !!submission?.id && (combo.status === "assessed" || combo.status === "approved" || combo.status === "rejected" || a.isFallback);
+
+  const handleApprove = async () => {
+    setBusy("approve");
+    try {
+      const parsedRate = rate.trim() === "" ? null : Number(rate);
+      if (parsedRate !== null && (!Number.isFinite(parsedRate) || parsedRate <= 0)) {
+        toast.error("Enter a valid per-word rate, or leave blank.");
+        setBusy("none");
+        return;
+      }
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from("cvp_test_combinations")
+        .update({
+          status: "approved",
+          approved_at: now,
+          approved_by: staffId ?? null,
+          approved_rate: parsedRate,
+          updated_at: now,
+        })
+        .eq("id", combo.id);
+      if (error) throw error;
+      toast.success("Test approved.");
+      setAction("none");
+      await onAfterAction();
+    } catch (err) {
+      toast.error("Approve failed: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy("none");
+    }
+  };
+
+  const handleReject = async () => {
+    setBusy("reject");
+    try {
+      const trimmed = rejectionFeedback.trim();
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from("cvp_test_combinations")
+        .update({
+          status: "rejected",
+          failure_reason: trimmed.length > 0 ? trimmed.slice(0, 1000) : null,
+          updated_at: now,
+        })
+        .eq("id", combo.id);
+      if (error) throw error;
+      toast.success("Test rejected.");
+      setAction("none");
+      setRejectionFeedback("");
+      await onAfterAction();
+    } catch (err) {
+      toast.error("Reject failed: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy("none");
+    }
+  };
+
+  const handleRegrade = async () => {
+    if (!submission?.id) return;
+    if (!confirm("Re-run AI grading on this submission? Current score and assessment will be overwritten.")) return;
+    setBusy("regrade");
+    try {
+      await callEdgeFunction("cvp-assess-test", {
+        submissionId: submission.id,
+        combinationId: combo.id,
+      });
+      toast.success("Re-grade triggered — assessment will refresh in a moment.");
+      // cvp-assess-test takes 30–90s. Refetch after a beat.
+      setTimeout(() => { void onAfterAction(); }, 8000);
+    } catch (err) {
+      toast.error("Re-grade failed: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy("none");
+    }
+  };
 
   if (a.isFallback) {
     return (
-      <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+      <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 space-y-2">
         <div className="font-semibold">AI grading failed — staff review required</div>
-        {a.fallbackReason && <div className="mt-1 font-mono text-[11px] break-all">{a.fallbackReason}</div>}
+        {a.fallbackReason && <div className="font-mono text-[11px] break-all">{a.fallbackReason}</div>}
+        {canRegrade && (
+          <button
+            type="button"
+            onClick={handleRegrade}
+            disabled={busy === "regrade"}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded border border-amber-400 bg-white text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+          >
+            {busy === "regrade" ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+            Re-grade
+          </button>
+        )}
       </div>
     );
   }
@@ -436,6 +537,137 @@ function TestAssessmentPanel({
           </div>
         </div>
       )}
+
+      <div className="pt-2 border-t border-gray-200 space-y-2">
+        {isFinal ? (
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
+            <span>
+              {combo.status === "approved" ? "✅ Approved" : "❌ Rejected"}
+              {combo.approved_at && combo.status === "approved"
+                ? ` ${format(new Date(combo.approved_at), "MMM d, yyyy")}`
+                : ""}
+              {combo.status === "approved" && combo.approved_rate
+                ? ` at $${Number(combo.approved_rate).toFixed(3)}/word`
+                : ""}
+            </span>
+            {canRegrade && (
+              <button
+                type="button"
+                onClick={handleRegrade}
+                disabled={busy === "regrade"}
+                className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {busy === "regrade" ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                Re-grade
+              </button>
+            )}
+          </div>
+        ) : action === "none" ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAction("approve")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-green-600 text-white hover:bg-green-700"
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAction("reject");
+                setRejectionFeedback(a.feedbackDraft ?? "");
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded border border-red-300 bg-white text-red-700 hover:bg-red-50"
+            >
+              Reject
+            </button>
+            {canRegrade && (
+              <button
+                type="button"
+                onClick={handleRegrade}
+                disabled={busy === "regrade"}
+                className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {busy === "regrade" ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                Re-grade
+              </button>
+            )}
+          </div>
+        ) : action === "approve" ? (
+          <div className="space-y-2 rounded border border-green-200 bg-green-50 p-2.5">
+            <div className="text-[11px] font-semibold text-green-800">Approve this test</div>
+            <label className="block text-[11px] text-gray-700">
+              Per-word rate (optional)
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-gray-500">$</span>
+                <input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                  placeholder="e.g. 0.18"
+                  className="w-28 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <span className="text-[11px] text-gray-500">/ word</span>
+              </div>
+            </label>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleApprove}
+                disabled={busy === "approve"}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                {busy === "approve" ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                Confirm approve
+              </button>
+              <button
+                type="button"
+                onClick={() => setAction("none")}
+                disabled={busy === "approve"}
+                className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2 rounded border border-red-200 bg-red-50 p-2.5">
+            <div className="text-[11px] font-semibold text-red-800">Reject this test</div>
+            <label className="block text-[11px] text-gray-700">
+              Reason / feedback (saved on the combo, max 1000 chars)
+              <textarea
+                value={rejectionFeedback}
+                onChange={(e) => setRejectionFeedback(e.target.value.slice(0, 1000))}
+                rows={4}
+                className="mt-1 w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-red-500 resize-y"
+                placeholder="e.g. accuracy errors in opening paragraph; tone too informal for HR memo register"
+              />
+              <div className="text-[10px] text-gray-500 text-right">{rejectionFeedback.length}/1000</div>
+            </label>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleReject}
+                disabled={busy === "reject"}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {busy === "reject" ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                Confirm reject
+              </button>
+              <button
+                type="button"
+                onClick={() => setAction("none")}
+                disabled={busy === "reject"}
+                className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -3939,8 +4171,12 @@ export default function RecruitmentDetail() {
                       {combo.ai_assessment_result && (
                         <TestAssessmentPanel
                           assessment={combo.ai_assessment_result}
+                          combo={combo}
                           submission={sub ?? null}
                           test={sub?.test_id ? testLibrary[sub.test_id] ?? null : null}
+                          staffId={session?.staffId}
+                          onAfterAction={fetchData}
+                          callEdgeFunction={callEdgeFunction}
                         />
                       )}
                     </div>

@@ -35,10 +35,16 @@ const TAB_STATUSES: Record<string, string[]> = {
 
 const TAB_LABELS: Record<string, string> = {
   attention: "Needs Attention",
+  tests: "Tests to Review",
   in_progress: "In Progress",
   decided: "Decided",
   waitlist: "Waitlist",
 };
+
+// "Tests to Review" — applicants with at least one combination that's just
+// landed (test_submitted) or graded but borderline / needing staff judgement
+// (assessed). Approved/rejected combos are excluded — those are settled.
+const TESTS_REVIEW_COMBO_STATUSES = ["test_submitted", "assessed"];
 
 const STATUS_LABELS: Record<string, string> = {
   submitted: "Submitted",
@@ -118,6 +124,7 @@ export default function RecruitmentList() {
   const [loading, setLoading] = useState(true);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({
     attention: 0,
+    tests: 0,
     in_progress: 0,
     decided: 0,
     waitlist: 0,
@@ -144,6 +151,18 @@ export default function RecruitmentList() {
         counts[tab] = error ? 0 : (count ?? 0);
       })
     );
+    // "Tests to Review" — distinct applicants with at least one combo in
+    // test_submitted or assessed status.
+    try {
+      const { data } = await supabase
+        .from("cvp_test_combinations")
+        .select("application_id")
+        .in("status", TESTS_REVIEW_COMBO_STATUSES);
+      const ids = new Set((data ?? []).map((r) => (r as { application_id: string }).application_id));
+      counts.tests = ids.size;
+    } catch {
+      counts.tests = 0;
+    }
     setTabCounts(counts);
   }, []);
 
@@ -151,14 +170,40 @@ export default function RecruitmentList() {
   const fetchApplications = useCallback(async () => {
     setLoading(true);
     try {
-      const statuses = TAB_STATUSES[activeTab] || [];
+      // Build the base id list. The "tests" tab pulls applicant ids from
+      // cvp_test_combinations (any combo in test_submitted/assessed). Every
+      // other tab is a flat status filter on cvp_applications.
+      let appIds: string[] | null = null;
+      if (activeTab === "tests") {
+        const { data: comboRows, error: comboErr } = await supabase
+          .from("cvp_test_combinations")
+          .select("application_id")
+          .in("status", TESTS_REVIEW_COMBO_STATUSES);
+        if (comboErr) throw comboErr;
+        appIds = Array.from(
+          new Set((comboRows ?? []).map((r) => (r as { application_id: string }).application_id))
+        );
+        if (appIds.length === 0) {
+          setApplications([]);
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
+      }
+
       let query = supabase
         .from("cvp_applications")
         .select(
           "id, application_number, full_name, email, role_type, status, ai_prescreening_score, assigned_tier, country, created_at, updated_at",
           { count: "exact" }
-        )
-        .in("status", statuses);
+        );
+
+      if (appIds) {
+        query = query.in("id", appIds);
+      } else {
+        const statuses = TAB_STATUSES[activeTab] || [];
+        query = query.in("status", statuses);
+      }
 
       if (search) {
         query = query.or(

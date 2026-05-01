@@ -244,6 +244,7 @@ function AdminLayoutInner() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [incompleteTrainings, setIncompleteTrainings] = useState(0);
   const [unackedInbound, setUnackedInbound] = useState(0);
+  const [testsToReview, setTestsToReview] = useState(0);
   const location = useLocation();
   const branding = useBranding();
   const { session, signOut } = useAdminAuthContext();
@@ -285,6 +286,36 @@ function AdminLayoutInner() {
     };
     fetchUnacked();
     const interval = window.setInterval(fetchUnacked, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [session, location.pathname]);
+
+  // Tests-to-review badge: distinct applicants with at least one combo in
+  // test_submitted (just landed) or assessed (graded but borderline /
+  // staff judgement needed). Approved + rejected combos are excluded —
+  // those are settled.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    const fetchTestsToReview = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("cvp_test_combinations")
+          .select("application_id")
+          .in("status", ["test_submitted", "assessed"]);
+        if (cancelled || error) return;
+        const distinct = new Set(
+          (data ?? []).map((r) => (r as { application_id: string }).application_id)
+        );
+        setTestsToReview(distinct.size);
+      } catch {
+        /* silent — nice-to-have */
+      }
+    };
+    fetchTestsToReview();
+    const interval = window.setInterval(fetchTestsToReview, 60_000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -399,6 +430,15 @@ function AdminLayoutInner() {
                 title="Unacknowledged applicant replies"
               >
                 {(sidebarOpen || isMobile) ? (unackedInbound > 99 ? "99+" : unackedInbound) : ""}
+              </span>
+            )}
+            {item.path === "/admin/recruitment" && testsToReview > 0 && (
+              <span className={`flex-shrink-0 bg-indigo-500 text-white text-xs font-bold rounded-full ${
+                sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
+              }`}
+                title="Applicants with submitted or borderline tests awaiting review"
+              >
+                {(sidebarOpen || isMobile) ? (testsToReview > 99 ? "99+" : testsToReview) : ""}
               </span>
             )}
             {item.path === "/admin/trainings" && incompleteTrainings > 0 && (
