@@ -3784,7 +3784,24 @@ export default function RecruitmentDetail() {
                   const r = aiResult as Record<string, unknown>;
                   const rec = r.recommendation;
                   if (rec !== "proceed" && rec !== "staff_review") return null;
-                  if (app.status === "rejected" || app.status === "approved" || app.status === "prescreened") return null;
+                  // Hide once the applicant has progressed past the
+                  // prescreen-approval gate — V2/V8 has either gone out or
+                  // the manual queue picked them up. Anything in the test
+                  // pipeline or beyond is downstream of this banner.
+                  const downstream = new Set([
+                    "prescreened",
+                    "approved",
+                    "rejected",
+                    "test_pending",
+                    "test_sent",
+                    "test_in_progress",
+                    "test_submitted",
+                    "test_assessed",
+                    "negotiation",
+                    "archived",
+                    "waitlisted",
+                  ]);
+                  if (downstream.has(app.status)) return null;
                   // Already sent V8 / moved forward? Skip.
                   const isAdvance = rec === "proceed";
                   const isManual = rec === "staff_review";
