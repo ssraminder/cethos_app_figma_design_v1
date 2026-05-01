@@ -152,14 +152,27 @@ interface TestCombination {
 interface TestSubmission {
   id: string;
   combination_id: string;
+  test_id: string | null;
   token: string;
   token_expires_at: string;
   status: string;
   submitted_at: string | null;
   ai_assessment_score: number | null;
+  draft_content: string | null;
+  submitted_notes: string | null;
   first_viewed_at: string | null;
   view_count: number;
   created_at: string;
+}
+
+interface TestLibraryRow {
+  id: string;
+  title: string;
+  domain: string | null;
+  service_type: string | null;
+  difficulty: string | null;
+  source_text: string | null;
+  reference_translation: string | null;
 }
 
 interface Language { id: string; name: string }
@@ -188,6 +201,252 @@ function ScoreBadge({ label, value, type = "quality" }: { label: string; value: 
     <div className="flex flex-col gap-1">
       <span className="text-xs text-gray-500">{label}</span>
       <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium ${color}`}>{display}</span>
+    </div>
+  );
+}
+
+interface AssessmentDimensionScores {
+  accuracy?: number;
+  fluency?: number;
+  terminology?: number;
+  formatting?: number;
+  certification_readiness?: number;
+}
+
+interface AssessmentError {
+  category?: string;
+  severity?: string;
+  location?: string;
+  note?: string;
+}
+
+interface ParsedAssessment {
+  isFallback: boolean;
+  fallbackReason?: string;
+  overallScore?: number;
+  pass?: boolean;
+  suggestedTier?: string;
+  confidence?: string;
+  dimensionScores?: AssessmentDimensionScores;
+  errors: AssessmentError[];
+  strengths: string[];
+  feedbackDraft?: string;
+}
+
+function parseAssessment(raw: Record<string, unknown> | null): ParsedAssessment {
+  if (!raw) return { isFallback: false, errors: [], strengths: [] };
+  const r = raw as Record<string, unknown>;
+  if (r.error === "ai_fallback") {
+    return {
+      isFallback: true,
+      fallbackReason: typeof r.reason === "string" ? r.reason : undefined,
+      errors: [],
+      strengths: [],
+    };
+  }
+  return {
+    isFallback: false,
+    overallScore: typeof r.overall_score === "number" ? r.overall_score : undefined,
+    pass: typeof r.pass === "boolean" ? r.pass : undefined,
+    suggestedTier: typeof r.suggested_tier === "string" ? r.suggested_tier : undefined,
+    confidence: typeof r.confidence === "string" ? r.confidence : undefined,
+    dimensionScores: (r.dimension_scores as AssessmentDimensionScores | undefined) ?? undefined,
+    errors: Array.isArray(r.errors) ? (r.errors as AssessmentError[]) : [],
+    strengths: Array.isArray(r.strengths) ? (r.strengths as string[]) : [],
+    feedbackDraft: typeof r.feedback_draft === "string" ? r.feedback_draft : undefined,
+  };
+}
+
+function dimensionColor(score: number | undefined): string {
+  if (score === undefined) return "bg-gray-200";
+  if (score >= 80) return "bg-green-500";
+  if (score >= 65) return "bg-yellow-500";
+  return "bg-red-500";
+}
+
+function severityClasses(sev: string | undefined): string {
+  switch ((sev ?? "").toLowerCase()) {
+    case "critical": return "bg-red-100 text-red-700 border-red-200";
+    case "major":    return "bg-orange-100 text-orange-700 border-orange-200";
+    case "minor":    return "bg-yellow-50 text-yellow-700 border-yellow-200";
+    default:         return "bg-gray-100 text-gray-700 border-gray-200";
+  }
+}
+
+function DimensionBar({ label, score }: { label: string; score: number | undefined }) {
+  const pct = Math.max(0, Math.min(100, score ?? 0));
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-gray-600">{label}</span>
+        <span className="text-[11px] font-semibold tabular-nums text-gray-700">{score ?? "—"}</span>
+      </div>
+      <div className="h-1.5 bg-gray-100 rounded overflow-hidden">
+        <div className={`h-full ${dimensionColor(score)}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function TestAssessmentPanel({
+  assessment,
+  submission,
+  test,
+}: {
+  assessment: Record<string, unknown>;
+  submission: TestSubmission | null;
+  test: TestLibraryRow | null;
+}) {
+  const a = parseAssessment(assessment);
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [showErrors, setShowErrors] = useState(true);
+
+  if (a.isFallback) {
+    return (
+      <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+        <div className="font-semibold">AI grading failed — staff review required</div>
+        {a.fallbackReason && <div className="mt-1 font-mono text-[11px] break-all">{a.fallbackReason}</div>}
+      </div>
+    );
+  }
+
+  const hasDimensions =
+    a.dimensionScores &&
+    (a.dimensionScores.accuracy !== undefined ||
+      a.dimensionScores.fluency !== undefined ||
+      a.dimensionScores.terminology !== undefined ||
+      a.dimensionScores.formatting !== undefined ||
+      a.dimensionScores.certification_readiness !== undefined);
+
+  return (
+    <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 space-y-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {a.suggestedTier && (
+          <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 font-medium capitalize">
+            Suggested tier: {a.suggestedTier}
+          </span>
+        )}
+        {a.confidence && (
+          <span className={`px-2 py-0.5 rounded font-medium capitalize ${
+            a.confidence === "high" ? "bg-green-100 text-green-700" :
+            a.confidence === "medium" ? "bg-yellow-100 text-yellow-700" :
+            "bg-gray-100 text-gray-600"
+          }`}>
+            Confidence: {a.confidence}
+          </span>
+        )}
+        {a.pass !== undefined && (
+          <span className={`px-2 py-0.5 rounded font-medium ${a.pass ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+            {a.pass ? "Pass" : "Did not pass"}
+          </span>
+        )}
+      </div>
+
+      {hasDimensions && (
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+          <DimensionBar label="Accuracy"  score={a.dimensionScores!.accuracy} />
+          <DimensionBar label="Fluency"   score={a.dimensionScores!.fluency} />
+          <DimensionBar label="Terminology" score={a.dimensionScores!.terminology} />
+          <DimensionBar label="Formatting"  score={a.dimensionScores!.formatting} />
+          <DimensionBar label="Cert-ready"  score={a.dimensionScores!.certification_readiness} />
+        </div>
+      )}
+
+      {a.strengths.length > 0 && (
+        <div>
+          <div className="text-[11px] font-semibold text-gray-700 mb-1">Strengths</div>
+          <ul className="list-disc pl-4 text-xs text-gray-700 space-y-0.5">
+            {a.strengths.map((s, i) => <li key={i}>{s}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {a.errors.length > 0 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowErrors((v) => !v)}
+            className="text-[11px] font-semibold text-gray-700 mb-1 hover:text-gray-900"
+          >
+            {showErrors ? "▾" : "▸"} Errors ({a.errors.length})
+          </button>
+          {showErrors && (
+            <ul className="space-y-1.5">
+              {a.errors.map((e, i) => (
+                <li
+                  key={i}
+                  className={`border rounded px-2 py-1.5 text-xs ${severityClasses(e.severity)}`}
+                >
+                  <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                    {e.severity && (
+                      <span className="text-[10px] font-bold uppercase tracking-wide">
+                        {e.severity}
+                      </span>
+                    )}
+                    {e.category && (
+                      <span className="text-[10px] capitalize opacity-80">
+                        {e.category.replace(/_/g, " ")}
+                      </span>
+                    )}
+                    {e.location && (
+                      <span className="text-[10px] font-mono opacity-70">{e.location}</span>
+                    )}
+                  </div>
+                  {e.note && <div className="leading-snug">{e.note}</div>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {a.feedbackDraft && (
+        <div>
+          <div className="text-[11px] font-semibold text-gray-700 mb-1">Feedback draft</div>
+          <div className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed bg-white border border-gray-200 rounded px-2 py-1.5">
+            {a.feedbackDraft}
+          </div>
+        </div>
+      )}
+
+      {(submission?.draft_content || test?.source_text || test?.reference_translation) && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowTranslation((v) => !v)}
+            className="text-[11px] font-semibold text-teal-700 hover:text-teal-800"
+          >
+            {showTranslation ? "▾ Hide translation comparison" : "▸ View translation comparison"}
+          </button>
+          {showTranslation && (
+            <div className="mt-2 grid grid-cols-1 lg:grid-cols-3 gap-2">
+              <TextPanel title="Source" body={test?.source_text} />
+              <TextPanel title="Applicant translation" body={submission?.draft_content} highlight />
+              <TextPanel title="Reference translation" body={test?.reference_translation} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {submission?.submitted_notes && (
+        <div>
+          <div className="text-[11px] font-semibold text-gray-700 mb-1">Applicant notes</div>
+          <div className="text-xs text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded px-2 py-1.5">
+            {submission.submitted_notes}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TextPanel({ title, body, highlight = false }: { title: string; body: string | null | undefined; highlight?: boolean }) {
+  return (
+    <div className={`flex flex-col rounded border ${highlight ? "border-teal-200 bg-teal-50/50" : "border-gray-200 bg-white"}`}>
+      <div className="text-[11px] font-semibold text-gray-700 px-2 py-1 border-b border-gray-200">{title}</div>
+      <div className="text-xs text-gray-800 whitespace-pre-wrap leading-relaxed px-2 py-2 max-h-72 overflow-y-auto">
+        {body && body.trim().length > 0 ? body : <span className="text-gray-400 italic">Not available</span>}
+      </div>
     </div>
   );
 }
@@ -2517,6 +2776,7 @@ export default function RecruitmentDetail() {
   const [app, setApp] = useState<Application | null>(null);
   const [combinations, setCombinations] = useState<TestCombination[]>([]);
   const [submissions, setSubmissions] = useState<TestSubmission[]>([]);
+  const [testLibrary, setTestLibrary] = useState<Record<string, TestLibraryRow>>({});
   const [languages, setLanguages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -2572,7 +2832,26 @@ export default function RecruitmentDetail() {
         .select("*")
         .eq("application_id", id)
         .order("created_at", { ascending: true });
-      setSubmissions((subs as TestSubmission[]) || []);
+      const subsList = (subs as TestSubmission[]) || [];
+      setSubmissions(subsList);
+
+      // Fetch the test-library rows referenced by these submissions so the
+      // review panel can show source + reference translation side-by-side
+      // with the applicant's draft.
+      const testIds = Array.from(
+        new Set(subsList.map((s) => s.test_id).filter((x): x is string => !!x))
+      );
+      if (testIds.length > 0) {
+        const { data: lib } = await supabase
+          .from("cvp_test_library")
+          .select("id, title, domain, service_type, difficulty, source_text, reference_translation")
+          .in("id", testIds);
+        const map: Record<string, TestLibraryRow> = {};
+        for (const row of (lib as TestLibraryRow[]) || []) map[row.id] = row;
+        setTestLibrary(map);
+      } else {
+        setTestLibrary({});
+      }
 
       // Fetch safe-mode config + approved-count to render the status banner.
       // Mirrors the server-side logic in _shared/safe-mode.ts so the UI can
@@ -3656,6 +3935,13 @@ export default function RecruitmentDetail() {
                           <div>Views: {sub.view_count}</div>
                           {sub.submitted_at && <div>Submitted: {format(new Date(sub.submitted_at), "MMM d, yyyy h:mm a")}</div>}
                         </div>
+                      )}
+                      {combo.ai_assessment_result && (
+                        <TestAssessmentPanel
+                          assessment={combo.ai_assessment_result}
+                          submission={sub ?? null}
+                          test={sub?.test_id ? testLibrary[sub.test_id] ?? null : null}
+                        />
                       )}
                     </div>
                   );
