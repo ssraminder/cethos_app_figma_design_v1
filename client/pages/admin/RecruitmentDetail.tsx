@@ -175,6 +175,32 @@ interface TestLibraryRow {
   reference_translation: string | null;
 }
 
+interface ErrorFeedbackRow {
+  id: string;
+  submission_id: string;
+  combination_id: string;
+  error_index: number;
+  applicant_response: "accept" | "reject";
+  applicant_reason: string | null;
+  applicant_submitted_at: string;
+  auto_triage_verdict: string | null;
+  auto_triage_confidence: number | null;
+  auto_triage_reasoning: string | null;
+  auto_triage_at: string | null;
+  hitl_status: string | null;
+}
+
+interface FeedbackRoundRow {
+  submission_id: string;
+  combination_id: string;
+  status: string;
+  staff_skip: boolean;
+  v12_sent_at: string | null;
+  applicant_first_view_at: string | null;
+  applicant_submitted_at: string | null;
+  expires_at: string;
+}
+
 interface Language { id: string; name: string }
 
 // ---------- Helpers ----------
@@ -302,6 +328,8 @@ function TestAssessmentPanel({
   staffId,
   onAfterAction,
   callEdgeFunction,
+  errorFeedback,
+  feedbackRound,
 }: {
   assessment: Record<string, unknown>;
   combo: TestCombination;
@@ -310,6 +338,8 @@ function TestAssessmentPanel({
   staffId?: string;
   onAfterAction: () => Promise<void> | void;
   callEdgeFunction: (fnSlug: string, body: Record<string, unknown>) => Promise<unknown>;
+  errorFeedback: ErrorFeedbackRow[];
+  feedbackRound: FeedbackRoundRow | null;
 }) {
   const a = parseAssessment(assessment);
   const [showTranslation, setShowTranslation] = useState(false);
@@ -319,6 +349,67 @@ function TestAssessmentPanel({
   const [rejectionFeedback, setRejectionFeedback] = useState<string>("");
   const [smokeBusy, setSmokeBusy] = useState(false);
   const [smokeResult, setSmokeResult] = useState<{ url: string; sentTo: string } | null>(null);
+  const [skipBusy, setSkipBusy] = useState(false);
+  const [retriageBusy, setRetriageBusy] = useState(false);
+
+  const feedbackByIndex = new Map<number, ErrorFeedbackRow>();
+  for (const r of errorFeedback) feedbackByIndex.set(r.error_index, r);
+
+  const handleToggleSkip = async () => {
+    if (!submission?.id) return;
+    setSkipBusy(true);
+    try {
+      const nextSkip = !(feedbackRound?.staff_skip ?? false);
+      const now = new Date().toISOString();
+      if (feedbackRound) {
+        const { error } = await supabase
+          .from("cvp_test_feedback_rounds")
+          .update({
+            staff_skip: nextSkip,
+            status: nextSkip ? "skipped" : "sent",
+            updated_at: now,
+          })
+          .eq("submission_id", submission.id);
+        if (error) throw error;
+      } else {
+        // Pre-emptive skip: create the round with staff_skip=true so the
+        // grader's auto-fire becomes a no-op. Token isn't usable since
+        // staff_skip=true rejects all callers.
+        const placeholderToken =
+          (typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : Math.random().toString(36).slice(2)) + "-staff-skip";
+        const { error } = await supabase.from("cvp_test_feedback_rounds").insert({
+          submission_id: submission.id,
+          combination_id: combo.id,
+          token: placeholderToken,
+          staff_skip: nextSkip,
+          status: nextSkip ? "skipped" : "sent",
+        });
+        if (error) throw error;
+      }
+      toast.success(nextSkip ? "Vendor feedback round skipped." : "Vendor feedback round re-enabled.");
+      await onAfterAction();
+    } catch (err) {
+      toast.error("Skip toggle failed: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSkipBusy(false);
+    }
+  };
+
+  const handleRetriage = async () => {
+    if (!submission?.id) return;
+    setRetriageBusy(true);
+    try {
+      await callEdgeFunction("cvp-triage-test-feedback", { submissionId: submission.id, force: true });
+      toast.success("Auto-triage re-running — refresh in a moment.");
+      setTimeout(() => { void onAfterAction(); }, 5000);
+    } catch (err) {
+      toast.error("Re-triage failed: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setRetriageBusy(false);
+    }
+  };
 
   const handleSmokeFeedbackRequest = async () => {
     if (!submission?.id) return;
@@ -503,6 +594,11 @@ function TestAssessmentPanel({
             className="text-[11px] font-semibold text-gray-700 mb-1 hover:text-gray-900"
           >
             {showErrors ? "▾" : "▸"} Errors ({a.errors.length})
+            {feedbackByIndex.size > 0 && (
+              <span className="ml-2 px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px] font-semibold">
+                🗣 {feedbackByIndex.size} of {a.errors.length} answered
+              </span>
+            )}
           </button>
           {showErrors && (
             <ul className="space-y-1.5">
@@ -527,6 +623,9 @@ function TestAssessmentPanel({
                     )}
                   </div>
                   {e.note && <div className="leading-snug">{e.note}</div>}
+                  {feedbackByIndex.has(i) && (
+                    <VendorFeedbackInline row={feedbackByIndex.get(i)!} />
+                  )}
                 </li>
               ))}
             </ul>
@@ -593,6 +692,48 @@ function TestAssessmentPanel({
         </div>
       )}
 
+      {feedbackRound && (
+        <div className="rounded border border-gray-200 bg-white p-2 text-[11px] flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-gray-700">Vendor feedback round:</span>
+          <span
+            className={`px-1.5 py-0.5 rounded font-medium capitalize ${
+              feedbackRound.staff_skip
+                ? "bg-gray-100 text-gray-500"
+                : feedbackRound.status === "submitted"
+                ? "bg-emerald-100 text-emerald-700"
+                : feedbackRound.status === "opened"
+                ? "bg-yellow-100 text-yellow-700"
+                : feedbackRound.status === "expired"
+                ? "bg-red-100 text-red-700"
+                : "bg-blue-100 text-blue-700"
+            }`}
+          >
+            {feedbackRound.staff_skip ? "skipped" : feedbackRound.status}
+          </span>
+          {feedbackRound.applicant_submitted_at && (
+            <span className="text-gray-500">
+              answered {format(new Date(feedbackRound.applicant_submitted_at), "MMM d h:mm a")}
+            </span>
+          )}
+          {feedbackRound.expires_at && !feedbackRound.staff_skip && (
+            <span className="text-gray-500">
+              expires {format(new Date(feedbackRound.expires_at), "MMM d")}
+            </span>
+          )}
+          {errorFeedback.length > 0 && (
+            <button
+              type="button"
+              onClick={handleRetriage}
+              disabled={retriageBusy}
+              className="ml-auto px-1.5 py-0.5 text-[10px] rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+              title="Re-run Tier 1 LLM auto-triage over all rejected findings"
+            >
+              {retriageBusy ? "Retriaging…" : "Re-triage"}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="pt-2 border-t border-gray-200 space-y-2">
         {isFinal ? (
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
@@ -616,6 +757,22 @@ function TestAssessmentPanel({
                 >
                   {smokeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                   Smoke V22 to me
+                </button>
+              )}
+              {!!submission?.id && a.errors.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleToggleSkip}
+                  disabled={skipBusy}
+                  title="Toggle whether V22 auto-sends to the applicant for this combo"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border disabled:opacity-50 ${
+                    feedbackRound?.staff_skip
+                      ? "border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {skipBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  {feedbackRound?.staff_skip ? "Re-enable V22" : "Skip V22"}
                 </button>
               )}
               {canRegrade && (
@@ -661,6 +818,22 @@ function TestAssessmentPanel({
                 >
                   {smokeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                   Smoke V22 to me
+                </button>
+              )}
+              {!!submission?.id && a.errors.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleToggleSkip}
+                  disabled={skipBusy}
+                  title="Toggle whether V22 auto-sends to the applicant for this combo"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border disabled:opacity-50 ${
+                    feedbackRound?.staff_skip
+                      ? "border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {skipBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  {feedbackRound?.staff_skip ? "Re-enable V22" : "Skip V22"}
                 </button>
               )}
               {canRegrade && (
@@ -762,6 +935,70 @@ function TextPanel({ title, body, highlight = false }: { title: string; body: st
       <div className="text-xs text-gray-800 whitespace-pre-wrap leading-relaxed px-2 py-2 max-h-72 overflow-y-auto">
         {body && body.trim().length > 0 ? body : <span className="text-gray-400 italic">Not available</span>}
       </div>
+    </div>
+  );
+}
+
+const TRIAGE_LABELS: Record<string, string> = {
+  applicant_correct: "Applicant correct",
+  grader_correct: "Grader correct",
+  partial: "Partial",
+  unclear: "Unclear",
+  needs_clarification: "Needs clarification",
+  clear: "Clear",
+};
+
+const TRIAGE_COLORS: Record<string, string> = {
+  applicant_correct: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  grader_correct: "bg-blue-100 text-blue-800 border-blue-200",
+  partial: "bg-amber-100 text-amber-800 border-amber-200",
+  unclear: "bg-gray-100 text-gray-700 border-gray-200",
+  needs_clarification: "bg-orange-100 text-orange-800 border-orange-200",
+  clear: "bg-gray-100 text-gray-700 border-gray-200",
+};
+
+function VendorFeedbackInline({ row }: { row: ErrorFeedbackRow }) {
+  const isAccept = row.applicant_response === "accept";
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-300/70 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+        <span className="opacity-70">🗣 Vendor:</span>
+        <span
+          className={`px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide ${
+            isAccept ? "bg-emerald-200 text-emerald-900" : "bg-red-200 text-red-900"
+          }`}
+        >
+          {isAccept ? "agreed" : "disagreed"}
+        </span>
+        {row.auto_triage_verdict && (
+          <span
+            className={`px-1.5 py-0.5 rounded border font-medium ${
+              TRIAGE_COLORS[row.auto_triage_verdict] ?? "bg-gray-100 text-gray-700 border-gray-200"
+            }`}
+            title={row.auto_triage_reasoning ?? undefined}
+          >
+            Triage: {TRIAGE_LABELS[row.auto_triage_verdict] ?? row.auto_triage_verdict}
+            {typeof row.auto_triage_confidence === "number"
+              ? ` · ${Math.round(row.auto_triage_confidence)}%`
+              : ""}
+          </span>
+        )}
+        {row.hitl_status && row.hitl_status !== "not_needed" && (
+          <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200 font-medium capitalize">
+            HITL: {row.hitl_status.replace(/_/g, " ")}
+          </span>
+        )}
+      </div>
+      {!isAccept && row.applicant_reason && (
+        <div className="text-xs text-gray-800 leading-snug bg-white border border-gray-200 rounded px-2 py-1">
+          {row.applicant_reason}
+        </div>
+      )}
+      {row.auto_triage_reasoning && (
+        <div className="text-[11px] text-gray-600 italic leading-snug">
+          ↳ {row.auto_triage_reasoning}
+        </div>
+      )}
     </div>
   );
 }
@@ -3092,6 +3329,8 @@ export default function RecruitmentDetail() {
   const [combinations, setCombinations] = useState<TestCombination[]>([]);
   const [submissions, setSubmissions] = useState<TestSubmission[]>([]);
   const [testLibrary, setTestLibrary] = useState<Record<string, TestLibraryRow>>({});
+  const [errorFeedback, setErrorFeedback] = useState<Record<string, ErrorFeedbackRow[]>>({});
+  const [feedbackRounds, setFeedbackRounds] = useState<Record<string, FeedbackRoundRow>>({});
   const [languages, setLanguages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -3166,6 +3405,41 @@ export default function RecruitmentDetail() {
         setTestLibrary(map);
       } else {
         setTestLibrary({});
+      }
+
+      // Per-error feedback rows + per-submission round state.
+      const submissionIds = subsList.map((s) => s.id);
+      if (submissionIds.length > 0) {
+        const [{ data: feedbackRows }, { data: roundRows }] = await Promise.all([
+          supabase
+            .from("cvp_test_error_feedback")
+            .select(
+              "id, submission_id, combination_id, error_index, applicant_response, applicant_reason, applicant_submitted_at, auto_triage_verdict, auto_triage_confidence, auto_triage_reasoning, auto_triage_at, hitl_status",
+            )
+            .in("submission_id", submissionIds),
+          supabase
+            .from("cvp_test_feedback_rounds")
+            .select(
+              "submission_id, combination_id, status, staff_skip, v12_sent_at, applicant_first_view_at, applicant_submitted_at, expires_at",
+            )
+            .in("submission_id", submissionIds),
+        ]);
+        const byCombo: Record<string, ErrorFeedbackRow[]> = {};
+        for (const r of (feedbackRows as ErrorFeedbackRow[]) || []) {
+          (byCombo[r.combination_id] ??= []).push(r);
+        }
+        for (const list of Object.values(byCombo)) {
+          list.sort((a, b) => a.error_index - b.error_index);
+        }
+        setErrorFeedback(byCombo);
+        const roundsMap: Record<string, FeedbackRoundRow> = {};
+        for (const r of (roundRows as FeedbackRoundRow[]) || []) {
+          roundsMap[r.combination_id] = r;
+        }
+        setFeedbackRounds(roundsMap);
+      } else {
+        setErrorFeedback({});
+        setFeedbackRounds({});
       }
 
       // Fetch safe-mode config + approved-count to render the status banner.
@@ -4277,6 +4551,8 @@ export default function RecruitmentDetail() {
                           staffId={session?.staffId}
                           onAfterAction={fetchData}
                           callEdgeFunction={callEdgeFunction}
+                          errorFeedback={errorFeedback[combo.id] ?? []}
+                          feedbackRound={feedbackRounds[combo.id] ?? null}
                         />
                       )}
                     </div>
