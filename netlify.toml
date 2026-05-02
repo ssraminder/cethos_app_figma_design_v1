@@ -8,6 +8,9 @@
   # (not secrets) but exist in both .env and Netlify env vars, which trips
   # the secrets scanner. Skip them.
   SECRETS_SCAN_OMIT_KEYS = "PING_MESSAGE,VITE_PUBLIC_BUILDER_KEY"
+  # Bump Node heap for Vite build + Sentry source map generation.
+  # Default 2GB OOMs on this bundle (~4MB minified, 3000+ modules).
+  NODE_OPTIONS = "--max-old-space-size=4096"
 
 [functions]
   external_node_modules = ["express"]
