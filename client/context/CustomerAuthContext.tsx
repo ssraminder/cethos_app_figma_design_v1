@@ -5,6 +5,7 @@ import {
   useEffect,
   ReactNode,
 } from "react";
+import { setSentryUser } from "../lib/sentry";
 
 interface Customer {
   id: string;
@@ -71,6 +72,14 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
     loadSession();
   }, []);
+
+  useEffect(() => {
+    if (customer) {
+      setSentryUser({ id: customer.id, email: customer.email, role: "customer" });
+    } else {
+      setSentryUser(null);
+    }
+  }, [customer]);
 
   // Sign out
   const signOut = async () => {

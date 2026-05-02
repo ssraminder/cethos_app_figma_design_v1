@@ -3,6 +3,12 @@
   functions = "netlify/functions"
   publish = "dist/spa"
 
+[build.environment]
+  # PING_MESSAGE and VITE_PUBLIC_BUILDER_KEY are demo/placeholder values
+  # (not secrets) but exist in both .env and Netlify env vars, which trips
+  # the secrets scanner. Skip them.
+  SECRETS_SCAN_OMIT_KEYS = "PING_MESSAGE,VITE_PUBLIC_BUILDER_KEY"
+
 [functions]
   external_node_modules = ["express"]
   node_bundler = "esbuild"

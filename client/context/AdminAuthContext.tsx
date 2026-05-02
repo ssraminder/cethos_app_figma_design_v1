@@ -1,5 +1,6 @@
-import React, { createContext, useContext, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, ReactNode } from "react";
 import { useAdminAuth, StaffSession } from "../hooks/useAdminAuth";
+import { setSentryUser } from "../lib/sentry";
 
 interface AdminAuthContextType {
   session: StaffSession | null;
@@ -22,6 +23,12 @@ interface AdminAuthProviderProps {
 
 export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
   const { session, loading, error, signOut, refreshSession } = useAdminAuth();
+
+  useEffect(() => {
+    if (session) {
+      setSentryUser({ id: session.staffId, email: session.staffEmail, role: session.staffRole });
+    }
+  }, [session]);
 
   const value: AdminAuthContextType = {
     session,

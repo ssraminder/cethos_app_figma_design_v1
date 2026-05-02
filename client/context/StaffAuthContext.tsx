@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import { setSentryUser } from "../lib/sentry";
 
 interface StaffUser {
   id: string;
@@ -265,6 +266,14 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     setStaffUser(null);
     setSession(null);
   };
+
+  useEffect(() => {
+    if (staffUser) {
+      setSentryUser({ id: staffUser.id, email: staffUser.email, role: staffUser.role });
+    } else {
+      setSentryUser(null);
+    }
+  }, [staffUser]);
 
   const value = {
     user,

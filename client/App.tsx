@@ -1,6 +1,8 @@
 // client/App.tsx
 // Updated with admin routes for staff portal
 
+import "./lib/sentry";
+import * as Sentry from "@sentry/react";
 import "./global.css";
 import { Toaster } from "@/components/ui/toaster";
 import { createRoot, type Root } from "react-dom/client";
@@ -137,6 +139,19 @@ import QuoteTrackingLayout from "./components/layouts/QuoteTrackingLayout";
 
 const queryClient = new QueryClient();
 
+const SentryFallback = () => (
+  <div style={{ padding: "2rem", textAlign: "center" }}>
+    <h1>Something went wrong</h1>
+    <p>An unexpected error occurred. Please reload the page.</p>
+    <button
+      onClick={() => window.location.reload()}
+      style={{ marginTop: "1rem", padding: "0.5rem 1rem", cursor: "pointer" }}
+    >
+      Reload
+    </button>
+  </div>
+);
+
 // Wrapper that combines AdminAuthProvider and ProtectedAdminRoute
 const AdminRoute = ({ children }: { children: React.ReactNode }) => (
   <AdminAuthProvider>
@@ -146,7 +161,8 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => (
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
+    <Sentry.ErrorBoundary fallback={<SentryFallback />}>
+      <TooltipProvider>
       <Toaster />
       <Sonner />
       <BrandingProvider>
@@ -488,7 +504,8 @@ const App = () => (
           </UploadProvider>
         </QuoteProvider>
       </BrandingProvider>
-    </TooltipProvider>
+      </TooltipProvider>
+    </Sentry.ErrorBoundary>
   </QueryClientProvider>
 );
 

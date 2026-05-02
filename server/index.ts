@@ -1,4 +1,6 @@
 import "dotenv/config";
+import "./lib/sentry";
+import * as Sentry from "@sentry/node";
 import express from "express";
 import cors from "cors";
 import { handleDemo } from "./routes/demo";
@@ -18,6 +20,8 @@ export function createServer() {
   });
 
   app.get("/api/demo", handleDemo);
+
+  Sentry.setupExpressErrorHandler(app);
 
   return app;
 }

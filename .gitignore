@@ -25,6 +25,9 @@ dist-ssr
 
 .config/
 !.env
+.env.netlify
+.env.local
+.env.*.local
 
 # Supabase CLI temp files
 supabase/.temp/
