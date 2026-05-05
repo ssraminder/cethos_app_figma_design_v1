@@ -151,6 +151,31 @@ serve(async (req) => {
       }
       const quoteNumber = `QT-${year}-${String(nextNum).padStart(5, "0")}`;
 
+      // ── Resolve internal project (find existing or auto-create PRJ-YYYY-NNNNN) ──
+      const { data: customerForProject } = await sb
+        .from("customers")
+        .select("company_id")
+        .eq("id", customerId)
+        .maybeSingle();
+      const { data: projectIdData, error: projectErr } = await sb.rpc(
+        "find_or_create_internal_project",
+        {
+          p_customer_id: customerId,
+          p_company_id: customerForProject?.company_id || null,
+          p_client_project_number:
+            (crm_metadata && (crm_metadata as Record<string, unknown>).client_project_number) ||
+            null,
+          p_created_by_staff_id: null,
+        },
+      );
+      if (projectErr || !projectIdData) {
+        return jsonResp(
+          { success: false, error: `Failed to resolve internal project: ${projectErr?.message || "unknown"}` },
+          500,
+        );
+      }
+      const internalProjectId = projectIdData as string;
+
       // ── Create quote ──
       const isRush = turnaround_type === "rush" || turnaround_type === "same_day";
       const { data: quote, error: quoteErr } = await sb
@@ -173,6 +198,7 @@ serve(async (req) => {
           total: pricing.total,
           is_rush: isRush,
           turnaround_type: turnaround_type || "standard",
+          internal_project_id: internalProjectId,
         })
         .select("id, quote_number")
         .single();
@@ -222,6 +248,7 @@ serve(async (req) => {
           paid_at: amountPaid > 0 ? (payment?.paid_at || new Date().toISOString()) : null,
           crm_proposal_id: proposal_id,
           crm_metadata: crm_metadata || null,
+          internal_project_id: internalProjectId,
         })
         .select("id, order_number")
         .single();

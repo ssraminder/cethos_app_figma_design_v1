@@ -94,7 +94,7 @@ serve(async (req: Request) => {
     const { data: custRec, error: custErr } = await sb
       .from("customers")
       .select(
-        "id, is_ar_customer, payment_terms, currency, customer_type, full_name, invoicing_branch_id, default_tax_rate_id",
+        "id, is_ar_customer, payment_terms, currency, customer_type, full_name, invoicing_branch_id, default_tax_rate_id, company_id",
       )
       .eq("id", customerId)
       .maybeSingle();
@@ -142,6 +142,26 @@ serve(async (req: Request) => {
     }
     const quoteNumber = `QT-${year}-${String(nextNum).padStart(5, "0")}`;
 
+    // ── Resolve internal project (find existing or auto-create PRJ-YYYY-NNNNN) ──
+    // Groups orders that share the same client_project_number under the same
+    // company (or customer, for retail). Surfaced to vendors instead of the
+    // raw client_project_number, which may carry client identifiers.
+    const { data: projectIdData, error: projectErr } = await sb.rpc(
+      "find_or_create_internal_project",
+      {
+        p_customer_id: customerId,
+        p_company_id: custRec.company_id || null,
+        p_client_project_number: order.clientProjectNumber || null,
+        p_created_by_staff_id: staffId,
+      },
+    );
+    if (projectErr || !projectIdData) {
+      throw new Error(
+        `Failed to resolve internal project: ${projectErr?.message || "unknown"}`,
+      );
+    }
+    const internalProjectId = projectIdData as string;
+
     // ── Create the "paid" quote (skips review) ──
     const { data: quoteRec, error: quoteErr } = await sb
       .from("quotes")
@@ -182,6 +202,7 @@ serve(async (req: Request) => {
         is_manual_quote: true,
         created_by_staff_id: staffId,
         entry_point: "admin_direct_order",
+        internal_project_id: internalProjectId,
         manual_quote_notes: order.notes || null,
         promised_delivery_date: order.promisedDeliveryDate || null,
         turnaround_type: order.turnaroundType || "standard",
@@ -257,6 +278,38 @@ serve(async (req: Request) => {
       });
     }
 
+    // ── Auto multi-page bundle discount ──
+    try {
+      const totalBillable = (documents || []).reduce(
+        (sum: number, d: any) =>
+          sum + Number(d.billablePages ?? d.unitQuantity ?? 0),
+        0,
+      );
+      const baseRate = Number(documents?.[0]?.baseRate ?? documents?.[0]?.perPageRate ?? 65);
+      const langMult = Number(pricing?.languageMultiplier ?? 1.0);
+      const hasOverride = Boolean(pricing?.baseRateOverride);
+      const { calculateMultiPageBundleDiscount } = await import("../_shared/multi-page-discount.ts");
+      const discount = calculateMultiPageBundleDiscount(totalBillable, baseRate, langMult, hasOverride);
+      if (discount.applies) {
+        await sb
+          .from("quote_adjustments")
+          .delete()
+          .eq("quote_id", quoteId)
+          .like("reason", "auto_multi_page_bundle_%");
+        await sb.from("quote_adjustments").insert({
+          quote_id: quoteId,
+          adjustment_type: "discount",
+          value_type: "fixed",
+          value: discount.amount,
+          calculated_amount: discount.amount,
+          reason: discount.reason,
+          added_by: staffId,
+        });
+      }
+    } catch (e: any) {
+      console.error("multi-page bundle discount error:", e?.message);
+    }
+
     // ── Recalculate totals (non-blocking) ──
     try {
       await sb.rpc("recalculate_quote_totals", { p_quote_id: quoteId });
@@ -306,6 +359,7 @@ serve(async (req: Request) => {
           order.invoicingBranchId ?? custRec.invoicing_branch_id ?? 2,
         po_number: order.poNumber || null,
         client_project_number: order.clientProjectNumber || null,
+        internal_project_id: internalProjectId,
       })
       .select("id, order_number")
       .single();

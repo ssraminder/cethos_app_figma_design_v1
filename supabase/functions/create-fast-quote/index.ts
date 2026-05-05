@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { calculateMultiPageBundleDiscount } from "../_shared/multi-page-discount.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -114,6 +115,28 @@ serve(async (req: Request) => {
     }
     const quoteNumber = `QT-${year}-${String(nextNum).padStart(5, "0")}`;
 
+    // 2b. Resolve internal project (find existing or auto-create PRJ-YYYY-NNNNN)
+    const { data: customerForProject } = await supabaseAdmin
+      .from("customers")
+      .select("company_id")
+      .eq("id", customerId)
+      .maybeSingle();
+    const { data: projectIdData, error: projectErr } = await supabaseAdmin.rpc(
+      "find_or_create_internal_project",
+      {
+        p_customer_id: customerId,
+        p_company_id: customerForProject?.company_id || null,
+        p_client_project_number: quote.clientProjectNumber || null,
+        p_created_by_staff_id: staffId,
+      },
+    );
+    if (projectErr || !projectIdData) {
+      throw new Error(
+        `Failed to resolve internal project: ${projectErr?.message || "unknown"}`,
+      );
+    }
+    const internalProjectId = projectIdData as string;
+
     // 3. INSERT quote
     const { data: quoteRecord, error: quoteError } = await supabaseAdmin
       .from("quotes")
@@ -156,6 +179,7 @@ serve(async (req: Request) => {
         manual_quote_notes: quote.manualQuoteNotes || null,
         processing_status: "quote_ready",
         promised_delivery_date: quote.promisedDeliveryDate || null,
+        internal_project_id: internalProjectId,
       })
       .select("id, quote_number")
       .single();
@@ -238,7 +262,39 @@ serve(async (req: Request) => {
       });
     }
 
-    // 6. Call recalculate_quote_totals RPC to sync all columns
+    // 6. Auto multi-page bundle discount (e.g. 2-page = $95 instead of 2 × $55)
+    try {
+      const totalBillable = (documents || []).reduce(
+        (sum: number, d: any) =>
+          sum + Number(d.billablePages ?? d.unitQuantity ?? 0),
+        0,
+      );
+      const baseRate = Number(documents?.[0]?.baseRate ?? documents?.[0]?.perPageRate ?? 65);
+      const langMult = Number(pricing?.languageMultiplier ?? 1.0);
+      const hasOverride = Boolean(pricing?.baseRateOverride);
+      const discount = calculateMultiPageBundleDiscount(totalBillable, baseRate, langMult, hasOverride);
+      if (discount.applies) {
+        // Remove any prior auto bundle adjustments for this quote
+        await supabaseAdmin
+          .from("quote_adjustments")
+          .delete()
+          .eq("quote_id", quoteId)
+          .like("reason", "auto_multi_page_bundle_%");
+        await supabaseAdmin.from("quote_adjustments").insert({
+          quote_id: quoteId,
+          adjustment_type: "discount",
+          value_type: "fixed",
+          value: discount.amount,
+          calculated_amount: discount.amount,
+          reason: discount.reason,
+          added_by: staffId,
+        });
+      }
+    } catch (e) {
+      console.error("multi-page bundle discount error:", e);
+    }
+
+    // 7. Call recalculate_quote_totals RPC to sync all columns
     try {
       await supabaseAdmin.rpc("recalculate_quote_totals", {
         p_quote_id: quoteId,

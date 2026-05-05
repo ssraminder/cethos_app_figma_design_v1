@@ -114,6 +114,28 @@ serve(async (req: Request) => {
     }
     const quoteNumber = `QT-${year}-${String(nextNum).padStart(5, "0")}`;
 
+    // 2b. Resolve internal project (find existing or auto-create PRJ-YYYY-NNNNN)
+    const { data: customerForProject } = await supabase
+      .from("customers")
+      .select("company_id")
+      .eq("id", customerId)
+      .maybeSingle();
+    const { data: projectIdData, error: projectErr } = await supabase.rpc(
+      "find_or_create_internal_project",
+      {
+        p_customer_id: customerId,
+        p_company_id: customerForProject?.company_id || null,
+        p_client_project_number: quote.clientProjectNumber || null,
+        p_created_by_staff_id: staffId,
+      },
+    );
+    if (projectErr || !projectIdData) {
+      throw new Error(
+        `Failed to resolve internal project: ${projectErr?.message || "unknown"}`,
+      );
+    }
+    const internalProjectId = projectIdData as string;
+
     // 3. Insert quote (tagged as kiosk)
     const { data: quoteRecord, error: quoteError } = await supabase
       .from("quotes")
@@ -157,6 +179,7 @@ serve(async (req: Request) => {
         processing_status: "quote_ready",
         kiosk_device_id: device.id,
         promised_delivery_date: quote.promisedDeliveryDate || null,
+        internal_project_id: internalProjectId,
       })
       .select("id, quote_number")
       .single();
@@ -232,7 +255,39 @@ serve(async (req: Request) => {
       });
     }
 
-    // 6. Recalculate totals
+    // 6. Auto multi-page bundle discount
+    try {
+      const totalBillable = (documents || []).reduce(
+        (sum: number, d: any) =>
+          sum + Number(d.billablePages ?? d.unitQuantity ?? 0),
+        0,
+      );
+      const baseRate = Number(documents?.[0]?.baseRate ?? documents?.[0]?.perPageRate ?? 65);
+      const langMult = Number(pricing?.languageMultiplier ?? 1.0);
+      const hasOverride = Boolean(pricing?.baseRateOverride);
+      const { calculateMultiPageBundleDiscount } = await import("../_shared/multi-page-discount.ts");
+      const discount = calculateMultiPageBundleDiscount(totalBillable, baseRate, langMult, hasOverride);
+      if (discount.applies) {
+        await supabase
+          .from("quote_adjustments")
+          .delete()
+          .eq("quote_id", quoteId)
+          .like("reason", "auto_multi_page_bundle_%");
+        await supabase.from("quote_adjustments").insert({
+          quote_id: quoteId,
+          adjustment_type: "discount",
+          value_type: "fixed",
+          value: discount.amount,
+          calculated_amount: discount.amount,
+          reason: discount.reason,
+          added_by: staffId,
+        });
+      }
+    } catch (e) {
+      console.error("multi-page bundle discount error:", e);
+    }
+
+    // 7. Recalculate totals
     try {
       await supabase.rpc("recalculate_quote_totals", { p_quote_id: quoteId });
     } catch (rpcError) {
