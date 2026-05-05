@@ -9,6 +9,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+
+const SB_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+function sbFetch(path: string): Promise<Response> {
+  let token = SB_KEY;
+  try {
+    const s = localStorage.getItem("cethos-auth");
+    if (s) token = JSON.parse(s)?.access_token || SB_KEY;
+  } catch {}
+  return fetch(`${SB_URL}/rest/v1/${path}`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${token}` },
+  });
+}
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { toast } from "sonner";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -208,15 +222,17 @@ export default function AdminCreateOrder() {
       return;
     }
     companyDebounceRef.current = window.setTimeout(async () => {
-      const esc = q.replace(/[,%]/g, "");
-      const { data } = await supabase
-        .from("companies")
-        .select(
-          "id, name, currency, default_tax_rate_id, invoicing_branch_id, payment_terms, is_ar_customer",
-        )
-        .ilike("name", `%${esc}%`)
-        .limit(8);
-      setCompanySuggestions((data as CompanyRow[]) || []);
+      try {
+        const esc = q.replace(/[*,%()]/g, "");
+        const res = await sbFetch(
+          `companies?select=id,name,currency,default_tax_rate_id,invoicing_branch_id,payment_terms,is_ar_customer&name=ilike.*${esc}*&limit=8`,
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: CompanyRow[] = await res.json();
+        setCompanySuggestions(data || []);
+      } catch {
+        setCompanySuggestions([]);
+      }
     }, 200);
     return () => {
       if (companyDebounceRef.current) window.clearTimeout(companyDebounceRef.current);
@@ -249,35 +265,23 @@ export default function AdminCreateOrder() {
 
     if (projectDebounceRef.current) window.clearTimeout(projectDebounceRef.current);
     projectDebounceRef.current = window.setTimeout(async () => {
-      const q = clientProjectNumber.trim().replace(/[,%]/g, "");
-      let query = supabase
-        .from("internal_projects")
-        .select("id, project_number, client_project_number, name, updated_at")
-        .eq("is_active", true)
-        // Only labeled projects are pickable from the typeahead — anonymous
-        // projects (auto-created from one-off orders with no client label)
-        // appear in the project detail page but not here, since picking them
-        // and pre-filling the input from project_number would cause the
-        // backend find-or-create to create a NEW project with PRJ-... as its
-        // label instead of linking back to the picked one.
-        .not("client_project_number", "is", null)
-        .order("updated_at", { ascending: false })
-        .limit(8);
-
-      if (customer.company_id) {
-        query = query.eq("company_id", customer.company_id);
-      } else {
-        query = query.eq("customer_id", customer.id).is("company_id", null);
+      try {
+        const q = clientProjectNumber.trim().replace(/[*,%()]/g, "");
+        const ownerFilter = customer.company_id
+          ? `company_id=eq.${customer.company_id}`
+          : `customer_id=eq.${customer.id}&company_id=is.null`;
+        const searchFilter =
+          q.length >= 1
+            ? `&or=(project_number.ilike.*${q}*,client_project_number.ilike.*${q}*,name.ilike.*${q}*)`
+            : "";
+        const path = `internal_projects?select=id,project_number,client_project_number,name,updated_at&is_active=eq.true&client_project_number=not.is.null&${ownerFilter}${searchFilter}&order=updated_at.desc&limit=8`;
+        const res = await sbFetch(path);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: ProjectSuggestion[] = await res.json();
+        setProjectSuggestions(data || []);
+      } catch {
+        setProjectSuggestions([]);
       }
-
-      if (q.length >= 1) {
-        query = query.or(
-          `project_number.ilike.%${q}%,client_project_number.ilike.%${q}%,name.ilike.%${q}%`,
-        );
-      }
-
-      const { data } = await query;
-      setProjectSuggestions((data as ProjectSuggestion[]) || []);
     }, 200);
 
     return () => {
@@ -319,58 +323,30 @@ export default function AdminCreateOrder() {
     let cancelled = false;
     (async () => {
       const [svcRes, langRes, brRes, taxRes, tmplRes] = await Promise.all([
-        supabase
-          .from("services")
-          .select(
-            "id, code, name, category, default_calculation_units, customer_facing, is_active, sort_order",
-          )
-          .eq("is_active", true)
-          .order("category")
-          .order("sort_order"),
-        supabase
-          .from("languages")
-          .select("id, name, code, is_source_available, is_target_available")
-          .eq("is_active", true)
-          .order("sort_order"),
-        supabase
-          .from("branches")
-          .select("id, code, legal_name, is_default, is_active")
-          .eq("is_active", true)
-          .order("id"),
-        supabase
-          .from("tax_rates")
-          .select("id, region_code, region_name, tax_name, rate, is_active")
-          .eq("is_active", true)
-          .order("region_name"),
-        supabase
-          .from("workflow_templates")
-          .select("id, code, name, description, service_id, is_default, is_active")
-          .eq("is_active", true)
-          .order("name"),
+        sbFetch("services?select=id,code,name,category,default_calculation_units,customer_facing,is_active,sort_order&is_active=eq.true&order=category,sort_order"),
+        sbFetch("languages?select=id,name,code,is_source_available,is_target_available&is_active=eq.true&order=sort_order"),
+        sbFetch("branches?select=id,code,legal_name,is_default,is_active&is_active=eq.true&order=id"),
+        sbFetch("tax_rates?select=id,region_code,region_name,tax_name,rate,is_active&is_active=eq.true&order=region_name"),
+        sbFetch("workflow_templates?select=id,code,name,description,service_id,is_default,is_active&is_active=eq.true&order=name"),
       ]);
       if (cancelled) return;
-      setServices((svcRes.data as ServiceRow[]) ?? []);
-      setLanguages((langRes.data as LanguageRow[]) ?? []);
-      const br = (brRes.data as BranchRow[]) ?? [];
+      setServices(svcRes.ok ? await svcRes.json() : []);
+      setLanguages(langRes.ok ? await langRes.json() : []);
+      const br: BranchRow[] = brRes.ok ? await brRes.json() : [];
       setBranches(br);
-      // Default branch = the one flagged is_default; else the first active
       const def = br.find((b) => b.is_default) || br[0] || null;
       if (def) setBranchId(def.id);
-      setTaxRates((taxRes.data as TaxRateRow[]) ?? []);
-      const templates = (tmplRes.data as WorkflowTemplateRow[]) ?? [];
+      setTaxRates(taxRes.ok ? await taxRes.json() : []);
+      const templates: WorkflowTemplateRow[] = tmplRes.ok ? await tmplRes.json() : [];
       // Enrich with step count
       if (templates.length > 0) {
-        const { data: stepCounts } = await supabase
-          .from("workflow_template_steps")
-          .select("template_id")
-          .in(
-            "template_id",
-            templates.map((t) => t.id),
-          );
+        const stepsRes = await sbFetch(
+          `workflow_template_steps?select=template_id&template_id=in.(${templates.map((t) => t.id).join(",")})`,
+        );
+        const stepRows: { template_id: string }[] = stepsRes.ok ? await stepsRes.json() : [];
         const countMap: Record<string, number> = {};
-        for (const row of stepCounts || []) {
-          countMap[(row as any).template_id] =
-            (countMap[(row as any).template_id] || 0) + 1;
+        for (const row of stepRows) {
+          countMap[row.template_id] = (countMap[row.template_id] || 0) + 1;
         }
         for (const t of templates) t.step_count = countMap[t.id] || 0;
       }
@@ -559,20 +535,20 @@ export default function AdminCreateOrder() {
 
   // ── Customer selection ──
   const handleCustomerSelect = async (hit: CustomerHit) => {
-    const { data, error } = await supabase
-      .from("customers")
-      .select(
-        "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency, default_tax_rate_id, invoicing_branch_id, requires_po, requires_client_project_number, company_id",
-      )
-      .eq("id", hit.id)
-      .maybeSingle();
-    if (error || !data) {
+    try {
+      const res = await sbFetch(
+        `customers?select=id,full_name,email,company_name,customer_type,is_ar_customer,payment_terms,currency,default_tax_rate_id,invoicing_branch_id,requires_po,requires_client_project_number,company_id&id=eq.${hit.id}&limit=1`,
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows: ARCustomer[] = await res.json();
+      if (!rows.length) throw new Error("Customer not found");
+      const c = rows[0];
+      setCustomer(c);
+      inheritFromCustomer(c);
+    } catch (err: any) {
+      console.error("handleCustomerSelect error:", err);
       toast.error("Failed to load customer");
-      return;
     }
-    const c = data as ARCustomer;
-    setCustomer(c);
-    inheritFromCustomer(c);
   };
 
   const customerLabel = customer
