@@ -2,6 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PDFDocument } from "pdf-lib";
 import { supabase } from "@/lib/supabase";
+
+const _SB_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const _SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+function sbGet(path: string): Promise<Response> {
+  let token = _SB_KEY;
+  try {
+    const s = localStorage.getItem("cethos-auth");
+    if (s) token = JSON.parse(s)?.access_token || _SB_KEY;
+  } catch {}
+  return fetch(`${_SB_URL}/rest/v1/${path}`, {
+    headers: { apikey: _SB_KEY, Authorization: `Bearer ${token}` },
+  });
+}
 import {
   AlertCircle,
   ArrowLeft,
@@ -447,31 +461,24 @@ export default function AdminOrderDetail() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchTurnaroundOptions = async () => {
-    const { data } = await supabase
-      .from("turnaround_options")
-      .select("id, code, name, multiplier, fee_type, fee_value, estimated_days, is_default, sort_order")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true });
-    if (data) setTurnaroundOptions(data);
+    try {
+      const res = await sbGet("turnaround_options?select=id,code,name,multiplier,fee_type,fee_value,estimated_days,is_default,sort_order&is_active=eq.true&order=sort_order");
+      if (res.ok) setTurnaroundOptions(await res.json());
+    } catch {}
   };
 
   const fetchDeliveryOptions = async () => {
-    const { data } = await supabase
-      .from("delivery_options")
-      .select("*")
-      .eq("category", "delivery")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true });
-    if (data) setDeliveryOptions(data);
+    try {
+      const res = await sbGet("delivery_options?select=*&category=eq.delivery&is_active=eq.true&order=sort_order");
+      if (res.ok) setDeliveryOptions(await res.json());
+    } catch {}
   };
 
   const fetchPaymentMethods = async () => {
-    const { data } = await supabase
-      .from("payment_methods")
-      .select("*")
-      .eq("is_active", true)
-      .order("sort_order");
-    if (data) setPaymentMethods(data);
+    try {
+      const res = await sbGet("payment_methods?select=*&is_active=eq.true&order=sort_order");
+      if (res.ok) setPaymentMethods(await res.json());
+    } catch {}
   };
 
   useEffect(() => {
@@ -508,25 +515,19 @@ export default function AdminOrderDetail() {
     const projectId = order.internal_project_id;
     let cancelled = false;
     (async () => {
-      const [{ data: proj }, { count }] = await Promise.all([
-        supabase
-          .from("internal_projects")
-          .select("project_number")
-          .eq("id", projectId)
-          .maybeSingle(),
-        supabase
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .eq("internal_project_id", projectId)
-          .neq("id", order.id),
+      const [projRes, sibRes] = await Promise.all([
+        sbGet(`internal_projects?select=project_number&id=eq.${projectId}&limit=1`),
+        sbGet(`orders?select=id&internal_project_id=eq.${projectId}&id=neq.${order.id}&limit=1000`),
       ]);
       if (cancelled) return;
-      if (proj) {
-        setProjectInfo({
-          project_number: (proj as { project_number: string }).project_number,
-          sibling_count: count ?? 0,
-        });
-      }
+      if (!projRes.ok) return;
+      const projRows: any[] = await projRes.json();
+      if (!projRows.length) return;
+      const sibRows: any[] = sibRes.ok ? await sibRes.json() : [];
+      setProjectInfo({
+        project_number: projRows[0].project_number,
+        sibling_count: sibRows.length,
+      });
     })();
     return () => {
       cancelled = true;
@@ -1082,14 +1083,10 @@ export default function AdminOrderDetail() {
   };
 
   const fetchActivityLog = async (orderId: string, quoteId: string) => {
-    const { data } = await supabase
-      .from("staff_activity_log")
-      .select("*, staff_users(full_name)")
-      .or(`entity_id.eq.${orderId},entity_id.eq.${quoteId}`)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (data) setActivityLog(data);
+    try {
+      const res = await sbGet(`staff_activity_log?select=*,staff_users(full_name)&or=(entity_id.eq.${orderId},entity_id.eq.${quoteId})&order=created_at.desc&limit=50`);
+      if (res.ok) setActivityLog(await res.json());
+    } catch {}
   };
 
   const fetchActivityTimeline = async (orderData: OrderDetail) => {
@@ -1393,204 +1390,100 @@ export default function AdminOrderDetail() {
 
     try {
       // ── Phase 1: Fire independent queries in parallel ──
-      // Order fetch and adjustments only need the route param `id`
-      const [orderResult, adjustmentsResult] = await Promise.all([
-        // 1. Main order with customer + quote joins
-        supabase
-          .from("orders")
-          .select(`
-            *,
-            customer:customers(*),
-            quote:quotes(
-              quote_number, promised_delivery_date, country_of_issue,
-              special_instructions, turnaround_type, is_rush,
-              physical_delivery_option_id, digital_delivery_options,
-              selected_pickup_location_id, shipping_address, delivery_fee,
-              calculated_totals,
-              source_language:languages!source_language_id(id, code, name),
-              target_language:languages!target_language_id(id, code, name),
-              intended_use:intended_uses!intended_use_id(
-                id, name,
-                default_certification_type:certification_types!default_certification_type_id(
-                  id, code, name, price
-                )
-              )
-            )
-          `)
-          .eq("id", id)
-          .single(),
-        // 2. Adjustments
-        supabase.from("adjustments").select(`
-          *, created_by:staff_users!adjustments_created_by_fkey(full_name)
-        `).eq("order_id", id).order("created_at", { ascending: false }),
+      const orderSelect =
+        "*,customer:customers(*),quote:quotes(quote_number,promised_delivery_date,country_of_issue,special_instructions,turnaround_type,is_rush,physical_delivery_option_id,digital_delivery_options,selected_pickup_location_id,shipping_address,delivery_fee,calculated_totals,source_language:languages!source_language_id(id,code,name),target_language:languages!target_language_id(id,code,name),intended_use:intended_uses!intended_use_id(id,name,default_certification_type:certification_types!default_certification_type_id(id,code,name,price)))";
+
+      const [orderRes, adjRes] = await Promise.all([
+        sbGet(`orders?select=${encodeURIComponent(orderSelect)}&id=eq.${id}&limit=1`),
+        sbGet(`adjustments?select=*,created_by:staff_users!adjustments_created_by_fkey(full_name)&order_id=eq.${id}&order=created_at.desc`),
       ]);
 
-      const { data: orderData, error: orderError } = orderResult;
-      if (orderError) throw orderError;
-      setOrder(orderData as OrderDetail);
+      if (!orderRes.ok) throw new Error(`Order fetch failed: HTTP ${orderRes.status}`);
+      const orderRows: any[] = await orderRes.json();
+      if (!orderRows.length) throw new Error("Order not found");
+      const orderData = orderRows[0] as OrderDetail;
+      setOrder(orderData);
 
-      // Payment history: invoices → allocations → customer_payments, plus payment_requests
-      const { data: invoiceData } = await supabase
-        .from("customer_invoices")
-        .select(`
-          id, invoice_number, total_amount, amount_paid,
-          balance_due, status, paid_at, created_at,
-          quotes (
-            payment_method_id,
-            payment_methods ( name, code )
-          )
-        `)
-        .eq("order_id", orderData.id)
-        .order("created_at", { ascending: false });
-      setInvoices(invoiceData || []);
+      const adjRows: any[] = adjRes.ok ? await adjRes.json() : [];
+      setAdjustments(adjRows.map((a: any) => ({ ...a, created_by_name: a.created_by?.full_name || "System" })));
 
-      let allocationsData: PaymentAllocation[] = [];
-      if (invoiceData && invoiceData.length > 0) {
-        const invoiceIds = invoiceData.map((i: any) => i.id);
-        const { data: allocs } = await supabase
-          .from("customer_payment_allocations")
-          .select(`
-            allocated_amount,
-            created_at,
-            customer_payments (
-              id,
-              amount,
-              payment_method_name,
-              payment_date,
-              reference_number,
-              status,
-              notes
-            )
-          `)
-          .in("invoice_id", invoiceIds);
-        allocationsData = allocs || [];
+      // Payment history: invoices → allocations → payment_requests → refunds (all in parallel)
+      const [invRes, prRes, refRes] = await Promise.all([
+        sbGet(`customer_invoices?select=id,invoice_number,total_amount,amount_paid,balance_due,status,paid_at,created_at,quotes(payment_method_id,payment_methods(name,code))&order_id=eq.${orderData.id}&order=created_at.desc`),
+        sbGet(`payment_requests?select=id,amount,status,paid_at,created_at,stripe_payment_link_url&order_id=eq.${orderData.id}&order=created_at.desc`),
+        sbGet(`refunds?select=*&order_id=eq.${orderData.id}&order=created_at.desc`),
+      ]);
+
+      const invoiceData: any[] = invRes.ok ? await invRes.json() : [];
+      setInvoices(invoiceData);
+      setPaymentRequests(prRes.ok ? await prRes.json() : []);
+      setRefunds(refRes.ok ? await refRes.json() : []);
+
+      if (invoiceData.length > 0) {
+        const invoiceIds = invoiceData.map((i: any) => i.id).join(",");
+        const allocRes = await sbGet(`customer_payment_allocations?select=allocated_amount,created_at,customer_payments(id,amount,payment_method_name,payment_date,reference_number,status,notes)&invoice_id=in.(${invoiceIds})`);
+        setPaymentAllocations(allocRes.ok ? await allocRes.json() : []);
       }
-      setPaymentAllocations(allocationsData);
-
-      const { data: prData } = await supabase
-        .from("payment_requests")
-        .select("id, amount, status, paid_at, created_at, stripe_payment_link_url")
-        .eq("order_id", orderData.id)
-        .order("created_at", { ascending: false });
-      setPaymentRequests(prData || []);
-
-      // Refunds for Finance section
-      const { data: refundsData } = await supabase
-        .from("refunds")
-        .select("*")
-        .eq("order_id", orderData.id)
-        .order("created_at", { ascending: false });
-      setRefunds(refundsData || []);
-
-      setAdjustments(
-        (adjustmentsResult.data || []).map((adjustment: any) => ({
-          ...adjustment,
-          created_by_name: adjustment.created_by?.full_name || "System",
-        })),
-      );
 
       // ── Phase 2: Queries that depend on orderData (run in parallel) ──
       const quote = orderData.quote;
-      const phase2Promises: Promise<any>[] = [];
+      const qid = orderData.quote_id;
 
-      // 4. AI analysis results (needs quote_id)
-      phase2Promises.push(
-        orderData.quote_id
-          ? supabase.from("ai_analysis_results").select(`
-              id, quote_file_id, detected_language, detected_document_type, word_count,
-              page_count, country_of_issue,
-              quote_file:quote_files!ai_analysis_results_quote_file_id_fkey(id, original_filename, storage_path, file_size, mime_type)
-            `).eq("quote_id", orderData.quote_id).is("deleted_at", null).order("created_at")
-          : Promise.resolve({ data: null })
-      );
-
-      // 5. Quote turnaround/delivery option IDs (needs quote_id)
-      phase2Promises.push(
-        orderData.quote_id
-          ? supabase.from("quotes").select("turnaround_option_id, physical_delivery_option_id")
-              .eq("id", orderData.quote_id).single()
-          : Promise.resolve({ data: null })
-      );
-
-      // 6. Physical delivery option (needs quote.physical_delivery_option_id)
-      phase2Promises.push(
+      const p2: Promise<any>[] = [
+        // analysis results
+        qid
+          ? sbGet(`ai_analysis_results?select=id,quote_file_id,detected_language,detected_document_type,word_count,page_count,country_of_issue,quote_file:quote_files!ai_analysis_results_quote_file_id_fkey(id,original_filename,storage_path,file_size,mime_type)&quote_id=eq.${qid}&deleted_at=is.null&order=created_at`)
+          : Promise.resolve(null),
+        // quote options
+        qid
+          ? sbGet(`quotes?select=turnaround_option_id,physical_delivery_option_id&id=eq.${qid}&limit=1`)
+          : Promise.resolve(null),
+        // physical delivery option
         quote?.physical_delivery_option_id
-          ? supabase.from("delivery_options").select("id, name, code, price, delivery_type")
-              .eq("id", quote.physical_delivery_option_id).single()
-          : Promise.resolve({ data: null })
-      );
-
-      // 7. Digital delivery options (needs quote.digital_delivery_options)
-      phase2Promises.push(
+          ? sbGet(`delivery_options?select=id,name,code,price,delivery_type&id=eq.${quote.physical_delivery_option_id}&limit=1`)
+          : Promise.resolve(null),
+        // digital delivery options
         quote?.digital_delivery_options?.length > 0
-          ? supabase.from("delivery_options").select("id, name, code, price")
-              .in("id", quote.digital_delivery_options)
-          : Promise.resolve({ data: [] })
-      );
-
-      // 8. Pickup location (needs quote.selected_pickup_location_id)
-      phase2Promises.push(
+          ? sbGet(`delivery_options?select=id,name,code,price&id=in.(${(quote.digital_delivery_options as string[]).join(",")})`)
+          : Promise.resolve(null),
+        // pickup location
         quote?.selected_pickup_location_id
-          ? supabase.from("pickup_locations")
-              .select("id, name, address_line1, city, state, postal_code, phone, hours")
-              .eq("id", quote.selected_pickup_location_id).single()
-          : Promise.resolve({ data: null })
-      );
+          ? sbGet(`pickup_locations?select=id,name,address_line1,city,state,postal_code,phone,hours&id=eq.${quote.selected_pickup_location_id}&limit=1`)
+          : Promise.resolve(null),
+        // cancellation
+        orderData.status === "cancelled"
+          ? sbGet(`order_cancellations?select=*&order_id=eq.${id}&order=created_at.desc&limit=1`)
+          : Promise.resolve(null),
+        // activity log (fires setActivityLog internally)
+        fetchActivityLog(orderData.id, orderData.quote_id),
+      ];
 
-      // 9. Cancellation data (conditional on status)
-      phase2Promises.push(
-        orderData.status === 'cancelled'
-          ? supabase.from('order_cancellations').select('*').eq('order_id', id)
-              .order('created_at', { ascending: false }).limit(1).maybeSingle()
-          : Promise.resolve({ data: null })
-      );
+      const [anaRes, qOptRes, physRes, digRes, pickRes, cancelRes] = await Promise.all(p2);
 
-      // 10. Activity log (needs order.id and order.quote_id)
-      phase2Promises.push(
-        fetchActivityLog(orderData.id, orderData.quote_id)
-      );
+      if (anaRes?.ok) setDocumentAnalysis(await anaRes.json());
 
-      const [
-        analysisResult,
-        quoteOptionsResult,
-        physDelResult,
-        digDelsResult,
-        pickupResult,
-        cancellationResult,
-        // activityLog result handled by fetchActivityLog internally
-      ] = await Promise.all(phase2Promises);
-
-      // ── Unpack Phase 2 results ──
-      if (analysisResult.data) {
-        setDocumentAnalysis(analysisResult.data);
+      if (qOptRes?.ok) {
+        const qOpts: any[] = await qOptRes.json();
+        if (qOpts[0]) {
+          setSelectedTurnaroundId(qOpts[0].turnaround_option_id || "");
+          setSelectedDeliveryId(qOpts[0].physical_delivery_option_id || "");
+        }
       }
 
-      if (quoteOptionsResult.data) {
-        setSelectedTurnaroundId(quoteOptionsResult.data.turnaround_option_id || "");
-        setSelectedDeliveryId(quoteOptionsResult.data.physical_delivery_option_id || "");
-      }
-
-      setPhysicalDelivery(physDelResult.data || null);
-      setDigitalDeliveries(digDelsResult.data || []);
-      setPickupLocation(pickupResult.data || null);
-      setCancellation(cancellationResult.data || null);
+      if (physRes?.ok) { const rows: any[] = await physRes.json(); setPhysicalDelivery(rows[0] ?? null); }
+      if (digRes?.ok) setDigitalDeliveries(await digRes.json());
+      else setDigitalDeliveries([]);
+      if (pickRes?.ok) { const rows: any[] = await pickRes.json(); setPickupLocation(rows[0] ?? null); }
+      if (cancelRes?.ok) { const rows: any[] = await cancelRes.json(); setCancellation(rows[0] ?? null); }
 
       // Fetch document line items
-      if (orderData.quote_id) {
-        const { data: lineItems } = await supabase
-          .from('quote_document_groups')
-          .select('id, group_label, document_type, detected_language_name, billable_pages, base_rate, line_total, certification_price')
-          .eq('quote_id', orderData.quote_id)
-          .order('created_at', { ascending: true });
-        setDocumentLineItems(lineItems ?? []);
-
-        // Fetch adjustments (discounts, surcharges)
-        const { data: quoteAdjustments } = await supabase
-          .from('quote_adjustments')
-          .select('id, adjustment_type, value_type, value, calculated_amount, reason')
-          .eq('quote_id', orderData.quote_id)
-          .order('created_at', { ascending: true });
-        setOrderAdjustments(quoteAdjustments ?? []);
+      if (qid) {
+        const [liRes, qaRes] = await Promise.all([
+          sbGet(`quote_document_groups?select=id,group_label,document_type,detected_language_name,billable_pages,base_rate,line_total,certification_price&quote_id=eq.${qid}&order=created_at`),
+          sbGet(`quote_adjustments?select=id,adjustment_type,value_type,value,calculated_amount,reason&quote_id=eq.${qid}&order=created_at`),
+        ]);
+        setDocumentLineItems(liRes.ok ? await liRes.json() : []);
+        setOrderAdjustments(qaRes.ok ? await qaRes.json() : []);
       }
 
       // Set promised delivery date from quote, fallback to order's estimated date
