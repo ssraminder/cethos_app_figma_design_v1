@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
 
 const _SB_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const _SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -170,6 +169,14 @@ export default function AdminProjectDetail() {
     style_guide: "Style guide",
   };
 
+  function sbAuthToken() {
+    try {
+      const s = localStorage.getItem("cethos-auth");
+      if (s) return JSON.parse(s)?.access_token || _SB_KEY;
+    } catch {}
+    return _SB_KEY;
+  }
+
   const uploadAsset = async (type: "glossary" | "style_guide", file: File) => {
     if (!project) return;
     setUploadingType(type);
@@ -177,18 +184,34 @@ export default function AdminProjectDetail() {
       // Sanitize filename — strip path separators, keep extension
       const safeName = file.name.replace(/[\/\\]/g, "_").slice(0, 200);
       const newPath = `${project.id}/${ASSET_FOLDER[type]}/${safeName}`;
+      const token = sbAuthToken();
 
       // If a previous file exists at a different path, delete it first.
       const oldPath = project[ASSET_COLUMN[type]];
       if (oldPath && oldPath !== newPath) {
-        await supabase.storage.from("project-assets").remove([oldPath]);
+        await fetch(`${_SB_URL}/storage/v1/object/project-assets/${encodeURIComponent(oldPath)}`, {
+          method: "DELETE",
+          headers: { apikey: _SB_KEY, Authorization: `Bearer ${token}` },
+        });
       }
 
-      const { error: upErr } = await supabase.storage
-        .from("project-assets")
-        .upload(newPath, file, { upsert: true, cacheControl: "3600" });
-      if (upErr) {
-        toast.error(upErr.message);
+      const upRes = await fetch(
+        `${_SB_URL}/storage/v1/object/project-assets/${encodeURIComponent(newPath)}`,
+        {
+          method: "POST",
+          headers: {
+            apikey: _SB_KEY,
+            Authorization: `Bearer ${token}`,
+            "Content-Type": file.type || "application/octet-stream",
+            "x-upsert": "true",
+            "Cache-Control": "3600",
+          },
+          body: file,
+        },
+      );
+      if (!upRes.ok) {
+        const msg = await upRes.text();
+        toast.error(msg || "Upload failed");
         return;
       }
 
@@ -206,7 +229,11 @@ export default function AdminProjectDetail() {
     if (!window.confirm(`Remove ${ASSET_LABEL[type].toLowerCase()}? This cannot be undone.`)) return;
     setUploadingType(type);
     try {
-      await supabase.storage.from("project-assets").remove([path]);
+      const token = sbAuthToken();
+      await fetch(`${_SB_URL}/storage/v1/object/project-assets/${encodeURIComponent(path)}`, {
+        method: "DELETE",
+        headers: { apikey: _SB_KEY, Authorization: `Bearer ${token}` },
+      });
       const ok = await updateProject({ [ASSET_COLUMN[type]]: null } as ProjectPatch);
       if (ok) toast.success(`${ASSET_LABEL[type]} removed`);
     } finally {
@@ -215,14 +242,32 @@ export default function AdminProjectDetail() {
   };
 
   const downloadAsset = async (path: string) => {
-    const { data, error: err } = await supabase.storage
-      .from("project-assets")
-      .createSignedUrl(path, 3600);
-    if (err || !data?.signedUrl) {
-      toast.error(err?.message || "Failed to generate download link");
+    const token = sbAuthToken();
+    const res = await fetch(
+      `${_SB_URL}/storage/v1/object/sign/project-assets/${encodeURIComponent(path)}`,
+      {
+        method: "POST",
+        headers: {
+          apikey: _SB_KEY,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ expiresIn: 3600 }),
+      },
+    );
+    if (!res.ok) {
+      toast.error("Failed to generate download link");
       return;
     }
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    const data = await res.json();
+    const signedUrl = data?.signedURL
+      ? `${_SB_URL}/storage/v1${data.signedURL}`
+      : data?.signedUrl;
+    if (!signedUrl) {
+      toast.error("Failed to generate download link");
+      return;
+    }
+    window.open(signedUrl, "_blank", "noopener,noreferrer");
   };
 
   const filenameFromPath = (path: string | null) => {
