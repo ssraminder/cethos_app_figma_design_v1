@@ -74,12 +74,29 @@ export function useAdminAuth(): UseAdminAuthReturn {
           return null;
         }
 
-        // Verify user is still active staff
-        const { data: staffData, error: staffError } = await supabase
-          .from("staff_users")
-          .select("id, full_name, email, role, is_active")
-          .eq("email", authSession.user.email)
-          .single();
+        // Verify user is still active staff.
+        // Auth state changes (SIGNED_IN, TOKEN_REFRESHED) abort in-flight
+        // Supabase client requests — retry once after a short delay.
+        let staffData: any = null;
+        let staffError: any = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const result = await supabase
+            .from("staff_users")
+            .select("id, full_name, email, role, is_active")
+            .eq("email", authSession.user.email)
+            .single();
+          staffData = result.data;
+          staffError = result.error;
+          if (!staffError) break;
+          const isAbort =
+            staffError.message?.includes("AbortError") ||
+            staffError.message?.includes("aborted");
+          if (isAbort && attempt === 0) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            continue;
+          }
+          break;
+        }
 
         if (staffError || !staffData) {
           console.error(
