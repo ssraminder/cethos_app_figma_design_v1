@@ -18,6 +18,17 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-05 — Cethos CAT integration parked (not a today task)
+- **Decision:** Don't squeeze a Cethos CAT integration into the same session as Phases 1–5. Treat it as its own initiative.
+- **What it is:** `D:\cethos\TM-Cethos` (`cethos-cat` v0.1.0) is a full XTM/Trados-class CAT editor — segment-level translation, TM/termbase leverage, QA profiles, translator/reviewer/PM/admin roles. Has its own Supabase project `idzwtssftpxrsprzjael` (separate from the portal's `lmzoyezvsjgsxveoakdr`) and its own `clients`/`jobs`/`segments` data model.
+- **Existing integration plumbing:**
+  - `POST /api/jobs/ingest` — Bearer-API-key (`scope=tms_ingest`). Body accepts source file (b64 or URL), source/target lang, `external_ref`, `client_external_ref`, `assigned_to_email`, `qa_profile_id`, `tm_ids`, `termbase_ids`, deadline.
+  - `/sso?token=...&job=...` — vendor portal → CAT handoff via signed JWT.
+- **Why not today:** Real design decisions required — identity mapping (portal `customers`/`companies` ↔ CAT `clients`), TM scoping (per project / client / lang pair), when to push (order create / vendor accept), round-trip (segment harvest back to `step_deliveries`), API key + env wiring, SSO from vendor job detail. Easily 1–2 weeks done well.
+- **Smallest plausible slice (when picked up):** "Open in Cethos CAT" link on `AdminProjectDetail` using `client_project_number` as the `client_external_ref` bridge. Half-day if CAT has a matching landing route, longer if that route needs to be added on the CAT side.
+- **Status:** parked — revisit as a dedicated initiative, not as an ad-hoc add-on.
+- **Affects:** future `AdminProjectDetail.tsx`, future portal env (`CAT_API_KEY`, `NEXT_PUBLIC_CAT_URL`), future edge function for job push, future vendor portal SSO link.
+
 ### 2026-05-05 — Project asset uploads: glossary + style guide (Phase 5)
 - **Decision:** Staff can upload a glossary file and a style guide file per project on `AdminProjectDetail`. Files surface to vendors as Reference Materials on the job detail, tagged with source so vendors can spot which is the project glossary vs project style guide.
 - **Storage:** new private `project-assets` bucket. Path scheme `{project_id}/glossary/{filename}` and `{project_id}/style-guide/{filename}`. 50 MB cap, allowed MIME types: PDF, Word, Excel, ODT, ODS, TXT, CSV, MD.
