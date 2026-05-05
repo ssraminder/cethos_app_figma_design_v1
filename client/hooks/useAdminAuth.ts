@@ -2,6 +2,9 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
+const SB_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SB_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
 export interface StaffSession {
   staffId: string;
   staffName: string;
@@ -27,9 +30,11 @@ export function useAdminAuth(): UseAdminAuthReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Use a ref for location.pathname so clearSessionAndRedirect doesn't
-  // change identity on every route change (which would re-trigger the
-  // auth check effect and flash "Verifying access..." on every navigation).
+  // Tracks intentional sign-out so the SIGNED_OUT event handler doesn't
+  // double-redirect when the user clicks Sign Out (signOut() already
+  // cleans up and navigates in its finally block).
+  const signingOutRef = useRef(false);
+
   const locationRef = useRef(location.pathname);
   locationRef.current = location.pathname;
 
@@ -37,7 +42,6 @@ export function useAdminAuth(): UseAdminAuthReturn {
     localStorage.removeItem("staffSession");
     setSession(null);
 
-    // Store the current path to redirect back after login
     const returnPath = locationRef.current;
     if (
       returnPath !== "/admin/login" &&
@@ -49,84 +53,72 @@ export function useAdminAuth(): UseAdminAuthReturn {
     navigate("/admin/login");
   }, [navigate]);
 
+  // Validates the current session entirely via direct REST — bypasses the
+  // Supabase JS client to avoid the AbortError that the client fires when
+  // auth state changes (SIGNED_IN / TOKEN_REFRESHED) abort in-flight requests.
   const validateSession =
     useCallback(async (): Promise<StaffSession | null> => {
-      // Auth state changes (SIGNED_IN, TOKEN_REFRESHED) cause the Supabase
-      // client to throw AbortError on any in-flight request. Retry once.
-      for (let outerAttempt = 0; outerAttempt < 2; outerAttempt++) {
+      try {
+        const authRaw = localStorage.getItem("cethos-auth");
+        if (!authRaw) return null;
+
+        let authData: any;
+        try { authData = JSON.parse(authRaw); } catch { return null; }
+
+        const accessToken: string | undefined = authData?.access_token;
+        const userEmail: string | undefined = authData?.user?.email;
+
+        if (!accessToken || !userEmail) return null;
+
+        // Fast-fail on expired JWT (avoid a network round-trip for expired tokens).
         try {
-          // Check Supabase Auth session
-          const {
-            data: { session: authSession },
-            error: authError,
-          } = await supabase.auth.getSession();
-
-          if (authError) {
-            console.error("Auth session error:", authError);
+          const payload = JSON.parse(
+            atob(accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
+          );
+          if (payload.exp && Date.now() / 1000 > payload.exp + 30) {
+            console.log("validateSession: JWT expired");
             return null;
           }
+        } catch {
+          // Malformed JWT — let the server decide
+        }
 
-          if (!authSession) {
-            console.log("No auth session found");
-            return null;
-          }
+        // Verify the user is still active staff via direct REST fetch.
+        const res = await fetch(
+          `${SB_URL}/rest/v1/staff_users?select=id,full_name,email,role,is_active&email=eq.${encodeURIComponent(userEmail)}&limit=1`,
+          { headers: { apikey: SB_ANON, Authorization: `Bearer ${accessToken}` } },
+        );
 
-          if (!authSession.user.email) {
-            console.log("Authenticated user missing email");
-            await supabase.auth.signOut();
-            return null;
-          }
-
-          // Verify user is still active staff
-          const { data: staffData, error: staffError } = await supabase
-            .from("staff_users")
-            .select("id, full_name, email, role, is_active")
-            .eq("email", authSession.user.email)
-            .single();
-
-          if (staffError || !staffData) {
-            console.error(
-              "Staff lookup error or missing staff record:",
-              staffError,
-            );
-            await supabase.auth.signOut();
-            return null;
-          }
-
-          if (!staffData.is_active) {
-            console.log("User is not active staff");
-            await supabase.auth.signOut();
-            return null;
-          }
-
-          // Create/update staff session
-          const staffSession: StaffSession = {
-            staffId: staffData.id,
-            staffName: staffData.full_name,
-            staffEmail: staffData.email,
-            staffRole: staffData.role,
-            isActive: staffData.is_active,
-            loggedIn: true,
-            loginTime: new Date().toISOString(),
-          };
-
-          return staffSession;
-        } catch (err: any) {
-          const isAbort =
-            err?.name === "AbortError" ||
-            err?.message?.includes("AbortError") ||
-            err?.message?.includes("aborted") ||
-            err?.message?.includes("signal is aborted");
-          if (isAbort && outerAttempt === 0) {
-            console.warn("validateSession: AbortError, retrying in 400ms...");
-            await new Promise((resolve) => setTimeout(resolve, 400));
-            continue;
-          }
-          console.error("Session validation error:", err);
+        if (!res.ok) {
+          console.error("validateSession: staff lookup HTTP", res.status);
           return null;
         }
+
+        const rows: any[] = await res.json();
+        if (!rows.length) {
+          console.error("validateSession: no staff record for", userEmail);
+          return null;
+        }
+
+        const s = rows[0];
+        if (!s.is_active) {
+          console.log("validateSession: staff account is inactive");
+          return null;
+        }
+
+        return {
+          staffId: s.id,
+          staffName: s.full_name,
+          staffEmail: s.email,
+          staffRole: s.role,
+          isActive: s.is_active,
+          loggedIn: true,
+          loginTime: new Date().toISOString(),
+        };
+      } catch (err) {
+        console.error("validateSession error:", err);
+        return null;
       }
-      return null;
     }, []);
 
   const refreshSession = useCallback(async () => {
@@ -146,11 +138,13 @@ export function useAdminAuth(): UseAdminAuthReturn {
   }, [validateSession, clearSessionAndRedirect]);
 
   const signOut = useCallback(async () => {
+    signingOutRef.current = true;
     try {
       await supabase.auth.signOut();
     } catch (err) {
       console.error("Sign out error:", err);
     } finally {
+      signingOutRef.current = false;
       localStorage.removeItem("staffSession");
       sessionStorage.removeItem("adminReturnPath");
       setSession(null);
@@ -164,7 +158,7 @@ export function useAdminAuth(): UseAdminAuthReturn {
       setLoading(true);
       setError(null);
 
-      // First check localStorage for cached session (faster initial load)
+      // Optimistically populate from cache so the page renders immediately.
       let cachedParsed: StaffSession | null = null;
       const cachedSession = localStorage.getItem("staffSession");
       if (cachedSession) {
@@ -176,20 +170,15 @@ export function useAdminAuth(): UseAdminAuthReturn {
         }
       }
 
-      // Then validate against Supabase.
-      // If validation fails with an abort (Supabase client aborts in-flight
-      // requests on auth state changes like SIGNED_IN) but we already have a
-      // recent localStorage session, keep it rather than bouncing to login.
-      // The periodic 5-minute re-validation will catch any truly expired sessions.
       const validSession = await validateSession();
 
       if (validSession) {
         localStorage.setItem("staffSession", JSON.stringify(validSession));
         setSession(validSession);
       } else if (cachedParsed) {
-        // Validation failed (likely an abort race) but a cached session exists.
-        // Keep the session — don't redirect.
-        console.warn("useAdminAuth: Supabase validation failed but cached session present, keeping session");
+        // validateSession may fail if the token is mid-refresh — keep the
+        // cached session; the periodic re-validation will catch genuine expiry.
+        console.warn("useAdminAuth: validateSession failed but cached session present, keeping");
       } else {
         clearSessionAndRedirect();
       }
@@ -200,7 +189,7 @@ export function useAdminAuth(): UseAdminAuthReturn {
     checkAuth();
   }, [validateSession, clearSessionAndRedirect]);
 
-  // Listen for auth state changes
+  // Listen for Supabase auth state changes
   useEffect(() => {
     const {
       data: { subscription },
@@ -208,21 +197,37 @@ export function useAdminAuth(): UseAdminAuthReturn {
       console.log("Auth state changed:", event);
 
       if (event === "SIGNED_OUT") {
-        localStorage.removeItem("staffSession");
-        setSession(null);
-        navigate("/admin/login");
+        if (signingOutRef.current) {
+          // Intentional sign-out — signOut() already handles cleanup + navigate.
+          return;
+        }
+        // SIGNED_OUT can fire as a false positive when Supabase's auto-refresh
+        // fails (AbortError / network failure).  If staffSession still exists
+        // the user was active; let validateSession re-check on next page load
+        // rather than abruptly kicking them out.
+        const staffCached = localStorage.getItem("staffSession");
+        if (!staffCached) {
+          setSession(null);
+          navigate("/admin/login");
+        } else {
+          console.warn("useAdminAuth: SIGNED_OUT with cached staffSession — likely token refresh failure, keeping session");
+        }
       } else if (event === "TOKEN_REFRESHED" && authSession) {
-        // TOKEN_REFRESHED means auth is definitely valid — don't re-query staff_users
-        // because this very event aborts any in-flight Supabase client requests,
-        // causing validateSession to fail and triggering a false redirect to login.
-        // If we have a cached staffSession, keep it. Only redirect if there's none.
+        // Token was successfully refreshed — update staffSession loginTime so
+        // the periodic check sees a recent timestamp, but don't re-query
+        // staff_users (this event's own arrival can abort in-flight requests).
         const cached = localStorage.getItem("staffSession");
-        if (!cached) {
+        if (cached) {
+          try {
+            const parsed: StaffSession = JSON.parse(cached);
+            const updated = { ...parsed, loginTime: new Date().toISOString() };
+            localStorage.setItem("staffSession", JSON.stringify(updated));
+            setSession(updated);
+          } catch {}
+        } else {
           clearSessionAndRedirect();
         }
-        // else: keep the existing session, auth is valid
       } else if (event === "USER_UPDATED" && authSession) {
-        // Re-validate if user was updated; keep cached session on abort
         const validSession = await validateSession();
         if (validSession) {
           localStorage.setItem("staffSession", JSON.stringify(validSession));
@@ -244,13 +249,18 @@ export function useAdminAuth(): UseAdminAuthReturn {
       async () => {
         if (session) {
           const validSession = await validateSession();
-          if (!validSession) {
+          if (validSession) {
+            localStorage.setItem("staffSession", JSON.stringify(validSession));
+            setSession(validSession);
+          } else if (!localStorage.getItem("staffSession")) {
             clearSessionAndRedirect();
           }
+          // If staffSession still present but validateSession returned null,
+          // keep the session — transient network failure shouldn't log users out.
         }
       },
       5 * 60 * 1000,
-    ); // 5 minutes
+    );
 
     return () => clearInterval(interval);
   }, [session, validateSession, clearSessionAndRedirect]);
