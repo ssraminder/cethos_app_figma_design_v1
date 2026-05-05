@@ -25,6 +25,20 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 
+const _SB_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const _SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+function sbGet(path: string): Promise<Response> {
+  let token = _SB_KEY;
+  try {
+    const s = localStorage.getItem("cethos-auth");
+    if (s) token = JSON.parse(s)?.access_token || _SB_KEY;
+  } catch {}
+  return fetch(`${_SB_URL}/rest/v1/${path}`, {
+    headers: { apikey: _SB_KEY, Authorization: `Bearer ${token}` },
+  });
+}
+
 interface Project {
   id: string;
   project_number: string;
@@ -208,64 +222,45 @@ export default function AdminProjectDetail() {
       setLoading(true);
       setError(null);
 
-      const { data: proj, error: projErr } = await supabase
-        .from("internal_projects")
-        .select(
-          "id, project_number, client_project_number, name, vendor_notes, glossary_storage_path, style_guide_storage_path, is_active, created_at, updated_at, customer_id, company_id",
-        )
-        .eq("id", id)
-        .maybeSingle();
+      const projRes = await sbGet(
+        `internal_projects?select=id,project_number,client_project_number,name,vendor_notes,glossary_storage_path,style_guide_storage_path,is_active,created_at,updated_at,customer_id,company_id&id=eq.${id}&limit=1`,
+      );
 
       if (cancelled) return;
-      if (projErr || !proj) {
-        setError(projErr?.message || "Project not found");
+      if (!projRes.ok) {
+        setError(`HTTP ${projRes.status}`);
         setLoading(false);
         return;
       }
-      setProject(proj as Project);
-
-      const customerPromise = supabase
-        .from("customers")
-        .select("id, full_name, email, company_name")
-        .eq("id", proj.customer_id)
-        .maybeSingle();
-
-      const companyPromise = proj.company_id
-        ? supabase
-            .from("companies")
-            .select("id, name")
-            .eq("id", proj.company_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null });
-
-      const ordersPromise = supabase
-        .from("orders")
-        .select("id, order_number, status, total_amount, currency, created_at")
-        .eq("internal_project_id", id)
-        .order("created_at", { ascending: false });
-
-      const quotesPromise = supabase
-        .from("quotes")
-        .select("id, quote_number, status, total, currency, created_at")
-        .eq("internal_project_id", id)
-        .order("created_at", { ascending: false });
+      const projRows: any[] = await projRes.json();
+      if (!projRows.length) {
+        setError("Project not found");
+        setLoading(false);
+        return;
+      }
+      const proj = projRows[0] as Project;
+      setProject(proj);
 
       const [custRes, compRes, ordRes, quoteRes] = await Promise.all([
-        customerPromise,
-        companyPromise,
-        ordersPromise,
-        quotesPromise,
+        sbGet(`customers?select=id,full_name,email,company_name&id=eq.${proj.customer_id}&limit=1`),
+        proj.company_id
+          ? sbGet(`companies?select=id,name&id=eq.${proj.company_id}&limit=1`)
+          : Promise.resolve(null),
+        sbGet(`orders?select=id,order_number,status,total_amount,currency,created_at&internal_project_id=eq.${id}&order=created_at.desc`),
+        sbGet(`quotes?select=id,quote_number,status,total,currency,created_at&internal_project_id=eq.${id}&order=created_at.desc`),
       ]);
       if (cancelled) return;
 
-      setCustomer((custRes.data as CustomerLite) || null);
-      setCompany((compRes.data as CompanyLite) || null);
+      if (custRes.ok) { const r: any[] = await custRes.json(); setCustomer(r[0] ?? null); }
+      if (compRes?.ok) { const r: any[] = await compRes.json(); setCompany(r[0] ?? null); }
 
       // Merge orders + quotes into a single Tasks list. An order created from a
       // quote shares the same internal_project_id; we surface both so staff can
       // see the full lineage. Quotes that converted into orders show the order
       // entry — staff can drill into either to see the relationship.
-      const orderTasks: Task[] = (ordRes.data || []).map((o: any) => ({
+      const ordRows: any[] = ordRes.ok ? await ordRes.json() : [];
+      const quoteRows: any[] = quoteRes.ok ? await quoteRes.json() : [];
+      const orderTasks: Task[] = ordRows.map((o: any) => ({
         kind: "order",
         id: o.id,
         number: o.order_number,
@@ -274,7 +269,7 @@ export default function AdminProjectDetail() {
         currency: o.currency,
         created_at: o.created_at,
       }));
-      const quoteTasks: Task[] = (quoteRes.data || []).map((q: any) => ({
+      const quoteTasks: Task[] = quoteRows.map((q: any) => ({
         kind: "quote",
         id: q.id,
         number: q.quote_number,

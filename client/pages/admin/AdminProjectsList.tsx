@@ -8,7 +8,20 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Briefcase, Search } from "lucide-react";
 import { format } from "date-fns";
-import { supabase } from "@/lib/supabase";
+
+const _SB_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const _SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+function sbGet(path: string): Promise<Response> {
+  let token = _SB_KEY;
+  try {
+    const s = localStorage.getItem("cethos-auth");
+    if (s) token = JSON.parse(s)?.access_token || _SB_KEY;
+  } catch {}
+  return fetch(`${_SB_URL}/rest/v1/${path}`, {
+    headers: { apikey: _SB_KEY, Authorization: `Bearer ${token}` },
+  });
+}
 
 interface ProjectRow {
   id: string;
@@ -33,25 +46,19 @@ export default function AdminProjectsList() {
     (async () => {
       setLoading(true);
       setError(null);
-      let q = supabase
-        .from("internal_projects")
-        .select(
-          "id, project_number, client_project_number, name, is_active, updated_at, customer:customers(full_name, company_name), company:companies(name)",
-        )
-        .order("updated_at", { ascending: false })
-        .limit(200);
-      if (!includeInactive) {
-        q = q.eq("is_active", true);
+      try {
+        const activeFilter = includeInactive ? "" : "&is_active=eq.true";
+        const res = await sbGet(
+          `internal_projects?select=id,project_number,client_project_number,name,is_active,updated_at,customer:customers(full_name,company_name),company:companies(name)${activeFilter}&order=updated_at.desc&limit=200`,
+        );
+        if (cancelled) return;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setRows(await res.json());
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || "Failed to load projects");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      const { data, error: err } = await q;
-      if (cancelled) return;
-      if (err) {
-        setError(err.message);
-        setLoading(false);
-        return;
-      }
-      setRows((data as unknown as ProjectRow[]) || []);
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
