@@ -1,10 +1,25 @@
 // Reusable customer search for Fast Quote and Kiosk.
 // Debounced query against the `customers` table by name, email, or phone.
 // Calls onSelect with the picked customer so the parent can autofill fields.
+// Uses direct REST fetch (not the Supabase client) to avoid the AbortError
+// that the Supabase client hits during auth-state-change races on page load.
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import { Search, X, UserCheck, Loader2 } from "lucide-react";
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+function getAccessToken(): string {
+  try {
+    const stored = localStorage.getItem("cethos-auth");
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return parsed?.access_token || SUPABASE_ANON_KEY;
+    }
+  } catch {}
+  return SUPABASE_ANON_KEY;
+}
 
 export interface CustomerHit {
   id: string;
@@ -48,23 +63,27 @@ export default function CustomerSearch({
     setLoading(true);
     debounceRef.current = window.setTimeout(async () => {
       try {
-        // Split query into terms — match any of name/email/phone/company
-        const esc = q.replace(/[,%]/g, "").trim();
-        const { data } = await supabase
-          .from("customers")
-          .select("id, full_name, email, phone, customer_type, company_name")
-          .or(
-            [
-              `full_name.ilike.%${esc}%`,
-              `email.ilike.%${esc}%`,
-              `phone.ilike.%${esc}%`,
-              `company_name.ilike.%${esc}%`,
-            ].join(","),
-          )
-          .order("full_name")
-          .limit(10);
-        setHits((data as CustomerHit[]) || []);
+        const esc = q.replace(/[*,%()]/g, "").trim();
+        const orFilter = [
+          `full_name.ilike.*${esc}*`,
+          `email.ilike.*${esc}*`,
+          `phone.ilike.*${esc}*`,
+          `company_name.ilike.*${esc}*`,
+        ].join(",");
+        const url = `${SUPABASE_URL}/rest/v1/customers?select=id,full_name,email,phone,customer_type,company_name&or=(${orFilter})&order=full_name&limit=10`;
+        const res = await fetch(url, {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: CustomerHit[] = await res.json();
+        setHits(data || []);
         setOpen(true);
+      } catch (err) {
+        console.error("CustomerSearch fetch error:", err);
+        setHits([]);
       } finally {
         setLoading(false);
       }
