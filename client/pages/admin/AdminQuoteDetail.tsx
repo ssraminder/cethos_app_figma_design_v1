@@ -464,6 +464,21 @@ const REVIEW_REASON_LABELS: Record<string, { label: string; description: string;
     description: "An unexpected error occurred during processing. The document may need to be reprocessed or manually reviewed.",
     severity: "error",
   },
+  high_billable_ratio: {
+    label: "High Billable Ratio",
+    description: "Billable pages exceed the physical page count by more than the configured threshold (default 1.5×). Often caused by watermarks, repeated headers, or dense OCR noise inflating word count.",
+    severity: "warning",
+  },
+  low_billable_ratio: {
+    label: "Low Billable Ratio",
+    description: "Billable pages are less than 35% of the physical page count. Many pages may be blank, duplicated, or contain non-translatable content (images, signatures only). Confirm scope with the customer before quoting.",
+    severity: "warning",
+  },
+  high_value_order: {
+    label: "High-Value Order",
+    description: "Quote total exceeds the configured threshold (default $500). A staff member should review the line items and pricing before sending.",
+    severity: "warning",
+  },
 };
 
 export default function AdminQuoteDetail() {

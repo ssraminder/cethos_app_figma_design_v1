@@ -80,9 +80,17 @@ export default function QuoteConfirmationPage() {
         "We need to verify the language in your documents.",
       low_classification_confidence: "We need to confirm the document type.",
       high_value_order:
-        "Due to the size of your order, we provide personalized review.",
+        "Because your order total exceeds $500, our team is reviewing it personally to make sure every detail is correct before final pricing.",
       high_page_count:
         "Due to the number of pages, we provide personalized review.",
+      high_billable_ratio:
+        "One or more documents have an unusually high text density (e.g. small print, dense legal text, or repeated headers). Our team is verifying the page count so we don't over-quote.",
+      low_billable_ratio:
+        "One or more of your documents has many pages with little or no translatable text (for example, blank pages, duplicates, or images without text). To make sure we translate exactly what you need — and don't quote you for pages we shouldn't — our team is reviewing your files before confirming the price.",
+      multi_language_document:
+        "One of your documents contains multiple languages. We're confirming which sections to translate.",
+      unsupported_format:
+        "One of your files is in a format we need to convert manually. Our team will handle this for you.",
       quality_check: "We want to ensure the most accurate quote possible.",
     };
     return messages[reason] || messages["quality_check"];
