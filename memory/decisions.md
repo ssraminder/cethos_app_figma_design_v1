@@ -18,6 +18,15 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-05 — Project navigation: list, detail, banner, sidebar (Phase 2b)
+- **Decision:** Add `/admin/projects` (list) and `/admin/projects/:id` (detail with read-only Tasks list of all linked quotes + orders), a "Projects" sidebar link, and a banner on the order detail page linking back to the project.
+- **Rationale:** Phase 1 was accumulating projects in production, but staff had no way to navigate them. The detail view is the answer to "find all tasks in a particular project."
+- **Project list query:** plain `internal_projects` SELECT with customer/company joins; client-side text filter. Limit 200, server-side ordered by `updated_at`. Sufficient for now; revisit when project count outgrows it.
+- **Banner approach:** separate fetch in AdminOrderDetail (one query for project_number, one count query for sibling tasks). Avoids modifying the existing massive `*` SELECT in `fetchOrderDetails`.
+- **Tasks list:** merges quotes + orders into one chronological list. An order created from a quote shares the same `internal_project_id`, so both rows appear; staff can drill into either.
+- **Status:** active — committed but not yet exercised in production. Verify by visiting `/admin/projects/{first-real-project-id}` once a few orders accumulate.
+- **Affects:** new `AdminProjectsList.tsx`, new `AdminProjectDetail.tsx`, `App.tsx` routing, `AdminLayout.tsx` nav, `AdminOrderDetail.tsx` (interface + banner). No schema or edge-function changes.
+
 ### 2026-05-05 — Project picker typeahead in AdminCreateOrder (Phase 2a)
 - **Decision:** Replace the plain `client_project_number` text input with a typeahead that searches existing `internal_projects` for the picked customer's company (or customer if no company). Matches against `project_number` (PRJ-YYYY-NNNNN), `client_project_number`, and `name`.
 - **Rationale:** Once Phase 1 started auto-stamping projects in production, staff needed visibility into existing projects to avoid creating dupes via inconsistent typing of `client_project_number`.

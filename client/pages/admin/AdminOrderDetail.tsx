@@ -6,6 +6,7 @@ import {
   AlertCircle,
   ArrowLeft,
   Brain,
+  Briefcase,
   Building,
   CheckCircle,
   Clock,
@@ -154,6 +155,7 @@ interface OrderDetail {
   invoice_status: string | null;
   po_number: string | null;
   client_project_number: string | null;
+  internal_project_id: string | null;
 }
 
 interface InvoiceRecord {
@@ -273,6 +275,13 @@ export default function AdminOrderDetail() {
   const { session: currentStaff } = useAdminAuthContext();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
+  // Project banner: project number + count of sibling tasks (other orders in
+  // the same project). Fetched separately so we don't disturb the order
+  // SELECT, which already uses *.
+  const [projectInfo, setProjectInfo] = useState<{
+    project_number: string;
+    sibling_count: number;
+  } | null>(null);
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
   const [paymentAllocations, setPaymentAllocations] = useState<PaymentAllocation[]>([]);
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
@@ -488,6 +497,41 @@ export default function AdminOrderDetail() {
       fetchActivityTimeline(order);
     }
   }, [order?.id]);
+
+  // Fetch project info for the banner — PRJ number + count of sibling tasks
+  // in the same project (other orders, excluding this one).
+  useEffect(() => {
+    if (!order?.internal_project_id) {
+      setProjectInfo(null);
+      return;
+    }
+    const projectId = order.internal_project_id;
+    let cancelled = false;
+    (async () => {
+      const [{ data: proj }, { count }] = await Promise.all([
+        supabase
+          .from("internal_projects")
+          .select("project_number")
+          .eq("id", projectId)
+          .maybeSingle(),
+        supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .eq("internal_project_id", projectId)
+          .neq("id", order.id),
+      ]);
+      if (cancelled) return;
+      if (proj) {
+        setProjectInfo({
+          project_number: (proj as { project_number: string }).project_number,
+          sibling_count: count ?? 0,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [order?.internal_project_id, order?.id]);
 
   // Sync payment link URL when order loads
   useEffect(() => {
@@ -2549,6 +2593,27 @@ export default function AdminOrderDetail() {
           <ArrowLeft className="w-4 h-4" />
           Back to Orders
         </Link>
+
+        {projectInfo && (
+          <Link
+            to={`/admin/projects/${order.internal_project_id}`}
+            className="inline-flex items-center gap-2 mb-3 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-md text-sm text-teal-800 transition-colors"
+          >
+            <Briefcase className="w-4 h-4" />
+            <span>
+              Part of{" "}
+              <span className="font-semibold">{projectInfo.project_number}</span>
+              {projectInfo.sibling_count > 0 && (
+                <>
+                  {" "}
+                  · {projectInfo.sibling_count} prior task
+                  {projectInfo.sibling_count === 1 ? "" : "s"}
+                </>
+              )}
+            </span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </Link>
+        )}
 
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div>

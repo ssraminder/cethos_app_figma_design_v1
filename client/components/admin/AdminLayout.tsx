@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   FileText,
   ShoppingCart,
+  Briefcase,
   Brain,
   BookOpen,
   Users,
@@ -78,6 +79,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Orders",
     path: "/admin/orders",
     icon: ShoppingCart,
+    section: "Main",
+  },
+  {
+    label: "Projects",
+    path: "/admin/projects",
+    icon: Briefcase,
     section: "Main",
   },
   {
