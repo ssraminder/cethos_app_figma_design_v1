@@ -1,6 +1,20 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+
+const _SB_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const _SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+function sbGet(path: string, extraHeaders?: Record<string, string>): Promise<Response> {
+  let token = _SB_KEY;
+  try {
+    const s = localStorage.getItem("cethos-auth");
+    if (s) token = JSON.parse(s)?.access_token || _SB_KEY;
+  } catch {}
+  return fetch(`${_SB_URL}/rest/v1/${path}`, {
+    headers: { apikey: _SB_KEY, Authorization: `Bearer ${token}`, ...extraHeaders },
+  });
+}
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { toast } from "sonner";
 import {
@@ -181,14 +195,11 @@ export default function AdminOrdersList() {
     if (!staffId || prefsLoaded) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from("staff_users")
-        .select("ui_preferences")
-        .eq("id", staffId)
-        .maybeSingle();
+      const res = await sbGet(`staff_users?select=ui_preferences&id=eq.${staffId}&limit=1`);
       if (cancelled) return;
       setPrefsLoaded(true);
-      const saved = (data?.ui_preferences as any)?.ordersListFilters;
+      const rows: any[] = res.ok ? await res.json() : [];
+      const saved = (rows[0]?.ui_preferences as any)?.ordersListFilters;
       // Only apply if the URL has no active filter params (i.e. we haven't
       // also restored from sessionStorage or landed here with explicit URL).
       const hasAny = filterKeys.some((k) => searchParams.has(k));
@@ -264,12 +275,11 @@ export default function AdminOrdersList() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from("services")
-        .select("id")
-        .eq("code", "certified_translation")
-        .maybeSingle();
-      if (!cancelled) setCertifiedServiceId((data?.id as string) || null);
+      const res = await sbGet("services?select=id&code=eq.certified_translation&limit=1");
+      if (!cancelled) {
+        const rows: any[] = res.ok ? await res.json() : [];
+        setCertifiedServiceId(rows[0]?.id || null);
+      }
     })();
     return () => {
       cancelled = true;
@@ -289,13 +299,9 @@ export default function AdminOrdersList() {
       return;
     }
     companyDebounceRef.current = window.setTimeout(async () => {
-      const { data } = await supabase
-        .from("companies")
-        .select("id, name")
-        .ilike("name", `%${q.replace(/[,%]/g, "")}%`)
-        .order("name")
-        .limit(10);
-      setCompanies((data as CompanyOption[]) || []);
+      const esc = q.replace(/[*,%()]/g, "").trim();
+      const res = await sbGet(`companies?select=id,name&name=ilike.*${esc}*&order=name&limit=10`);
+      setCompanies(res.ok ? await res.json() : []);
     }, 200);
     return () => {
       if (companyDebounceRef.current) window.clearTimeout(companyDebounceRef.current);
@@ -310,12 +316,11 @@ export default function AdminOrdersList() {
     }
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from("companies")
-        .select("id, name")
-        .eq("id", companyFilter)
-        .maybeSingle();
-      if (!cancelled && data) setSelectedCompanyName(data.name);
+      const res = await sbGet(`companies?select=id,name&id=eq.${companyFilter}&limit=1`);
+      if (!cancelled && res.ok) {
+        const rows: any[] = await res.json();
+        if (rows[0]) setSelectedCompanyName(rows[0].name);
+      }
     })();
     return () => {
       cancelled = true;
@@ -371,111 +376,80 @@ export default function AdminOrdersList() {
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      let query = supabase.from("orders").select(
-        `
-          id,
-          order_number,
-          status,
-          work_status,
-          total_amount,
-          is_rush,
-          created_at,
-          estimated_delivery_date,
-          service_id,
-          xtrf_invoice_id, xtrf_invoice_number, xtrf_invoice_status, xtrf_invoice_payment_status,
-          xtrf_project_number, xtrf_project_total_agreed, xtrf_project_total_cost, xtrf_project_currency_code, xtrf_project_status,
-          customers!inner(email, full_name, company_name, customer_type, company_id),
-          service:services(code)
-        `,
-        { count: "exact" },
-      );
+      const select =
+        "id,order_number,status,work_status,total_amount,is_rush,created_at,estimated_delivery_date,service_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,customers!inner(email,full_name,company_name,customer_type,company_id),service:services(code)";
 
-      // Apply filters
+      const filters: string[] = [];
+
+      // Search: resolve customer ids first, then OR filter
       if (search) {
-        // PostgREST doesn't support foreign table refs in .or(), so find matching customers first
-        const { data: matchingCustomers } = await supabase
-          .from("customers")
-          .select("id")
-          .or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
-
-        const customerIds = matchingCustomers?.map((c) => c.id) || [];
-
-        if (customerIds.length > 0) {
-          query = query.or(
-            `order_number.ilike.%${search}%,xtrf_project_number.ilike.%${search}%,customer_id.in.(${customerIds.join(",")})`,
-          );
+        const esc = search.replace(/[*,%()]/g, "").trim();
+        const custRes = await sbGet(`customers?select=id&or=(email.ilike.*${esc}*,full_name.ilike.*${esc}*)&limit=500`);
+        const custRows: any[] = custRes.ok ? await custRes.json() : [];
+        const custIds = custRows.map((c: any) => c.id);
+        if (custIds.length > 0) {
+          filters.push(`or=(order_number.ilike.*${esc}*,xtrf_project_number.ilike.*${esc}*,customer_id.in.(${custIds.join(",")}))`);
         } else {
-          query = query.or(
-            `order_number.ilike.%${search}%,xtrf_project_number.ilike.%${search}%`,
-          );
+          filters.push(`or=(order_number.ilike.*${esc}*,xtrf_project_number.ilike.*${esc}*)`);
         }
       }
-      if (status) {
-        query = query.eq("status", status);
-      }
-      if (workStatus) {
-        query = query.eq("work_status", workStatus);
-      }
-      if (dateFrom) {
-        query = query.gte("created_at", dateFrom);
-      }
-      if (dateTo) {
-        query = query.lte("created_at", dateTo + "T23:59:59");
-      }
-      if (rushOnly) {
-        query = query.eq("is_rush", true);
-      }
+      if (status) filters.push(`status=eq.${status}`);
+      if (workStatus) filters.push(`work_status=eq.${workStatus}`);
+      if (dateFrom) filters.push(`created_at=gte.${dateFrom}`);
+      if (dateTo) filters.push(`created_at=lte.${dateTo}T23:59:59`);
+      if (rushOnly) filters.push(`is_rush=eq.true`);
       if (xtrfStatus === "none") {
-        query = query.is("xtrf_project_number", null);
+        filters.push(`xtrf_project_number=is.null`);
       } else if (xtrfStatus) {
-        query = query.eq("xtrf_project_status", xtrfStatus);
+        filters.push(`xtrf_project_status=eq.${xtrfStatus}`);
       }
       if (xtrfInvoiceStatuses.length > 0) {
         if (xtrfInvoiceStatuses.includes("NONE")) {
-          const otherStatuses = xtrfInvoiceStatuses.filter(s => s !== "NONE");
-          if (otherStatuses.length > 0) {
-            query = query.or(`xtrf_invoice_status.is.null,xtrf_invoice_status.in.(${otherStatuses.join(",")})`);
+          const others = xtrfInvoiceStatuses.filter(s => s !== "NONE");
+          if (others.length > 0) {
+            filters.push(`or=(xtrf_invoice_status.is.null,xtrf_invoice_status.in.(${others.join(",")}))`);
           } else {
-            query = query.is("xtrf_invoice_status", null);
+            filters.push(`xtrf_invoice_status=is.null`);
           }
         } else {
-          query = query.in("xtrf_invoice_status", xtrfInvoiceStatuses);
+          filters.push(`xtrf_invoice_status=in.(${xtrfInvoiceStatuses.join(",")})`);
         }
       }
       if (xtrfPaymentStatuses.length > 0) {
-        query = query.in("xtrf_invoice_payment_status", xtrfPaymentStatuses);
+        filters.push(`xtrf_invoice_payment_status=in.(${xtrfPaymentStatuses.join(",")})`);
       }
       if (serviceFilter !== "all" && certifiedServiceId) {
-        query =
-          serviceFilter === "certified"
-            ? query.eq("service_id", certifiedServiceId)
-            : query.neq("service_id", certifiedServiceId);
+        filters.push(serviceFilter === "certified"
+          ? `service_id=eq.${certifiedServiceId}`
+          : `service_id=neq.${certifiedServiceId}`);
       }
       if (companyFilter) {
-        // Resolve to customer ids with that company, then filter the orders.
-        const { data: matchingCustomers } = await supabase
-          .from("customers")
-          .select("id")
-          .eq("company_id", companyFilter);
-        const customerIds = (matchingCustomers || []).map((c: any) => c.id);
-        if (customerIds.length === 0) {
+        const custRes = await sbGet(`customers?select=id&company_id=eq.${companyFilter}&limit=1000`);
+        const custRows: any[] = custRes.ok ? await custRes.json() : [];
+        if (custRows.length === 0) {
           setOrders([]);
           setTotalCount(0);
           setLoading(false);
           return;
         }
-        query = query.in("customer_id", customerIds);
+        filters.push(`customer_id=in.(${custRows.map((c: any) => c.id).join(",")})`);
       }
 
       // Pagination
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      query = query.order("created_at", { ascending: false }).range(from, to);
+      const qs = `select=${encodeURIComponent(select)}&${filters.join("&")}&order=created_at.desc`;
+      const res = await sbGet(qs, {
+        Prefer: "count=exact",
+        Range: `${from}-${to}`,
+        "Range-Unit": "items",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const { data, count, error } = await query;
-
-      if (error) throw error;
+      const contentRange = res.headers.get("Content-Range") || "";
+      const count = parseInt(contentRange.split("/")[1] || "0", 10);
+      const data: any[] = await res.json();
 
       // Transform data
       const transformedOrders =
