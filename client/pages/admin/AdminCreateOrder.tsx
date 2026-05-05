@@ -634,7 +634,7 @@ export default function AdminCreateOrder() {
   };
 
   // Warn (non-blocking) if PO / project # are blank and the customer doesn't
-  // strictly require them. Returns false if the user cancelled.
+  // strictly require them. Shows a toast but always allows submission.
   const confirmMissingReferences = (): boolean => {
     if (!customer) return true;
     const missing: string[] = [];
@@ -645,10 +645,12 @@ export default function AdminCreateOrder() {
     ) {
       missing.push("Client project number");
     }
-    if (missing.length === 0) return true;
-    return window.confirm(
-      `No ${missing.join(" or ")} entered. These are recommended for AR reconciliation. Continue anyway?`,
-    );
+    if (missing.length > 0) {
+      toast.warning(
+        `No ${missing.join(" or ")} entered — recommended for AR reconciliation.`,
+      );
+    }
+    return true;
   };
 
   // Upload attached files into quote_files after the quote has been created.
