@@ -51,84 +51,82 @@ export function useAdminAuth(): UseAdminAuthReturn {
 
   const validateSession =
     useCallback(async (): Promise<StaffSession | null> => {
-      try {
-        // Check Supabase Auth session
-        const {
-          data: { session: authSession },
-          error: authError,
-        } = await supabase.auth.getSession();
+      // Auth state changes (SIGNED_IN, TOKEN_REFRESHED) cause the Supabase
+      // client to throw AbortError on any in-flight request. Retry once.
+      for (let outerAttempt = 0; outerAttempt < 2; outerAttempt++) {
+        try {
+          // Check Supabase Auth session
+          const {
+            data: { session: authSession },
+            error: authError,
+          } = await supabase.auth.getSession();
 
-        if (authError) {
-          console.error("Auth session error:", authError);
-          return null;
-        }
+          if (authError) {
+            console.error("Auth session error:", authError);
+            return null;
+          }
 
-        if (!authSession) {
-          console.log("No auth session found");
-          return null;
-        }
+          if (!authSession) {
+            console.log("No auth session found");
+            return null;
+          }
 
-        if (!authSession.user.email) {
-          console.log("Authenticated user missing email");
-          await supabase.auth.signOut();
-          return null;
-        }
+          if (!authSession.user.email) {
+            console.log("Authenticated user missing email");
+            await supabase.auth.signOut();
+            return null;
+          }
 
-        // Verify user is still active staff.
-        // Auth state changes (SIGNED_IN, TOKEN_REFRESHED) abort in-flight
-        // Supabase client requests — retry once after a short delay.
-        let staffData: any = null;
-        let staffError: any = null;
-        for (let attempt = 0; attempt < 2; attempt++) {
-          const result = await supabase
+          // Verify user is still active staff
+          const { data: staffData, error: staffError } = await supabase
             .from("staff_users")
             .select("id, full_name, email, role, is_active")
             .eq("email", authSession.user.email)
             .single();
-          staffData = result.data;
-          staffError = result.error;
-          if (!staffError) break;
+
+          if (staffError || !staffData) {
+            console.error(
+              "Staff lookup error or missing staff record:",
+              staffError,
+            );
+            await supabase.auth.signOut();
+            return null;
+          }
+
+          if (!staffData.is_active) {
+            console.log("User is not active staff");
+            await supabase.auth.signOut();
+            return null;
+          }
+
+          // Create/update staff session
+          const staffSession: StaffSession = {
+            staffId: staffData.id,
+            staffName: staffData.full_name,
+            staffEmail: staffData.email,
+            staffRole: staffData.role,
+            isActive: staffData.is_active,
+            loggedIn: true,
+            loginTime: new Date().toISOString(),
+          };
+
+          return staffSession;
+        } catch (err: any) {
           const isAbort =
-            staffError.message?.includes("AbortError") ||
-            staffError.message?.includes("aborted");
-          if (isAbort && attempt === 0) {
-            await new Promise((resolve) => setTimeout(resolve, 300));
+            err?.name === "AbortError" ||
+            err?.message?.includes("AbortError") ||
+            err?.message?.includes("aborted") ||
+            err?.message?.includes("signal is aborted");
+          if (isAbort && outerAttempt === 0) {
+            console.warn("validateSession: AbortError, retrying in 400ms...");
+            await new Promise((resolve) => setTimeout(resolve, 400));
             continue;
           }
-          break;
-        }
-
-        if (staffError || !staffData) {
-          console.error(
-            "Staff lookup error or missing staff record:",
-            staffError,
-          );
-          await supabase.auth.signOut();
+          console.error("Session validation error:", err);
           return null;
         }
-
-        if (!staffData.is_active) {
-          console.log("User is not active staff");
-          await supabase.auth.signOut();
-          return null;
-        }
-
-        // Create/update staff session
-        const staffSession: StaffSession = {
-          staffId: staffData.id,
-          staffName: staffData.full_name,
-          staffEmail: staffData.email,
-          staffRole: staffData.role,
-          isActive: staffData.is_active,
-          loggedIn: true,
-          loginTime: new Date().toISOString(),
-        };
-
-        return staffSession;
-      } catch (err) {
-        console.error("Session validation error:", err);
-        return null;
       }
+      return null;
     }, []);
 
   const refreshSession = useCallback(async () => {
