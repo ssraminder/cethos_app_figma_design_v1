@@ -45,8 +45,8 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 - **Status:** active — Phase 1 (schema + 4 order-creation edge functions) deployed to project `lmzoyezvsjgsxveoakdr` 2026-05-05.
 - **Affects:** `internal_projects` table; edge functions admin-create-order, create-fast-quote, create-fast-quote-kiosk, crm-create-order. Pending: order form picker UI in `AdminCreateOrder.tsx`, project detail page, vendor portal display.
 
-### 2026-05-05 — Customer-name anonymization to vendors deferred
-- **Decision:** Do not audit/scrub the customer's name from vendor-facing surfaces (job detail, file metadata, message threads) in this phase.
-- **Rationale:** Hiding `client_project_number` is a partial anonymization win. Full anonymization is a separate workstream and was deprioritized to ship project numbers first.
-- **Status:** parked — revisit after vendor portal starts displaying PRJ numbers and the gap becomes user-visible.
-- **Affects:** vendor portal job detail, file naming conventions, message templates.
+### 2026-05-05 — Customer-name anonymization to vendors: not required
+- **Decision:** Do not pursue scrubbing customer name from vendor-facing surfaces. Vendors may continue to see customer first name / company name on job detail, file paths, and message threads as they do today.
+- **Rationale:** Confirmed by Raminder 2026-05-05 after Phase 3 shipped. The PRJ-YYYY-NNNNN abstraction is the only client-identifier change wanted; deeper anonymization is not a goal.
+- **Status:** active — supersedes the earlier "deferred / parked" entry from this same date. Don't relitigate.
+- **Affects:** nothing — explicit non-action.
