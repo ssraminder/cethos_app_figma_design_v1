@@ -18,6 +18,16 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-05 — Project asset uploads: glossary + style guide (Phase 5)
+- **Decision:** Staff can upload a glossary file and a style guide file per project on `AdminProjectDetail`. Files surface to vendors as Reference Materials on the job detail, tagged with source so vendors can spot which is the project glossary vs project style guide.
+- **Storage:** new private `project-assets` bucket. Path scheme `{project_id}/glossary/{filename}` and `{project_id}/style-guide/{filename}`. 50 MB cap, allowed MIME types: PDF, Word, Excel, ODT, ODS, TXT, CSV, MD.
+- **Access:** authenticated staff get full CRUD via portal; vendors never touch the bucket directly — they receive 1-hour signed URLs minted by `vendor-get-job-detail` (service role).
+- **Re-upload behavior:** uploading a different filename deletes the old object first (avoids orphaned files). Same filename uses upsert.
+- **Implementation:** migration `20260505_project_assets_bucket.sql` (applied), `AdminProjectDetail.tsx` Assets section with upload/replace/remove + signed-URL download, `vendor-get-job-detail` v30 prepends signed URLs to `reference_files` with `source: "project_glossary"` / `"project_style_guide"`, vendor `JobDetailModal` shows the source label as a small green badge above each row.
+- **Status:** active.
+- **Pending:** none for the basic asset flow. Translation memory at the project level stays a future workstream.
+- **Affects:** `internal_projects.{glossary,style_guide}_storage_path` (already in schema), new `project-assets` storage bucket, `AdminProjectDetail.tsx`, `vendor-get-job-detail` edge function, vendor `JobDetailModal`.
+
 ### 2026-05-05 — Vendor stickiness in assignment (Phase 4)
 - **Decision:** When staff use the vendor finder for a step on an order linked to an internal project, vendors who delivered prior tasks on that same project receive a `prior_project_tasks` count + match-score boost (+30 per prior task, capped at 100). UI shows a teal "↪ N prior tasks on this project" badge.
 - **Rationale:** Closes the original recurring-client consistency goal at the assignment step itself — staff naturally see the prior contributor first when sending a new task. Vendor notes (Phase 2c) help the vendor stay consistent; stickiness helps avoid even needing to switch in the first place.

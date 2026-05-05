@@ -9,7 +9,18 @@
 
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Briefcase, Building, FileText, Pencil, ShoppingCart } from "lucide-react";
+import {
+  ArrowLeft,
+  Briefcase,
+  Building,
+  Download,
+  FileText,
+  Loader2,
+  Pencil,
+  ShoppingCart,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -88,15 +99,23 @@ export default function AdminProjectDetail() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  // ── Asset upload state ──
+  const [uploadingType, setUploadingType] = useState<"glossary" | "style_guide" | null>(null);
 
-  const updateProject = async (patch: Partial<Pick<Project, "name" | "vendor_notes">>) => {
-    if (!project) return;
+  type ProjectPatch = Partial<
+    Pick<Project, "name" | "vendor_notes" | "glossary_storage_path" | "style_guide_storage_path">
+  >;
+
+  const updateProject = async (patch: ProjectPatch) => {
+    if (!project) return false;
     setSaving(true);
     const { data, error: err } = await supabase
       .from("internal_projects")
       .update(patch)
       .eq("id", project.id)
-      .select("name, vendor_notes, updated_at")
+      .select(
+        "name, vendor_notes, glossary_storage_path, style_guide_storage_path, updated_at",
+      )
       .single();
     setSaving(false);
     if (err || !data) {
@@ -105,6 +124,80 @@ export default function AdminProjectDetail() {
     }
     setProject({ ...project, ...data } as Project);
     return true;
+  };
+
+  // ── Asset upload helpers ──
+  const ASSET_FOLDER: Record<"glossary" | "style_guide", string> = {
+    glossary: "glossary",
+    style_guide: "style-guide",
+  };
+  const ASSET_COLUMN: Record<"glossary" | "style_guide", "glossary_storage_path" | "style_guide_storage_path"> = {
+    glossary: "glossary_storage_path",
+    style_guide: "style_guide_storage_path",
+  };
+  const ASSET_LABEL: Record<"glossary" | "style_guide", string> = {
+    glossary: "Glossary",
+    style_guide: "Style guide",
+  };
+
+  const uploadAsset = async (type: "glossary" | "style_guide", file: File) => {
+    if (!project) return;
+    setUploadingType(type);
+    try {
+      // Sanitize filename — strip path separators, keep extension
+      const safeName = file.name.replace(/[\/\\]/g, "_").slice(0, 200);
+      const newPath = `${project.id}/${ASSET_FOLDER[type]}/${safeName}`;
+
+      // If a previous file exists at a different path, delete it first.
+      const oldPath = project[ASSET_COLUMN[type]];
+      if (oldPath && oldPath !== newPath) {
+        await supabase.storage.from("project-assets").remove([oldPath]);
+      }
+
+      const { error: upErr } = await supabase.storage
+        .from("project-assets")
+        .upload(newPath, file, { upsert: true, cacheControl: "3600" });
+      if (upErr) {
+        toast.error(upErr.message);
+        return;
+      }
+
+      const ok = await updateProject({ [ASSET_COLUMN[type]]: newPath } as ProjectPatch);
+      if (ok) toast.success(`${ASSET_LABEL[type]} uploaded`);
+    } finally {
+      setUploadingType(null);
+    }
+  };
+
+  const removeAsset = async (type: "glossary" | "style_guide") => {
+    if (!project) return;
+    const path = project[ASSET_COLUMN[type]];
+    if (!path) return;
+    if (!window.confirm(`Remove ${ASSET_LABEL[type].toLowerCase()}? This cannot be undone.`)) return;
+    setUploadingType(type);
+    try {
+      await supabase.storage.from("project-assets").remove([path]);
+      const ok = await updateProject({ [ASSET_COLUMN[type]]: null } as ProjectPatch);
+      if (ok) toast.success(`${ASSET_LABEL[type]} removed`);
+    } finally {
+      setUploadingType(null);
+    }
+  };
+
+  const downloadAsset = async (path: string) => {
+    const { data, error: err } = await supabase.storage
+      .from("project-assets")
+      .createSignedUrl(path, 3600);
+    if (err || !data?.signedUrl) {
+      toast.error(err?.message || "Failed to generate download link");
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const filenameFromPath = (path: string | null) => {
+    if (!path) return null;
+    return path.split("/").pop() ?? path;
   };
 
   useEffect(() => {
@@ -407,6 +500,89 @@ export default function AdminProjectDetail() {
                   across recurring tasks for this project.
                 </div>
               )}
+            </div>
+
+            {/* Assets — glossary + style guide files. Surfaced to vendors via
+                vendor-get-job-detail as reference files. */}
+            <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded text-sm">
+              <div className="text-xs font-medium text-gray-700 mb-2">
+                Assets
+                <span className="ml-2 text-gray-500 font-normal italic">
+                  vendors download these alongside source files
+                </span>
+              </div>
+              <div className="space-y-2">
+                {(["glossary", "style_guide"] as const).map((type) => {
+                  const path = project[ASSET_COLUMN[type]];
+                  const filename = filenameFromPath(path);
+                  const isUploading = uploadingType === type;
+                  return (
+                    <div
+                      key={type}
+                      className="flex items-center gap-2 flex-wrap"
+                    >
+                      <span className="text-xs font-medium text-gray-600 w-24 shrink-0">
+                        {ASSET_LABEL[type]}
+                      </span>
+                      {filename ? (
+                        <>
+                          <button
+                            onClick={() => path && downloadAsset(path)}
+                            className="inline-flex items-center gap-1 text-sm text-teal-700 hover:text-teal-800 underline truncate max-w-xs"
+                            title={filename}
+                          >
+                            <Download className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">{filename}</span>
+                          </button>
+                          <label className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-700 hover:text-gray-900 bg-white border border-gray-300 rounded cursor-pointer">
+                            <Upload className="w-3 h-3" />
+                            Replace
+                            <input
+                              type="file"
+                              className="hidden"
+                              disabled={isUploading}
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) uploadAsset(type, f);
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                          <button
+                            onClick={() => removeAsset(type)}
+                            disabled={isUploading}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-700 hover:text-red-800 disabled:opacity-50"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Remove
+                          </button>
+                        </>
+                      ) : (
+                        <label className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-700 hover:text-gray-900 bg-white border border-gray-300 rounded cursor-pointer">
+                          <Upload className="w-3 h-3" />
+                          Upload {ASSET_LABEL[type].toLowerCase()}
+                          <input
+                            type="file"
+                            className="hidden"
+                            disabled={isUploading}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) uploadAsset(type, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      )}
+                      {isUploading && (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Up to 50 MB per file. PDF, Word, Excel, ODT, ODS, TXT, CSV, MD.
+              </p>
             </div>
           </div>
         </div>
