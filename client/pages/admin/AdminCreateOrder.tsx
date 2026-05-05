@@ -54,6 +54,15 @@ interface ARCustomer {
   invoicing_branch_id: number | null;
   requires_po: boolean | null;
   requires_client_project_number: boolean | null;
+  company_id: string | null;
+}
+
+interface ProjectSuggestion {
+  id: string;
+  project_number: string;
+  client_project_number: string | null;
+  name: string | null;
+  updated_at: string | null;
 }
 
 interface BranchRow {
@@ -151,6 +160,11 @@ export default function AdminCreateOrder() {
   const [branchId, setBranchId] = useState<number | null>(null);
   const [poNumber, setPoNumber] = useState<string>("");
   const [clientProjectNumber, setClientProjectNumber] = useState<string>("");
+  // ── Project picker (typeahead over internal_projects) ──
+  const [projectSuggestions, setProjectSuggestions] = useState<ProjectSuggestion[]>([]);
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const [linkedProject, setLinkedProject] = useState<ProjectSuggestion | null>(null);
+  const projectDebounceRef = useRef<number | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
 
@@ -208,6 +222,82 @@ export default function AdminCreateOrder() {
       if (companyDebounceRef.current) window.clearTimeout(companyDebounceRef.current);
     };
   }, [newCompany]);
+
+  // ── Project picker: search existing internal_projects for the picked
+  //    customer's company (or the customer if no company). Matches against
+  //    project_number (PRJ-YYYY-NNNNN), client_project_number, and name.
+  useEffect(() => {
+    if (!customer) {
+      setProjectSuggestions([]);
+      setProjectDropdownOpen(false);
+      return;
+    }
+    // If the typed value matches the linked project's label exactly, keep
+    // the link without re-querying — staff is just reviewing.
+    if (
+      linkedProject &&
+      (clientProjectNumber.trim() === (linkedProject.client_project_number ?? "") ||
+        clientProjectNumber.trim() === linkedProject.project_number)
+    ) {
+      return;
+    }
+    // Once typed text diverges from the linked project, treat it as a new
+    // project the staff is creating from scratch.
+    if (linkedProject && clientProjectNumber.trim() !== (linkedProject.client_project_number ?? "")) {
+      setLinkedProject(null);
+    }
+
+    if (projectDebounceRef.current) window.clearTimeout(projectDebounceRef.current);
+    projectDebounceRef.current = window.setTimeout(async () => {
+      const q = clientProjectNumber.trim().replace(/[,%]/g, "");
+      let query = supabase
+        .from("internal_projects")
+        .select("id, project_number, client_project_number, name, updated_at")
+        .eq("is_active", true)
+        // Only labeled projects are pickable from the typeahead — anonymous
+        // projects (auto-created from one-off orders with no client label)
+        // appear in the project detail page but not here, since picking them
+        // and pre-filling the input from project_number would cause the
+        // backend find-or-create to create a NEW project with PRJ-... as its
+        // label instead of linking back to the picked one.
+        .not("client_project_number", "is", null)
+        .order("updated_at", { ascending: false })
+        .limit(8);
+
+      if (customer.company_id) {
+        query = query.eq("company_id", customer.company_id);
+      } else {
+        query = query.eq("customer_id", customer.id).is("company_id", null);
+      }
+
+      if (q.length >= 1) {
+        query = query.or(
+          `project_number.ilike.%${q}%,client_project_number.ilike.%${q}%,name.ilike.%${q}%`,
+        );
+      }
+
+      const { data } = await query;
+      setProjectSuggestions((data as ProjectSuggestion[]) || []);
+    }, 200);
+
+    return () => {
+      if (projectDebounceRef.current) window.clearTimeout(projectDebounceRef.current);
+    };
+  }, [clientProjectNumber, customer]);
+
+  const pickProject = (p: ProjectSuggestion) => {
+    setLinkedProject(p);
+    // Picker only surfaces projects with client_project_number set, so
+    // pre-filling here makes the backend find_or_create_internal_project
+    // RPC match this exact project on submit.
+    setClientProjectNumber(p.client_project_number ?? "");
+    setProjectDropdownOpen(false);
+  };
+
+  const unlinkProject = () => {
+    setLinkedProject(null);
+    setClientProjectNumber("");
+  };
 
   // Apply a picked company's shared settings into the new-customer form.
   const applyCompanyDefaults = (c: CompanyRow) => {
@@ -418,7 +508,7 @@ export default function AdminCreateOrder() {
           invoicing_branch_id: newBranchId ?? branchId,
         })
         .select(
-          "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency, default_tax_rate_id, invoicing_branch_id, requires_po, requires_client_project_number",
+          "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency, default_tax_rate_id, invoicing_branch_id, requires_po, requires_client_project_number, company_id",
         )
         .single();
       if (error || !data) {
@@ -472,7 +562,7 @@ export default function AdminCreateOrder() {
     const { data, error } = await supabase
       .from("customers")
       .select(
-        "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency, default_tax_rate_id, invoicing_branch_id, requires_po, requires_client_project_number",
+        "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency, default_tax_rate_id, invoicing_branch_id, requires_po, requires_client_project_number, company_id",
       )
       .eq("id", hit.id)
       .maybeSingle();
@@ -1437,9 +1527,9 @@ export default function AdminCreateOrder() {
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-xs text-gray-600 mb-1">
-                  Client project number{" "}
+                  Project{" "}
                   {customer?.requires_client_project_number && (
                     <span className="text-red-500">*</span>
                   )}
@@ -1447,14 +1537,84 @@ export default function AdminCreateOrder() {
                 <input
                   type="text"
                   value={clientProjectNumber}
-                  onChange={(e) => setClientProjectNumber(e.target.value)}
-                  placeholder={
-                    customer?.requires_client_project_number
-                      ? "Required by this customer"
-                      : "Optional — recommended"
+                  onChange={(e) => {
+                    setClientProjectNumber(e.target.value);
+                    setProjectDropdownOpen(true);
+                  }}
+                  onFocus={() => setProjectDropdownOpen(true)}
+                  onBlur={() =>
+                    window.setTimeout(() => setProjectDropdownOpen(false), 150)
                   }
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  disabled={!customer}
+                  placeholder={
+                    !customer
+                      ? "Pick a customer first"
+                      : customer?.requires_client_project_number
+                        ? "Required — search PRJ or client label, or type to create new"
+                        : "Search PRJ or client label, or type to create new"
+                  }
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400"
                 />
+                {linkedProject && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-teal-700">
+                    <span className="font-medium">↪ {linkedProject.project_number}</span>
+                    <button
+                      type="button"
+                      onClick={unlinkProject}
+                      className="text-gray-500 hover:text-gray-700 underline"
+                    >
+                      unlink (create new instead)
+                    </button>
+                  </div>
+                )}
+                {projectDropdownOpen && customer &&
+                  (projectSuggestions.length > 0 || clientProjectNumber.trim()) && (
+                    <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-auto">
+                      {projectSuggestions.map((p) => (
+                        <li
+                          key={p.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            pickProject(p);
+                          }}
+                          className="px-3 py-2 text-sm hover:bg-teal-50 cursor-pointer border-b last:border-b-0"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-gray-900">
+                              {p.project_number}
+                            </span>
+                            {p.updated_at && (
+                              <span className="text-xs text-gray-400">
+                                {new Date(p.updated_at).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          {(p.client_project_number || p.name) && (
+                            <div className="text-xs text-gray-600 mt-0.5 truncate">
+                              {[p.client_project_number, p.name]
+                                .filter(Boolean)
+                                .join(" • ")}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                      {clientProjectNumber.trim() &&
+                        !projectSuggestions.some(
+                          (p) =>
+                            (p.client_project_number ?? "").toLowerCase() ===
+                            clientProjectNumber.trim().toLowerCase(),
+                        ) && (
+                          <li className="px-3 py-2 text-xs bg-gray-50 text-gray-600 italic">
+                            {projectSuggestions.length > 0
+                              ? "Or create new: "
+                              : "No match. New project will be created with label: "}
+                            <span className="text-gray-900 font-medium not-italic">
+                              {clientProjectNumber.trim()}
+                            </span>
+                          </li>
+                        )}
+                    </ul>
+                  )}
               </div>
             </div>
           </section>

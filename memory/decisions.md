@@ -18,6 +18,14 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-05 — Project picker typeahead in AdminCreateOrder (Phase 2a)
+- **Decision:** Replace the plain `client_project_number` text input with a typeahead that searches existing `internal_projects` for the picked customer's company (or customer if no company). Matches against `project_number` (PRJ-YYYY-NNNNN), `client_project_number`, and `name`.
+- **Rationale:** Once Phase 1 started auto-stamping projects in production, staff needed visibility into existing projects to avoid creating dupes via inconsistent typing of `client_project_number`.
+- **Linking strategy:** Picker pre-fills `clientProjectNumber` from the picked project's `client_project_number`; backend `find_or_create_internal_project` RPC then matches the same project on submit. No edge-function changes needed.
+- **Filter:** Picker only surfaces projects with `client_project_number IS NOT NULL`. Anonymous projects (auto-created from one-off orders with no client label) are not pickable here — picking them and pre-filling from `project_number` would create a NEW project with PRJ-... as its label rather than re-link. They'll be reachable from the project detail page (next phase).
+- **Status:** active — committed but not yet exercised in production. Verify by creating a direct order and confirming the typeahead surfaces existing projects.
+- **Affects:** `client/pages/admin/AdminCreateOrder.tsx` only. No schema or edge-function changes.
+
 ### 2026-05-05 — Internal project numbers (PRJ-YYYY-NNNNN) for vendor-facing grouping
 - **Decision:** Cethos-generated internal project numbers group related quotes/orders. Used in all vendor-facing communication instead of the client-supplied `client_project_number`.
 - **Rationale:** Business clients submit recurring tasks under the same project at different dates; vendors need continuity context (prior tasks, glossary, style guide) to stay consistent. The raw `client_project_number` may carry client identifiers and shouldn't reach vendors.
