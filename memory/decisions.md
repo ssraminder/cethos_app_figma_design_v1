@@ -18,6 +18,14 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-05 — Vendor stickiness in assignment (Phase 4)
+- **Decision:** When staff use the vendor finder for a step on an order linked to an internal project, vendors who delivered prior tasks on that same project receive a `prior_project_tasks` count + match-score boost (+30 per prior task, capped at 100). UI shows a teal "↪ N prior tasks on this project" badge.
+- **Rationale:** Closes the original recurring-client consistency goal at the assignment step itself — staff naturally see the prior contributor first when sending a new task. Vendor notes (Phase 2c) help the vendor stay consistent; stickiness helps avoid even needing to switch in the first place.
+- **Statuses counted as "prior task":** `delivered`, `under_review`, `approved`, `completed` on `order_workflow_steps` for orders sharing the same `internal_project_id`. Pending / offered / declined steps don't count — only actual work.
+- **Cap rationale:** +100 max keeps a super-prolific vendor from monopolizing every offer regardless of fit; rating, language, and availability still matter.
+- **Status:** active — `find-matching-vendors` v30 deployed to `lmzoyezvsjgsxveoakdr`. UI changes in `OrderWorkflowSection.tsx`.
+- **Affects:** `find-matching-vendors` edge function, `OrderWorkflowSection.tsx` (`VendorFinderModal` props + main component fetch).
+
 ### 2026-05-05 — Inline editing of project name + vendor notes (Phase 2c)
 - **Decision:** Add inline edit on `AdminProjectDetail` for two fields: `name` (staff-only internal name) and `vendor_notes` (visible to vendors on their job-detail "Project" banner).
 - **Rationale:** Phase 3 wired the vendor display to read `vendor_notes`, but staff had no UI to populate it — only direct DB edits. This closes the loop so the feature actually carries notes in production.

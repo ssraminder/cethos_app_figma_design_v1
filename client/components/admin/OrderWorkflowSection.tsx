@@ -368,6 +368,9 @@ interface VendorFinderModalProps {
   targetLanguage: string | null;
   serviceId: string | null;
   serviceName: string | null;
+  // When set, vendors who delivered prior tasks on the same internal
+  // project get a badge + match-score boost so they surface first.
+  internalProjectId?: string | null;
 }
 
 function VendorFinderModal({
@@ -381,6 +384,7 @@ function VendorFinderModal({
   targetLanguage,
   serviceId,
   serviceName,
+  internalProjectId,
 }: VendorFinderModalProps) {
   const [vendors, setVendors] = useState<any[]>([]);
   const [totalMatches, setTotalMatches] = useState(0);
@@ -439,6 +443,7 @@ function VendorFinderModal({
           sort_by: sortBy,
           limit: 30,
           offset: 0,
+          internal_project_id: internalProjectId || null,
         },
       });
       setVendors(data?.vendors || []);
@@ -449,7 +454,7 @@ function VendorFinderModal({
       setTotalMatches(0);
     }
     setSearching(false);
-  }, [filterSourceLang, filterTargetLang, filterServiceId, nativeLanguages, country, minRating, maxRate, availability, searchText, sortBy]);
+  }, [filterSourceLang, filterTargetLang, filterServiceId, nativeLanguages, country, minRating, maxRate, availability, searchText, sortBy, internalProjectId]);
 
   // Fetch services for dropdown
   useEffect(() => {
@@ -842,6 +847,11 @@ function VendorFinderModal({
                         )}
                         <span className="font-medium text-sm text-gray-900">{v.full_name}</span>
                         <span className="text-xs text-gray-400">· {v.email}</span>
+                        {v.prior_project_tasks > 0 && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded bg-teal-100 text-teal-800 border border-teal-200">
+                            ↪ {v.prior_project_tasks} prior task{v.prior_project_tasks === 1 ? "" : "s"} on this project
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
                         {v.matching_pairs && v.matching_pairs.length > 0 && (
@@ -3944,7 +3954,27 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
   const [rejectReason, setRejectReason] = useState('');
   const [counterLoadingId, setCounterLoadingId] = useState<string | null>(null);
   const [unassignStep, setUnassignStep] = useState<any | null>(null);
+  // Internal project this order belongs to. Surfaced to the VendorFinderModal
+  // so prior-project contributors get a stickiness badge + score boost.
+  const [internalProjectId, setInternalProjectId] = useState<string | null>(null);
   const { session: currentStaff } = useAdminAuthContext();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("orders")
+        .select("internal_project_id")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (!cancelled) {
+        setInternalProjectId((data?.internal_project_id as string | null) ?? null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
 
   const fetchWorkflow = useCallback(async () => {
     setLoading(true);
@@ -4251,6 +4281,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
           targetLanguage={finderStep.target_language}
           serviceId={finderStep.service_id}
           serviceName={finderStep.service_name}
+          internalProjectId={internalProjectId}
         />
       )}
 
