@@ -212,21 +212,22 @@ export function useAdminAuth(): UseAdminAuthReturn {
         setSession(null);
         navigate("/admin/login");
       } else if (event === "TOKEN_REFRESHED" && authSession) {
-        // Re-validate session on token refresh
-        const validSession = await validateSession();
-        if (validSession) {
-          localStorage.setItem("staffSession", JSON.stringify(validSession));
-          setSession(validSession);
-        } else {
+        // TOKEN_REFRESHED means auth is definitely valid — don't re-query staff_users
+        // because this very event aborts any in-flight Supabase client requests,
+        // causing validateSession to fail and triggering a false redirect to login.
+        // If we have a cached staffSession, keep it. Only redirect if there's none.
+        const cached = localStorage.getItem("staffSession");
+        if (!cached) {
           clearSessionAndRedirect();
         }
+        // else: keep the existing session, auth is valid
       } else if (event === "USER_UPDATED" && authSession) {
-        // Re-validate if user was updated
+        // Re-validate if user was updated; keep cached session on abort
         const validSession = await validateSession();
         if (validSession) {
           localStorage.setItem("staffSession", JSON.stringify(validSession));
           setSession(validSession);
-        } else {
+        } else if (!localStorage.getItem("staffSession")) {
           clearSessionAndRedirect();
         }
       }
