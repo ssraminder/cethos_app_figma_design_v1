@@ -439,7 +439,8 @@ export default function AdminOrdersList() {
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      const qs = `select=${encodeURIComponent(select)}&${filters.join("&")}&order=created_at.desc`;
+      const filterStr = filters.length > 0 ? "&" + filters.join("&") : "";
+      const qs = `orders?select=${encodeURIComponent(select)}${filterStr}&order=created_at.desc`;
       const res = await sbGet(qs, {
         Prefer: "count=exact",
         Range: `${from}-${to}`,
