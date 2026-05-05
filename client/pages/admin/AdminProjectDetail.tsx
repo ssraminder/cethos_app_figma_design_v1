@@ -123,21 +123,37 @@ export default function AdminProjectDetail() {
   const updateProject = async (patch: ProjectPatch) => {
     if (!project) return false;
     setSaving(true);
-    const { data, error: err } = await supabase
-      .from("internal_projects")
-      .update(patch)
-      .eq("id", project.id)
-      .select(
-        "name, vendor_notes, glossary_storage_path, style_guide_storage_path, updated_at",
-      )
-      .single();
-    setSaving(false);
-    if (err || !data) {
+    try {
+      let token = _SB_KEY;
+      try { const s = localStorage.getItem("cethos-auth"); if (s) token = JSON.parse(s)?.access_token || _SB_KEY; } catch {}
+      const res = await fetch(
+        `${_SB_URL}/rest/v1/internal_projects?id=eq.${project.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: _SB_KEY,
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            Prefer: "return=representation",
+          },
+          body: JSON.stringify(patch),
+        },
+      );
+      if (!res.ok) {
+        const msg = await res.text();
+        toast.error(msg || "Failed to save");
+        return false;
+      }
+      const rows: any[] = await res.json();
+      if (!rows.length) { toast.error("Failed to save"); return false; }
+      setProject({ ...project, ...rows[0] } as Project);
+      return true;
+    } catch (err: any) {
       toast.error(err?.message || "Failed to save");
       return false;
+    } finally {
+      setSaving(false);
     }
-    setProject({ ...project, ...data } as Project);
-    return true;
   };
 
   // ── Asset upload helpers ──
