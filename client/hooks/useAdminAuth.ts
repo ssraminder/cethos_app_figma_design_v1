@@ -165,22 +165,31 @@ export function useAdminAuth(): UseAdminAuthReturn {
       setError(null);
 
       // First check localStorage for cached session (faster initial load)
+      let cachedParsed: StaffSession | null = null;
       const cachedSession = localStorage.getItem("staffSession");
       if (cachedSession) {
         try {
-          const parsed = JSON.parse(cachedSession) as StaffSession;
-          setSession(parsed);
+          cachedParsed = JSON.parse(cachedSession) as StaffSession;
+          setSession(cachedParsed);
         } catch {
           localStorage.removeItem("staffSession");
         }
       }
 
-      // Then validate against Supabase
+      // Then validate against Supabase.
+      // If validation fails with an abort (Supabase client aborts in-flight
+      // requests on auth state changes like SIGNED_IN) but we already have a
+      // recent localStorage session, keep it rather than bouncing to login.
+      // The periodic 5-minute re-validation will catch any truly expired sessions.
       const validSession = await validateSession();
 
       if (validSession) {
         localStorage.setItem("staffSession", JSON.stringify(validSession));
         setSession(validSession);
+      } else if (cachedParsed) {
+        // Validation failed (likely an abort race) but a cached session exists.
+        // Keep the session — don't redirect.
+        console.warn("useAdminAuth: Supabase validation failed but cached session present, keeping session");
       } else {
         clearSessionAndRedirect();
       }
