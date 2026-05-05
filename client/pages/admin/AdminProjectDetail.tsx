@@ -1,15 +1,17 @@
 // AdminProjectDetail.tsx
 //
-// Read-only view of an internal project. Lists all quotes and orders linked
-// to the project so staff can see the full history of work for a recurring
-// client engagement.
+// View + light edit (name, vendor notes) of an internal project. Lists all
+// quotes and orders linked to the project so staff can see the full history
+// of work for a recurring client engagement.
 //
 // Source of truth for the project number that's surfaced to vendors.
+// vendor_notes typed here flows to the vendor's job-detail "Project" banner.
 
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Briefcase, Building, FileText, ShoppingCart } from "lucide-react";
+import { ArrowLeft, Briefcase, Building, FileText, Pencil, ShoppingCart } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 
 interface Project {
@@ -79,6 +81,31 @@ export default function AdminProjectDetail() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Inline edit state ──
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const updateProject = async (patch: Partial<Pick<Project, "name" | "vendor_notes">>) => {
+    if (!project) return;
+    setSaving(true);
+    const { data, error: err } = await supabase
+      .from("internal_projects")
+      .update(patch)
+      .eq("id", project.id)
+      .select("name, vendor_notes, updated_at")
+      .single();
+    setSaving(false);
+    if (err || !data) {
+      toast.error(err?.message || "Failed to save");
+      return false;
+    }
+    setProject({ ...project, ...data } as Project);
+    return true;
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -217,13 +244,68 @@ export default function AdminProjectDetail() {
             <h1 className="text-2xl font-bold text-gray-900">
               {project.project_number}
             </h1>
-            {(project.client_project_number || project.name) && (
+            {project.client_project_number && (
               <p className="text-sm text-gray-700 mt-1">
-                {[project.client_project_number, project.name]
-                  .filter(Boolean)
-                  .join(" • ")}
+                Client label:{" "}
+                <span className="font-medium">{project.client_project_number}</span>
               </p>
             )}
+            {/* Internal name — staff-only, never shown to vendors */}
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
+              {editingName ? (
+                <>
+                  <input
+                    type="text"
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    placeholder="Internal name (staff-only)"
+                    className="flex-1 min-w-0 max-w-md rounded-md border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    autoFocus
+                  />
+                  <button
+                    onClick={async () => {
+                      const trimmed = nameDraft.trim();
+                      const ok = await updateProject({ name: trimmed || null });
+                      if (ok) setEditingName(false);
+                    }}
+                    disabled={saving}
+                    className="px-3 py-1 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingName(false);
+                      setNameDraft(project.name ?? "");
+                    }}
+                    disabled={saving}
+                    className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-700">
+                    {project.name || (
+                      <span className="italic text-gray-400">
+                        No internal name
+                      </span>
+                    )}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setNameDraft(project.name ?? "");
+                      setEditingName(true);
+                    }}
+                    className="text-xs text-teal-600 hover:text-teal-700 inline-flex items-center gap-1"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    Edit
+                  </button>
+                </>
+              )}
+            </div>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
               <div>
                 <div className="text-xs text-gray-500 mb-0.5">
@@ -257,16 +339,75 @@ export default function AdminProjectDetail() {
                 </div>
               </div>
             </div>
-            {project.vendor_notes && (
-              <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded text-sm">
-                <div className="text-xs font-medium text-amber-900 mb-1">
-                  Vendor notes (visible to vendors)
+            {/* Vendor notes — flow to vendor's job-detail Project banner */}
+            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded text-sm">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-xs font-medium text-amber-900">
+                  Vendor notes
+                  <span className="ml-2 text-amber-700 font-normal italic">
+                    visible to vendors on this project's job detail
+                  </span>
                 </div>
+                {!editingNotes && (
+                  <button
+                    onClick={() => {
+                      setNotesDraft(project.vendor_notes ?? "");
+                      setEditingNotes(true);
+                    }}
+                    className="text-xs text-teal-700 hover:text-teal-800 inline-flex items-center gap-1"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    {project.vendor_notes ? "Edit" : "Add notes"}
+                  </button>
+                )}
+              </div>
+              {editingNotes ? (
+                <>
+                  <textarea
+                    value={notesDraft}
+                    onChange={(e) => setNotesDraft(e.target.value)}
+                    placeholder="Notes vendors should see — terminology, style preferences, prior decisions, etc."
+                    rows={5}
+                    className="w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    autoFocus
+                  />
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        const trimmed = notesDraft.trim();
+                        const ok = await updateProject({
+                          vendor_notes: trimmed || null,
+                        });
+                        if (ok) setEditingNotes(false);
+                      }}
+                      disabled={saving}
+                      className="px-3 py-1 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded disabled:opacity-50"
+                    >
+                      {saving ? "Saving…" : "Save notes"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingNotes(false);
+                        setNotesDraft(project.vendor_notes ?? "");
+                      }}
+                      disabled={saving}
+                      className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : project.vendor_notes ? (
                 <div className="text-amber-900 whitespace-pre-wrap">
                   {project.vendor_notes}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="text-amber-700 italic">
+                  No notes yet. Add notes here so vendors maintain consistency
+                  across recurring tasks for this project.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

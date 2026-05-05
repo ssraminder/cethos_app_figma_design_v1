@@ -18,6 +18,14 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-05 — Inline editing of project name + vendor notes (Phase 2c)
+- **Decision:** Add inline edit on `AdminProjectDetail` for two fields: `name` (staff-only internal name) and `vendor_notes` (visible to vendors on their job-detail "Project" banner).
+- **Rationale:** Phase 3 wired the vendor display to read `vendor_notes`, but staff had no UI to populate it — only direct DB edits. This closes the loop so the feature actually carries notes in production.
+- **Pattern:** Click "Edit" → input/textarea + Save/Cancel. Saves via direct `supabase.from("internal_projects").update(...)` (RLS already allows authenticated update).
+- **Out of scope:** Glossary / style guide file uploads (`glossary_storage_path`, `style_guide_storage_path`). Storage bucket + signed-URL plumbing not built yet; revisit when the need shows up.
+- **Status:** active.
+- **Affects:** `AdminProjectDetail.tsx` only.
+
 ### 2026-05-05 — Project navigation: list, detail, banner, sidebar (Phase 2b)
 - **Decision:** Add `/admin/projects` (list) and `/admin/projects/:id` (detail with read-only Tasks list of all linked quotes + orders), a "Projects" sidebar link, and a banner on the order detail page linking back to the project.
 - **Rationale:** Phase 1 was accumulating projects in production, but staff had no way to navigate them. The detail view is the answer to "find all tasks in a particular project."
