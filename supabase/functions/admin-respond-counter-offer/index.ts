@@ -1,17 +1,15 @@
-// ============================================================================
-// admin-respond-counter-offer
-// Allows admin staff to accept or reject vendor counter-proposals on pricing.
-// On accept: assigns the vendor to the step at their counter-offered terms.
-// On reject: records the rejection reason and updates counter status.
-// ============================================================================
+// admin-respond-counter-offer v29 — adds QMS re-verification on accept.
+// On counter-offer accept, re-checks vendor eligibility (qualification + NDA) before
+// finalizing the assignment. Qualification status can change between offer creation
+// and acceptance (vendor suspended, NDA expired, etc.) — audit defensibility wants
+// the re-check at the decision moment.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 function json(data: Record<string, unknown>, status = 200) {
@@ -32,7 +30,6 @@ serve(async (req: Request) => {
     if (!offer_id || !action) {
       return json({ success: false, error: "Missing offer_id or action" }, 400);
     }
-
     if (!["accept", "reject"].includes(action)) {
       return json({ success: false, error: "Action must be 'accept' or 'reject'" }, 400);
     }
@@ -42,7 +39,6 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Fetch the offer
     const { data: offer, error: offerErr } = await supabase
       .from("vendor_step_offers")
       .select(`
@@ -57,19 +53,16 @@ serve(async (req: Request) => {
     if (offerErr || !offer) {
       return json({ success: false, error: "Offer not found" }, 404);
     }
-
     if (offer.counter_status !== "pending") {
       return json({ success: false, error: "Counter-proposal is not pending" }, 400);
     }
 
-    // Get step info (includes order_id we need for payables)
     const { data: step } = await supabase
       .from("order_workflow_steps")
-      .select("name, step_number, order_id, workflow_id")
+      .select("id, name, step_number, order_id, workflow_id, service_id, source_language, target_language")
       .eq("id", offer.step_id)
       .single();
 
-    // Get vendor name
     const { data: vendor } = await supabase
       .from("vendors")
       .select("full_name")
@@ -80,57 +73,50 @@ serve(async (req: Request) => {
     const now = new Date().toISOString();
 
     if (action === "accept") {
-      // Use counter terms (fallback to original offer terms)
+      // QMS gating — re-verify on accept.
+      const { data: gate } = await supabase.rpc("qms_check_assignment", {
+        p_vendor_id: offer.vendor_id,
+        p_service_id: step?.service_id ?? null,
+        p_source_language_code: step?.source_language ?? null,
+        p_target_language_code: step?.target_language ?? null,
+        p_call_site: "counter_offer_accept",
+        p_order_id: step?.order_id ?? null,
+        p_workflow_step_id: offer.step_id,
+        p_vendor_step_offer_id: offer.id,
+      });
+      if (gate?.should_block) {
+        return json({ success: false, error: `QMS gating: ${gate.reason}`, qms_gating: gate }, 403);
+      }
+
       const finalRate = offer.counter_rate ?? offer.vendor_rate;
       const finalRateUnit = offer.counter_rate_unit ?? offer.vendor_rate_unit;
       const finalTotal = offer.counter_total ?? offer.vendor_total;
       const finalCurrency = offer.counter_currency ?? offer.vendor_currency;
       const finalDeadline = offer.counter_deadline;
 
-      // Update offer counter status
-      await supabase
-        .from("vendor_step_offers")
-        .update({
-          counter_status: "accepted",
-          counter_responded_at: now,
-          status: "accepted",
-          responded_at: now,
-        })
-        .eq("id", offer_id);
+      await supabase.from("vendor_step_offers").update({
+        counter_status: "accepted", counter_responded_at: now,
+        status: "accepted", responded_at: now,
+      }).eq("id", offer_id);
 
-      // Retract all other pending offers for this step
-      await supabase
-        .from("vendor_step_offers")
-        .update({
-          status: "retracted",
-          responded_at: now,
-        })
-        .eq("step_id", offer.step_id)
-        .neq("id", offer_id)
-        .in("status", ["pending", "offered"]);
+      await supabase.from("vendor_step_offers").update({
+        status: "retracted", responded_at: now,
+      }).eq("step_id", offer.step_id).neq("id", offer_id).in("status", ["pending", "offered"]);
 
-      // Assign vendor to step
-      await supabase
-        .from("order_workflow_steps")
-        .update({
-          vendor_id: offer.vendor_id,
-          status: "accepted",
-          vendor_rate: finalRate,
-          vendor_rate_unit: finalRateUnit,
-          vendor_total: finalTotal,
-          vendor_currency: finalCurrency || "CAD",
-          deadline: finalDeadline || null,
-          accepted_at: now,
-          assigned_by: staff_id || null,
-        })
-        .eq("id", offer.step_id);
+      await supabase.from("order_workflow_steps").update({
+        vendor_id: offer.vendor_id,
+        status: "accepted",
+        vendor_rate: finalRate,
+        vendor_rate_unit: finalRateUnit,
+        vendor_total: finalTotal,
+        vendor_currency: finalCurrency || "CAD",
+        deadline: finalDeadline || null,
+        accepted_at: now,
+        assigned_by: staff_id || null,
+      }).eq("id", offer.step_id);
 
-      // Cancel existing pending payables for this step, then create new one
-      await supabase
-        .from("vendor_payables")
-        .update({ status: "cancelled" })
-        .eq("workflow_step_id", offer.step_id)
-        .eq("status", "pending");
+      await supabase.from("vendor_payables").update({ status: "cancelled" })
+        .eq("workflow_step_id", offer.step_id).eq("status", "pending");
 
       if (finalRate && finalTotal) {
         const units = finalRate > 0 ? finalTotal / finalRate : 1;
@@ -151,27 +137,15 @@ serve(async (req: Request) => {
         });
       }
 
-      return json({
-        success: true,
-        vendor_name: vendorName,
-        step_name: step?.name,
-      });
+      return json({ success: true, vendor_name: vendorName, step_name: step?.name });
     } else {
-      // Reject counter-proposal
-      await supabase
-        .from("vendor_step_offers")
-        .update({
-          counter_status: "rejected",
-          counter_responded_at: now,
-          counter_rejection_reason: rejection_reason || null,
-        })
-        .eq("id", offer_id);
+      await supabase.from("vendor_step_offers").update({
+        counter_status: "rejected",
+        counter_responded_at: now,
+        counter_rejection_reason: rejection_reason || null,
+      }).eq("id", offer_id);
 
-      return json({
-        success: true,
-        vendor_name: vendorName,
-        step_name: step?.name,
-      });
+      return json({ success: true, vendor_name: vendorName, step_name: step?.name });
     }
   } catch (err) {
     console.error("admin-respond-counter-offer error:", err);
