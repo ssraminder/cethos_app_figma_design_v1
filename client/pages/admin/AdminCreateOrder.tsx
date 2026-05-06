@@ -172,6 +172,8 @@ export default function AdminCreateOrder() {
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState<string>("");
   const [currency, setCurrency] = useState<string>("CAD");
   const [branchId, setBranchId] = useState<number | null>(null);
+  const [branchInheritedFromCustomer, setBranchInheritedFromCustomer] = useState(false);
+  const [branchOverrideOpen, setBranchOverrideOpen] = useState(false);
   const [poNumber, setPoNumber] = useState<string>("");
   const [clientProjectNumber, setClientProjectNumber] = useState<string>("");
   // ── Project picker (typeahead over internal_projects) ──
@@ -335,7 +337,10 @@ export default function AdminCreateOrder() {
       const br: BranchRow[] = brRes.ok ? await brRes.json() : [];
       setBranches(br);
       const def = br.find((b) => b.is_default) || br[0] || null;
-      if (def) setBranchId(def.id);
+      if (def) {
+        setBranchId(def.id);
+        setNewBranchId(def.id);
+      }
       setTaxRates(taxRes.ok ? await taxRes.json() : []);
       const templates: WorkflowTemplateRow[] = tmplRes.ok ? await tmplRes.json() : [];
       // Enrich with step count
@@ -411,6 +416,10 @@ export default function AdminCreateOrder() {
     }
     if (!email && !phone) {
       toast.error("Email or phone is required");
+      return;
+    }
+    if (!newBranchId) {
+      toast.error("Invoicing branch is required");
       return;
     }
     setSavingCustomer(true);
@@ -511,7 +520,13 @@ export default function AdminCreateOrder() {
   // Helper: inherit per-customer defaults onto the project form
   const inheritFromCustomer = (c: ARCustomer) => {
     if (c.currency) setCurrency(c.currency);
-    if (c.invoicing_branch_id) setBranchId(c.invoicing_branch_id);
+    if (c.invoicing_branch_id) {
+      setBranchId(c.invoicing_branch_id);
+      setBranchInheritedFromCustomer(true);
+      setBranchOverrideOpen(false);
+    } else {
+      setBranchInheritedFromCustomer(false);
+    }
     if (c.default_tax_rate_id) {
       setSelectedTaxRateId(c.default_tax_rate_id);
       const tr = taxRates.find((t) => t.id === c.default_tax_rate_id);
@@ -1182,10 +1197,10 @@ export default function AdminCreateOrder() {
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-[11px] text-gray-500 mb-1">
-                      Invoicing branch
+                      Invoicing branch <span className="text-red-500">*</span>
                     </label>
                     <select
-                      value={newBranchId ?? branchId ?? ""}
+                      value={newBranchId ?? ""}
                       onChange={(e) =>
                         setNewBranchId(
                           e.target.value ? Number(e.target.value) : null,
@@ -1193,6 +1208,7 @@ export default function AdminCreateOrder() {
                       }
                       className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     >
+                      <option value="">— pick branch —</option>
                       {branches.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.legal_name || b.code}
@@ -1470,23 +1486,42 @@ export default function AdminCreateOrder() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs text-gray-600 mb-1">
-                  Invoicing branch
+                  Invoicing branch <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={branchId ?? ""}
-                  onChange={(e) =>
-                    setBranchId(e.target.value ? Number(e.target.value) : null)
-                  }
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                >
-                  <option value="">— pick branch —</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.legal_name || b.code}
-                      {b.is_default ? " (default)" : ""}
-                    </option>
-                  ))}
-                </select>
+                {branchInheritedFromCustomer && branchId && !branchOverrideOpen ? (
+                  <div className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-sm">
+                    <span className="text-gray-800 truncate">
+                      {branches.find((b) => b.id === branchId)?.legal_name ||
+                        branches.find((b) => b.id === branchId)?.code ||
+                        branchId}
+                    </span>
+                    <span className="text-xs text-gray-400 whitespace-nowrap">· from customer</span>
+                    <button
+                      type="button"
+                      onClick={() => setBranchOverrideOpen(true)}
+                      className="ml-auto text-xs text-teal-600 hover:underline whitespace-nowrap"
+                    >
+                      Override
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={branchId ?? ""}
+                    onChange={(e) => {
+                      setBranchId(e.target.value ? Number(e.target.value) : null);
+                      setBranchInheritedFromCustomer(false);
+                    }}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="">— pick branch —</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.legal_name || b.code}
+                        {b.is_default ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">
