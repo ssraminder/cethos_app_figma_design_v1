@@ -272,6 +272,7 @@ export default function AdminOrdersList() {
 
   // Certified service UUID (for "certified / non-certified" filtering)
   const [certifiedServiceId, setCertifiedServiceId] = useState<string | null>(null);
+  const [certifiedServiceLoaded, setCertifiedServiceLoaded] = useState(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -279,6 +280,7 @@ export default function AdminOrdersList() {
       if (!cancelled) {
         const rows: any[] = res.ok ? await res.json() : [];
         setCertifiedServiceId(rows[0]?.id || null);
+        setCertifiedServiceLoaded(true);
       }
     })();
     return () => {
@@ -492,8 +494,11 @@ export default function AdminOrdersList() {
 
   useEffect(() => {
     if (!restoredFromSession) return;
+    // If filtering by service type, wait until the certified service UUID has resolved
+    // (null = still loading; once loaded, certifiedServiceLoaded flips true and we re-run)
+    if (serviceFilter !== "all" && !certifiedServiceLoaded) return;
     fetchOrders();
-  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, certifiedServiceId]);
+  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, certifiedServiceLoaded]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -817,7 +822,7 @@ export default function AdminOrdersList() {
                 </label>
                 <select
                   value={serviceFilter}
-                  onChange={(e) => updateFilter("service", e.target.value)}
+                  onChange={(e) => updateFilter("service", e.target.value === "all" ? "" : e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="all">All services</option>
