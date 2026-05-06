@@ -411,6 +411,10 @@ function VendorFinderModal({
   const [nameSearchOpen, setNameSearchOpen] = useState(false);
   const nameSearchRef = useRef<HTMLDivElement>(null);
 
+  // Resolved ISO codes for source/target language props (UUIDs resolved on options load)
+  const [resolvedSourceLang, setResolvedSourceLang] = useState(sourceLanguage || "");
+  const [resolvedTargetLang, setResolvedTargetLang] = useState(targetLanguage || "");
+
   // Filter state
   const [filterSourceLang, setFilterSourceLang] = useState(sourceLanguage || "");
   const [filterTargetLang, setFilterTargetLang] = useState(targetLanguage || "");
@@ -483,6 +487,30 @@ function VendorFinderModal({
           .order("name");
         setLanguageOptions(langs || []);
 
+        // Resolve UUID language props → ISO codes so the filter dropdowns display correctly
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const uuidsToResolve = ([sourceLanguage, targetLanguage] as (string | undefined)[])
+          .filter((l): l is string => !!l && UUID_RE.test(l));
+        if (uuidsToResolve.length > 0) {
+          const { data: langRows } = await supabase
+            .from("languages")
+            .select("id, code")
+            .in("id", uuidsToResolve);
+          const codeMap = new Map(
+            (langRows || []).map((r: any) => [r.id as string, (r.code as string).toUpperCase()])
+          );
+          if (sourceLanguage && UUID_RE.test(sourceLanguage)) {
+            const code = codeMap.get(sourceLanguage) ?? sourceLanguage;
+            setResolvedSourceLang(code);
+            setFilterSourceLang(code);
+          }
+          if (targetLanguage && UUID_RE.test(targetLanguage)) {
+            const code = codeMap.get(targetLanguage) ?? targetLanguage;
+            setResolvedTargetLang(code);
+            setFilterTargetLang(code);
+          }
+        }
+
         const { data: vendors } = await supabase
           .from("vendors")
           .select("country")
@@ -538,8 +566,8 @@ function VendorFinderModal({
   }, [isOpen]);
 
   const handleReset = () => {
-    setFilterSourceLang(sourceLanguage || "");
-    setFilterTargetLang(targetLanguage || "");
+    setFilterSourceLang(resolvedSourceLang);
+    setFilterTargetLang(resolvedTargetLang);
     setFilterServiceId(serviceId || "");
     setNativeLanguages([]);
     setNativeLangSearch('');

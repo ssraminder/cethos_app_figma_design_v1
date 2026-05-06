@@ -16,6 +16,7 @@ Sentry.init({
   beforeSend(event) {
     const exception = event.exception?.values?.[0];
     if (exception?.type === "AbortError") return null;
+    if (exception?.value?.includes("AbortError")) return null;
     return event;
   },
 });
