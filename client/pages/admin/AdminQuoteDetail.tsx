@@ -2037,6 +2037,11 @@ export default function AdminQuoteDetail() {
 
       if (deleteError) throw deleteError;
 
+      // If staff removes an auto-applied discount, suppress it from being re-inserted on recalculate
+      if (removedAdj?.reason?.startsWith("auto_")) {
+        await supabase.from("quotes").update({ auto_discount_suppressed: true }).eq("id", id);
+      }
+
       await callRecalculatePricing();
 
       await logQuoteActivity(id, currentStaff?.staffId || "", "adjustment_removed", {
