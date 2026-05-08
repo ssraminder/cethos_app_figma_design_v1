@@ -21,8 +21,10 @@ import {
   Upload,
   FileText,
   Download,
+  Mail,
 } from "lucide-react";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
+import BrevoEmailLogsModal from "./BrevoEmailLogsModal";
 import OrderFinancialSummary, {
   type VendorFinancials,
   type MarginData,
@@ -1963,6 +1965,11 @@ function WorkflowPipeline({
   const [staffDeliveryLoading, setStaffDeliveryLoading] = useState(false);
   const staffFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Brevo email log modal — opened from a step's vendor row to verify
+  // whether Brevo actually delivered the assignment / instructions email.
+  const [brevoLogVendorId, setBrevoLogVendorId] = useState<string | null>(null);
+  const [brevoLogVendorName, setBrevoLogVendorName] = useState<string | null>(null);
+
   // Approve/Revise modal state
   const [approveModalStep, setApproveModalStep] = useState<WorkflowStep | null>(null);
   const [reviseModalStep, setReviseModalStep] = useState<WorkflowStep | null>(null);
@@ -2290,6 +2297,21 @@ function WorkflowPipeline({
                         <span className="italic text-gray-400">Not assigned</span>
                       ))}
                   </span>
+                  {step.vendor_id && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBrevoLogVendorId(step.vendor_id);
+                        setBrevoLogVendorName(step.vendor_name || null);
+                      }}
+                      className="text-xs text-gray-400 hover:text-teal-700 inline-flex items-center gap-1"
+                      title="Show Brevo email log for this vendor"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Email log</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Active offers display */}
@@ -3698,6 +3720,16 @@ function WorkflowPipeline({
           </div>
         );
       })()}
+
+      <BrevoEmailLogsModal
+        open={!!brevoLogVendorId}
+        onClose={() => {
+          setBrevoLogVendorId(null);
+          setBrevoLogVendorName(null);
+        }}
+        vendorId={brevoLogVendorId}
+        displayName={brevoLogVendorName}
+      />
     </div>
   );
 }
