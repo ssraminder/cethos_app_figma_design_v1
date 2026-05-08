@@ -1,7 +1,8 @@
-// update-workflow-step v23 — adds QMS gating on direct_assign, offer_vendor, offer_multiple
+// update-workflow-step v24 — fires Brevo notification on direct_assign, offer_vendor, offer_multiple
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { notifyVendorAssignment } from "../_shared/notify-vendor-assignment.ts";
 
 const CORS_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 function json(data: Record<string, unknown>, status = 200) {
@@ -100,6 +101,11 @@ serve(async (req: Request) => {
           });
         }
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
+        await notifyVendorAssignment({
+          supabase, vendor_id, step, workflow, kind: "direct_assign",
+          vendor_rate, vendor_rate_unit, vendor_total, vendor_currency,
+          deadline, instructions,
+        });
         return json({ success: true });
       }
 
@@ -137,6 +143,11 @@ serve(async (req: Request) => {
           });
         }
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
+        await notifyVendorAssignment({
+          supabase, vendor_id, step, workflow, kind: "offer_vendor",
+          vendor_rate, vendor_rate_unit, vendor_total, vendor_currency,
+          deadline, expires_at: expiresAt, instructions,
+        });
         return json({ success: true });
       }
 
@@ -176,6 +187,19 @@ serve(async (req: Request) => {
         }
         await supabase.from("order_workflow_steps").update({ status: "offered", offered_at: new Date().toISOString(), instructions: instructions || step.instructions }).eq("id", step_id);
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
+        // Fan out Brevo notifications in parallel; failures are logged inside
+        // notifyVendorAssignment and don't fail the offer write.
+        await Promise.all(
+          vendorList.map((v: any) =>
+            notifyVendorAssignment({
+              supabase, vendor_id: v.vendor_id, step, workflow, kind: "offer_vendor",
+              vendor_rate: v.vendor_rate ?? vendor_rate,
+              vendor_rate_unit, vendor_currency,
+              vendor_total: v.vendor_total ?? vendor_total,
+              deadline, expires_at: expiresAt, instructions,
+            })
+          ),
+        );
         return json({ success: true, offers_sent: vendorList.length });
       }
 
