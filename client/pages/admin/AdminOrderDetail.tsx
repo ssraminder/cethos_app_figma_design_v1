@@ -431,13 +431,17 @@ export default function AdminOrderDetail() {
   // File delete state
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
 
-  // PO / Project Number inline edit
-  const [editingPO, setEditingPO] = useState(false);
+  // Project picker (typeahead over internal_projects). The PO number now
+  // lives on each order_receivables row, so the order-level PO edit was
+  // removed. Project link is still order-level.
   const [editingProject, setEditingProject] = useState(false);
-  const [poValue, setPoValue] = useState("");
   const [projectValue, setProjectValue] = useState("");
-  const [savingPO, setSavingPO] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
+  const [projectSuggestions, setProjectSuggestions] = useState<
+    Array<{ id: string; project_number: string; client_project_number: string | null; name: string | null }>
+  >([]);
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const projectDebounceRef = useRef<number | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ fileId: string; filename: string } | null>(null);
 
   // Inline chat state
@@ -2446,32 +2450,82 @@ export default function AdminOrderDetail() {
   const hasOverpayment = overpaymentAmount > 0.01;
   const hasUnderpayment = underpaymentAmount > 0.01;
 
-  const handleSavePO = async () => {
-    if (!id) return;
-    setSavingPO(true);
-    try {
-      const { error: err } = await supabase.from("orders").update({ po_number: poValue || null }).eq("id", id);
-      if (err) throw err;
-      setOrder((prev) => prev ? { ...prev, po_number: poValue || null } : prev);
-      setEditingPO(false);
-      toast.success("PO number updated");
-    } catch {
-      toast.error("Failed to update PO number");
+  // Project picker — search internal_projects scoped to the order's
+  // company (or customer when no company). Mirrors the typeahead in
+  // AdminCreateOrder so staff sees the same UX in both places.
+  useEffect(() => {
+    if (!editingProject || !order?.customer_id) {
+      setProjectSuggestions([]);
+      return;
     }
-    setSavingPO(false);
-  };
+    if (projectDebounceRef.current) window.clearTimeout(projectDebounceRef.current);
+    projectDebounceRef.current = window.setTimeout(async () => {
+      try {
+        const q = projectValue.trim().replace(/[*,%()]/g, "");
+        const companyId = (order.customer as any)?.company_id || null;
+        const ownerFilter = companyId
+          ? `company_id=eq.${companyId}`
+          : `customer_id=eq.${order.customer_id}&company_id=is.null`;
+        const searchFilter =
+          q.length >= 1
+            ? `&or=(project_number.ilike.*${q}*,client_project_number.ilike.*${q}*,name.ilike.*${q}*)`
+            : "";
+        const path = `internal_projects?select=id,project_number,client_project_number,name,updated_at&is_active=eq.true&${ownerFilter}${searchFilter}&order=updated_at.desc&limit=8`;
+        const res = await sbGet(path);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setProjectSuggestions(data || []);
+      } catch {
+        setProjectSuggestions([]);
+      }
+    }, 200);
+    return () => {
+      if (projectDebounceRef.current) window.clearTimeout(projectDebounceRef.current);
+    };
+  }, [projectValue, editingProject, order?.customer_id]);
 
-  const handleSaveProject = async () => {
-    if (!id) return;
+  const handleSaveProject = async (overrideValue?: string, overrideProjectId?: string) => {
+    if (!id || !order) return;
+    const labelRaw = overrideValue ?? projectValue;
+    const label = labelRaw.trim();
     setSavingProject(true);
     try {
-      const { error: err } = await supabase.from("orders").update({ client_project_number: projectValue || null }).eq("id", id);
+      let internalProjectId: string | null = overrideProjectId ?? null;
+
+      if (!internalProjectId) {
+        const { data, error: rpcErr } = await supabase.rpc("find_or_create_internal_project", {
+          p_customer_id: order.customer_id,
+          p_company_id: (order.customer as any)?.company_id ?? null,
+          p_client_project_number: label || null,
+          p_created_by_staff_id: currentStaff?.staffId ?? null,
+        });
+        if (rpcErr) throw rpcErr;
+        internalProjectId = (data as string | null) ?? null;
+      }
+
+      const { error: err } = await supabase
+        .from("orders")
+        .update({
+          client_project_number: label || null,
+          internal_project_id: internalProjectId,
+        })
+        .eq("id", id);
       if (err) throw err;
-      setOrder((prev) => prev ? { ...prev, client_project_number: projectValue || null } : prev);
+
+      setOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              client_project_number: label || null,
+              internal_project_id: internalProjectId,
+            }
+          : prev,
+      );
       setEditingProject(false);
-      toast.success("Project number updated");
-    } catch {
-      toast.error("Failed to update project number");
+      setProjectDropdownOpen(false);
+      toast.success("Project updated");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update project");
     }
     setSavingProject(false);
   };
@@ -3141,119 +3195,114 @@ export default function AdminOrderDetail() {
             )}
           </div>
 
-          {/* PO & Project Number */}
+          {/* Project Reference (PO moved to per-receivable line) */}
           <div className="bg-white rounded-lg border p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <FileText className="w-5 h-5 text-gray-400" />
-              PO & Project Reference
+              Project Reference
             </h2>
 
-            <div className="grid grid-cols-2 gap-4">
-              {/* PO Number */}
-              <div>
-                <p className="text-sm text-gray-500 mb-1">PO Number</p>
-                {editingPO ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={poValue}
-                      onChange={(e) => setPoValue(e.target.value)}
-                      className="border border-gray-300 rounded px-2 py-1 text-sm flex-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      placeholder="Enter PO number"
-                      autoFocus
-                    />
-                    <button
-                      onClick={handleSavePO}
-                      disabled={savingPO}
-                      className="text-green-600 hover:text-green-800 text-sm font-medium"
-                    >
-                      {savingPO ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
-                    </button>
-                    <button
-                      onClick={() => setEditingPO(false)}
-                      className="text-gray-400 hover:text-gray-600 text-sm"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    {order.po_number ? (
-                      <p className="font-medium">{order.po_number}</p>
-                    ) : (order.customer as any)?.requires_po ? (
-                      <span className="text-amber-600 text-sm flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        PO required for invoicing
-                      </span>
-                    ) : (
-                      <p className="text-gray-400 text-sm">Not set</p>
-                    )}
-                    <button
-                      onClick={() => {
-                        setPoValue(order.po_number || "");
-                        setEditingPO(true);
-                      }}
-                      className="text-gray-400 hover:text-gray-600"
-                      title="Edit PO number"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Project Number */}
-              <div>
-                <p className="text-sm text-gray-500 mb-1">Project #</p>
-                {editingProject ? (
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Project #</p>
+              {editingProject ? (
+                <div className="relative">
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
                       value={projectValue}
-                      onChange={(e) => setProjectValue(e.target.value)}
+                      onChange={(e) => {
+                        setProjectValue(e.target.value);
+                        setProjectDropdownOpen(true);
+                      }}
+                      onFocus={() => setProjectDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setProjectDropdownOpen(false), 150)}
                       className="border border-gray-300 rounded px-2 py-1 text-sm flex-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      placeholder="Enter project number"
+                      placeholder="Search projects or type to create new"
                       autoFocus
                     />
                     <button
-                      onClick={handleSaveProject}
+                      onClick={() => handleSaveProject()}
                       disabled={savingProject}
                       className="text-green-600 hover:text-green-800 text-sm font-medium"
                     >
                       {savingProject ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
                     </button>
                     <button
-                      onClick={() => setEditingProject(false)}
+                      onClick={() => {
+                        setEditingProject(false);
+                        setProjectDropdownOpen(false);
+                      }}
                       className="text-gray-400 hover:text-gray-600 text-sm"
                     >
                       Cancel
                     </button>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    {order.client_project_number ? (
-                      <p className="font-medium">{order.client_project_number}</p>
-                    ) : (order.customer as any)?.requires_client_project_number ? (
-                      <span className="text-amber-600 text-sm flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        Project # required for invoicing
-                      </span>
-                    ) : (
-                      <p className="text-gray-400 text-sm">Not set</p>
-                    )}
-                    <button
-                      onClick={() => {
-                        setProjectValue(order.client_project_number || "");
-                        setEditingProject(true);
-                      }}
-                      className="text-gray-400 hover:text-gray-600"
-                      title="Edit project number"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
+
+                  {projectDropdownOpen && (projectSuggestions.length > 0 || projectValue.trim().length > 0) && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
+                      {projectSuggestions.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSaveProject(p.client_project_number ?? "", p.id);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 border-b border-gray-100 last:border-0"
+                        >
+                          <div className="font-mono text-teal-700">{p.project_number}</div>
+                          {(p.client_project_number || p.name) && (
+                            <div className="text-xs text-gray-500 truncate">
+                              {[p.client_project_number, p.name].filter(Boolean).join(" · ")}
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                      {projectValue.trim().length > 0 &&
+                        !projectSuggestions.some(
+                          (p) =>
+                            (p.client_project_number ?? "").toLowerCase() ===
+                            projectValue.trim().toLowerCase(),
+                        ) && (
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleSaveProject(projectValue);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm bg-teal-50 hover:bg-teal-100 text-teal-800 border-t border-teal-200"
+                          >
+                            + Create project &ldquo;{projectValue.trim()}&rdquo;
+                          </button>
+                        )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {order.client_project_number ? (
+                    <p className="font-medium">{order.client_project_number}</p>
+                  ) : (order.customer as any)?.requires_client_project_number ? (
+                    <span className="text-amber-600 text-sm flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Project # required for invoicing
+                    </span>
+                  ) : (
+                    <p className="text-gray-400 text-sm">Not set</p>
+                  )}
+                  <button
+                    onClick={() => {
+                      setProjectValue(order.client_project_number || "");
+                      setEditingProject(true);
+                      setProjectDropdownOpen(true);
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                    title="Edit project"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
