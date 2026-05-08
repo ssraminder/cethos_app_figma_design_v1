@@ -16,11 +16,13 @@ import {
 } from "lucide-react";
 import type { TabProps } from "./types";
 import { formatDate, formatDateTime } from "./constants";
+import BrevoEmailLogsModal from "@/components/admin/BrevoEmailLogsModal";
 
 export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
   const { vendor, auth, activeSessions, summary } = vendorData;
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
+  const [brevoLogOpen, setBrevoLogOpen] = useState(false);
 
   const hasPortalAuth = summary.has_portal_access;
 
@@ -362,6 +364,16 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
                 : "Revoke Portal Access"}
             </button>
           )}
+
+          {/* Brevo Email Log */}
+          <button
+            onClick={() => setBrevoLogOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            title="Show Brevo email log for this vendor"
+          >
+            <Mail className="w-4 h-4" />
+            Brevo Email Log
+          </button>
         </div>
 
         {confirmAction && (
@@ -376,6 +388,14 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
           </p>
         )}
       </div>
+
+      <BrevoEmailLogsModal
+        open={brevoLogOpen}
+        onClose={() => setBrevoLogOpen(false)}
+        vendorId={vendor.id}
+        email={vendor.email}
+        displayName={vendor.full_name}
+      />
     </div>
   );
 }
