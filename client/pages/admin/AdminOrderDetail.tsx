@@ -3994,7 +3994,13 @@ export default function AdminOrderDetail() {
           {/* Tab Content: Finance */}
           {activeMainTab === "finance" && (
             <>
-              <OrderFinanceTab workflowData={workflowData} onRefresh={() => setWorkflowRefreshKey(k => k + 1)} />
+              <OrderFinanceTab
+                workflowData={workflowData}
+                orderId={id}
+                isDirectOrder={(order as any)?.is_direct_order === true}
+                hasIssuedInvoice={invoices.some((i: any) => i.status && i.status !== "void")}
+                onRefresh={() => setWorkflowRefreshKey(k => k + 1)}
+              />
               {id && order?.customer_id && currentStaff?.staffId && (
                 <div className="mt-4">
                   <OrderInvoiceCard
