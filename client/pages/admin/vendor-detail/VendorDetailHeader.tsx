@@ -12,6 +12,7 @@ import {
   Power,
   Send,
   Bell,
+  ExternalLink,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -156,8 +157,24 @@ export default function VendorDetailHeader({
           </div>
         </div>
 
-        {/* Right: actions dropdown */}
-        <div className="relative shrink-0">
+        {/* Right: vendor portal link + actions dropdown */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Open vendor portal in new tab — handy for debugging what
+              the vendor sees. Same affordance XTRF exposes. Opens the
+              public vendor portal home; the vendor still needs to log
+              in (we don't impersonate). */}
+          <a
+            href="https://vendor.cethos.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+            title="Open vendor.cethos.com in a new tab"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Vendor Portal
+          </a>
+
+          <div className="relative">
           <button
             onClick={() => setActionsOpen(!actionsOpen)}
             disabled={actionLoading}
@@ -201,6 +218,7 @@ export default function VendorDetailHeader({
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
     </div>
