@@ -64,6 +64,7 @@ interface Customer {
   backup_payment_method_id: string | null;
   preferred_currency: string | null;
   payment_terms: string | null;
+  default_tax_rate_id: string | null;
   is_ar_customer: boolean;
   ar_contact_email: string | null;
   accounting_contact_name: string | null;
@@ -74,6 +75,7 @@ interface Customer {
   invoicing_branch?: Branch | null;
   preferred_payment_method?: PaymentMethodOption | null;
   backup_payment_method?: PaymentMethodOption | null;
+  default_tax_rate?: TaxRateOption | null;
   invoice_ready?: boolean;
   invoice_missing?: string[];
 }
@@ -97,6 +99,15 @@ interface PaymentMethodOption {
   name: string;
   code: string;
   is_online: boolean;
+}
+
+interface TaxRateOption {
+  id: string;
+  tax_name: string;
+  region_code: string;
+  region_name: string;
+  rate: number;
+  is_active: boolean;
 }
 
 interface InvoiceReadiness {
@@ -164,6 +175,7 @@ export default function CustomerDetail() {
   const [customerTypes, setCustomerTypes] = useState<CustomerTypeOption[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+  const [taxRates, setTaxRates] = useState<TaxRateOption[]>([]);
   const [currencies, setCurrencies] = useState<{ code: string; name: string }[]>([]);
   const [currencyWarning, setCurrencyWarning] = useState<string | null>(null);
   const [invoiceReadiness, setInvoiceReadiness] = useState<InvoiceReadiness | null>(null);
@@ -282,6 +294,22 @@ export default function CustomerDetail() {
       setPaymentMethods(data.payment_methods || []);
     } catch (error) {
       console.error("Error fetching payment methods:", error);
+    }
+  };
+
+  // Fetch active tax rates for dropdown. Direct supabase read is fine
+  // — tax_rates is a small reference table and read access is open to
+  // the staff portal already.
+  const fetchTaxRates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("tax_rates")
+        .select("id, tax_name, region_code, region_name, rate, is_active")
+        .eq("is_active", true)
+        .order("region_code");
+      if (!error && data) setTaxRates(data as TaxRateOption[]);
+    } catch (error) {
+      console.error("Error fetching tax rates:", error);
     }
   };
 
@@ -594,6 +622,7 @@ export default function CustomerDetail() {
       fetchPaymentMethods(),
       fetchCustomerTypes(),
       fetchCurrencies(),
+      fetchTaxRates(),
       fetchInvoiceReadiness(),
     ]);
     setLoading(false);
@@ -630,6 +659,7 @@ export default function CustomerDetail() {
         "is_ar_customer", "ar_contact_email", "accounting_contact_name",
         "accounting_contact_phone", "credit_limit", "ar_notes",
         "requires_po", "requires_po_mode", "requires_client_project_number",
+        "default_tax_rate_id",
       ] as const;
 
       const changes: Record<string, unknown> = {};
@@ -1292,6 +1322,45 @@ export default function CustomerDetail() {
                           {customer.payment_terms ? customer.payment_terms.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "—"}
                         </p>
                       )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Default Tax Rate</label>
+                      {editing ? (
+                        <select
+                          name="default_tax_rate_id"
+                          value={formData.default_tax_rate_id ?? ""}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              default_tax_rate_id: e.target.value || null,
+                            }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500"
+                        >
+                          <option value="">— Use 5% fallback —</option>
+                          {taxRates.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.region_code} · {t.tax_name} ({Math.round(Number(t.rate) * 10000) / 100}%)
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-gray-900">
+                          {(() => {
+                            const tr =
+                              customer.default_tax_rate ||
+                              taxRates.find((t) => t.id === customer.default_tax_rate_id) ||
+                              null;
+                            return tr
+                              ? `${tr.region_code} · ${tr.tax_name} (${Math.round(Number(tr.rate) * 10000) / 100}%)`
+                              : "—";
+                          })()}
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs text-gray-500">
+                        Auto-fills the tax rate on each new direct-order receivable line.
+                      </p>
                     </div>
                   </div>
                 </div>

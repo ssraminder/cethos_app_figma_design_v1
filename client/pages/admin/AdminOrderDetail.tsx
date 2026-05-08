@@ -2405,6 +2405,41 @@ export default function AdminOrderDetail() {
     return () => { supabase.removeChannel(channel); };
   }, [conversationId]);
 
+  // Project picker — search internal_projects scoped to the order's
+  // company (or customer when no company). Mirrors the typeahead in
+  // AdminCreateOrder. Must live above the loading/error early-returns
+  // so the hook count stays stable across renders.
+  useEffect(() => {
+    if (!editingProject || !order?.customer_id) {
+      setProjectSuggestions([]);
+      return;
+    }
+    if (projectDebounceRef.current) window.clearTimeout(projectDebounceRef.current);
+    projectDebounceRef.current = window.setTimeout(async () => {
+      try {
+        const q = projectValue.trim().replace(/[*,%()]/g, "");
+        const companyId = (order.customer as any)?.company_id || null;
+        const ownerFilter = companyId
+          ? `company_id=eq.${companyId}`
+          : `customer_id=eq.${order.customer_id}&company_id=is.null`;
+        const searchFilter =
+          q.length >= 1
+            ? `&or=(project_number.ilike.*${q}*,client_project_number.ilike.*${q}*,name.ilike.*${q}*)`
+            : "";
+        const path = `internal_projects?select=id,project_number,client_project_number,name,updated_at&is_active=eq.true&${ownerFilter}${searchFilter}&order=updated_at.desc&limit=8`;
+        const res = await sbGet(path);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setProjectSuggestions(data || []);
+      } catch {
+        setProjectSuggestions([]);
+      }
+    }, 200);
+    return () => {
+      if (projectDebounceRef.current) window.clearTimeout(projectDebounceRef.current);
+    };
+  }, [projectValue, editingProject, order?.customer_id]);
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -2449,40 +2484,6 @@ export default function AdminOrderDetail() {
     : 0;
   const hasOverpayment = overpaymentAmount > 0.01;
   const hasUnderpayment = underpaymentAmount > 0.01;
-
-  // Project picker — search internal_projects scoped to the order's
-  // company (or customer when no company). Mirrors the typeahead in
-  // AdminCreateOrder so staff sees the same UX in both places.
-  useEffect(() => {
-    if (!editingProject || !order?.customer_id) {
-      setProjectSuggestions([]);
-      return;
-    }
-    if (projectDebounceRef.current) window.clearTimeout(projectDebounceRef.current);
-    projectDebounceRef.current = window.setTimeout(async () => {
-      try {
-        const q = projectValue.trim().replace(/[*,%()]/g, "");
-        const companyId = (order.customer as any)?.company_id || null;
-        const ownerFilter = companyId
-          ? `company_id=eq.${companyId}`
-          : `customer_id=eq.${order.customer_id}&company_id=is.null`;
-        const searchFilter =
-          q.length >= 1
-            ? `&or=(project_number.ilike.*${q}*,client_project_number.ilike.*${q}*,name.ilike.*${q}*)`
-            : "";
-        const path = `internal_projects?select=id,project_number,client_project_number,name,updated_at&is_active=eq.true&${ownerFilter}${searchFilter}&order=updated_at.desc&limit=8`;
-        const res = await sbGet(path);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setProjectSuggestions(data || []);
-      } catch {
-        setProjectSuggestions([]);
-      }
-    }, 200);
-    return () => {
-      if (projectDebounceRef.current) window.clearTimeout(projectDebounceRef.current);
-    };
-  }, [projectValue, editingProject, order?.customer_id]);
 
   const handleSaveProject = async (overrideValue?: string, overrideProjectId?: string) => {
     if (!id || !order) return;
