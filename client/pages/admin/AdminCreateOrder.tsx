@@ -633,6 +633,17 @@ export default function AdminCreateOrder() {
     if (customer.requires_po && !poNumber.trim()) {
       return `${customer.full_name || "Customer"} requires a PO number`;
     }
+    // Direct orders always require a client project number (the customer
+    // label that ties our PRJ-* number back to the agency's own job code,
+    // e.g. TRSB's "26-26284-001"). Enforced here so the project label
+    // never lands blank in the Projects list. Quote-mode keeps the
+    // softer per-customer rule below.
+    if (
+      mode === "direct_order" &&
+      !clientProjectNumber.trim()
+    ) {
+      return "Client project number is required for direct orders";
+    }
     if (
       customer.requires_client_project_number &&
       !clientProjectNumber.trim()
@@ -654,7 +665,11 @@ export default function AdminCreateOrder() {
     if (!customer) return true;
     const missing: string[] = [];
     if (!customer.requires_po && !poNumber.trim()) missing.push("PO number");
+    // Skip the client-project-number warning in direct_order mode — it is
+    // now hard-required by validateInputs() and would already have blocked
+    // submission. Quote mode still uses the soft warning.
     if (
+      mode !== "direct_order" &&
       !customer.requires_client_project_number &&
       !clientProjectNumber.trim()
     ) {
@@ -1543,7 +1558,8 @@ export default function AdminCreateOrder() {
               <div className="relative">
                 <label className="block text-xs text-gray-600 mb-1">
                   Project{" "}
-                  {customer?.requires_client_project_number && (
+                  {(mode === "direct_order" ||
+                    customer?.requires_client_project_number) && (
                     <span className="text-red-500">*</span>
                   )}
                 </label>
@@ -1562,9 +1578,11 @@ export default function AdminCreateOrder() {
                   placeholder={
                     !customer
                       ? "Pick a customer first"
-                      : customer?.requires_client_project_number
-                        ? "Required — search PRJ or client label, or type to create new"
-                        : "Search PRJ or client label, or type to create new"
+                      : mode === "direct_order"
+                        ? "Required for direct orders — search PRJ or client label, or type to create new"
+                        : customer?.requires_client_project_number
+                          ? "Required — search PRJ or client label, or type to create new"
+                          : "Search PRJ or client label, or type to create new"
                   }
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400"
                 />
