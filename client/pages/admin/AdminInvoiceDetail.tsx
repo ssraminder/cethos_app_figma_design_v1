@@ -42,6 +42,11 @@ const AdminInvoiceDetail = () => {
   const [savedLineId, setSavedLineId] = useState<string | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
+  // Void reason capture
+  const [voidReasonCode, setVoidReasonCode] = useState<string>("pricing_correction");
+  const [voidReasonNotes, setVoidReasonNotes] = useState("");
+  const [voidError, setVoidError] = useState<string | null>(null);
+
   // Send modal state
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [sendRecipients, setSendRecipients] = useState<string[]>([]);
@@ -238,10 +243,57 @@ const AdminInvoiceDetail = () => {
   };
 
   const handleInvoiceAction = async (action: "issue" | "void") => {
-    setConfirmModal(null);
     setActionInFlight(true);
+    setVoidError(null);
     try {
       const token = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (action === "void") {
+        // Void via the dedicated edge function so we capture reason +
+        // block on payment-touch consistently (server-side).
+        const staffId = localStorage.getItem("staffUserId");
+        if (!staffId) {
+          setVoidError("No staff session found. Please re-login and retry.");
+          return;
+        }
+        const reason_notes = voidReasonNotes.trim();
+        if (voidReasonCode === "other" && !reason_notes) {
+          setVoidError("Please describe the reason when 'Other' is selected.");
+          return;
+        }
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/void-customer-invoice`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              invoice_id: invoiceId,
+              staff_id: staffId,
+              reason_code: voidReasonCode,
+              reason_notes,
+            }),
+          }
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || body?.success === false) {
+          // Surface the error inline so staff sees the payment-touch
+          // block message instead of just a toast.
+          setVoidError(body?.error || "Failed to void invoice");
+          toast.error(body?.error || "Failed to void invoice");
+          return;
+        }
+        setConfirmModal(null);
+        setVoidReasonNotes("");
+        setVoidReasonCode("pricing_correction");
+        toast.success("Invoice voided");
+        await reloadInvoice();
+        return;
+      }
+
+      // action === "issue" — keep the existing path.
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-customer-invoice`,
         {
@@ -257,7 +309,8 @@ const AdminInvoiceDetail = () => {
         const body = await res.json().catch(() => ({}));
         toast.error(body.error || `Failed to ${action} invoice`);
       } else {
-        toast.success(action === "issue" ? "Invoice issued" : "Invoice voided");
+        setConfirmModal(null);
+        toast.success("Invoice issued");
         await reloadInvoice();
       }
     } catch {
@@ -848,21 +901,70 @@ const AdminInvoiceDetail = () => {
             ) : (
               <>
                 <h2 className="text-lg font-semibold text-gray-900 mb-2">Void Invoice?</h2>
-                <p className="text-sm text-gray-600 mb-6">
-                  This cannot be undone. Linked orders will return to unbilled status.
+                <p className="text-sm text-gray-600 mb-4">
+                  The PDF will remain available with a VOIDED watermark. The
+                  order's finance becomes editable again; you can issue a fresh
+                  invoice afterwards (a new number from the sequence; the new
+                  invoice will reference this voided one).
                 </p>
+
+                {voidError && (
+                  <div className="mb-3 bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
+                    {voidError}
+                  </div>
+                )}
+
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reason
+                </label>
+                <select
+                  value={voidReasonCode}
+                  onChange={(e) => setVoidReasonCode(e.target.value)}
+                  className="w-full mb-3 border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                >
+                  <option value="pricing_correction">Pricing correction</option>
+                  <option value="cancelled_order">Cancelled order</option>
+                  <option value="customer_request">Customer request</option>
+                  <option value="billing_error">Billing error</option>
+                  <option value="duplicate">Duplicate invoice</option>
+                  <option value="other">Other</option>
+                </select>
+
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                  {voidReasonCode === "other" && (
+                    <span className="text-red-600 ml-1">*</span>
+                  )}
+                </label>
+                <textarea
+                  value={voidReasonNotes}
+                  onChange={(e) => setVoidReasonNotes(e.target.value)}
+                  placeholder={
+                    voidReasonCode === "other"
+                      ? "Required: describe the reason"
+                      : "Optional context for the audit log"
+                  }
+                  rows={3}
+                  className="w-full mb-5 border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                />
+
                 <div className="flex justify-end gap-3">
                   <button
-                    onClick={() => setConfirmModal(null)}
+                    onClick={() => {
+                      setConfirmModal(null);
+                      setVoidError(null);
+                    }}
                     className="px-4 py-2 text-sm rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                    disabled={actionInFlight}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => handleInvoiceAction("void")}
-                    className="px-4 py-2 text-sm rounded bg-red-600 text-white hover:bg-red-700"
+                    disabled={actionInFlight}
+                    className="px-4 py-2 text-sm rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
                   >
-                    Void Invoice
+                    {actionInFlight ? "Voiding…" : "Void Invoice"}
                   </button>
                 </div>
               </>
