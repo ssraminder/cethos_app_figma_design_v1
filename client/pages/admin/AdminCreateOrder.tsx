@@ -765,10 +765,18 @@ export default function AdminCreateOrder() {
     // PO (TRSB-style — PO arrives after delivery); the gate moves to
     // invoice-issuing time. Falls back to the legacy boolean when the
     // new mode hasn't been set yet.
+    //
+    // Direct orders skip this check entirely — PO is per-receivable-line
+    // on order_receivables and is enforced by the
+    // guard_invoice_issue_requires_po DB trigger at invoice-issue time.
     const poMode =
       customer.requires_po_mode ||
       (customer.requires_po ? "required_upfront" : "not_required");
-    if (poMode === "required_upfront" && !poNumber.trim()) {
+    if (
+      mode !== "direct_order" &&
+      poMode === "required_upfront" &&
+      !poNumber.trim()
+    ) {
       return `${customer.full_name || "Customer"} requires a PO number upfront`;
     }
     // Direct orders always require a client project number (the customer
@@ -813,7 +821,12 @@ export default function AdminCreateOrder() {
       (customer.requires_po ? "required_upfront" : "not_required");
     // Soft warning only when PO is genuinely optional. In
     // pending_acceptable mode, the missing PO is expected — no warning.
-    if (poMode2 === "not_required" && !poNumber.trim()) {
+    // Direct orders skip this entirely: PO lives on each receivable line.
+    if (
+      mode !== "direct_order" &&
+      poMode2 === "not_required" &&
+      !poNumber.trim()
+    ) {
       missing.push("PO number");
     }
     // Skip the client-project-number warning in direct_order mode — it is
@@ -973,7 +986,11 @@ export default function AdminCreateOrder() {
           taxRateId: selectedTaxRateId || null,
           currency,
           invoicingBranchId: branchId,
-          poNumber: poNumber.trim() || null,
+          // Direct orders no longer carry a top-level PO. The PO lives on
+          // each order_receivables row; admin-create-order will leave
+          // orders.po_number null and the receivables backfill will pick
+          // up PO additions later.
+          poNumber: null,
           clientProjectNumber: clientProjectNumber.trim() || null,
           workflowTemplateCode: workflowTemplateCode || null,
           clientPmId: clientPmId || null,
@@ -1690,23 +1707,30 @@ export default function AdminCreateOrder() {
                   </select>
                 )}
               </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">
-                  PO number{" "}
-                  {customer?.requires_po && (
-                    <span className="text-red-500">*</span>
-                  )}
-                </label>
-                <input
-                  type="text"
-                  value={poNumber}
-                  onChange={(e) => setPoNumber(e.target.value)}
-                  placeholder={
-                    customer?.requires_po ? "Required by this customer" : "Optional — recommended"
-                  }
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
+              {mode !== "direct_order" && (
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    PO number{" "}
+                    {customer?.requires_po && (
+                      <span className="text-red-500">*</span>
+                    )}
+                  </label>
+                  <input
+                    type="text"
+                    value={poNumber}
+                    onChange={(e) => setPoNumber(e.target.value)}
+                    placeholder={
+                      customer?.requires_po ? "Required by this customer" : "Optional — recommended"
+                    }
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+              )}
+              {mode === "direct_order" && (
+                <div className="md:col-span-1 text-xs text-gray-500 self-end pb-2">
+                  PO number is added per receivable line on the order finance tab.
+                </div>
+              )}
               <div className="relative">
                 <label className="block text-xs text-gray-600 mb-1">
                   Project{" "}
