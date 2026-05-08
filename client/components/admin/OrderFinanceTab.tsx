@@ -357,6 +357,11 @@ function EditableReceivablesBreakdown({
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // Default tax rate from the customer profile (customers.default_tax_rate_id
+  // → tax_rates.rate). Falls back to 5% (Canadian GST baseline) if the
+  // customer has no default set.
+  const [defaultTaxRate, setDefaultTaxRate] = useState<number>(0.05);
+  const [defaultTaxLabel, setDefaultTaxLabel] = useState<string | null>(null);
   const [draft, setDraft] = useState({
     description: "",
     quantity: 1,
@@ -393,6 +398,48 @@ function EditableReceivablesBreakdown({
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
+
+  // Resolve customer's default tax rate once per order. We hop
+  // orders → customers → tax_rates so the staff portal doesn't need
+  // an API change.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: ord } = await supabase
+          .from("orders")
+          .select("customer_id")
+          .eq("id", orderId)
+          .maybeSingle();
+        if (!ord?.customer_id) return;
+        const { data: cust } = await supabase
+          .from("customers")
+          .select("default_tax_rate_id")
+          .eq("id", ord.customer_id)
+          .maybeSingle();
+        if (!cust?.default_tax_rate_id) return;
+        const { data: tax } = await supabase
+          .from("tax_rates")
+          .select("rate, tax_name, region_code")
+          .eq("id", cust.default_tax_rate_id)
+          .maybeSingle();
+        if (cancelled || !tax) return;
+        const r = Number(tax.rate);
+        if (Number.isFinite(r)) {
+          setDefaultTaxRate(r);
+          setDefaultTaxLabel(
+            [tax.tax_name, tax.region_code].filter(Boolean).join(" · ") || null,
+          );
+          setDraft((d) => (d.tax_rate === 0.05 ? { ...d, tax_rate: r } : d));
+        }
+      } catch (err) {
+        console.warn("Failed to resolve customer default tax rate", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [orderId]);
 
   const computeDerived = (q: number, r: number, t: number, su: number, di: number) => {
@@ -451,7 +498,7 @@ function EditableReceivablesBreakdown({
         description: "",
         quantity: 1,
         rate: 0,
-        tax_rate: 0.05,
+        tax_rate: defaultTaxRate,
         surcharge_total: 0,
         discount_total: 0,
         po_number: "",
@@ -524,7 +571,7 @@ function EditableReceivablesBreakdown({
                 description: "",
                 quantity: 1,
                 rate: 0,
-                tax_rate: 0.05,
+                tax_rate: defaultTaxRate,
                 surcharge_total: 0,
                 discount_total: 0,
                 po_number: "",
@@ -665,6 +712,11 @@ function EditableReceivablesBreakdown({
                     }
                     className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
                   />
+                  {defaultTaxLabel && (
+                    <div className="mt-1 text-[11px] text-gray-500">
+                      Default: {Math.round(defaultTaxRate * 10000) / 100}% ({defaultTaxLabel})
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -53,6 +53,7 @@ const UPDATABLE_FIELDS = new Set([
   "is_ar_customer", "ar_contact_email", "accounting_contact_name",
   "accounting_contact_phone", "credit_limit", "ar_notes",
   "requires_po", "requires_po_mode", "requires_client_project_number",
+  "default_tax_rate_id",
 ]);
 
 function jsonResponse(data: Record<string, unknown>, status = 200) {
@@ -174,6 +175,15 @@ serve(async (req: Request) => {
             .maybeSingle();
           backup_payment_method = pm ?? null;
         }
+        let default_tax_rate: any = null;
+        if (cust.default_tax_rate_id) {
+          const { data: tr } = await sb
+            .from("tax_rates")
+            .select("id, tax_name, region_code, region_name, rate, is_active")
+            .eq("id", cust.default_tax_rate_id)
+            .maybeSingle();
+          default_tax_rate = tr ?? null;
+        }
         const readiness = computeReadiness(cust);
 
         return jsonResponse({
@@ -182,6 +192,7 @@ serve(async (req: Request) => {
             invoicing_branch,
             preferred_payment_method,
             backup_payment_method,
+            default_tax_rate,
             invoice_ready: readiness.ready,
             invoice_missing: readiness.missing,
           },
