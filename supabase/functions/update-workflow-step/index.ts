@@ -203,6 +203,32 @@ serve(async (req: Request) => {
         return json({ success: true, offers_sent: vendorList.length });
       }
 
+      case "resend_notification": {
+        // Re-fires the Brevo assignment/offer email for the current vendor
+        // on this step without changing any DB state. Picks the message
+        // type based on the step's status: 'offered' -> offer email,
+        // anything else with a vendor_id -> assignment email.
+        const targetVendorId = step.vendor_id;
+        if (!targetVendorId) {
+          return json({ success: false, error: "Step has no vendor assigned" }, 400);
+        }
+        const kind = step.status === "offered" ? "offer_vendor" : "direct_assign";
+        await notifyVendorAssignment({
+          supabase,
+          vendor_id: targetVendorId,
+          step,
+          workflow,
+          kind,
+          vendor_rate: step.vendor_rate ?? null,
+          vendor_rate_unit: step.vendor_rate_unit ?? null,
+          vendor_total: step.vendor_total ?? null,
+          vendor_currency: step.vendor_currency ?? null,
+          deadline: step.deadline ?? null,
+          instructions: step.instructions ?? null,
+        });
+        return json({ success: true, resent: true, kind });
+      }
+
       case "retract_offer": {
         const { offer_id } = body;
         if (!offer_id) return json({ success: false, error: "Missing offer_id" }, 400);

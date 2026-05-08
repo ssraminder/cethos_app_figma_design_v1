@@ -22,6 +22,7 @@ import {
   FileText,
   Download,
   Mail,
+  RefreshCw,
 } from "lucide-react";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import BrevoEmailLogsModal from "./BrevoEmailLogsModal";
@@ -1969,6 +1970,7 @@ function WorkflowPipeline({
   // whether Brevo actually delivered the assignment / instructions email.
   const [brevoLogVendorId, setBrevoLogVendorId] = useState<string | null>(null);
   const [brevoLogVendorName, setBrevoLogVendorName] = useState<string | null>(null);
+  const [resendingStepId, setResendingStepId] = useState<string | null>(null);
 
   // Approve/Revise modal state
   const [approveModalStep, setApproveModalStep] = useState<WorkflowStep | null>(null);
@@ -2298,19 +2300,47 @@ function WorkflowPipeline({
                       ))}
                   </span>
                   {step.vendor_id && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setBrevoLogVendorId(step.vendor_id);
-                        setBrevoLogVendorName(step.vendor_name || null);
-                      }}
-                      className="text-xs text-gray-400 hover:text-teal-700 inline-flex items-center gap-1"
-                      title="Show Brevo email log for this vendor"
-                    >
-                      <Mail className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Email log</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBrevoLogVendorId(step.vendor_id);
+                          setBrevoLogVendorName(step.vendor_name || null);
+                        }}
+                        className="text-xs text-gray-400 hover:text-teal-700 inline-flex items-center gap-1"
+                        title="Show Brevo email log for this vendor"
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Email log</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (resendingStepId) return;
+                          setResendingStepId(step.id);
+                          try {
+                            await handleStepAction(step.id, "resend_notification", {});
+                            toast.success(`Re-sent assignment email to ${step.vendor_name || "vendor"}`);
+                          } catch (err: any) {
+                            toast.error(err?.message || "Failed to resend email");
+                          } finally {
+                            setResendingStepId(null);
+                          }
+                        }}
+                        disabled={resendingStepId === step.id}
+                        className="text-xs text-gray-400 hover:text-teal-700 inline-flex items-center gap-1 disabled:opacity-50"
+                        title="Resend assignment email via Brevo"
+                      >
+                        {resendingStepId === step.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        )}
+                        <span className="hidden sm:inline">Resend email</span>
+                      </button>
+                    </>
                   )}
                 </div>
 

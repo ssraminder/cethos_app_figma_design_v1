@@ -35,6 +35,7 @@ export default function VendorProfileTab({
   // Chip input state
   const [certInput, setCertInput] = useState("");
   const [specInput, setSpecInput] = useState("");
+  const [emailInput, setEmailInput] = useState("");
   const [nativeLangSearch, setNativeLangSearch] = useState("");
 
   const startEditing = () => {
@@ -55,6 +56,7 @@ export default function VendorProfileTab({
       minimum_rate: vendor.minimum_rate ?? "",
       certifications: vendor.certifications ?? [],
       specializations: vendor.specializations ?? [],
+      additional_emails: (vendor as any).additional_emails ?? [],
       notes: vendor.notes ?? "",
     });
     setEditing(true);
@@ -72,6 +74,21 @@ export default function VendorProfileTab({
   const handleSave = async () => {
     setSaving(true);
     try {
+      // additional_emails lives only on the vendors table and isn't routed
+      // through vendor-update-profile (which is the vendor self-service
+      // function). Persist it via direct supabase update from the admin
+      // side, then call the edge function for the rest.
+      if (Array.isArray(form.additional_emails)) {
+        const cleaned = (form.additional_emails as string[])
+          .map((e) => String(e || "").trim())
+          .filter((e) => e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+        const { error: emailErr } = await supabase
+          .from("vendors")
+          .update({ additional_emails: cleaned })
+          .eq("id", vendor.id);
+        if (emailErr) throw emailErr;
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vendor-update-profile`,
         {
@@ -324,6 +341,89 @@ export default function VendorProfileTab({
             </h3>
             {renderField("Full Name", vendor.full_name, textInput("full_name"))}
             {renderField("Email", vendor.email)}
+            {renderField(
+              "Additional emails (CC)",
+              (() => {
+                const list = ((vendor as any).additional_emails ?? []) as string[];
+                return list.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {list.map((e, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center gap-1 bg-teal-50 text-teal-800 text-xs px-2 py-1 rounded"
+                      >
+                        {e}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-gray-400">—</span>
+                );
+              })(),
+              <div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {((form.additional_emails as string[]) ?? []).map((e, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 bg-teal-50 text-teal-800 text-xs px-2 py-1 rounded"
+                    >
+                      {e}
+                      <button
+                        type="button"
+                        onClick={() => removeChip("additional_emails", i)}
+                        className="text-teal-600 hover:text-red-600"
+                        title="Remove"
+                      >
+                        <XCircle className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const trimmed = emailInput.trim();
+                        if (
+                          trimmed &&
+                          /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
+                        ) {
+                          addChip("additional_emails", trimmed, setEmailInput);
+                        } else if (trimmed) {
+                          toast.error("Enter a valid email address");
+                        }
+                      }
+                    }}
+                    placeholder="cc@example.com (press Enter)"
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const trimmed = emailInput.trim();
+                      if (
+                        trimmed &&
+                        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
+                      ) {
+                        addChip("additional_emails", trimmed, setEmailInput);
+                      } else if (trimmed) {
+                        toast.error("Enter a valid email address");
+                      }
+                    }}
+                    className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-gray-700"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  CC'd on every Brevo notification (assignment, offer, instructions).
+                </p>
+              </div>
+            )}
             {renderField("Phone", vendor.phone ?? "—", textInput("phone"))}
             {renderField("Country", vendor.country ?? "—", textInput("country"))}
             {renderField(
