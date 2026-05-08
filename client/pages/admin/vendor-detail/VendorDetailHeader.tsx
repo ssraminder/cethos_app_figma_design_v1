@@ -12,6 +12,7 @@ import {
   Power,
   Send,
   Bell,
+  ExternalLink,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -62,6 +63,35 @@ export default function VendorDetailHeader({
       toast.error(
         err instanceof Error ? err.message : "Failed to send invitation"
       );
+    }
+    setActionLoading(false);
+    setActionsOpen(false);
+  };
+
+  // "View as vendor" — calls admin-impersonate-vendor to mint a fresh
+  // 30-minute vendor session, then opens vendor.cethos.com with the
+  // token in the URL. The vendor portal swaps it for a real session
+  // and shows an impersonation banner. Mirrors XTRF's "Open in vendor
+  // portal".
+  const handleImpersonate = async () => {
+    setActionLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "admin-impersonate-vendor",
+        { body: { action: "start", vendor_id: vendor.id } },
+      );
+      if (error) throw error;
+      if (!data?.token) throw new Error(data?.error || "No token returned");
+      const portalBase =
+        (import.meta.env.VITE_VENDOR_PORTAL_URL as string | undefined) ||
+        "https://vendor.cethos.com";
+      const url = `${portalBase.replace(/\/$/, "")}/?impersonate_token=${encodeURIComponent(
+        data.token,
+      )}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+      toast.success(`Opened vendor portal as ${vendor.full_name}`);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to start impersonation");
     }
     setActionLoading(false);
     setActionsOpen(false);
@@ -175,6 +205,14 @@ export default function VendorDetailHeader({
                 onClick={() => setActionsOpen(false)}
               />
               <div className="absolute right-0 mt-1 z-50 w-56 bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+                <button
+                  onClick={handleImpersonate}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  View as vendor
+                </button>
+                <div className="border-t border-gray-100 my-1" />
                 <button
                   onClick={handleToggleStatus}
                   className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
