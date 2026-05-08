@@ -83,7 +83,7 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
     const [{ data: vendor }, { data: order }] = await Promise.all([
       supabase
         .from("vendors")
-        .select("id, full_name, email")
+        .select("id, full_name, email, additional_emails")
         .eq("id", vendor_id)
         .maybeSingle(),
       supabase
@@ -97,6 +97,14 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
       console.warn(`notify-vendor-assignment: vendor ${vendor_id} has no email`);
       return;
     }
+
+    // Additional cc recipients (vendors.additional_emails). Filter out
+    // empties and the primary so we don't double-deliver.
+    const ccList: string[] = Array.isArray(vendor.additional_emails)
+      ? vendor.additional_emails
+          .map((e: any) => String(e || "").trim())
+          .filter((e: string) => e && e.toLowerCase() !== String(vendor.email).toLowerCase())
+      : [];
 
     const isOffer = kind === "offer_vendor";
     const subject = isOffer
@@ -164,7 +172,7 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
   </table>
 </body></html>`.trim();
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       to: [{ email: vendor.email, name: vendor.full_name || vendor.email }],
       sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
       replyTo: { email: "vendor@cethos.com", name: "Cethos Vendor Ops" },
@@ -172,6 +180,9 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
       htmlContent,
       tags: [`vendor-assignment-${kind}`, `order-${order?.order_number ?? "unknown"}`],
     };
+    if (ccList.length > 0) {
+      payload.cc = ccList.map((e) => ({ email: e }));
+    }
 
     const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",

@@ -18,6 +18,23 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-08 — Direct-order PO moves from order-level to per-receivable-line
+- **Decision:** For `is_direct_order = true` orders, the PO number (and client project number per line) lives on `order_receivables.po_number`, not on `orders.po_number`. Quote-converted orders (certified/OCR/website checkout) are unchanged — they keep using `orders.po_number`.
+- **Rationale:** Agency clients (TRSB pattern) bill a single direct order against multiple POs sent at different times after delivery. The order-level single PO field can't model that. The new model is also a cleaner billing primitive: receivable lines map 1:1 to invoice lines.
+- **DB shape:** new `order_receivables` table (`20260508_order_receivables_table.sql`) with status `draft | invoiced | voided`. AFTER trigger `trigger_recalc_direct_order_on_receivable_change` recomputes `orders.{subtotal,tax_amount,total_amount,balance_due}` whenever a receivable changes. `recalculate_direct_order_totals(p_order_id)` is the recalc function (renamed from a collision with the existing quote-derived `recalculate_order_totals`).
+- **Invoice gating:** `guard_invoice_issue_requires_po` updated (`20260508_invoice_issue_po_guard_receivables.sql`). For direct orders, blocks invoice issue if any non-voided receivable lacks a PO. For quote-converted orders, keeps the existing `orders.po_number` check.
+- **UI:** AdminOrderDetail's Finance tab shows the editable receivables list when `is_direct_order && orderId`, falling back to the legacy read-only `ReceivableBreakdown` for quote-converted orders. The order-level "PO & Project Reference" card lost its PO column (project picker is now a typeahead over `internal_projects` with inline create). AdminCreateOrder's direct-order mode no longer has a PO input — replaced with a hint pointing to the finance tab.
+- **PRs:** #540 (schema + recalc + backfill), #541 (editable list), #542 (guard + project picker + Brevo modal), #545 (drop top-level PO from create flow).
+- **Status:** active. `orders.po_number` column kept for one quiet release; PR #5 will drop it once at least one direct order has run end-to-end on the new model.
+- **Affects:** `order_receivables` table, `OrderFinanceTab.EditableReceivablesBreakdown`, `AdminOrderDetail` Project Reference card, `AdminCreateOrder` direct-order branch, `guard_invoice_issue_requires_po` trigger.
+
+### 2026-05-08 — Brevo email log modal as the standard diagnostic
+- **Decision:** Whenever a notification feature ships, an admin-side "Email log" link must be reachable from the relevant entity (vendor, customer, etc.) so staff can verify Brevo actually sent the email. Don't trust "I sent it" without checking the log.
+- **Rationale:** Discovered that `update-workflow-step` had no email-sending code at all on `direct_assign` / `offer_vendor` / `offer_multiple` — vendors were never notified, and we had no way to see this from the admin UI. Brevo events confirmed zero outbound mail to the impacted vendor in 90 days.
+- **Plumbing:** new edge function `get-brevo-email-events` (jwt off) wraps `/v3/smtp/statistics/events` + `/v3/smtp/emails`. New `BrevoEmailLogsModal` consumes it. Wired into `OrderWorkflowSection` as a small "Email log" button next to each step's vendor row.
+- **Status:** active. Pattern: when adding a new notification trigger, also surface the related entity's Brevo log in the admin UI.
+- **Affects:** `supabase/functions/get-brevo-email-events`, `client/components/admin/BrevoEmailLogsModal.tsx`, any future notification feature.
+
 ### 2026-05-05 — Cethos CAT integration parked (not a today task)
 - **Decision:** Don't squeeze a Cethos CAT integration into the same session as Phases 1–5. Treat it as its own initiative.
 - **What it is:** `D:\cethos\TM-Cethos` (`cethos-cat` v0.1.0) is a full XTM/Trados-class CAT editor — segment-level translation, TM/termbase leverage, QA profiles, translator/reviewer/PM/admin roles. Has its own Supabase project `idzwtssftpxrsprzjael` (separate from the portal's `lmzoyezvsjgsxveoakdr`) and its own `clients`/`jobs`/`segments` data model.
