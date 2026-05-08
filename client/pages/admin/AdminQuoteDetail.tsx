@@ -885,8 +885,12 @@ export default function AdminQuoteDetail() {
         supabase.from("quote_files").select("*").eq("quote_id", id).order("sort_order"),
         // 3. Normalized files from both sources for display/download
         fetchQuoteFiles(id!),
-        // 4. AI analysis results
-        supabase.from("ai_analysis_results").select("*").eq("quote_id", id),
+        // 4. AI analysis results (skip soft-deleted rows)
+        supabase
+          .from("ai_analysis_results")
+          .select("*")
+          .eq("quote_id", id)
+          .is("deleted_at", null),
         // 5. HITL reviews
         supabase.from("hitl_reviews").select(`
           *,
@@ -1952,6 +1956,34 @@ export default function AdminQuoteDetail() {
     });
     if (error) throw error;
     await refetchQuote();
+  };
+
+  const handleRemoveDocument = async (analysisId: string, fileName: string) => {
+    if (!id) return;
+    if (!window.confirm(`Remove "${fileName}" from this quote? Totals will be recalculated.`)) {
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from("ai_analysis_results")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", analysisId);
+      if (error) throw error;
+
+      setAnalysis((prev) => prev.filter((a) => a.id !== analysisId));
+      if (selectedAnalysisId === analysisId) setSelectedAnalysisId(null);
+
+      await callRecalculatePricing();
+      await logQuoteActivity(id, currentStaff?.staffId || "", "document_removed", {
+        analysis_id: analysisId,
+        file_name: fileName,
+      });
+      setActivityLogLoaded(false);
+      toast.success(`Removed "${fileName}"`);
+    } catch (err) {
+      console.error("Failed to remove document:", err);
+      toast.error("Failed to remove document");
+    }
   };
 
   const handleRecalculateTotals = async () => {
@@ -3740,18 +3772,38 @@ export default function AdminQuoteDetail() {
                   {analysis.map((item, index) => {
                     const nf = normalizedFiles.find((f) => f.id === item.quote_file_id);
                     const qf = files.find((f) => f.id === item.quote_file_id);
+                    const fileName = nf?.displayName || qf?.original_filename || `Document ${index + 1}`;
+                    const isActive = (selectedAnalysisId || analysis[0]?.id) === item.id;
                     return (
-                      <button
+                      <div
                         key={item.id}
-                        onClick={() => setSelectedAnalysisId(item.id)}
-                        className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                          (selectedAnalysisId || analysis[0]?.id) === item.id
-                            ? "border-teal-600 text-teal-600"
-                            : "border-transparent text-gray-500 hover:text-gray-700"
+                        className={`flex items-center border-b-2 transition-colors ${
+                          isActive ? "border-teal-600" : "border-transparent"
                         }`}
                       >
-                        {nf?.displayName || qf?.original_filename || `Document ${index + 1}`}
-                      </button>
+                        <button
+                          onClick={() => setSelectedAnalysisId(item.id)}
+                          className={`pl-4 py-2 text-sm font-medium whitespace-nowrap ${
+                            isActive
+                              ? "text-teal-600"
+                              : "text-gray-500 hover:text-gray-700"
+                          }`}
+                        >
+                          {fileName}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveDocument(item.id, fileName);
+                          }}
+                          className="ml-1 mr-3 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+                          title={`Remove ${fileName}`}
+                          aria-label={`Remove ${fileName}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -4783,7 +4835,7 @@ export default function AdminQuoteDetail() {
                       return (
                         <div
                           key={item.id}
-                          className="flex justify-between text-sm"
+                          className="flex justify-between items-center text-sm group"
                         >
                           <span
                             className="text-gray-600 truncate pr-3"
@@ -4791,9 +4843,20 @@ export default function AdminQuoteDetail() {
                           >
                             {fileName}
                           </span>
-                          <span className="flex-shrink-0 text-gray-600">
-                            ${Number(item.line_total || 0).toFixed(2)}
-                          </span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-gray-600">
+                              ${Number(item.line_total || 0).toFixed(2)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDocument(item.id, fileName)}
+                              className="p-1 rounded text-gray-300 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title={`Remove ${fileName}`}
+                              aria-label={`Remove ${fileName}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}

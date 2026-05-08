@@ -241,7 +241,8 @@ export default function QuoteReviewPage() {
           )
         `
         )
-        .eq("quote_id", quoteId);
+        .eq("quote_id", quoteId)
+        .is("deleted_at", null);
 
       if (analysisError) {
         console.error("Error fetching documents:", analysisError);
