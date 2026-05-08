@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -8,6 +8,34 @@ import { toast } from "sonner";
 interface OrderFinanceTabProps {
   workflowData: any | null;
   onRefresh?: () => void;
+  // Direct-order receivables: when isDirectOrder is true, the Receivable
+  // Breakdown switches from the read-only quote-derived view to an
+  // editable order_receivables list. Locked when hasIssuedInvoice is true
+  // (the parent computes this from a non-void customer_invoice on the
+  // order). Quote-converted orders ignore both flags.
+  orderId?: string;
+  isDirectOrder?: boolean;
+  hasIssuedInvoice?: boolean;
+}
+
+interface OrderReceivable {
+  id: string;
+  order_id: string;
+  description: string;
+  calculation_unit: string;
+  quantity: number;
+  rate: number;
+  line_subtotal: number;
+  surcharge_total: number;
+  discount_total: number;
+  tax_rate: number;
+  tax_amount: number;
+  line_total: number;
+  currency: string;
+  po_number: string | null;
+  client_project_number: string | null;
+  sort_order: number;
+  status: "draft" | "invoiced" | "voided";
 }
 
 interface OrderFinancials {
@@ -295,6 +323,385 @@ function ReceivableBreakdown({
             {invoice.invoice_date && (
               <>
                 {" \u00B7 "}Date:{" "}
+                <span className="font-medium">
+                  {format(new Date(invoice.invoice_date), "MMM d, yyyy")}
+                </span>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Section 2 (direct-order variant): Editable Receivables list ──
+// Renders order_receivables rows for direct orders. Each row carries its
+// own PO + client project number; staff can add, edit, and remove rows.
+// Recalc is automatic via the AFTER trigger on order_receivables, so the
+// only thing this component does on save is write the row.
+function EditableReceivablesBreakdown({
+  orderId,
+  invoice,
+  hasIssuedInvoice,
+  currency,
+  onRefresh,
+}: {
+  orderId: string;
+  invoice: Invoice | null;
+  hasIssuedInvoice: boolean;
+  currency: string;
+  onRefresh?: () => void;
+}) {
+  const [rows, setRows] = useState<OrderReceivable[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState({
+    description: "",
+    quantity: 1,
+    rate: 0,
+    tax_rate: 0.05,
+    surcharge_total: 0,
+    discount_total: 0,
+    po_number: "",
+    client_project_number: "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("order_receivables")
+        .select(
+          "id, order_id, description, calculation_unit, quantity, rate, line_subtotal, surcharge_total, discount_total, tax_rate, tax_amount, line_total, currency, po_number, client_project_number, sort_order, status",
+        )
+        .eq("order_id", orderId)
+        .neq("status", "voided")
+        .order("sort_order")
+        .order("created_at");
+      if (error) throw error;
+      setRows((data || []) as OrderReceivable[]);
+    } catch (err) {
+      console.error("Failed to load receivables", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
+
+  const computeDerived = (q: number, r: number, t: number, su: number, di: number) => {
+    const line_subtotal = Math.round(q * r * 100) / 100;
+    const taxableBase = line_subtotal + su - di;
+    const tax_amount = Math.round(taxableBase * t * 100) / 100;
+    const line_total = Math.round((taxableBase + tax_amount) * 100) / 100;
+    return { line_subtotal, tax_amount, line_total };
+  };
+
+  const saveDraft = async () => {
+    setSaving(true);
+    try {
+      const q = Number(draft.quantity) || 0;
+      const r = Number(draft.rate) || 0;
+      const t = Number(draft.tax_rate) || 0;
+      const su = Number(draft.surcharge_total) || 0;
+      const di = Number(draft.discount_total) || 0;
+      const derived = computeDerived(q, r, t, su, di);
+      const payload = {
+        description: draft.description.trim() || "Line item",
+        calculation_unit: "flat",
+        quantity: q,
+        rate: r,
+        tax_rate: t,
+        surcharge_total: su,
+        discount_total: di,
+        po_number: draft.po_number.trim() || null,
+        client_project_number: draft.client_project_number.trim() || null,
+        ...derived,
+      };
+
+      if (editId) {
+        const { error } = await supabase
+          .from("order_receivables")
+          .update(payload)
+          .eq("id", editId);
+        if (error) throw error;
+        toast.success("Line updated");
+      } else {
+        const { error } = await supabase
+          .from("order_receivables")
+          .insert({
+            order_id: orderId,
+            ...payload,
+            currency,
+            sort_order: rows.length,
+            status: "draft",
+          });
+        if (error) throw error;
+        toast.success("Line added");
+      }
+      setEditId(null);
+      setAdding(false);
+      setDraft({
+        description: "",
+        quantity: 1,
+        rate: 0,
+        tax_rate: 0.05,
+        surcharge_total: 0,
+        discount_total: 0,
+        po_number: "",
+        client_project_number: "",
+      });
+      await load();
+      onRefresh?.();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save line");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEdit = (r: OrderReceivable) => {
+    setAdding(false);
+    setEditId(r.id);
+    setDraft({
+      description: r.description,
+      quantity: Number(r.quantity),
+      rate: Number(r.rate),
+      tax_rate: Number(r.tax_rate),
+      surcharge_total: Number(r.surcharge_total),
+      discount_total: Number(r.discount_total),
+      po_number: r.po_number || "",
+      client_project_number: r.client_project_number || "",
+    });
+  };
+
+  const removeRow = async (r: OrderReceivable) => {
+    if (!window.confirm(`Remove "${r.description}" from this order?`)) return;
+    try {
+      // Soft-delete (set status='voided') if it's been invoiced; hard-delete
+      // otherwise. The AFTER trigger recalcs orders.total either way.
+      if (r.status === "invoiced") {
+        const { error } = await supabase
+          .from("order_receivables")
+          .update({ status: "voided" })
+          .eq("id", r.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("order_receivables")
+          .delete()
+          .eq("id", r.id);
+        if (error) throw error;
+      }
+      toast.success("Line removed");
+      await load();
+      onRefresh?.();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to remove line");
+    }
+  };
+
+  const fmt = (n: number) => formatCurrency(n, currency);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-700">
+          Receivable Breakdown
+        </h3>
+        {!hasIssuedInvoice && !adding && !editId && (
+          <button
+            onClick={() => {
+              setAdding(true);
+              setEditId(null);
+              setDraft({
+                description: "",
+                quantity: 1,
+                rate: 0,
+                tax_rate: 0.05,
+                surcharge_total: 0,
+                discount_total: 0,
+                po_number: "",
+                client_project_number: "",
+              });
+            }}
+            className="text-xs px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700"
+          >
+            + Add line
+          </button>
+        )}
+      </div>
+
+      {hasIssuedInvoice && (
+        <div className="mb-3 bg-yellow-50 border border-yellow-200 rounded p-3 text-sm text-yellow-900">
+          Invoice {invoice?.invoice_number} is issued. Void it before editing pricing.
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="p-6 text-center text-sm text-gray-400">Loading…</div>
+        ) : rows.length === 0 && !adding ? (
+          <div className="p-6 text-center text-sm text-gray-500">
+            No receivable lines yet. {!hasIssuedInvoice && "Click + Add line to create one."}
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">Description</th>
+                <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">Qty</th>
+                <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">Rate</th>
+                <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">Subtotal</th>
+                <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">Tax</th>
+                <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">Total</th>
+                <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">PO</th>
+                <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">Project</th>
+                {!hasIssuedInvoice && <th className="py-2 px-3"></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-b border-gray-100">
+                  <td className="py-2 px-3 text-gray-900">{r.description}</td>
+                  <td className="py-2 px-3 text-right text-gray-700 tabular-nums">{Number(r.quantity)}</td>
+                  <td className="py-2 px-3 text-right text-gray-700 tabular-nums">{fmt(Number(r.rate))}</td>
+                  <td className="py-2 px-3 text-right text-gray-700 tabular-nums">{fmt(Number(r.line_subtotal))}</td>
+                  <td className="py-2 px-3 text-right text-gray-700 tabular-nums">{fmt(Number(r.tax_amount))}</td>
+                  <td className="py-2 px-3 text-right font-medium text-gray-900 tabular-nums">{fmt(Number(r.line_total))}</td>
+                  <td className="py-2 px-3 text-gray-700">
+                    {r.po_number || (
+                      <span className="text-orange-600 text-xs italic">PO pending</span>
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-gray-700 truncate max-w-[10rem]">
+                    {r.client_project_number || "—"}
+                  </td>
+                  {!hasIssuedInvoice && (
+                    <td className="py-2 px-3 text-right whitespace-nowrap">
+                      <button onClick={() => startEdit(r)} className="text-xs text-teal-700 hover:underline mr-3">
+                        Edit
+                      </button>
+                      <button onClick={() => removeRow(r)} className="text-xs text-gray-500 hover:text-red-600 hover:underline">
+                        Remove
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {(adding || editId) && !hasIssuedInvoice && (
+          <div className="bg-teal-50 border-t border-teal-200 p-4 space-y-3">
+            <div className="text-sm font-medium text-teal-800">
+              {editId ? "Edit line" : "New receivable line"}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Description *</label>
+                <input
+                  type="text"
+                  value={draft.description}
+                  onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">PO number</label>
+                <input
+                  type="text"
+                  value={draft.po_number}
+                  onChange={(e) => setDraft((d) => ({ ...d, po_number: e.target.value }))}
+                  placeholder="Pending — fill in when received"
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Client project #</label>
+                <input
+                  type="text"
+                  value={draft.client_project_number}
+                  onChange={(e) => setDraft((d) => ({ ...d, client_project_number: e.target.value }))}
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Qty</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={draft.quantity}
+                    onChange={(e) => setDraft((d) => ({ ...d, quantity: Number(e.target.value) }))}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Rate</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={draft.rate}
+                    onChange={(e) => setDraft((d) => ({ ...d, rate: Number(e.target.value) }))}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Tax %</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={Math.round(draft.tax_rate * 10000) / 100}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, tax_rate: (Number(e.target.value) || 0) / 100 }))
+                    }
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-gray-600">
+              Computed: subtotal {fmt((Number(draft.quantity) || 0) * (Number(draft.rate) || 0))} ·
+              tax {fmt(((Number(draft.quantity) || 0) * (Number(draft.rate) || 0)) * (Number(draft.tax_rate) || 0))} ·
+              total {fmt(((Number(draft.quantity) || 0) * (Number(draft.rate) || 0)) * (1 + (Number(draft.tax_rate) || 0)))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={saveDraft}
+                disabled={saving}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-teal-600 rounded hover:bg-teal-700 disabled:opacity-50"
+              >
+                {saving ? "Saving…" : editId ? "Update" : "Add line"}
+              </button>
+              <button
+                onClick={() => {
+                  setAdding(false);
+                  setEditId(null);
+                }}
+                disabled={saving}
+                className="px-4 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {invoice && (
+          <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-600">
+            Invoice: <span className="font-medium text-gray-900">{invoice.invoice_number}</span>
+            {" · "}Status: <span className="font-medium">{invoice.status}</span>
+            {invoice.invoice_date && (
+              <>
+                {" · "}Date:{" "}
                 <span className="font-medium">
                   {format(new Date(invoice.invoice_date), "MMM d, yyyy")}
                 </span>
@@ -622,7 +1029,7 @@ function ProfitSummary({
 
 // ── Main Component ──
 
-export default function OrderFinanceTab({ workflowData, onRefresh }: OrderFinanceTabProps) {
+export default function OrderFinanceTab({ workflowData, onRefresh, orderId, isDirectOrder, hasIssuedInvoice }: OrderFinanceTabProps) {
   if (!workflowData) {
     return (
       <div className="py-12 text-center">
@@ -663,7 +1070,17 @@ export default function OrderFinanceTab({ workflowData, onRefresh }: OrderFinanc
   return (
     <div className="space-y-6">
       <SummaryCards of={of} vf={vf} margin={margin} />
-      <ReceivableBreakdown of={of} invoice={invoice} />
+      {isDirectOrder && orderId ? (
+        <EditableReceivablesBreakdown
+          orderId={orderId}
+          invoice={invoice}
+          hasIssuedInvoice={hasIssuedInvoice ?? false}
+          currency={of.currency}
+          onRefresh={onRefresh}
+        />
+      ) : (
+        <ReceivableBreakdown of={of} invoice={invoice} />
+      )}
       <PaymentDetails payments={payments} />
       <PayablesBreakdown steps={steps} vf={vf} currency={of.currency} onRefresh={onRefresh} />
       <ProfitSummary of={of} vf={vf} margin={margin} />
