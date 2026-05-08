@@ -67,6 +67,7 @@ interface ARCustomer {
   default_tax_rate_id: string | null;
   invoicing_branch_id: number | null;
   requires_po: boolean | null;
+  requires_po_mode: "not_required" | "required_upfront" | "pending_acceptable" | null;
   requires_client_project_number: boolean | null;
   company_id: string | null;
 }
@@ -622,7 +623,7 @@ export default function AdminCreateOrder() {
           invoicing_branch_id: newBranchId ?? branchId,
         })
         .select(
-          "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency, default_tax_rate_id, invoicing_branch_id, requires_po, requires_client_project_number, company_id",
+          "id, full_name, email, company_name, customer_type, is_ar_customer, payment_terms, currency, default_tax_rate_id, invoicing_branch_id, requires_po, requires_po_mode, requires_client_project_number, company_id",
         )
         .single();
       if (error || !data) {
@@ -681,7 +682,7 @@ export default function AdminCreateOrder() {
   const handleCustomerSelect = async (hit: CustomerHit) => {
     try {
       const res = await sbFetch(
-        `customers?select=id,full_name,email,company_name,customer_type,is_ar_customer,payment_terms,currency,default_tax_rate_id,invoicing_branch_id,requires_po,requires_client_project_number,company_id&id=eq.${hit.id}&limit=1`,
+        `customers?select=id,full_name,email,company_name,customer_type,is_ar_customer,payment_terms,currency,default_tax_rate_id,invoicing_branch_id,requires_po,requires_po_mode,requires_client_project_number,company_id&id=eq.${hit.id}&limit=1`,
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const rows: ARCustomer[] = await res.json();
@@ -759,8 +760,16 @@ export default function AdminCreateOrder() {
     if (mode === "direct_order" && !customer.is_ar_customer) {
       return "Direct orders require an AR-approved customer";
     }
-    if (customer.requires_po && !poNumber.trim()) {
-      return `${customer.full_name || "Customer"} requires a PO number`;
+    // PO requirement: only "required_upfront" blocks creation. The new
+    // "pending_acceptable" state lets staff create the order without a
+    // PO (TRSB-style — PO arrives after delivery); the gate moves to
+    // invoice-issuing time. Falls back to the legacy boolean when the
+    // new mode hasn't been set yet.
+    const poMode =
+      customer.requires_po_mode ||
+      (customer.requires_po ? "required_upfront" : "not_required");
+    if (poMode === "required_upfront" && !poNumber.trim()) {
+      return `${customer.full_name || "Customer"} requires a PO number upfront`;
     }
     // Direct orders always require a client project number (the customer
     // label that ties our PRJ-* number back to the agency's own job code,
@@ -799,7 +808,14 @@ export default function AdminCreateOrder() {
   const confirmMissingReferences = (): boolean => {
     if (!customer) return true;
     const missing: string[] = [];
-    if (!customer.requires_po && !poNumber.trim()) missing.push("PO number");
+    const poMode2 =
+      customer.requires_po_mode ||
+      (customer.requires_po ? "required_upfront" : "not_required");
+    // Soft warning only when PO is genuinely optional. In
+    // pending_acceptable mode, the missing PO is expected — no warning.
+    if (poMode2 === "not_required" && !poNumber.trim()) {
+      missing.push("PO number");
+    }
     // Skip the client-project-number warning in direct_order mode — it is
     // now hard-required by validateInputs() and would already have blocked
     // submission. Quote mode still uses the soft warning.
