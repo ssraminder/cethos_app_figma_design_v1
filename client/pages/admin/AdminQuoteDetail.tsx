@@ -198,6 +198,36 @@ interface AIAnalysis {
   certification_cost: number | null;
   certification_price: number | null;
   is_excluded: boolean | null;
+  // Unified-display extensions: when an item is sourced from
+  // quote_document_groups (the canonical billing source) instead of
+  // ai_analysis_results, these fields carry the group's identity so the
+  // Documents panel + Document Analysis tabs can render and act on the
+  // correct row. _source distinguishes the two paths.
+  _source?: "analysis" | "group";
+  _groupId?: string;
+  _displayName?: string;
+  certification_type_id?: string | null;
+}
+
+interface QuoteDocumentGroup {
+  id: string;
+  quote_id: string;
+  group_label: string | null;
+  document_type: string | null;
+  source_language: string | null;
+  detected_language_name: string | null;
+  complexity: string | null;
+  complexity_multiplier: number | null;
+  total_pages: number | null;
+  total_word_count: number | null;
+  billable_pages: number | null;
+  base_rate: number | null;
+  line_total: number | null;
+  certification_type_id: string | null;
+  certification_price: number | null;
+  ai_confidence: number | null;
+  holder_name: string | null;
+  issuing_country: string | null;
 }
 
 interface HITLReview {
@@ -491,6 +521,7 @@ export default function AdminQuoteDetail() {
   const translateFiles = normalizedFiles.filter(f => f.categoryId !== REFERENCE_CATEGORY_ID);
   const referenceFiles = normalizedFiles.filter(f => f.categoryId === REFERENCE_CATEGORY_ID);
   const [analysis, setAnalysis] = useState<AIAnalysis[]>([]);
+  const [documentGroups, setDocumentGroups] = useState<QuoteDocumentGroup[]>([]);
   const [hitlReviews, setHitlReviews] = useState<HITLReview[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationMessages, setConversationMessages] = useState<any[]>([]);
@@ -869,6 +900,7 @@ export default function AdminQuoteDetail() {
         filesResult,
         normalizedResult,
         analysisResult,
+        groupsResult,
         hitlResult,
         messagesResult,
         unreadResult,
@@ -891,6 +923,15 @@ export default function AdminQuoteDetail() {
           .select("*")
           .eq("quote_id", id)
           .is("deleted_at", null),
+        // 4b. Document groups — the canonical billing source for quotes that
+        // use the groups pricing path. When present, these rows take
+        // precedence over ai_analysis_results in the Documents panel and
+        // Document Analysis tabs.
+        supabase
+          .from("quote_document_groups")
+          .select("*")
+          .eq("quote_id", id)
+          .order("group_number"),
         // 5. HITL reviews
         supabase.from("hitl_reviews").select(`
           *,
@@ -942,6 +983,7 @@ export default function AdminQuoteDetail() {
       setNormalizedFiles(normalized);
 
       setAnalysis(analysisResult.data || []);
+      setDocumentGroups((groupsResult.data || []) as QuoteDocumentGroup[]);
 
       setHitlReviews(
         (hitlResult.data || []).map((review: any) => ({
@@ -1958,24 +2000,40 @@ export default function AdminQuoteDetail() {
     await refetchQuote();
   };
 
-  const handleRemoveDocument = async (analysisId: string, fileName: string) => {
+  const handleRemoveDocument = async (item: AIAnalysis, fileName: string) => {
     if (!id) return;
     if (!window.confirm(`Remove "${fileName}" from this quote? Totals will be recalculated.`)) {
       return;
     }
     try {
-      const { error } = await supabase
-        .from("ai_analysis_results")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", analysisId);
-      if (error) throw error;
+      // Groups are the canonical billing source — when the item came from
+      // quote_document_groups, hard-delete the group row. The DB triggers
+      // (trigger_recalc_quote_on_document_change) plus our explicit recalc
+      // call below ensure the quote totals follow.
+      // For the legacy ai_analysis_results path, soft-delete and let the
+      // recalc edge function pick that up via deleted_at IS NULL filters.
+      if (item._source === "group") {
+        const { error } = await supabase
+          .from("quote_document_groups")
+          .delete()
+          .eq("id", item._groupId || item.id);
+        if (error) throw error;
+        setDocumentGroups((prev) => prev.filter((g) => g.id !== (item._groupId || item.id)));
+      } else {
+        const { error } = await supabase
+          .from("ai_analysis_results")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", item.id);
+        if (error) throw error;
+        setAnalysis((prev) => prev.filter((a) => a.id !== item.id));
+      }
 
-      setAnalysis((prev) => prev.filter((a) => a.id !== analysisId));
-      if (selectedAnalysisId === analysisId) setSelectedAnalysisId(null);
+      if (selectedAnalysisId === item.id) setSelectedAnalysisId(null);
 
       await callRecalculatePricing();
       await logQuoteActivity(id, currentStaff?.staffId || "", "document_removed", {
-        analysis_id: analysisId,
+        source: item._source || "analysis",
+        item_id: item._groupId || item.id,
         file_name: fileName,
       });
       setActivityLogLoaded(false);
@@ -1983,6 +2041,63 @@ export default function AdminQuoteDetail() {
     } catch (err) {
       console.error("Failed to remove document:", err);
       toast.error("Failed to remove document");
+    }
+  };
+
+  const handleRemoveCertification = async (item: AIAnalysis, fileName: string) => {
+    if (!id) return;
+    if (!window.confirm(`Remove certification from "${fileName}"? Totals will be recalculated.`)) {
+      return;
+    }
+    try {
+      if (item._source === "group") {
+        const groupId = item._groupId || item.id;
+        const { error } = await supabase
+          .from("quote_document_groups")
+          .update({ certification_type_id: null, certification_price: 0 })
+          .eq("id", groupId);
+        if (error) throw error;
+        setDocumentGroups((prev) =>
+          prev.map((g) =>
+            g.id === groupId
+              ? { ...g, certification_type_id: null, certification_price: 0 }
+              : g,
+          ),
+        );
+      } else {
+        // Legacy analysis-mode: clear certification fields on the row +
+        // delete document_certifications rows for the underlying file.
+        const { error: arErr } = await supabase
+          .from("ai_analysis_results")
+          .update({ certification_type_id: null, certification_price: 0 })
+          .eq("id", item.id);
+        if (arErr) throw arErr;
+        if (item.quote_file_id) {
+          await supabase
+            .from("document_certifications")
+            .delete()
+            .eq("quote_file_id", item.quote_file_id);
+        }
+        setAnalysis((prev) =>
+          prev.map((a) =>
+            a.id === item.id
+              ? { ...a, certification_price: 0 }
+              : a,
+          ),
+        );
+      }
+
+      await callRecalculatePricing();
+      await logQuoteActivity(id, currentStaff?.staffId || "", "certification_removed", {
+        source: item._source || "analysis",
+        item_id: item._groupId || item.id,
+        file_name: fileName,
+      });
+      setActivityLogLoaded(false);
+      toast.success(`Certification removed from "${fileName}"`);
+    } catch (err) {
+      console.error("Failed to remove certification:", err);
+      toast.error("Failed to remove certification");
     }
   };
 
@@ -2998,13 +3113,48 @@ export default function AdminQuoteDetail() {
     );
   }
 
-  // Derive pricing summary totals from ai_analysis_results (excluding excluded items)
-  // Prefer quote.calculated_totals (updated by recalculate-quote-pricing edge function)
-  // over potentially-stale per-document line_total values in ai_analysis_results.
-  const activeAnalysis = analysis.filter(ar => !ar.is_excluded);
+  // Unified document list for Documents panel + Document Analysis tabs.
+  // When a quote has rows in quote_document_groups, those are the canonical
+  // billing source (recalculate_quote_from_groups sums from there). Fall back
+  // to ai_analysis_results for older quotes without groups so the panel still
+  // renders something.
+  const displayItems: AIAnalysis[] = documentGroups.length > 0
+    ? documentGroups.map((g) => ({
+        id: g.id,
+        quote_file_id: "",
+        detected_document_type: g.document_type,
+        detected_language: g.detected_language_name || g.source_language,
+        word_count: g.total_word_count,
+        page_count: g.total_pages,
+        assessed_complexity: g.complexity,
+        ocr_confidence: null,
+        document_type_confidence: g.ai_confidence,
+        language_confidence: g.ai_confidence,
+        complexity_confidence: g.ai_confidence,
+        complexity_multiplier: g.complexity_multiplier,
+        billable_pages: g.billable_pages,
+        base_rate: g.base_rate,
+        line_total: g.line_total,
+        translation_cost: null,
+        certification_cost: null,
+        certification_price: g.certification_price,
+        is_excluded: false,
+        _source: "group",
+        _groupId: g.id,
+        _displayName: g.group_label,
+        certification_type_id: g.certification_type_id,
+      }))
+    : analysis.map((a) => ({ ...a, _source: "analysis" as const }));
+
+  // Derive pricing summary totals from displayItems (groups when present,
+  // otherwise ai_analysis_results, both already filtered to active rows).
+  // Prefer quote.calculated_totals (updated by recalculate-quote-pricing
+  // edge function) over potentially-stale per-row line_total values.
+  const activeAnalysis = displayItems.filter(ar => !ar.is_excluded);
   const translationTotal = quote.calculated_totals?.translation_total
     ?? activeAnalysis.reduce((sum, ar) => sum + Number(ar.line_total || 0), 0);
   const docCertificationTotal = quote.calculated_totals?.doc_certification_total
+    ?? quote.calculated_totals?.certification_total
     ?? activeAnalysis.reduce((sum, ar) => sum + Number(ar.certification_price || 0), 0);
   const quoteCertificationTotal = Number(quote.calculated_totals?.quote_certification_total || 0);
   const displaySubtotal = quote.calculated_totals?.subtotal
@@ -3759,7 +3909,7 @@ export default function AdminQuoteDetail() {
             );
           })()}
 
-          {analysis.length > 0 && (
+          {displayItems.length > 0 && (
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Zap className="w-5 h-5 text-gray-400" />
@@ -3767,13 +3917,13 @@ export default function AdminQuoteDetail() {
               </h2>
 
               {/* Document Tabs */}
-              {analysis.length > 1 && (
+              {displayItems.length > 1 && (
                 <div className="flex border-b mb-4 overflow-x-auto">
-                  {analysis.map((item, index) => {
+                  {displayItems.map((item, index) => {
                     const nf = normalizedFiles.find((f) => f.id === item.quote_file_id);
                     const qf = files.find((f) => f.id === item.quote_file_id);
-                    const fileName = nf?.displayName || qf?.original_filename || `Document ${index + 1}`;
-                    const isActive = (selectedAnalysisId || analysis[0]?.id) === item.id;
+                    const fileName = item._displayName || nf?.displayName || qf?.original_filename || `Document ${index + 1}`;
+                    const isActive = (selectedAnalysisId || displayItems[0]?.id) === item.id;
                     return (
                       <div
                         key={item.id}
@@ -3795,7 +3945,7 @@ export default function AdminQuoteDetail() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleRemoveDocument(item.id, fileName);
+                            handleRemoveDocument(item, fileName);
                           }}
                           className="ml-1 mr-3 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
                           title={`Remove ${fileName}`}
@@ -3812,15 +3962,43 @@ export default function AdminQuoteDetail() {
               {/* Selected Document Analysis */}
               {(() => {
                 const currentAnalysis =
-                  analysis.find(
-                    (a) => a.id === (selectedAnalysisId || analysis[0]?.id),
-                  ) || analysis[0];
+                  displayItems.find(
+                    (a) => a.id === (selectedAnalysisId || displayItems[0]?.id),
+                  ) || displayItems[0];
                 if (!currentAnalysis) return null;
 
-                const docCerts = certifications.filter(
-                  (c) => c.quote_file_id === currentAnalysis.quote_file_id,
-                );
-                const primaryCert = docCerts.find((c) => c.is_primary);
+                // Cert resolution differs by source. Groups carry the cert
+                // inline (certification_type_id + certification_price columns);
+                // analysis-mode quotes use the legacy document_certifications
+                // join via quote_file_id.
+                let primaryCert:
+                  | { id?: string; price: number; certification_types: { name?: string; code?: string } | null }
+                  | null = null;
+                if (currentAnalysis._source === "group") {
+                  if (currentAnalysis.certification_type_id) {
+                    const ct = certTypes.find(
+                      (c) => c.id === currentAnalysis.certification_type_id,
+                    );
+                    primaryCert = {
+                      price: Number(currentAnalysis.certification_price || 0),
+                      certification_types: ct
+                        ? { name: ct.name, code: ct.code }
+                        : null,
+                    };
+                  }
+                } else {
+                  const docCerts = certifications.filter(
+                    (c) => c.quote_file_id === currentAnalysis.quote_file_id,
+                  );
+                  const matched = docCerts.find((c) => c.is_primary);
+                  primaryCert = matched
+                    ? {
+                        id: matched.id,
+                        price: Number(matched.price || 0),
+                        certification_types: matched.certification_types || null,
+                      }
+                    : null;
+                }
 
                 return (
                   <div className="space-y-4">
@@ -3942,8 +4120,28 @@ export default function AdminQuoteDetail() {
 
                     {/* Document Certification */}
                     <div className="border border-gray-200 rounded-lg">
-                      <div className="px-4 py-3 bg-gray-50 border-b font-medium text-sm text-gray-700">
-                        Certification
+                      <div className="px-4 py-3 bg-gray-50 border-b font-medium text-sm text-gray-700 flex justify-between items-center">
+                        <span>Certification</span>
+                        {primaryCert && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nf = normalizedFiles.find((f) => f.id === currentAnalysis.quote_file_id);
+                              const qf = files.find((f) => f.id === currentAnalysis.quote_file_id);
+                              const fileName =
+                                currentAnalysis._displayName ||
+                                nf?.displayName ||
+                                qf?.original_filename ||
+                                "this document";
+                              handleRemoveCertification(currentAnalysis, fileName);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
+                            title="Remove certification"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Remove
+                          </button>
+                        )}
                       </div>
                       <div className="p-4">
                         {primaryCert ? (
@@ -4819,19 +5017,19 @@ export default function AdminQuoteDetail() {
 
               {/* === Documents Section === */}
               <div className="py-4 border-t border-gray-100">
-                {analysis.length > 0 && (
+                {displayItems.length > 0 && (
                   <div className="space-y-1">
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                       Documents
                     </p>
-                    {analysis.map((item, index) => {
+                    {displayItems.map((item, index) => {
                       const nf = normalizedFiles.find(
                         (f) => f.id === item.quote_file_id,
                       );
                       const qf = files.find(
                         (f) => f.id === item.quote_file_id,
                       );
-                      const fileName = nf?.displayName || qf?.original_filename || `Document ${index + 1}`;
+                      const fileName = item._displayName || nf?.displayName || qf?.original_filename || `Document ${index + 1}`;
                       return (
                         <div
                           key={item.id}
@@ -4849,7 +5047,7 @@ export default function AdminQuoteDetail() {
                             </span>
                             <button
                               type="button"
-                              onClick={() => handleRemoveDocument(item.id, fileName)}
+                              onClick={() => handleRemoveDocument(item, fileName)}
                               className="p-1 rounded text-gray-300 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
                               title={`Remove ${fileName}`}
                               aria-label={`Remove ${fileName}`}
@@ -4861,7 +5059,7 @@ export default function AdminQuoteDetail() {
                       );
                     })}
                     {/* Translation Total — only show if multiple documents */}
-                    {analysis.length > 1 && (
+                    {displayItems.length > 1 && (
                       <div className="flex justify-between text-sm text-gray-500 pt-1.5 mt-1.5 border-t border-dashed border-gray-200">
                         <span>Translation Total</span>
                         <span>${translationTotal.toFixed(2)}</span>
