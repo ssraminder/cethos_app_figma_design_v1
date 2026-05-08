@@ -307,7 +307,7 @@ export default function AdminProjectDetail() {
         proj.company_id
           ? sbGet(`companies?select=id,name&id=eq.${proj.company_id}&limit=1`)
           : Promise.resolve(null),
-        sbGet(`orders?select=id,order_number,status,total_amount,currency,created_at&internal_project_id=eq.${id}&order=created_at.desc`),
+        sbGet(`orders?select=id,order_number,status,total_amount,currency,quote_id,is_direct_order,created_at&internal_project_id=eq.${id}&order=created_at.desc`),
         sbGet(`quotes?select=id,quote_number,status,total,currency,created_at&internal_project_id=eq.${id}&order=created_at.desc`),
       ]);
       if (cancelled) return;
@@ -315,12 +315,23 @@ export default function AdminProjectDetail() {
       if (custRes.ok) { const r: any[] = await custRes.json(); setCustomer(r[0] ?? null); }
       if (compRes?.ok) { const r: any[] = await compRes.json(); setCompany(r[0] ?? null); }
 
-      // Merge orders + quotes into a single Tasks list. An order created from a
-      // quote shares the same internal_project_id; we surface both so staff can
-      // see the full lineage. Quotes that converted into orders show the order
-      // entry — staff can drill into either to see the relationship.
+      // Merge orders + quotes into a single Tasks list. An order created from
+      // a quote shares the same internal_project_id; we surface both so staff
+      // can see the full lineage.
+      //
+      // Exception: direct orders auto-create a scaffolding quote
+      // (admin-create-order writes a `paid` quote with status='paid' so the
+      // order can attach to it). Surfacing that quote on the project page is
+      // noise — staff just want to see the order. Hide any quote whose id
+      // matches the underlying quote_id of an order in this project (covers
+      // both direct orders and quote→order conversions, which is also fine
+      // because once a quote becomes an order, the order is the canonical
+      // entry).
       const ordRows: any[] = ordRes.ok ? await ordRes.json() : [];
       const quoteRows: any[] = quoteRes.ok ? await quoteRes.json() : [];
+      const quoteIdsHiddenByOrder = new Set(
+        ordRows.map((o: any) => o.quote_id).filter(Boolean),
+      );
       const orderTasks: Task[] = ordRows.map((o: any) => ({
         kind: "order",
         id: o.id,
@@ -330,15 +341,17 @@ export default function AdminProjectDetail() {
         currency: o.currency,
         created_at: o.created_at,
       }));
-      const quoteTasks: Task[] = quoteRows.map((q: any) => ({
-        kind: "quote",
-        id: q.id,
-        number: q.quote_number,
-        status: q.status,
-        total: Number(q.total) || 0,
-        currency: q.currency,
-        created_at: q.created_at,
-      }));
+      const quoteTasks: Task[] = quoteRows
+        .filter((q: any) => !quoteIdsHiddenByOrder.has(q.id))
+        .map((q: any) => ({
+          kind: "quote",
+          id: q.id,
+          number: q.quote_number,
+          status: q.status,
+          total: Number(q.total) || 0,
+          currency: q.currency,
+          created_at: q.created_at,
+        }));
       const merged = [...orderTasks, ...quoteTasks].sort((a, b) =>
         b.created_at.localeCompare(a.created_at),
       );
