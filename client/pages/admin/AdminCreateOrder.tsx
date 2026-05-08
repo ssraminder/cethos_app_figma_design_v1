@@ -1750,140 +1750,6 @@ export default function AdminCreateOrder() {
                     </button>
                   </div>
                 )}
-                {/* Customer-side Project Manager picker — searches the
-                    company_project_managers directory for the selected
-                    customer's company. Renders inline "+ Add new" when the
-                    typed value doesn't match an existing PM. */}
-                <div className="mt-3">
-                  <label className="block text-xs text-gray-600 mb-1">
-                    Client Project Manager{" "}
-                    {mode === "direct_order" && (
-                      <span className="text-red-500">*</span>
-                    )}
-                  </label>
-                  {clientPmId ? (
-                    <div className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-                      <div className="min-w-0">
-                        <div className="font-medium text-gray-900 truncate">
-                          {clientPmName}
-                        </div>
-                        <div className="text-xs text-gray-500 truncate">
-                          {clientPmEmail}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={unlinkClientPm}
-                        className="text-xs text-gray-500 hover:text-gray-700 underline shrink-0"
-                      >
-                        change
-                      </button>
-                    </div>
-                  ) : clientPmAddingNew ? (
-                    <div className="rounded-md border border-teal-200 bg-teal-50 p-2 space-y-2">
-                      <input
-                        type="text"
-                        value={clientPmName}
-                        onChange={(e) => setClientPmName(e.target.value)}
-                        placeholder="PM full name"
-                        className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                      />
-                      <input
-                        type="email"
-                        value={clientPmEmail}
-                        onChange={(e) => setClientPmEmail(e.target.value)}
-                        placeholder="PM email"
-                        className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const id = await saveNewClientPm();
-                            if (id) setClientPmAddingNew(false);
-                          }}
-                          className="px-3 py-1 text-xs rounded bg-teal-600 text-white hover:bg-teal-700"
-                        >
-                          Save to {customer?.full_name || "company"} directory
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setClientPmAddingNew(false);
-                            setClientPmName("");
-                            setClientPmEmail("");
-                          }}
-                          className="px-3 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={clientPmName}
-                        onChange={(e) => {
-                          setClientPmName(e.target.value);
-                          setClientPmDropdownOpen(true);
-                        }}
-                        onFocus={() => setClientPmDropdownOpen(true)}
-                        onBlur={() =>
-                          window.setTimeout(
-                            () => setClientPmDropdownOpen(false),
-                            150,
-                          )
-                        }
-                        disabled={!customer?.company_id}
-                        placeholder={
-                          !customer
-                            ? "Pick a customer first"
-                            : !customer.company_id
-                              ? "This customer isn't linked to a company"
-                              : mode === "direct_order"
-                                ? "Search PMs by name or email — required"
-                                : "Search PMs by name or email"
-                        }
-                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400"
-                      />
-                      {clientPmDropdownOpen && customer?.company_id && (
-                        <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-auto">
-                          {clientPmSuggestions.map((pm) => (
-                            <li
-                              key={pm.id}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                pickClientPm(pm);
-                              }}
-                              className="px-3 py-2 text-sm hover:bg-teal-50 cursor-pointer border-b last:border-b-0"
-                            >
-                              <div className="font-medium text-gray-900">
-                                {pm.full_name}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {pm.email}
-                                {pm.role ? ` · ${pm.role}` : ""}
-                              </div>
-                            </li>
-                          ))}
-                          <li
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              setClientPmAddingNew(true);
-                              setClientPmDropdownOpen(false);
-                              if (!clientPmEmail) setClientPmEmail("");
-                            }}
-                            className="px-3 py-2 text-sm hover:bg-teal-50 cursor-pointer text-teal-700 font-medium"
-                          >
-                            + Add new project manager
-                            {clientPmName.trim() ? ` (${clientPmName.trim()})` : ""}
-                          </li>
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </div>
                 {projectDropdownOpen && customer &&
                   (projectSuggestions.length > 0 || clientProjectNumber.trim()) && (
                     <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-auto">
@@ -1933,6 +1799,149 @@ export default function AdminCreateOrder() {
                     </ul>
                   )}
               </div>
+            </div>
+
+            {/* Customer-side Project Manager picker — full-width row,
+                separate from the Branch / PO / Project grid above so the
+                project typeahead dropdown can't visually clobber it. */}
+            <div className="border-t pt-4">
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">
+                Client Project Manager{" "}
+                {mode === "direct_order" && (
+                  <span className="text-red-500">*</span>
+                )}
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                {customer?.company_id
+                  ? `Pick the customer-side PM responsible for this order. Searches ${customer.full_name || "the customer"}'s directory; "+ Add new project manager" saves a new contact for next time.`
+                  : !customer
+                    ? "Pick a customer first."
+                    : "This customer isn't linked to a company — PM directory is per-company."}
+              </p>
+              {clientPmId ? (
+                <div className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm max-w-xl">
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-900 truncate">
+                      {clientPmName}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {clientPmEmail}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={unlinkClientPm}
+                    className="text-xs text-gray-500 hover:text-gray-700 underline shrink-0"
+                  >
+                    change
+                  </button>
+                </div>
+              ) : clientPmAddingNew ? (
+                <div className="rounded-md border border-teal-200 bg-teal-50 p-3 space-y-2 max-w-xl">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={clientPmName}
+                      onChange={(e) => setClientPmName(e.target.value)}
+                      placeholder="PM full name"
+                      className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                    <input
+                      type="email"
+                      value={clientPmEmail}
+                      onChange={(e) => setClientPmEmail(e.target.value)}
+                      placeholder="PM email"
+                      className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const id = await saveNewClientPm();
+                        if (id) setClientPmAddingNew(false);
+                      }}
+                      className="px-3 py-1 text-xs rounded bg-teal-600 text-white hover:bg-teal-700"
+                    >
+                      Save to {customer?.full_name || "company"} directory
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setClientPmAddingNew(false);
+                        setClientPmName("");
+                        setClientPmEmail("");
+                      }}
+                      className="px-3 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="relative max-w-xl">
+                  <input
+                    type="text"
+                    value={clientPmName}
+                    onChange={(e) => {
+                      setClientPmName(e.target.value);
+                      setClientPmDropdownOpen(true);
+                    }}
+                    onFocus={() => setClientPmDropdownOpen(true)}
+                    onBlur={() =>
+                      window.setTimeout(
+                        () => setClientPmDropdownOpen(false),
+                        150,
+                      )
+                    }
+                    disabled={!customer?.company_id}
+                    placeholder={
+                      !customer
+                        ? "Pick a customer first"
+                        : !customer.company_id
+                          ? "This customer isn't linked to a company"
+                          : mode === "direct_order"
+                            ? "Search PMs by name or email — required"
+                            : "Search PMs by name or email"
+                    }
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400"
+                  />
+                  {clientPmDropdownOpen && customer?.company_id && (
+                    <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-auto">
+                      {clientPmSuggestions.map((pm) => (
+                        <li
+                          key={pm.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            pickClientPm(pm);
+                          }}
+                          className="px-3 py-2 text-sm hover:bg-teal-50 cursor-pointer border-b last:border-b-0"
+                        >
+                          <div className="font-medium text-gray-900">
+                            {pm.full_name}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {pm.email}
+                            {pm.role ? ` · ${pm.role}` : ""}
+                          </div>
+                        </li>
+                      ))}
+                      <li
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setClientPmAddingNew(true);
+                          setClientPmDropdownOpen(false);
+                          if (!clientPmEmail) setClientPmEmail("");
+                        }}
+                        className="px-3 py-2 text-sm hover:bg-teal-50 cursor-pointer text-teal-700 font-medium"
+                      >
+                        + Add new project manager
+                        {clientPmName.trim() ? ` (${clientPmName.trim()})` : ""}
+                      </li>
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           </section>
 
