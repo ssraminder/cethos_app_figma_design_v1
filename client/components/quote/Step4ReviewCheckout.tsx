@@ -773,7 +773,8 @@ export default function Step4ReviewCheckout() {
           "id, quote_file_id, manual_filename, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status, ocr_confidence, language_confidence, document_type_confidence, complexity_confidence",
         )
         .eq("quote_id", quoteId)
-        .eq("processing_status", "completed");
+        .eq("processing_status", "completed")
+        .is("deleted_at", null);
 
       if (analysisError) throw analysisError;
 

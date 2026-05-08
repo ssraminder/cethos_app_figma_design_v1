@@ -130,7 +130,8 @@ export function useQuotePricing(quoteId: string | null): QuotePricing {
             `,
             )
             .eq("quote_files.quote_id", quoteId)
-            .eq("processing_status", "complete");
+            .eq("processing_status", "complete")
+            .is("deleted_at", null);
 
           if (resultsError) throw resultsError;
 

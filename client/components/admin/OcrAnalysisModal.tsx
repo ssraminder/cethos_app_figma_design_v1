@@ -136,7 +136,8 @@ export default function OcrAnalysisModal({
         .select(
           "id, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, ocr_confidence, language_confidence, document_type_confidence, complexity_confidence, processing_status, quote_file_id, base_rate, certification_price, line_total, is_excluded, quote_files(original_filename)",
         )
-        .eq("quote_id", quoteId);
+        .eq("quote_id", quoteId)
+        .is("deleted_at", null);
 
       if (error) throw error;
       setAnalysisResults(data || []);
