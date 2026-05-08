@@ -75,6 +75,8 @@ interface Task {
   total: number;
   currency: string | null;
   created_at: string;
+  pm_name: string | null;
+  pm_email: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -307,8 +309,8 @@ export default function AdminProjectDetail() {
         proj.company_id
           ? sbGet(`companies?select=id,name&id=eq.${proj.company_id}&limit=1`)
           : Promise.resolve(null),
-        sbGet(`orders?select=id,order_number,status,total_amount,currency,quote_id,is_direct_order,created_at&internal_project_id=eq.${id}&order=created_at.desc`),
-        sbGet(`quotes?select=id,quote_number,status,total,currency,created_at&internal_project_id=eq.${id}&order=created_at.desc`),
+        sbGet(`orders?select=id,order_number,status,total_amount,currency,quote_id,is_direct_order,created_at,client_pm:company_project_managers!orders_client_pm_id_fkey(id,full_name,email)&internal_project_id=eq.${id}&order=created_at.desc`),
+        sbGet(`quotes?select=id,quote_number,status,total,currency,created_at,client_pm:company_project_managers!quotes_client_pm_id_fkey(id,full_name,email)&internal_project_id=eq.${id}&order=created_at.desc`),
       ]);
       if (cancelled) return;
 
@@ -332,6 +334,17 @@ export default function AdminProjectDetail() {
       const quoteIdsHiddenByOrder = new Set(
         ordRows.map((o: any) => o.quote_id).filter(Boolean),
       );
+      // PostgREST returns the embedded resource as an object when the FK is
+      // unique; we tolerate both shapes so the join layout doesn't matter.
+      const pmFrom = (row: any) => {
+        const pm = Array.isArray(row?.client_pm)
+          ? row.client_pm[0]
+          : row?.client_pm;
+        return {
+          pm_name: pm?.full_name ?? null,
+          pm_email: pm?.email ?? null,
+        };
+      };
       const orderTasks: Task[] = ordRows.map((o: any) => ({
         kind: "order",
         id: o.id,
@@ -340,6 +353,7 @@ export default function AdminProjectDetail() {
         total: Number(o.total_amount) || 0,
         currency: o.currency,
         created_at: o.created_at,
+        ...pmFrom(o),
       }));
       const quoteTasks: Task[] = quoteRows
         .filter((q: any) => !quoteIdsHiddenByOrder.has(q.id))
@@ -351,6 +365,7 @@ export default function AdminProjectDetail() {
           total: Number(q.total) || 0,
           currency: q.currency,
           created_at: q.created_at,
+          ...pmFrom(q),
         }));
       const merged = [...orderTasks, ...quoteTasks].sort((a, b) =>
         b.created_at.localeCompare(a.created_at),
@@ -695,8 +710,19 @@ export default function AdminProjectDetail() {
                         </span>
                         <StatusBadge status={t.status} />
                       </div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        {format(new Date(t.created_at), "MMM d, yyyy")}
+                      <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                        <span>{format(new Date(t.created_at), "MMM d, yyyy")}</span>
+                        {t.pm_name && (
+                          <>
+                            <span className="text-gray-300">·</span>
+                            <span className="text-gray-700">
+                              <span className="font-medium">{t.pm_name}</span>
+                              {t.pm_email && (
+                                <span className="text-gray-500"> · {t.pm_email}</span>
+                              )}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="text-sm font-medium text-gray-900 tabular-nums">

@@ -219,6 +219,7 @@ serve(async (req: Request) => {
         paid_at: new Date().toISOString(),
         currency: order.currency || custRec.currency || "CAD",
         tax_rate_id: order.taxRateId || custRec.default_tax_rate_id || null,
+        client_pm_id: order.clientPmId || null,
       })
       .select("id, quote_number")
       .single();
@@ -370,6 +371,7 @@ serve(async (req: Request) => {
         po_number: order.poNumber || null,
         client_project_number: order.clientProjectNumber || null,
         internal_project_id: internalProjectId,
+        client_pm_id: order.clientPmId || null,
       })
       .select("id, order_number")
       .single();
