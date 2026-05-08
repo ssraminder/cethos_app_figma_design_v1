@@ -176,6 +176,20 @@ export default function AdminCreateOrder() {
   const [branchOverrideOpen, setBranchOverrideOpen] = useState(false);
   const [poNumber, setPoNumber] = useState<string>("");
   const [clientProjectNumber, setClientProjectNumber] = useState<string>("");
+  // ── Client PM picker (typeahead over company_project_managers) ──
+  // Customer-side contact person responsible for this order — distinct
+  // from our internal staff_users. Lives in a per-company directory that
+  // grows over time; staff usually pick an existing PM but can add a new
+  // one inline when the company sends in a fresh contact.
+  const [clientPmId, setClientPmId] = useState<string | null>(null);
+  const [clientPmName, setClientPmName] = useState<string>("");
+  const [clientPmEmail, setClientPmEmail] = useState<string>("");
+  const [clientPmSuggestions, setClientPmSuggestions] = useState<
+    Array<{ id: string; full_name: string; email: string; role: string | null }>
+  >([]);
+  const [clientPmDropdownOpen, setClientPmDropdownOpen] = useState(false);
+  const [clientPmAddingNew, setClientPmAddingNew] = useState(false);
+  const clientPmDebounceRef = useRef<number | null>(null);
   // ── Project picker (typeahead over internal_projects) ──
   const [projectSuggestions, setProjectSuggestions] = useState<ProjectSuggestion[]>([]);
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
@@ -298,6 +312,121 @@ export default function AdminCreateOrder() {
     // RPC match this exact project on submit.
     setClientProjectNumber(p.client_project_number ?? "");
     setProjectDropdownOpen(false);
+  };
+
+  // ── Client PM picker: search company_project_managers under the customer's
+  //    company by name or email. Resets when customer changes so the
+  //    directory is always scoped to the right company.
+  useEffect(() => {
+    setClientPmId(null);
+    setClientPmName("");
+    setClientPmEmail("");
+    setClientPmSuggestions([]);
+    setClientPmAddingNew(false);
+    setClientPmDropdownOpen(false);
+  }, [customer?.id]);
+
+  useEffect(() => {
+    if (!customer?.company_id) {
+      setClientPmSuggestions([]);
+      return;
+    }
+    if (clientPmDebounceRef.current)
+      window.clearTimeout(clientPmDebounceRef.current);
+    clientPmDebounceRef.current = window.setTimeout(async () => {
+      try {
+        const q = clientPmName.trim().replace(/[*,%()]/g, "");
+        const searchFilter =
+          q.length >= 1
+            ? `&or=(full_name.ilike.*${q}*,email.ilike.*${q}*)`
+            : "";
+        const path =
+          `company_project_managers?select=id,full_name,email,role` +
+          `&company_id=eq.${customer.company_id}&is_active=eq.true${searchFilter}` +
+          `&order=full_name&limit=10`;
+        const res = await sbFetch(path);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setClientPmSuggestions(data || []);
+      } catch {
+        setClientPmSuggestions([]);
+      }
+    }, 200);
+    return () => {
+      if (clientPmDebounceRef.current)
+        window.clearTimeout(clientPmDebounceRef.current);
+    };
+  }, [clientPmName, customer?.company_id]);
+
+  const pickClientPm = (pm: {
+    id: string;
+    full_name: string;
+    email: string;
+  }) => {
+    setClientPmId(pm.id);
+    setClientPmName(pm.full_name);
+    setClientPmEmail(pm.email);
+    setClientPmDropdownOpen(false);
+    setClientPmAddingNew(false);
+  };
+
+  const unlinkClientPm = () => {
+    setClientPmId(null);
+    setClientPmEmail("");
+  };
+
+  // Persist a brand-new PM into the company directory. Called inline from
+  // the picker when staff types a name/email that doesn't match an
+  // existing PM and clicks "Save". Returns the new id so it can be
+  // attached to the order on the same submit.
+  const saveNewClientPm = async (): Promise<string | null> => {
+    if (!customer?.company_id) {
+      toast.error("Pick a customer with a company before adding a PM");
+      return null;
+    }
+    const name = clientPmName.trim();
+    const email = clientPmEmail.trim();
+    if (!name || !email) {
+      toast.error("PM name and email are both required");
+      return null;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("PM email looks invalid");
+      return null;
+    }
+    try {
+      // Try to find an existing PM with the same email first — staff often
+      // re-types a name slightly differently across orders.
+      const existingRes = await sbFetch(
+        `company_project_managers?select=id,full_name,email,role&company_id=eq.${customer.company_id}&email=eq.${encodeURIComponent(email)}&limit=1`,
+      );
+      const existing: any[] = existingRes.ok ? await existingRes.json() : [];
+      if (existing.length > 0) {
+        pickClientPm(existing[0]);
+        toast.info(`Using existing PM ${existing[0].full_name}`);
+        return existing[0].id;
+      }
+
+      const { data, error } = await supabase
+        .from("company_project_managers")
+        .insert({
+          company_id: customer.company_id,
+          full_name: name,
+          email,
+          created_by_staff_id: session?.staffId || null,
+        })
+        .select("id, full_name, email, role")
+        .single();
+      if (error || !data) {
+        throw new Error(error?.message || "Failed to save PM");
+      }
+      pickClientPm(data);
+      toast.success(`Added ${data.full_name} to ${customer.full_name || "company"}'s PM directory`);
+      return data.id;
+    } catch (err: any) {
+      toast.error(`Failed to save PM: ${err.message || "unknown"}`);
+      return null;
+    }
   };
 
   const unlinkProject = () => {
@@ -644,6 +773,12 @@ export default function AdminCreateOrder() {
     ) {
       return "Client project number is required for direct orders";
     }
+    if (mode === "direct_order" && !clientPmId && !clientPmAddingNew) {
+      return "Pick a client project manager (or add one) for direct orders";
+    }
+    if (mode === "direct_order" && clientPmAddingNew && !clientPmId) {
+      return "Save the new project manager before submitting the order";
+    }
     if (
       customer.requires_client_project_number &&
       !clientProjectNumber.trim()
@@ -825,6 +960,7 @@ export default function AdminCreateOrder() {
           poNumber: poNumber.trim() || null,
           clientProjectNumber: clientProjectNumber.trim() || null,
           workflowTemplateCode: workflowTemplateCode || null,
+          clientPmId: clientPmId || null,
         },
         documents,
         pricing,
@@ -1598,6 +1734,140 @@ export default function AdminCreateOrder() {
                     </button>
                   </div>
                 )}
+                {/* Customer-side Project Manager picker — searches the
+                    company_project_managers directory for the selected
+                    customer's company. Renders inline "+ Add new" when the
+                    typed value doesn't match an existing PM. */}
+                <div className="mt-3">
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Client Project Manager{" "}
+                    {mode === "direct_order" && (
+                      <span className="text-red-500">*</span>
+                    )}
+                  </label>
+                  {clientPmId ? (
+                    <div className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                      <div className="min-w-0">
+                        <div className="font-medium text-gray-900 truncate">
+                          {clientPmName}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {clientPmEmail}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={unlinkClientPm}
+                        className="text-xs text-gray-500 hover:text-gray-700 underline shrink-0"
+                      >
+                        change
+                      </button>
+                    </div>
+                  ) : clientPmAddingNew ? (
+                    <div className="rounded-md border border-teal-200 bg-teal-50 p-2 space-y-2">
+                      <input
+                        type="text"
+                        value={clientPmName}
+                        onChange={(e) => setClientPmName(e.target.value)}
+                        placeholder="PM full name"
+                        className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                      <input
+                        type="email"
+                        value={clientPmEmail}
+                        onChange={(e) => setClientPmEmail(e.target.value)}
+                        placeholder="PM email"
+                        className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const id = await saveNewClientPm();
+                            if (id) setClientPmAddingNew(false);
+                          }}
+                          className="px-3 py-1 text-xs rounded bg-teal-600 text-white hover:bg-teal-700"
+                        >
+                          Save to {customer?.full_name || "company"} directory
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClientPmAddingNew(false);
+                            setClientPmName("");
+                            setClientPmEmail("");
+                          }}
+                          className="px-3 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={clientPmName}
+                        onChange={(e) => {
+                          setClientPmName(e.target.value);
+                          setClientPmDropdownOpen(true);
+                        }}
+                        onFocus={() => setClientPmDropdownOpen(true)}
+                        onBlur={() =>
+                          window.setTimeout(
+                            () => setClientPmDropdownOpen(false),
+                            150,
+                          )
+                        }
+                        disabled={!customer?.company_id}
+                        placeholder={
+                          !customer
+                            ? "Pick a customer first"
+                            : !customer.company_id
+                              ? "This customer isn't linked to a company"
+                              : mode === "direct_order"
+                                ? "Search PMs by name or email — required"
+                                : "Search PMs by name or email"
+                        }
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400"
+                      />
+                      {clientPmDropdownOpen && customer?.company_id && (
+                        <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-auto">
+                          {clientPmSuggestions.map((pm) => (
+                            <li
+                              key={pm.id}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                pickClientPm(pm);
+                              }}
+                              className="px-3 py-2 text-sm hover:bg-teal-50 cursor-pointer border-b last:border-b-0"
+                            >
+                              <div className="font-medium text-gray-900">
+                                {pm.full_name}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {pm.email}
+                                {pm.role ? ` · ${pm.role}` : ""}
+                              </div>
+                            </li>
+                          ))}
+                          <li
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setClientPmAddingNew(true);
+                              setClientPmDropdownOpen(false);
+                              if (!clientPmEmail) setClientPmEmail("");
+                            }}
+                            className="px-3 py-2 text-sm hover:bg-teal-50 cursor-pointer text-teal-700 font-medium"
+                          >
+                            + Add new project manager
+                            {clientPmName.trim() ? ` (${clientPmName.trim()})` : ""}
+                          </li>
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
                 {projectDropdownOpen && customer &&
                   (projectSuggestions.length > 0 || clientProjectNumber.trim()) && (
                     <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-auto">
