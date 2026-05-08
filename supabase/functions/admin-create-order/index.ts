@@ -146,12 +146,22 @@ serve(async (req: Request) => {
     // Groups orders that share the same client_project_number under the same
     // company (or customer, for retail). Surfaced to vendors instead of the
     // raw client_project_number, which may carry client identifiers.
+    //
+    // For B2B agency direct orders (TRSB, etc.) the PO and the project number
+    // are usually the same string — the customer sends a single identifier
+    // that doubles as both. When staff fills only the PO field on the form,
+    // mirror it into the project label so the project lists / vendor view
+    // don't end up labelless. The form still wins if both are filled.
+    const projectLabel =
+      (order.clientProjectNumber || "").trim() ||
+      (order.poNumber || "").trim() ||
+      null;
     const { data: projectIdData, error: projectErr } = await sb.rpc(
       "find_or_create_internal_project",
       {
         p_customer_id: customerId,
         p_company_id: custRec.company_id || null,
-        p_client_project_number: order.clientProjectNumber || null,
+        p_client_project_number: projectLabel,
         p_created_by_staff_id: staffId,
       },
     );
