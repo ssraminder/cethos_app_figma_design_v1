@@ -261,6 +261,7 @@ export default function AdminOrdersList() {
   const dateTo = searchParams.get("to") || "";
   const rushOnly = searchParams.get("rush") === "true";
   const xtrfStatus = searchParams.get("xtrfStatus") || "";
+  const poStatus = searchParams.get("poStatus") || "";
   const xtrfInvoiceStatuses = searchParams.get("xtrfInvStatus")?.split(",").filter(Boolean) || [];
   const xtrfPaymentStatuses = searchParams.get("xtrfPayStatus")?.split(",").filter(Boolean) || [];
   const serviceFilter = (searchParams.get("service") || "all") as
@@ -379,7 +380,7 @@ export default function AdminOrdersList() {
     setLoading(true);
     try {
       const select =
-        "id,order_number,status,work_status,total_amount,is_rush,created_at,estimated_delivery_date,service_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,customers!inner(email,full_name,company_name,customer_type,company_id),service:services(code)";
+        "id,order_number,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,service_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code)";
 
       const filters: string[] = [];
 
@@ -419,6 +420,15 @@ export default function AdminOrdersList() {
       }
       if (xtrfPaymentStatuses.length > 0) {
         filters.push(`xtrf_invoice_payment_status=in.(${xtrfPaymentStatuses.join(",")})`);
+      }
+      // PO Pending: customer is in pending_acceptable PO mode and the
+      // order has no po_number yet. Mirrors the DB-level invoice-issue
+      // gate so staff can chase what's blocking issue.
+      if (poStatus === "pending") {
+        filters.push(`customers.requires_po_mode=eq.pending_acceptable`);
+        filters.push(`po_number=is.null`);
+      } else if (poStatus === "received") {
+        filters.push(`po_number=not.is.null`);
       }
       if (serviceFilter !== "all" && certifiedServiceId) {
         filters.push(serviceFilter === "certified"
@@ -795,6 +805,24 @@ export default function AdminOrdersList() {
                   <option value="CLOSED">XTRF Closed</option>
                   <option value="CANCELLED">XTRF Cancelled</option>
                   <option value="none">No XTRF Project</option>
+                </select>
+              </div>
+
+              {/* PO Status — surfaces the orders blocked from invoicing
+                  because their customer is in pending_acceptable PO mode
+                  and the PO hasn't arrived yet. */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PO Status
+                </label>
+                <select
+                  value={poStatus}
+                  onChange={(e) => updateFilter("poStatus", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All PO Status</option>
+                  <option value="pending">PO Pending — chase</option>
+                  <option value="received">PO Received</option>
                 </select>
               </div>
 
