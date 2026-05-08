@@ -29,6 +29,7 @@ import {
   Link2,
   ChevronDown,
   ChevronUp,
+  UserCheck,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
