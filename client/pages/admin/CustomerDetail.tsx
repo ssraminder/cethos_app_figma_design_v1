@@ -180,6 +180,33 @@ export default function CustomerDetail() {
     amount: number;
   } | null>(null);
   const [formData, setFormData] = useState<Partial<Customer>>({});
+
+  // Per-company Project Manager directory. Customer.company_id scopes the
+  // list. Staff can add/edit/deactivate inline; the same rows feed the
+  // PM picker on AdminCreateOrder.
+  interface ProjectManager {
+    id: string;
+    company_id: string;
+    full_name: string;
+    email: string;
+    phone: string | null;
+    role: string | null;
+    is_active: boolean;
+    notes: string | null;
+    created_at: string;
+  }
+  const [projectManagers, setProjectManagers] = useState<ProjectManager[]>([]);
+  const [pmShowInactive, setPmShowInactive] = useState(false);
+  const [pmAdding, setPmAdding] = useState(false);
+  const [pmEditId, setPmEditId] = useState<string | null>(null);
+  const [pmDraft, setPmDraft] = useState<{
+    full_name: string;
+    email: string;
+    phone: string;
+    role: string;
+    notes: string;
+  }>({ full_name: "", email: "", phone: "", role: "", notes: "" });
+  const [pmSaving, setPmSaving] = useState(false);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -447,6 +474,114 @@ export default function CustomerDetail() {
     }
   };
 
+  const fetchProjectManagers = async (companyId: string | null) => {
+    if (!companyId) {
+      setProjectManagers([]);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from("company_project_managers")
+        .select("id, company_id, full_name, email, phone, role, is_active, notes, created_at")
+        .eq("company_id", companyId)
+        .order("is_active", { ascending: false })
+        .order("full_name");
+      if (error) throw error;
+      setProjectManagers((data || []) as ProjectManager[]);
+    } catch (err) {
+      console.error("Error fetching project managers:", err);
+    }
+  };
+
+  const resetPmDraft = () => {
+    setPmDraft({ full_name: "", email: "", phone: "", role: "", notes: "" });
+    setPmAdding(false);
+    setPmEditId(null);
+  };
+
+  const startEditPm = (pm: ProjectManager) => {
+    setPmAdding(false);
+    setPmEditId(pm.id);
+    setPmDraft({
+      full_name: pm.full_name,
+      email: pm.email,
+      phone: pm.phone || "",
+      role: pm.role || "",
+      notes: pm.notes || "",
+    });
+  };
+
+  const saveProjectManager = async () => {
+    if (!customer?.company_id) {
+      toast.error("Customer is not linked to a company");
+      return;
+    }
+    const name = pmDraft.full_name.trim();
+    const email = pmDraft.email.trim();
+    if (!name || !email) {
+      toast.error("Name and email are both required");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Email looks invalid");
+      return;
+    }
+    setPmSaving(true);
+    try {
+      const payload = {
+        company_id: customer.company_id,
+        full_name: name,
+        email,
+        phone: pmDraft.phone.trim() || null,
+        role: pmDraft.role.trim() || null,
+        notes: pmDraft.notes.trim() || null,
+      };
+      if (pmEditId) {
+        const { error } = await supabase
+          .from("company_project_managers")
+          .update({
+            full_name: payload.full_name,
+            email: payload.email,
+            phone: payload.phone,
+            role: payload.role,
+            notes: payload.notes,
+          })
+          .eq("id", pmEditId);
+        if (error) throw error;
+        toast.success(`Updated ${name}`);
+      } else {
+        const { error } = await supabase
+          .from("company_project_managers")
+          .insert({
+            ...payload,
+            created_by_staff_id: session?.staffId || null,
+          });
+        if (error) throw error;
+        toast.success(`Added ${name} to the directory`);
+      }
+      resetPmDraft();
+      await fetchProjectManagers(customer.company_id);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save project manager");
+    } finally {
+      setPmSaving(false);
+    }
+  };
+
+  const togglePmActive = async (pm: ProjectManager) => {
+    try {
+      const { error } = await supabase
+        .from("company_project_managers")
+        .update({ is_active: !pm.is_active })
+        .eq("id", pm.id);
+      if (error) throw error;
+      toast.success(pm.is_active ? `Deactivated ${pm.full_name}` : `Reactivated ${pm.full_name}`);
+      if (customer?.company_id) await fetchProjectManagers(customer.company_id);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to toggle status");
+    }
+  };
+
   const fetchAllData = async () => {
     setLoading(true);
     await Promise.all([
@@ -462,6 +597,10 @@ export default function CustomerDetail() {
     ]);
     setLoading(false);
   };
+
+  useEffect(() => {
+    fetchProjectManagers(customer?.company_id || null);
+  }, [customer?.company_id]);
 
   useEffect(() => {
     fetchAllData();
@@ -1264,6 +1403,182 @@ export default function CustomerDetail() {
                   )}
                 </div>
               </div>
+
+              {/* Section: Project Managers — per-company directory of
+                  customer-side contacts (Steve Bisson at TRSB, etc.).
+                  These same rows feed the PM picker on AdminCreateOrder
+                  and the per-task PM display on AdminProjectDetail. */}
+              {customer.company_id ? (
+                <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold text-gray-800">
+                      <UserCheck className="w-4 h-4 inline mr-2" />
+                      Project Managers & Contacts
+                    </h3>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-gray-500 inline-flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={pmShowInactive}
+                          onChange={(e) => setPmShowInactive(e.target.checked)}
+                          className="rounded border-gray-300"
+                        />
+                        Show inactive
+                      </label>
+                      {!pmAdding && !pmEditId && (
+                        <button
+                          onClick={() => {
+                            setPmAdding(true);
+                            setPmEditId(null);
+                            setPmDraft({ full_name: "", email: "", phone: "", role: "", notes: "" });
+                          }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+                        >
+                          + Add PM
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {(pmAdding || pmEditId) && (
+                    <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 mb-4 space-y-3">
+                      <div className="text-sm font-medium text-teal-800">
+                        {pmEditId ? "Edit project manager" : "Add new project manager"}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          placeholder="Full name *"
+                          value={pmDraft.full_name}
+                          onChange={(e) => setPmDraft((p) => ({ ...p, full_name: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500"
+                        />
+                        <input
+                          type="email"
+                          placeholder="Email *"
+                          value={pmDraft.email}
+                          onChange={(e) => setPmDraft((p) => ({ ...p, email: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Phone (optional)"
+                          value={pmDraft.phone}
+                          onChange={(e) => setPmDraft((p) => ({ ...p, phone: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Role / title (optional)"
+                          value={pmDraft.role}
+                          onChange={(e) => setPmDraft((p) => ({ ...p, role: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                      <textarea
+                        placeholder="Notes (optional)"
+                        value={pmDraft.notes}
+                        onChange={(e) => setPmDraft((p) => ({ ...p, notes: e.target.value }))}
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={saveProjectManager}
+                          disabled={pmSaving}
+                          className="px-4 py-1.5 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                        >
+                          {pmSaving ? "Saving…" : pmEditId ? "Update" : "Add to directory"}
+                        </button>
+                        <button
+                          onClick={resetPmDraft}
+                          disabled={pmSaving}
+                          className="px-4 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {projectManagers.length === 0 ? (
+                    <p className="text-sm text-gray-500 italic">
+                      No project managers yet. Add the customer's PMs here so staff can pick
+                      them when creating orders.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+                            <th className="py-2 pr-4">Name</th>
+                            <th className="py-2 pr-4">Email</th>
+                            <th className="py-2 pr-4">Phone</th>
+                            <th className="py-2 pr-4">Role</th>
+                            <th className="py-2 pr-4">Status</th>
+                            <th className="py-2 pr-2 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {projectManagers
+                            .filter((pm) => pmShowInactive || pm.is_active)
+                            .map((pm) => (
+                              <tr
+                                key={pm.id}
+                                className={`border-b border-gray-100 last:border-0 ${
+                                  pm.is_active ? "" : "opacity-50"
+                                }`}
+                              >
+                                <td className="py-2 pr-4 font-medium text-gray-900">
+                                  {pm.full_name}
+                                </td>
+                                <td className="py-2 pr-4 text-gray-700">
+                                  <a
+                                    href={`mailto:${pm.email}`}
+                                    className="text-teal-700 hover:underline"
+                                  >
+                                    {pm.email}
+                                  </a>
+                                </td>
+                                <td className="py-2 pr-4 text-gray-700">
+                                  {pm.phone || "—"}
+                                </td>
+                                <td className="py-2 pr-4 text-gray-700">
+                                  {pm.role || "—"}
+                                </td>
+                                <td className="py-2 pr-4">
+                                  <span
+                                    className={`inline-block px-2 py-0.5 text-xs rounded-full ${
+                                      pm.is_active
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-gray-100 text-gray-500"
+                                    }`}
+                                  >
+                                    {pm.is_active ? "Active" : "Inactive"}
+                                  </span>
+                                </td>
+                                <td className="py-2 pr-2 text-right">
+                                  <button
+                                    onClick={() => startEditPm(pm)}
+                                    className="text-xs text-teal-700 hover:underline mr-3"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => togglePmActive(pm)}
+                                    className="text-xs text-gray-500 hover:text-gray-700 hover:underline"
+                                  >
+                                    {pm.is_active ? "Deactivate" : "Reactivate"}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ) : null}
 
               {/* Section: Accounts Receivable Summary */}
               <CustomerARSummary customerId={customer.id} customerName={customer.full_name} />
