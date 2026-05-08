@@ -44,6 +44,7 @@ interface Customer {
   customer_type: string;
   company_name: string | null;
   requires_po: boolean;
+  requires_po_mode: "not_required" | "required_upfront" | "pending_acceptable" | null;
   requires_client_project_number: boolean;
   billing_address_line1: string | null;
   billing_address_line2: string | null;
@@ -488,7 +489,7 @@ export default function CustomerDetail() {
         "backup_payment_method_id", "preferred_currency", "payment_terms",
         "is_ar_customer", "ar_contact_email", "accounting_contact_name",
         "accounting_contact_phone", "credit_limit", "ar_notes",
-        "requires_po", "requires_client_project_number",
+        "requires_po", "requires_po_mode", "requires_client_project_number",
       ] as const;
 
       const changes: Record<string, unknown> = {};
@@ -921,25 +922,49 @@ export default function CustomerDetail() {
                 <div className="mb-6">
                   <h4 className="text-sm font-semibold text-gray-600 border-b border-gray-100 pb-1 mb-3">Invoicing Requirements</h4>
                   <div className="space-y-3">
-                    <div className="flex items-start gap-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">
+                        PO Requirement
+                      </label>
                       {editing ? (
-                        <input
-                          type="checkbox"
-                          checked={!!formData.requires_po}
-                          onChange={(e) => setFormData((prev) => ({ ...prev, requires_po: e.target.checked }))}
-                          className="mt-0.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                        />
+                        <select
+                          value={formData.requires_po_mode ?? (formData.requires_po ? "required_upfront" : "not_required")}
+                          onChange={(e) => {
+                            const mode = e.target.value as
+                              | "not_required"
+                              | "required_upfront"
+                              | "pending_acceptable";
+                            setFormData((prev) => ({
+                              ...prev,
+                              requires_po_mode: mode,
+                              // Mirror the legacy boolean so any code path
+                              // still keying off requires_po keeps working.
+                              // Both "required_upfront" and
+                              // "pending_acceptable" map to true (PO is
+                              // expected); "not_required" maps to false.
+                              requires_po: mode !== "not_required",
+                            }));
+                          }}
+                          className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-2 focus:ring-teal-500"
+                        >
+                          <option value="not_required">Not required — PO optional</option>
+                          <option value="required_upfront">Required upfront — block orders without PO</option>
+                          <option value="pending_acceptable">Pending acceptable — order can be created without PO; invoice gated until PO arrives</option>
+                        </select>
                       ) : (
-                        <span className={`mt-0.5 text-sm ${customer.requires_po ? "text-teal-600" : "text-gray-400"}`}>
-                          {customer.requires_po ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                        </span>
-                      )}
-                      <div>
-                        <label className="text-sm font-medium text-gray-700">Requires Purchase Order (PO) on all orders</label>
-                        <p className="text-xs text-gray-500 ml-0">
-                          When enabled, orders without a PO number cannot be included on invoices for this customer.
+                        <p className="text-sm text-gray-900">
+                          {customer.requires_po_mode === "required_upfront"
+                            ? "Required upfront"
+                            : customer.requires_po_mode === "pending_acceptable"
+                              ? "Pending acceptable — PO arrives after delivery"
+                              : customer.requires_po
+                                ? "Required upfront"
+                                : "Not required"}
                         </p>
-                      </div>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        Pending acceptable is the right choice for B2B agencies (TRSB-style) where the PO arrives after delivery — staff can still create orders, but issuing an invoice requires the PO to be filled in. Use the "PO pending" filter on the Orders list to chase outstanding ones.
+                      </p>
                     </div>
                     <div className="flex items-start gap-3">
                       {editing ? (
