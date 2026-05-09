@@ -50,18 +50,32 @@ export default function VendorDetailHeader({
     }
   };
 
-  const handleSendInvitation = async () => {
+  // Default action sends a 6-digit login code (OTP). Vendors don't need
+  // to set up a password to log in. Hold Shift while clicking to send the
+  // legacy password-setup invitation link instead.
+  const handleSendLoginCode = async (
+    e: React.MouseEvent<HTMLButtonElement>,
+  ) => {
     setActionLoading(true);
+    const wantsInvitation = e.shiftKey;
     try {
       const { error } = await supabase.functions.invoke("vendor-auth-otp-send", {
-        body: { email: vendor.email, channel: "email" },
+        body: {
+          email: vendor.email,
+          channel: "email",
+          ...(wantsInvitation ? { mode: "invitation" } : {}),
+        },
       });
       if (error) throw error;
-      toast.success(`Invitation sent to ${vendor.email}`);
+      toast.success(
+        wantsInvitation
+          ? `Password-setup invitation sent to ${vendor.email}`
+          : `Login code sent to ${vendor.email}`,
+      );
       await onRefresh();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to send invitation"
+        err instanceof Error ? err.message : "Failed to send login code",
       );
     }
     setActionLoading(false);
@@ -221,11 +235,12 @@ export default function VendorDetailHeader({
                   {vendor.status === "active" ? "Deactivate" : "Activate"} Vendor
                 </button>
                 <button
-                  onClick={handleSendInvitation}
+                  onClick={handleSendLoginCode}
                   className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  title="Send a 6-digit login code via email. Hold Shift to send the legacy password-setup invitation."
                 >
                   <Send className="w-4 h-4" />
-                  Send Invitation
+                  Send Login Code
                 </button>
                 {vendor.invitation_sent_at && !vendor.invitation_accepted_at && (
                   <button

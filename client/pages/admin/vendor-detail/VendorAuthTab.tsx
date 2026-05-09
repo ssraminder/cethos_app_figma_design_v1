@@ -43,7 +43,10 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
     setConfirmAction(null);
   };
 
-  const handleSendInvitation = () =>
+  // Default sends a 6-digit login code so the vendor can sign in without
+  // accepting a separate invitation. Pass mode="invitation" to send the
+  // legacy password-setup link if you ever need it.
+  const handleSendLoginCode = () =>
     executeAction(
       "invite",
       async () => {
@@ -53,7 +56,20 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
         );
         if (error) throw error;
       },
-      `Invitation sent to ${vendor.email}`
+      `Login code sent to ${vendor.email}`
+    );
+
+  const handleSendPasswordInvitation = () =>
+    executeAction(
+      "invite",
+      async () => {
+        const { error } = await supabase.functions.invoke(
+          "vendor-auth-otp-send",
+          { body: { email: vendor.email, channel: "email", mode: "invitation" } }
+        );
+        if (error) throw error;
+      },
+      `Password-setup invitation sent to ${vendor.email}`
     );
 
   const handleSendReminder = () =>
@@ -265,18 +281,30 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
         </h3>
 
         <div className="flex flex-wrap gap-3">
-          {/* Send / Resend Invitation */}
+          {/* Default: send a 6-digit login OTP. No password setup needed. */}
           <button
-            onClick={handleSendInvitation}
+            onClick={handleSendLoginCode}
             disabled={!!actionLoading}
             className="flex items-center gap-2 px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
+            title="Email a 6-digit code the vendor can use to log in immediately."
           >
             {isLoading("invite") ? (
               <RefreshCw className="w-4 h-4 animate-spin" />
             ) : (
               <Send className="w-4 h-4" />
             )}
-            {vendor.invitation_sent_at ? "Resend Invitation" : "Send Invitation"}
+            Send Login Code
+          </button>
+
+          {/* Legacy escape hatch: password-setup invitation link. */}
+          <button
+            onClick={handleSendPasswordInvitation}
+            disabled={!!actionLoading}
+            className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+            title="Send the legacy password-setup invitation link. Most vendors don't need this."
+          >
+            <Send className="w-4 h-4" />
+            {vendor.invitation_sent_at ? "Resend Setup Invitation" : "Send Setup Invitation"}
           </button>
 
           {/* Send Reminder */}

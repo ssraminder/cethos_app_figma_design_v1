@@ -1,12 +1,11 @@
 // ============================================================================
-// vendor-auth-otp-send v2.0
-// Two modes:
-//   1. LOGIN OTP — vendor has vendor_auth record → generate 6-digit code,
-//      insert into vendor_otp, email branded login code
-//   2. INVITATION — vendor has no vendor_auth → generate token, insert into
-//      vendor_sessions, email setup link (original behaviour)
-// Supports single (email) and bulk (vendor_ids) modes.
-// Date: April 15, 2026
+// vendor-auth-otp-send v3.0
+// Single-email mode: ALWAYS sends a 6-digit login OTP to vendors that exist.
+// Vendors don't need to accept an invitation or set a password to log in.
+// Pass `mode: "invitation"` to explicitly send the password-setup link
+// instead — used by the admin "Send Invitation" escape hatch.
+// Bulk mode (vendor_ids) keeps the legacy auth-record dispatch.
+// Date: 2026-05-08
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
@@ -353,7 +352,7 @@ serve(async (req: Request) => {
     });
 
     const body = await req.json();
-    const { email, vendor_ids, is_reminder, channel } = body;
+    const { email, vendor_ids, is_reminder, channel, mode } = body;
 
     // ── Single mode (from vendor portal login or AdminVendorDetail) ──
     if (email && !vendor_ids) {
@@ -373,42 +372,14 @@ serve(async (req: Request) => {
         );
       }
 
-      // Check if vendor already has a vendor_auth record (has set up account)
-      const { data: authRecord } = await supabaseAdmin
-        .from("vendor_auth")
-        .select("vendor_id")
-        .eq("vendor_id", vendor.id)
-        .single();
+      // Default behaviour is now LOGIN OTP for every existing vendor — no
+      // password setup or invitation acceptance required. Staff can still
+      // explicitly send the legacy password-setup invitation by passing
+      // `mode: "invitation"` (used by the admin "Send Invitation" button).
+      const wantsInvitation = mode === "invitation";
 
-      if (authRecord) {
-        // ── LOGIN OTP flow: vendor has an account, send 6-digit code ──
-        console.log(`Vendor ${vendor.email} has auth record — sending login OTP`);
-
-        const result = await sendLoginOtp(
-          supabaseAdmin,
-          BREVO_API_KEY,
-          vendor,
-        );
-
-        if (!result.success) {
-          return new Response(
-            JSON.stringify({ success: false, error: result.error }),
-            { status: 400, headers: JSON_HEADERS },
-          );
-        }
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            mode: "otp",
-            message: `Login code sent to ${vendor.email}`,
-          }),
-          { headers: JSON_HEADERS },
-        );
-      } else {
-        // ── INVITATION flow: vendor has no account, send setup link ──
-        console.log(`Vendor ${vendor.email} has no auth record — sending invitation`);
-
+      if (wantsInvitation) {
+        console.log(`Vendor ${vendor.email}: sending password-setup invitation (explicit mode)`);
         const result = await sendInvitationForVendor(
           supabaseAdmin,
           BREVO_API_KEY,
@@ -432,6 +403,30 @@ serve(async (req: Request) => {
           { headers: JSON_HEADERS },
         );
       }
+
+      // Login OTP — works for vendors with or without a vendor_auth row.
+      console.log(`Vendor ${vendor.email}: sending login OTP`);
+      const result = await sendLoginOtp(
+        supabaseAdmin,
+        BREVO_API_KEY,
+        vendor,
+      );
+
+      if (!result.success) {
+        return new Response(
+          JSON.stringify({ success: false, error: result.error }),
+          { status: 400, headers: JSON_HEADERS },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          mode: "otp",
+          message: `Login code sent to ${vendor.email}`,
+        }),
+        { headers: JSON_HEADERS },
+      );
     }
 
     // ── Bulk mode (from AdminVendorsList) ──
