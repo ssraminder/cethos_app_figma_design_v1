@@ -50,28 +50,16 @@ export default function VendorDetailHeader({
     }
   };
 
-  // Default action sends a 6-digit login code (OTP). Vendors don't need
-  // to set up a password to log in. Hold Shift while clicking to send the
-  // legacy password-setup invitation link instead.
-  const handleSendLoginCode = async (
-    e: React.MouseEvent<HTMLButtonElement>,
-  ) => {
+  // Email OTP is the only vendor login flow. Click to send a fresh
+  // 6-digit code; vendor enters it on vendor.cethos.com to get a session.
+  const handleSendLoginCode = async () => {
     setActionLoading(true);
-    const wantsInvitation = e.shiftKey;
     try {
       const { error } = await supabase.functions.invoke("vendor-auth-otp-send", {
-        body: {
-          email: vendor.email,
-          channel: "email",
-          ...(wantsInvitation ? { mode: "invitation" } : {}),
-        },
+        body: { email: vendor.email, channel: "email" },
       });
       if (error) throw error;
-      toast.success(
-        wantsInvitation
-          ? `Password-setup invitation sent to ${vendor.email}`
-          : `Login code sent to ${vendor.email}`,
-      );
+      toast.success(`Login code sent to ${vendor.email}`);
       await onRefresh();
     } catch (err) {
       toast.error(
@@ -237,7 +225,7 @@ export default function VendorDetailHeader({
                 <button
                   onClick={handleSendLoginCode}
                   className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                  title="Send a 6-digit login code via email. Hold Shift to send the legacy password-setup invitation."
+                  title="Send a 6-digit login code via email."
                 >
                   <Send className="w-4 h-4" />
                   Send Login Code
