@@ -43,7 +43,9 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
     setConfirmAction(null);
   };
 
-  const handleSendInvitation = () =>
+  // Sends a 6-digit email OTP. Email OTP is the only login flow we use —
+  // no password setup, no SMS, no separate invitation acceptance.
+  const handleSendLoginCode = () =>
     executeAction(
       "invite",
       async () => {
@@ -53,7 +55,7 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
         );
         if (error) throw error;
       },
-      `Invitation sent to ${vendor.email}`
+      `Login code sent to ${vendor.email}`
     );
 
   const handleSendReminder = () =>
@@ -265,18 +267,21 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
         </h3>
 
         <div className="flex flex-wrap gap-3">
-          {/* Send / Resend Invitation */}
+          {/* Email OTP is the only login flow. Click to send a fresh
+              6-digit code; vendor enters it on vendor.cethos.com to
+              get a session. No password setup, no separate invitation. */}
           <button
-            onClick={handleSendInvitation}
+            onClick={handleSendLoginCode}
             disabled={!!actionLoading}
             className="flex items-center gap-2 px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
+            title="Email a 6-digit code the vendor can use to log in immediately."
           >
             {isLoading("invite") ? (
               <RefreshCw className="w-4 h-4 animate-spin" />
             ) : (
               <Send className="w-4 h-4" />
             )}
-            {vendor.invitation_sent_at ? "Resend Invitation" : "Send Invitation"}
+            Send Login Code
           </button>
 
           {/* Send Reminder */}

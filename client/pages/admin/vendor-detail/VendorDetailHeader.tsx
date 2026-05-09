@@ -50,18 +50,20 @@ export default function VendorDetailHeader({
     }
   };
 
-  const handleSendInvitation = async () => {
+  // Email OTP is the only vendor login flow. Click to send a fresh
+  // 6-digit code; vendor enters it on vendor.cethos.com to get a session.
+  const handleSendLoginCode = async () => {
     setActionLoading(true);
     try {
       const { error } = await supabase.functions.invoke("vendor-auth-otp-send", {
         body: { email: vendor.email, channel: "email" },
       });
       if (error) throw error;
-      toast.success(`Invitation sent to ${vendor.email}`);
+      toast.success(`Login code sent to ${vendor.email}`);
       await onRefresh();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to send invitation"
+        err instanceof Error ? err.message : "Failed to send login code",
       );
     }
     setActionLoading(false);
@@ -221,11 +223,12 @@ export default function VendorDetailHeader({
                   {vendor.status === "active" ? "Deactivate" : "Activate"} Vendor
                 </button>
                 <button
-                  onClick={handleSendInvitation}
+                  onClick={handleSendLoginCode}
                   className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  title="Send a 6-digit login code via email."
                 >
                   <Send className="w-4 h-4" />
-                  Send Invitation
+                  Send Login Code
                 </button>
                 {vendor.invitation_sent_at && !vendor.invitation_accepted_at && (
                   <button
