@@ -6,6 +6,10 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  notifyVendorCounterAccepted,
+  notifyVendorCounterRejected,
+} from "../_shared/notify-counter.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -67,10 +71,14 @@ serve(async (req: Request) => {
 
     const { data: vendor } = await supabase
       .from("vendors")
-      .select("full_name")
+      .select("id, full_name, email, additional_emails")
       .eq("id", offer.vendor_id)
       .single();
     const vendorName = vendor?.full_name || "Unknown";
+
+    const { data: orderRow } = step?.order_id
+      ? await supabase.from("orders").select("id, order_number").eq("id", step.order_id).maybeSingle()
+      : { data: null };
 
     const now = new Date().toISOString();
 
@@ -139,6 +147,34 @@ serve(async (req: Request) => {
         });
       }
 
+      // Fire-and-forget vendor email.
+      if (vendor?.email && orderRow) {
+        try {
+          await notifyVendorCounterAccepted({
+            supabase,
+            offerId: offer_id,
+            stepId: offer.step_id,
+            vendor: {
+              id: vendor.id,
+              full_name: vendor.full_name,
+              email: vendor.email,
+              additional_emails: Array.isArray(vendor.additional_emails) ? vendor.additional_emails : [],
+            },
+            order: { id: orderRow.id, order_number: orderRow.order_number },
+            step: { id: offer.step_id, name: step?.name ?? null },
+            applied: {
+              rate: finalRate == null ? null : Number(finalRate),
+              rate_unit: finalRateUnit ?? null,
+              total: finalTotal == null ? null : Number(finalTotal),
+              currency: finalCurrency || "CAD",
+              deadline: finalDeadline ?? null,
+            },
+          });
+        } catch (e: any) {
+          console.error("counter_accepted email fan-out failed:", e?.message || e);
+        }
+      }
+
       return json({ success: true, vendor_name: vendorName, step_name: step?.name });
     } else {
       await supabase.from("vendor_step_offers").update({
@@ -146,6 +182,34 @@ serve(async (req: Request) => {
         counter_responded_at: now,
         counter_rejection_reason: rejection_reason || null,
       }).eq("id", offer_id);
+
+      if (vendor?.email && orderRow) {
+        try {
+          await notifyVendorCounterRejected({
+            supabase,
+            offerId: offer_id,
+            stepId: offer.step_id,
+            vendor: {
+              id: vendor.id,
+              full_name: vendor.full_name,
+              email: vendor.email,
+              additional_emails: Array.isArray(vendor.additional_emails) ? vendor.additional_emails : [],
+            },
+            order: { id: orderRow.id, order_number: orderRow.order_number },
+            step: { id: offer.step_id, name: step?.name ?? null },
+            applied: {
+              rate: offer.counter_rate == null ? null : Number(offer.counter_rate),
+              rate_unit: offer.counter_rate_unit ?? null,
+              total: offer.counter_total == null ? null : Number(offer.counter_total),
+              currency: offer.counter_currency || "CAD",
+              deadline: offer.counter_deadline ?? null,
+            },
+            rejectionReason: rejection_reason ?? null,
+          });
+        } catch (e: any) {
+          console.error("counter_rejected email fan-out failed:", e?.message || e);
+        }
+      }
 
       return json({ success: true, vendor_name: vendorName, step_name: step?.name });
     }
