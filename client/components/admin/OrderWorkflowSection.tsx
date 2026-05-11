@@ -4156,7 +4156,24 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
       const { data: result, error } = await supabase.functions.invoke("update-workflow-step", {
         body: { step_id: stepId, action, ...params },
       });
-      if (error) throw error;
+      // On non-2xx, supabase-js returns FunctionsHttpError with `error` set.
+      // Its .context.response carries the raw Response; parse the JSON body
+      // so we can surface the server's specific error message (e.g. the
+      // "Deadline is required" check) instead of a generic
+      // "Edge Function returned a non-2xx status code".
+      if (error) {
+        let serverMsg: string | null = null;
+        try {
+          const resp = (error as any)?.context?.response as Response | undefined;
+          if (resp) {
+            const body = await resp.clone().json().catch(() => null);
+            if (body?.error) serverMsg = String(body.error);
+          }
+        } catch {
+          /* ignore body parse errors */
+        }
+        throw new Error(serverMsg || (error as Error).message || "Failed to update step");
+      }
       if (result?.error) throw new Error(result.error);
       toast.success("Step updated");
       await fetchWorkflow();
