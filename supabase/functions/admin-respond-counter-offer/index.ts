@@ -53,8 +53,10 @@ serve(async (req: Request) => {
     if (offerErr || !offer) {
       return json({ success: false, error: "Offer not found" }, 404);
     }
-    if (offer.counter_status !== "pending") {
-      return json({ success: false, error: "Counter-proposal is not pending" }, 400);
+    // vendor-counter-offer writes counter_status='proposed'; older code
+    // checked 'pending' but the DB has never carried that value.
+    if (offer.counter_status !== "proposed") {
+      return json({ success: false, error: "Counter-proposal is not pending review" }, 400);
     }
 
     const { data: step } = await supabase
