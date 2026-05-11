@@ -3537,9 +3537,16 @@ export default function AdminOrderDetail() {
                               <FileText className="w-5 h-5 text-blue-600" />
                             </div>
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
-                                {file.original_filename}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {file.original_filename}
+                                </p>
+                                {(file.file_categories as any)?.name && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
+                                    {(file.file_categories as any).name}
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-xs text-gray-500">
                                 {file.file_size
                                   ? `${(file.file_size / 1024).toFixed(1)} KB`
@@ -3620,6 +3627,11 @@ export default function AdminOrderDetail() {
                           <div key={rf.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
                             <Paperclip className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                             <span className="truncate text-gray-600">{rf.original_filename}</span>
+                            {(rf.file_categories as any)?.name && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-700 whitespace-nowrap flex-shrink-0">
+                                {(rf.file_categories as any).name}
+                              </span>
+                            )}
                             <span className="text-xs text-gray-400 flex-shrink-0">
                               {rf.file_size ? `${(rf.file_size / 1024).toFixed(1)} KB` : "—"}
                             </span>
@@ -5368,6 +5380,7 @@ export default function AdminOrderDetail() {
                 <div className="flex gap-2 flex-wrap">
                   {[
                     { value: "to_translate", label: "Source Document", color: "blue" },
+                    { value: "work_files", label: "Files to Work Upon", color: "blue" },
                     { value: "reference", label: "Reference File", color: "gray" },
                     { value: "glossary", label: "Glossary", color: "gray" },
                     { value: "style_guide", label: "Style Guide", color: "gray" },
