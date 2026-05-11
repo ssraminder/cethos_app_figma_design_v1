@@ -1145,7 +1145,12 @@ function VendorAssignModal({
       vendor_rate_unit: vendorRateUnit,
       vendor_total: parseFloat(calculatedTotal),
       vendor_currency: vendorCurrency,
-      deadline: deadline || null,
+      // Serialize datetime-local as a tz-aware ISO string. The raw input
+      // value "YYYY-MM-DDTHH:mm" has no timezone, so the server's
+      // `new Date(...)` would parse it as UTC while the client's
+      // expiryBeforeDeadline check parses it as local time. Sending an
+      // ISO string keeps both sides on the same instant.
+      deadline: deadline ? new Date(deadline).toISOString() : null,
       instructions: instructions || null,
       expires_in_hours: isOffer && expiresInHours !== "0" ? parseInt(expiresInHours) : null,
       // v6: Negotiation policy
