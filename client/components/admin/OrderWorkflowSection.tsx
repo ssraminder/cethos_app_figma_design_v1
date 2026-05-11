@@ -994,6 +994,11 @@ interface VendorAssignModalProps {
   orderFinancials: OrderFinancials | null;
   totalVendorCost: number;
   minMarginPercent: number;
+  // Customer-facing delivery date (orders.estimated_delivery_date,
+  // YYYY-MM-DD). Used to pre-fill the vendor deadline (= one day earlier
+  // at 17:00 local) and to warn if the chosen deadline lands after the
+  // client expects delivery.
+  clientDeadline: string | null;
 }
 
 function VendorAssignModal({
@@ -1010,6 +1015,7 @@ function VendorAssignModal({
   orderFinancials,
   totalVendorCost,
   minMarginPercent,
+  clientDeadline,
 }: VendorAssignModalProps) {
   const [vendorRate, setVendorRate] = useState<string>("");
   const [vendorRateUnit, setVendorRateUnit] = useState("per_word");
@@ -1083,6 +1089,37 @@ function VendorAssignModal({
       setUnits("1");
     }
   }, [vendorRateUnit]);
+
+  // Pre-fill vendor deadline based on the client's expected delivery date.
+  // When the modal opens for the first time on a step and the staff hasn't
+  // typed anything yet, default the deadline to the day before the client
+  // expects delivery, at 17:00 local time. Staff can adjust freely; this
+  // is just the starting point that keeps a buffer for QA + certification
+  // + delivery between the vendor handing off and the customer receiving.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (deadline) return; // don't overwrite a value the user already typed
+    if (!clientDeadline) return;
+    try {
+      // clientDeadline is YYYY-MM-DD. Anchor it at 17:00 local time the
+      // day before so the datetime-local input is happy.
+      const d = new Date(clientDeadline + "T17:00");
+      if (isNaN(d.getTime())) return;
+      d.setDate(d.getDate() - 1);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const value =
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      setDeadline(value);
+    } catch { /* ignore */ }
+  }, [isOpen, clientDeadline]);
+
+  // Vendor deadline vs client deadline — warn when the vendor's deadline
+  // lands on or after the day the customer is expecting delivery.
+  const clientDeadlineDate = clientDeadline ? new Date(clientDeadline + "T23:59") : null;
+  const deadlineAfterClient =
+    !!deadline &&
+    !!clientDeadlineDate &&
+    new Date(deadline).getTime() >= clientDeadlineDate.getTime();
 
   // Auto-calculate total
   const calculatedTotal = useMemo(() => {
@@ -1378,13 +1415,24 @@ function VendorAssignModal({
               Deadline <span className="text-red-500">*</span>{" "}
               <span className="font-normal text-gray-400">({Intl.DateTimeFormat().resolvedOptions().timeZone})</span>
             </label>
+            {clientDeadline && (
+              <p className="mb-1 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded px-2 py-1">
+                📦 Customer expects delivery by{" "}
+                <strong>
+                  {new Date(clientDeadline + "T00:00:00Z").toLocaleDateString("en-CA", {
+                    month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
+                  })}
+                </strong>
+                . Vendor deadline pre-filled to one day earlier; adjust if your workflow needs more buffer for QA / certification / delivery.
+              </p>
+            )}
             <input
               type="datetime-local"
               value={deadline}
               required
               onChange={(e) => setDeadline(e.target.value)}
               className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                !deadline ? "border-red-300" : "border-gray-200"
+                !deadline ? "border-red-300" : deadlineAfterClient ? "border-amber-300" : "border-gray-200"
               }`}
             />
             {deadline && deadlineDate && !isNaN(deadlineDate.getTime()) && (
@@ -1395,6 +1443,11 @@ function VendorAssignModal({
                   vendor in MDT sees{" "}
                   {deadlineDate.toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Edmonton" })}
                 </span>
+              </p>
+            )}
+            {deadlineAfterClient && (
+              <p className="mt-1 text-xs text-amber-700">
+                ⚠️ This vendor deadline lands on or after the customer's expected delivery date. Leave buffer for QA, certification, and final delivery.
               </p>
             )}
             {!deadline && (
@@ -4097,6 +4150,10 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
   // Internal project this order belongs to. Surfaced to the VendorFinderModal
   // so prior-project contributors get a stickiness badge + score boost.
   const [internalProjectId, setInternalProjectId] = useState<string | null>(null);
+  // Customer-facing delivery date. Surfaced to AssignVendorModal so staff
+  // can pre-fill vendor deadlines against the client's expectation
+  // (and we warn when a vendor deadline lands after the client one).
+  const [clientDeadline, setClientDeadline] = useState<string | null>(null);
   const { session: currentStaff } = useAdminAuthContext();
 
   useEffect(() => {
@@ -4104,11 +4161,12 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
     (async () => {
       const { data } = await supabase
         .from("orders")
-        .select("internal_project_id")
+        .select("internal_project_id, estimated_delivery_date")
         .eq("id", orderId)
         .maybeSingle();
       if (!cancelled) {
         setInternalProjectId((data?.internal_project_id as string | null) ?? null);
+        setClientDeadline((data?.estimated_delivery_date as string | null) ?? null);
       }
     })();
     return () => {
@@ -4462,6 +4520,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
           orderFinancials={orderFinancials}
           totalVendorCost={totalVendorCost}
           minMarginPercent={minMarginPercent}
+          clientDeadline={clientDeadline}
         />
       )}
 
