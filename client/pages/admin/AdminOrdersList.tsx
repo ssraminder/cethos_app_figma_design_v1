@@ -63,6 +63,7 @@ interface Order {
   xtrf_project_currency_code: string | null;
   xtrf_project_number: string | null;
   xtrf_project_status: string | null;
+  internal_project_number: string | null;
 }
 
 interface CompanyOption {
@@ -380,7 +381,7 @@ export default function AdminOrdersList() {
     setLoading(true);
     try {
       const select =
-        "id,order_number,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,service_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code)";
+        "id,order_number,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,service_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,internal_project_id,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code),internal_project:internal_projects!internal_project_id(project_number)";
 
       const filters: string[] = [];
 
@@ -491,6 +492,7 @@ export default function AdminOrdersList() {
           xtrf_project_total_cost: order.xtrf_project_total_cost,
           xtrf_project_currency_code: order.xtrf_project_currency_code,
           xtrf_project_status: order.xtrf_project_status,
+          internal_project_number: (order.internal_project as any)?.project_number ?? null,
         })) || [];
 
       setOrders(transformedOrders);
@@ -1037,6 +1039,11 @@ export default function AdminOrdersList() {
                             <p className="text-sm font-semibold text-gray-900 font-mono group-hover:text-teal-600">
                               {order.order_number}
                             </p>
+                            {order.internal_project_number && (
+                              <p className="text-xs font-mono text-teal-700 mt-0.5">
+                                {order.internal_project_number}
+                              </p>
+                            )}
                             <p className="text-xs text-gray-500 mt-0.5">
                               {format(new Date(order.created_at), "MMM d, yyyy")}
                               {order.is_rush && (
