@@ -121,7 +121,8 @@ serve(async (req: Request) => {
           deadline: deadline || null, instructions: instructions || null,
           accepted_at: new Date().toISOString(), assigned_by: body.staff_id || null,
         }).eq("id", step_id);
-        if (vendor_rate && vendor_total) {
+        // Target mode is deferred — no payable until pricing is settled.
+        if (pricing_mode !== "target" && vendor_rate && vendor_total) {
           const units = vendor_rate > 0 ? vendor_total / vendor_rate : 1;
           await supabase.from("vendor_payables").insert({
             workflow_step_id: step_id, vendor_id, order_id: workflow.order_id,
@@ -165,7 +166,8 @@ serve(async (req: Request) => {
           status: "offered", offered_at: new Date().toISOString(), instructions: instructions || step.instructions,
           pricing_mode: pricing_mode || "per_unit",
         }).eq("id", step_id);
-        if (vendor_rate && vendor_total) {
+        // Target mode is deferred — no payable until pricing is settled.
+        if (pricing_mode !== "target" && vendor_rate && vendor_total) {
           const units = vendor_rate > 0 ? vendor_total / vendor_rate : 1;
           await supabase.from("vendor_payables").insert({
             workflow_step_id: step_id, vendor_id, order_id: workflow.order_id,
