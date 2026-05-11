@@ -2465,8 +2465,12 @@ function WorkflowPipeline({
                             DB convention is 'proposed', not 'pending'. */}
                         {offer.counter_status === 'proposed' && (
                           <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-xs">
-                            <div className="font-medium text-yellow-800 mb-2">
-                              🔔 Counter-Proposal <span className="font-normal text-yellow-600">(pending)</span>
+                            <div className="font-medium text-yellow-800 mb-2 flex items-center gap-1.5 flex-wrap">
+                              🔔 Counter-Proposal
+                              {offer.vendor_name && (
+                                <span className="font-normal text-yellow-700">from {offer.vendor_name}</span>
+                              )}
+                              <span className="font-normal text-yellow-600">(pending)</span>
                             </div>
                             <div className="space-y-1 text-gray-700">
                               {offer.counter_rate !== null && offer.counter_rate !== offer.vendor_rate && (
