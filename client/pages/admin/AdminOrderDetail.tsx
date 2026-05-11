@@ -4490,14 +4490,46 @@ export default function AdminOrderDetail() {
                   </p>
                 </div>
 
-                {/* Promised Delivery */}
+                {/* Promised Delivery — uses estimated_delivery_at when
+                    present (full instant) so the staff PM sees the exact
+                    moment the customer expects delivery, localized to
+                    their browser + Cethos time. Falls back to the
+                    DATE-only estimated_delivery_date for legacy orders. */}
                 <div>
                   <p className="text-sm text-gray-500">Promised Delivery</p>
-                  <p className="font-medium text-gray-900">
-                    {promisedDeliveryDate
-                      ? format(new Date(promisedDeliveryDate + "T00:00:00"), "MMMM d, yyyy")
-                      : "—"}
-                  </p>
+                  {(() => {
+                    const at = (order as any).estimated_delivery_at as string | null | undefined;
+                    if (at) {
+                      const d = new Date(at);
+                      const local = d.toLocaleString("en-CA", {
+                        month: "short", day: "numeric", year: "numeric",
+                        hour: "2-digit", minute: "2-digit",
+                      });
+                      const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                      const cethos = localTz !== "America/Edmonton"
+                        ? d.toLocaleString("en-CA", {
+                            month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                            timeZone: "America/Edmonton",
+                          })
+                        : null;
+                      return (
+                        <>
+                          <p className="font-medium text-gray-900">{local}</p>
+                          <p className="text-xs text-gray-500">
+                            {localTz}
+                            {cethos && <> · {cethos} Cethos</>}
+                          </p>
+                        </>
+                      );
+                    }
+                    return (
+                      <p className="font-medium text-gray-900">
+                        {promisedDeliveryDate
+                          ? format(new Date(promisedDeliveryDate + "T00:00:00"), "MMMM d, yyyy")
+                          : "—"}
+                      </p>
+                    );
+                  })()}
                 </div>
 
                 {/* Actual Delivery */}
