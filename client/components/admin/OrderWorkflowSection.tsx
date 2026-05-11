@@ -1196,9 +1196,12 @@ function VendorAssignModal({
   const expiryBeforeDeadline =
     !expiryDate || !deadlineDate || expiryDate.getTime() < deadlineDate.getTime();
 
+  // Target mode is deliberately deferred — the offer can be sent with no
+  // total, and no vendor_payables row is created until pricing is settled.
+  // Per-unit mode still requires rate + units.
   const canSubmit =
     (pricingMode === "target"
-      ? targetTotal !== "" && parseFloat(targetTotal) > 0
+      ? true
       : vendorRate !== "" && parseFloat(vendorRate) > 0 &&
         vendorRateUnit && units !== "" && parseFloat(units) > 0) &&
     !!deadline && expiryBeforeDeadline;
@@ -1207,14 +1210,14 @@ function VendorAssignModal({
     if (!canSubmit) return;
     const isOffer = mode !== "assign";
     const isTarget = pricingMode === "target";
+    const targetTotalNum = targetTotal !== "" ? parseFloat(targetTotal) : null;
     const baseParams = {
       pricing_mode: pricingMode,
-      // In target mode, send a synthetic per-unit pair so the server still
-      // has rate/total. Server treats pricing_mode='target' as authoritative
-      // for rendering ("Target: $X" vs "Qty × Rate").
-      vendor_rate: isTarget ? parseFloat(targetTotal) : parseFloat(vendorRate),
+      // Target mode keeps rate/total nullable so the server can skip the
+      // vendor_payables insert. rate_unit defaults to 'flat' for rendering.
+      vendor_rate: isTarget ? (targetTotalNum ?? null) : parseFloat(vendorRate),
       vendor_rate_unit: isTarget ? "flat" : vendorRateUnit,
-      vendor_total: isTarget ? parseFloat(targetTotal) : parseFloat(calculatedTotal),
+      vendor_total: isTarget ? (targetTotalNum ?? null) : parseFloat(calculatedTotal),
       vendor_currency: vendorCurrency,
       // Serialize datetime-local as a tz-aware ISO string. The raw input
       // value "YYYY-MM-DDTHH:mm" has no timezone, so the server's
@@ -1349,17 +1352,24 @@ function VendorAssignModal({
                       ? "bg-indigo-600 text-white"
                       : "bg-white text-gray-700 hover:bg-gray-50"
                   }`}
-                  title="Use when wordcount or rate is unknown — quote a flat target amount"
+                  title="Defer pricing — assign the vendor without a payable; settle the amount later"
                 >
-                  Target amount
+                  Target (no payable)
                 </button>
               </div>
+              {pricingMode === "target" && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Target mode skips the payable. Leave the total blank to settle pricing later, or enter an indicative amount.
+                </p>
+              )}
             </div>
 
             {pricingMode === "target" ? (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Target total *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Indicative total (optional)
+                  </label>
                   <input
                     type="number"
                     step="0.01"
@@ -1367,7 +1377,7 @@ function VendorAssignModal({
                     value={targetTotal}
                     onChange={(e) => setTargetTotal(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Flat amount the vendor is being offered"
+                    placeholder="Leave blank if not yet known"
                   />
                 </div>
                 <div>
@@ -2792,16 +2802,18 @@ function WorkflowPipeline({
                   </div>
                 )}
 
-                {/* Line 3: Rate info (vendor steps with rate). Target-mode steps
-                    show "Target: $X" rather than "Rate/Unit · Total". */}
-                {step.actor_type === "external_vendor" && step.vendor_rate && (
+                {/* Line 3: Rate info. Target-mode steps render a Target badge
+                    instead of "Rate/Unit · Total"; total may be null (TBD). */}
+                {step.actor_type === "external_vendor" && (step.vendor_rate || (step as any).pricing_mode === "target") && (
                   <div className="text-sm text-gray-500 mt-1">
                     {(step as any).pricing_mode === "target" ? (
                       <>
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 mr-2">
                           Target
                         </span>
-                        {step.vendor_currency} ${step.vendor_total?.toFixed(2)}
+                        {step.vendor_total
+                          ? `${step.vendor_currency} $${step.vendor_total.toFixed(2)} (indicative)`
+                          : "Pricing TBD"}
                       </>
                     ) : (
                       <>

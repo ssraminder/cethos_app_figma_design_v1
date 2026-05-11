@@ -644,7 +644,7 @@ function EditableReceivablesBreakdown({
                     {r.description}
                     {r.pricing_mode === "target" && (
                       <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
-                        Target
+                        Flat
                       </span>
                     )}
                   </td>
@@ -737,9 +737,9 @@ function EditableReceivablesBreakdown({
                         ? "bg-teal-600 text-white"
                         : "bg-white text-gray-700 hover:bg-gray-50"
                     }`}
-                    title="Use when wordcount or rate is unknown — just enter the flat target amount"
+                    title="Flat-price receivable — no itemized quantity/rate"
                   >
-                    Target amount
+                    Flat amount
                   </button>
                 </div>
               </div>
@@ -769,14 +769,14 @@ function EditableReceivablesBreakdown({
                   </>
                 ) : (
                   <div className="col-span-2">
-                    <label className="block text-xs text-gray-600 mb-1">Target amount</label>
+                    <label className="block text-xs text-gray-600 mb-1">Flat amount</label>
                     <input
                       type="number"
                       step="0.01"
                       value={draft.target_amount}
                       onChange={(e) => setDraft((d) => ({ ...d, target_amount: Number(e.target.value) }))}
                       className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
-                      placeholder="Flat amount — no wordcount/rate needed"
+                      placeholder="Single-line price — no quantity × rate"
                     />
                   </div>
                 )}
