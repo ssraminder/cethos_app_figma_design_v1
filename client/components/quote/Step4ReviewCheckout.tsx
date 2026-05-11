@@ -1758,9 +1758,13 @@ export default function Step4ReviewCheckout() {
 
           // Calculated totals — single source of truth
           calculated_totals: {
+            // 20260511_normalize_subtotal_convention: subtotal is
+            // translation-only. baseSubtotal (translation + cert) is now
+            // surfaced as pct_base — the base for % rush/adjustments.
             translation_total: pricing.translationTotal,
             certification_total: pricing.certificationTotal,
-            subtotal: pricing.baseSubtotal,
+            subtotal: pricing.translationTotal,
+            pct_base: pricing.baseSubtotal,
             adjustments_total: pricing.adjustmentsTotal,
             pre_tax: pricing.preTax,
             rush_fee: pricing.turnaroundFee,
@@ -1867,9 +1871,13 @@ export default function Step4ReviewCheckout() {
             phone: state.phone || "",
           } : null,
           calculated_totals: {
+            // 20260511_normalize_subtotal_convention: subtotal is
+            // translation-only. baseSubtotal (translation + cert) is now
+            // surfaced as pct_base — the base for % rush/adjustments.
             translation_total: pricing.translationTotal,
             certification_total: pricing.certificationTotal,
-            subtotal: pricing.baseSubtotal,
+            subtotal: pricing.translationTotal,
+            pct_base: pricing.baseSubtotal,
             adjustments_total: pricing.adjustmentsTotal,
             pre_tax: pricing.preTax,
             rush_fee: pricing.turnaroundFee,

@@ -525,7 +525,13 @@ function buildInvoicePdf(
   const totalsX = 380;
   const totalsValX = 470;
 
-  addText(totalsX, yPos, "Subtotal:", 10);
+  // 20260511_normalize_subtotal_convention: invoice.subtotal is translation-
+  // only for invoices generated after the migration. Label as "Translation"
+  // so the breakdown reads naturally alongside the separate Certification
+  // line. Bottom-line `total_amount` is correct under both conventions, so
+  // invoices generated before the migration still show the right total even
+  // though their "Translation" line includes certification.
+  addText(totalsX, yPos, "Translation:", 10);
   addText(
     totalsValX,
     yPos,

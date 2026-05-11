@@ -104,3 +104,25 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 - **Rationale:** Confirmed by Raminder 2026-05-05 after Phase 3 shipped. The PRJ-YYYY-NNNNN abstraction is the only client-identifier change wanted; deeper anonymization is not a goal.
 - **Status:** active — supersedes the earlier "deferred / parked" entry from this same date. Don't relitigate.
 - **Affects:** nothing — explicit non-action.
+
+### 2026-05-11 — Pricing convention normalization: subtotal = translation only
+- **Decision:** Across `quotes`, `orders`, `customer_invoices`, and per-row `ai_analysis_results` / `quote_document_groups`, `subtotal` and per-row `line_total` mean **translation cost only**. Certification is always carried in a separate `certification_total` / `certification_price` field. The pre-tax line is `subtotal + certification_total + rush_fee + delivery_fee + surcharge_total - discount_total`. Percentage rush and percentage adjustments compute their base from `subtotal + certification_total` (option B — the "goods and services" line, before any fees).
+- **Rationale:** Before this change, `recalculate_quote_totals` (analysis path) stored `subtotal = translation + cert` while `recalculate_quote_from_groups` (groups path) stored `subtotal = translation only`. Every downstream consumer hard-coded one assumption — `loadOrderFinancials`, `OrderFinanceTab`, `OrderFinanceSection`, `AdminQuoteDetail`, the invoice PDF generator — so the Order Finance "Receivable Breakdown" added certification a second time and showed Pre-tax `$179` on a `$145.95` order. Option B was chosen because it is the only convention where `pre_tax = SUM(addends)` holds with one formula in every consumer.
+- **Migration:** `supabase/migrations/20260511_normalize_subtotal_convention.sql` replaces 4 PL/pgSQL functions (`recalculate_document_totals`, `recalculate_document_group`, `recalculate_quote_totals`, `recalculate_quote_from_groups`). No backfill — historical rows transition to the new convention the next time their parent quote gets recalculated. `quotes.total` / `orders.total_amount` are correct under both conventions, so bottom-line dollars never change.
+- **Frontend strategy for old rows:** every display computes `pre_tax = total − tax_amount` rather than summing components. Correct under both pre- and post-migration semantics, so old records render right immediately without needing a backfill.
+- **Reference:** [docs/pricing-convention.md](docs/pricing-convention.md) — formulas, worked example, code patterns.
+- **Status:** code merged on this branch; migration drafted but NOT yet applied to prod (`lmzoyezvsjgsxveoakdr`) — pending explicit apply call.
+- **Affects:** `recalculate_*` SQL functions; `generate-invoice-pdf` label rename; client display in `AdminQuoteDetail.tsx`, `OrderFinanceTab.tsx`, `OrderFinanceSection.tsx`, `EditOrderModal.tsx`, `FastQuoteCreate.tsx`, `KioskStaffForm.tsx`, `Step4ReviewCheckout.tsx`. `get-order-workflow/loadOrderFinancials` needed no formula change — its `pre_tax = subtotal + cert + …` is correct under the new convention.
+
+### 2026-05-11 — Vendor offer notification: audit-log every send to notification_log
+- **Decision:** The shared `_shared/notify-vendor-assignment.ts` helper now writes a row to `notification_log` (event_type `vendor_offer` or `vendor_assignment`) for every Brevo send — both success (with Brevo `messageId` in metadata) and failure (with the API error). Linked to `offer_id` so the audit trail joins back to `vendor_step_offers`.
+- **Rationale:** During the ORD-2026-10193 investigation we could not confirm from DB alone whether the 12 offer emails actually reached Brevo. The helper was fire-and-forget with only console logs. The customer/admin email paths already use `notification_log` — this aligns vendor emails with the same pattern.
+- **Caller change:** `update-workflow-step` `offer_vendor` and `offer_multiple` cases now capture the inserted `vendor_step_offers.id` and pass it through as the new `offer_id` arg.
+- **Status:** code merged on this branch; not yet deployed to prod.
+- **Affects:** `supabase/functions/_shared/notify-vendor-assignment.ts`, `supabase/functions/update-workflow-step/index.ts`.
+
+### 2026-05-11 — Vendor-portal "Offered" tab status-filter bug (vendor repo)
+- **Decision:** `vendor-get-jobs?tab=offered` in the vendor portal repo (`D:\cethos-vendor`) was filtering `vendor_step_offers.status = 'sent'`. The admin's `update-workflow-step` writes `status = 'pending'`. Production has zero rows with `status='sent'`. Fixed by changing the vendor filter to `'pending'` (both the tab query and the counts query).
+- **Rationale:** Pure data-contract mismatch — vendors literally cannot see any of their offers in the in-app portal. Discovered while investigating why Randy Van Mingeroet's "Jobs > Offered" tab showed "No job offers at the moment" despite having a pending offer for ORD-2026-10193.
+- **Status:** committed in `D:\cethos-vendor` on the same date; not yet deployed.
+- **Affects:** `D:\cethos-vendor\supabase\functions\vendor-get-jobs\index.ts` only.

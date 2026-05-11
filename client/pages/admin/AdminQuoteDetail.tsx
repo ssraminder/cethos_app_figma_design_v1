@@ -1805,12 +1805,11 @@ export default function AdminQuoteDetail() {
     setIsSavingTax(true);
 
     try {
-      // Tax is applied to subtotal + rush_fee + delivery_fee (quote.subtotal already includes certification)
-      const baseForTax = (quote.subtotal || 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0);
+      // Tax base = current pre-tax (stored total − stored tax). Correct under
+      // both pre- and post-20260511_normalize_subtotal_convention conventions.
+      const baseForTax = Math.max(0, Number(quote.total || 0) - Number(quote.tax_amount || 0));
       const newTaxAmount = parseFloat((baseForTax * selectedRate.rate).toFixed(2));
-      const newTotal = parseFloat(
-        ((quote.subtotal || 0) + (quote.rush_fee || 0) + (quote.delivery_fee || 0) + newTaxAmount).toFixed(2)
-      );
+      const newTotal = parseFloat((baseForTax + newTaxAmount).toFixed(2));
 
       const { error } = await supabase
         .from("quotes")
@@ -2128,7 +2127,12 @@ export default function AdminQuoteDetail() {
 
     setIsAddingAdjustment(true);
     try {
-      const baseSubtotal = (quote?.subtotal || 0); // quote.subtotal already includes certification
+      // Percentage adjustments apply to (subtotal + certification_total) —
+      // option B in the 20260511 normalization. This client-side preview is
+      // overwritten by the SQL recalc on save, so any drift on legacy rows
+      // (where subtotal still bundled cert) self-corrects on the next save.
+      const baseSubtotal =
+        Number(quote?.subtotal || 0) + Number(quote?.certification_total || 0);
       const calculatedAmount =
         adjustmentForm.valueType === "percentage"
           ? parseFloat((baseSubtotal * (numValue / 100)).toFixed(2))
@@ -3163,7 +3167,10 @@ export default function AdminQuoteDetail() {
   // Adjustments total: prefer calculated_totals JSONB, fall back to computing from adjustments array
   const adjustmentsTotal = quote.calculated_totals?.adjustments_total
     ?? adjustments.reduce((sum, a) => sum + (a.adjustment_type === 'surcharge' ? a.calculated_amount : -a.calculated_amount), 0);
-  const preTaxTotal = (quote.subtotal || 0) + adjustmentsTotal + (quote.rush_fee || 0) + (quote.delivery_fee || 0);
+  // Pre-tax derived from stored total − tax. Correct under both pre- and
+  // post-20260511_normalize_subtotal_convention conventions; summing
+  // components would double-count cert on pre-normalization rows.
+  const preTaxTotal = Math.max(0, Number(quote.total || 0) - Number(quote.tax_amount || 0));
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -5043,6 +5050,11 @@ export default function AdminQuoteDetail() {
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-gray-600">
+                              {/* line_total is translation-only under the
+                                  20260511 normalized convention. On pre-
+                                  normalization rows it bundles cert; that
+                                  row will re-display correctly the next
+                                  time the quote is recalculated. */}
                               ${Number(item.line_total || 0).toFixed(2)}
                             </span>
                             <button

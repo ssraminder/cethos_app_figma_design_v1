@@ -630,15 +630,17 @@ export default function FastQuoteCreate() {
       }
     }
 
-    const subtotal =
+    // Pre-tax = translation + cert + rush + delivery - discount + surcharge
+    // (subtotalBeforeAdj already = translation + cert)
+    const preTax =
       subtotalBeforeAdj +
       rushFee +
       deliveryFee -
       discountAmount +
       surchargeAmount;
     const taxRate = selectedTaxRate?.rate || 0;
-    const taxAmount = subtotal * taxRate;
-    const total = subtotal + taxAmount;
+    const taxAmount = preTax * taxRate;
+    const total = preTax + taxAmount;
 
     return {
       translationSubtotal,
@@ -649,7 +651,11 @@ export default function FastQuoteCreate() {
       deliveryFee,
       discountAmount,
       surchargeAmount,
-      subtotal,
+      // `subtotal` per 20260511_normalize_subtotal_convention is
+      // translation-only. The legacy field name kept here so the edge
+      // function payload stays compatible; the value is the normalized one.
+      subtotal: translationSubtotal,
+      preTax,
       taxRate,
       taxAmount,
       total,

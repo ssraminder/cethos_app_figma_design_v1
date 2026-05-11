@@ -94,7 +94,10 @@ function ReceivableTab({ order, invoice }: { order: any; invoice: any | null }) 
   const amountPaid = parseFloat(String(order.amount_paid || 0));
   const balanceDue = parseFloat(String(order.balance_due || 0));
 
-  const preTax = subtotal + certTotal + rushFee + deliveryFee - discountTotal + surchargeTotal;
+  // Pre-tax derived from total − tax (correct under both pre- and
+  // post-normalization conventions). Summing components would double-count
+  // certification on rows from before 20260511_normalize_subtotal_convention.
+  const preTax = Math.max(0, totalAmount - taxAmount);
 
   const handleViewPdf = async () => {
     if (!invoice?.pdf_storage_path) return;
