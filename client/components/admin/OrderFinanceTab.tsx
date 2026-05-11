@@ -23,6 +23,7 @@ interface OrderReceivable {
   order_id: string;
   description: string;
   calculation_unit: string;
+  pricing_mode: "per_unit" | "target";
   quantity: number;
   rate: number;
   line_subtotal: number;
@@ -366,8 +367,10 @@ function EditableReceivablesBreakdown({
   const [defaultTaxLabel, setDefaultTaxLabel] = useState<string | null>(null);
   const [draft, setDraft] = useState({
     description: "",
+    pricing_mode: "per_unit" as "per_unit" | "target",
     quantity: 1,
     rate: 0,
+    target_amount: 0,
     tax_rate: 0.05,
     surcharge_total: 0,
     discount_total: 0,
@@ -382,7 +385,7 @@ function EditableReceivablesBreakdown({
       const { data, error } = await supabase
         .from("order_receivables")
         .select(
-          "id, order_id, description, calculation_unit, quantity, rate, line_subtotal, surcharge_total, discount_total, tax_rate, tax_amount, line_total, currency, po_number, client_project_number, sort_order, status",
+          "id, order_id, description, calculation_unit, pricing_mode, quantity, rate, line_subtotal, surcharge_total, discount_total, tax_rate, tax_amount, line_total, currency, po_number, client_project_number, sort_order, status",
         )
         .eq("order_id", orderId)
         .neq("status", "voided")
@@ -455,15 +458,28 @@ function EditableReceivablesBreakdown({
   const saveDraft = async () => {
     setSaving(true);
     try {
-      const q = Number(draft.quantity) || 0;
-      const r = Number(draft.rate) || 0;
       const t = Number(draft.tax_rate) || 0;
       const su = Number(draft.surcharge_total) || 0;
       const di = Number(draft.discount_total) || 0;
+
+      let q: number;
+      let r: number;
+      if (draft.pricing_mode === "target") {
+        // Target mode: store the flat amount as rate, quantity=1, so existing
+        // quantity*rate consumers still work. The pricing_mode flag tells the
+        // UI to render it as "Target: $X" rather than "1 × $X".
+        q = 1;
+        r = Number(draft.target_amount) || 0;
+      } else {
+        q = Number(draft.quantity) || 0;
+        r = Number(draft.rate) || 0;
+      }
+
       const derived = computeDerived(q, r, t, su, di);
       const payload = {
         description: draft.description.trim() || "Line item",
         calculation_unit: "flat",
+        pricing_mode: draft.pricing_mode,
         quantity: q,
         rate: r,
         tax_rate: t,
@@ -498,8 +514,10 @@ function EditableReceivablesBreakdown({
       setAdding(false);
       setDraft({
         description: "",
+        pricing_mode: "per_unit",
         quantity: 1,
         rate: 0,
+        target_amount: 0,
         tax_rate: defaultTaxRate,
         surcharge_total: 0,
         discount_total: 0,
@@ -518,10 +536,14 @@ function EditableReceivablesBreakdown({
   const startEdit = (r: OrderReceivable) => {
     setAdding(false);
     setEditId(r.id);
+    const mode = (r.pricing_mode || "per_unit") as "per_unit" | "target";
     setDraft({
       description: r.description,
+      pricing_mode: mode,
       quantity: Number(r.quantity),
       rate: Number(r.rate),
+      // Target mode: rate column holds the flat amount
+      target_amount: mode === "target" ? Number(r.rate) : Number(r.line_subtotal),
       tax_rate: Number(r.tax_rate),
       surcharge_total: Number(r.surcharge_total),
       discount_total: Number(r.discount_total),
@@ -618,9 +640,20 @@ function EditableReceivablesBreakdown({
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b border-gray-100">
-                  <td className="py-2 px-3 text-gray-900">{r.description}</td>
-                  <td className="py-2 px-3 text-right text-gray-700 tabular-nums">{Number(r.quantity)}</td>
-                  <td className="py-2 px-3 text-right text-gray-700 tabular-nums">{fmt(Number(r.rate))}</td>
+                  <td className="py-2 px-3 text-gray-900">
+                    {r.description}
+                    {r.pricing_mode === "target" && (
+                      <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
+                        Target
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-right text-gray-700 tabular-nums">
+                    {r.pricing_mode === "target" ? "—" : Number(r.quantity)}
+                  </td>
+                  <td className="py-2 px-3 text-right text-gray-700 tabular-nums">
+                    {r.pricing_mode === "target" ? "—" : fmt(Number(r.rate))}
+                  </td>
                   <td className="py-2 px-3 text-right text-gray-700 tabular-nums">{fmt(Number(r.line_subtotal))}</td>
                   <td className="py-2 px-3 text-right text-gray-700 tabular-nums">{fmt(Number(r.tax_amount))}</td>
                   <td className="py-2 px-3 text-right font-medium text-gray-900 tabular-nums">{fmt(Number(r.line_total))}</td>
@@ -682,27 +715,71 @@ function EditableReceivablesBreakdown({
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-teal-500"
                 />
               </div>
+              <div className="col-span-1 md:col-span-2">
+                <label className="block text-xs text-gray-600 mb-1">Pricing</label>
+                <div className="inline-flex border border-gray-300 rounded overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setDraft((d) => ({ ...d, pricing_mode: "per_unit" }))}
+                    className={`px-3 py-1.5 text-xs ${
+                      draft.pricing_mode === "per_unit"
+                        ? "bg-teal-600 text-white"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    Qty × Rate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraft((d) => ({ ...d, pricing_mode: "target" }))}
+                    className={`px-3 py-1.5 text-xs border-l border-gray-300 ${
+                      draft.pricing_mode === "target"
+                        ? "bg-teal-600 text-white"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                    title="Use when wordcount or rate is unknown — just enter the flat target amount"
+                  >
+                    Target amount
+                  </button>
+                </div>
+              </div>
               <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Qty</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={draft.quantity}
-                    onChange={(e) => setDraft((d) => ({ ...d, quantity: Number(e.target.value) }))}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Rate</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={draft.rate}
-                    onChange={(e) => setDraft((d) => ({ ...d, rate: Number(e.target.value) }))}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
+                {draft.pricing_mode === "per_unit" ? (
+                  <>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Qty</label>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={draft.quantity}
+                        onChange={(e) => setDraft((d) => ({ ...d, quantity: Number(e.target.value) }))}
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Rate</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={draft.rate}
+                        onChange={(e) => setDraft((d) => ({ ...d, rate: Number(e.target.value) }))}
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="col-span-2">
+                    <label className="block text-xs text-gray-600 mb-1">Target amount</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={draft.target_amount}
+                      onChange={(e) => setDraft((d) => ({ ...d, target_amount: Number(e.target.value) }))}
+                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
+                      placeholder="Flat amount — no wordcount/rate needed"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs text-gray-600 mb-1">Tax %</label>
                   <input
@@ -722,11 +799,19 @@ function EditableReceivablesBreakdown({
                 </div>
               </div>
             </div>
-            <div className="text-xs text-gray-600">
-              Computed: subtotal {fmt((Number(draft.quantity) || 0) * (Number(draft.rate) || 0))} ·
-              tax {fmt(((Number(draft.quantity) || 0) * (Number(draft.rate) || 0)) * (Number(draft.tax_rate) || 0))} ·
-              total {fmt(((Number(draft.quantity) || 0) * (Number(draft.rate) || 0)) * (1 + (Number(draft.tax_rate) || 0)))}
-            </div>
+            {(() => {
+              const subtotal =
+                draft.pricing_mode === "target"
+                  ? Number(draft.target_amount) || 0
+                  : (Number(draft.quantity) || 0) * (Number(draft.rate) || 0);
+              const taxRate = Number(draft.tax_rate) || 0;
+              return (
+                <div className="text-xs text-gray-600">
+                  Computed: subtotal {fmt(subtotal)} · tax {fmt(subtotal * taxRate)} · total{" "}
+                  {fmt(subtotal * (1 + taxRate))}
+                </div>
+              );
+            })()}
             <div className="flex gap-2">
               <button
                 onClick={saveDraft}
