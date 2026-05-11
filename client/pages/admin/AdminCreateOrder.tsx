@@ -939,7 +939,12 @@ export default function AdminCreateOrder() {
             rushFee: totals.rush,
             deliveryFee: totals.delivery,
             isRush: totals.rush > 0,
-            promisedDeliveryDate: promisedDeliveryDate || null,
+            promisedDeliveryDate: promisedDeliveryDate
+              ? promisedDeliveryDate.slice(0, 10)
+              : null,
+            promisedDeliveryAt: promisedDeliveryDate
+              ? new Date(promisedDeliveryDate).toISOString()
+              : null,
             entryPoint: "admin_non_certified",
             manualQuoteNotes: specialInstructions.trim() || null,
             currency,
@@ -1501,14 +1506,31 @@ export default function AdminCreateOrder() {
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">
-                  Promised delivery
+                  Promised delivery{" "}
+                  <span className="font-normal text-gray-400">
+                    ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+                  </span>
                 </label>
                 <input
-                  type="date"
+                  type="datetime-local"
                   value={promisedDeliveryDate}
                   onChange={(e) => setPromisedDeliveryDate(e.target.value)}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
+                {promisedDeliveryDate && !isNaN(new Date(promisedDeliveryDate).getTime()) && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    = {new Date(promisedDeliveryDate).toLocaleString("en-CA", {
+                      month: "short", day: "numeric", year: "numeric",
+                      hour: "2-digit", minute: "2-digit", timeZone: "UTC",
+                    })} UTC
+                    {Intl.DateTimeFormat().resolvedOptions().timeZone !== "America/Edmonton" && (
+                      <> · {new Date(promisedDeliveryDate).toLocaleString("en-CA", {
+                        month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                        timeZone: "America/Edmonton",
+                      })} Cethos</>
+                    )}
+                  </p>
+                )}
               </div>
               <div className="md:col-span-3">
                 <label className="block text-xs text-gray-600 mb-1">

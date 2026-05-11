@@ -359,6 +359,10 @@ serve(async (req: Request) => {
         is_rush: order.isRush || false,
         delivery_option: order.deliveryOption || null,
         estimated_delivery_date: order.promisedDeliveryDate || null,
+        // Promised delivery as a full instant (TIMESTAMPTZ). Frontend
+        // sends both — date for backward compat, at for the new
+        // instant-precision flow.
+        estimated_delivery_at: order.promisedDeliveryAt || null,
         surcharge_type: pricing.surchargeType || "flat",
         surcharge_value: pricing.surchargeValue || 0,
         surcharge_total: pricing.surchargeAmount || 0,
