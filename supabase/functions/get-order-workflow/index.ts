@@ -109,7 +109,7 @@ serve(async (req: Request) => {
         preferred_vendor_id,
         offered_at, accepted_at, started_at, deadline,
         delivered_at, approved_at,
-        vendor_rate, vendor_rate_unit, vendor_total, vendor_currency,
+        vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, pricing_mode,
         source_file_paths, delivered_file_paths,
         instructions, notes_from_vendor, rejection_reason, revision_count,
         source_language, target_language,
@@ -212,7 +212,7 @@ serve(async (req: Request) => {
       const { data: offers } = await supabase
         .from("vendor_step_offers")
         .select(`
-          id, vendor_id, status,
+          id, vendor_id, status, pricing_mode,
           vendor_rate, vendor_rate_unit, vendor_total, vendor_currency,
           deadline, expires_at, offered_at, declined_reason, responded_at,
           counter_status, counter_rate, counter_rate_unit, counter_total,
@@ -297,6 +297,7 @@ serve(async (req: Request) => {
         vendor_rate_unit: s.vendor_rate_unit,
         vendor_total: s.vendor_total,
         vendor_currency: s.vendor_currency || "CAD",
+        pricing_mode: s.pricing_mode || "per_unit",
         source_file_paths: s.source_file_paths,
         delivered_file_paths: s.delivered_file_paths,
         instructions: s.instructions,

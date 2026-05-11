@@ -569,9 +569,9 @@ function VendorFinderModal({
   }, [isOpen]);
 
   const handleReset = () => {
-    setFilterSourceLang(resolvedSourceLang);
-    setFilterTargetLang(resolvedTargetLang);
-    setFilterServiceId(serviceId || "");
+    setFilterSourceLang("");
+    setFilterTargetLang("");
+    setFilterServiceId("");
     setNativeLanguages([]);
     setNativeLangSearch('');
     setCountry("");
@@ -582,6 +582,8 @@ function VendorFinderModal({
     setSortBy("match_score");
     setVendorNameOptions([]);
     setNameSearchOpen(false);
+    // Auto-search with cleared filters so the user immediately sees the full pool
+    setTimeout(() => { doSearch(); }, 0);
   };
 
   const toggleSelect = (id: string) => {
@@ -826,8 +828,9 @@ function VendorFinderModal({
                     <button
                       onClick={() => { handleReset(); }}
                       className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50"
+                      title="Clear every filter and search the full vendor pool"
                     >
-                      Reset Filters
+                      Clear filters
                     </button>
                   </div>
                 </div>
@@ -1020,6 +1023,8 @@ function VendorAssignModal({
   clientDeadlineAt,
   clientDeadlineDate,
 }: VendorAssignModalProps) {
+  const [pricingMode, setPricingMode] = useState<"per_unit" | "target">("per_unit");
+  const [targetTotal, setTargetTotal] = useState<string>("");
   const [vendorRate, setVendorRate] = useState<string>("");
   const [vendorRateUnit, setVendorRateUnit] = useState("per_word");
   const [units, setUnits] = useState<string>("1");
@@ -1038,6 +1043,8 @@ function VendorAssignModal({
   // Reset on open
   useEffect(() => {
     if (isOpen) {
+      setPricingMode("per_unit");
+      setTargetTotal("");
       setVendorRate("");
       setVendorRateUnit("per_word");
       setUnits("1");
@@ -1190,17 +1197,24 @@ function VendorAssignModal({
     !expiryDate || !deadlineDate || expiryDate.getTime() < deadlineDate.getTime();
 
   const canSubmit =
-    vendorRate !== "" && parseFloat(vendorRate) > 0 &&
-    vendorRateUnit && units !== "" && parseFloat(units) > 0 &&
+    (pricingMode === "target"
+      ? targetTotal !== "" && parseFloat(targetTotal) > 0
+      : vendorRate !== "" && parseFloat(vendorRate) > 0 &&
+        vendorRateUnit && units !== "" && parseFloat(units) > 0) &&
     !!deadline && expiryBeforeDeadline;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
     const isOffer = mode !== "assign";
+    const isTarget = pricingMode === "target";
     const baseParams = {
-      vendor_rate: parseFloat(vendorRate),
-      vendor_rate_unit: vendorRateUnit,
-      vendor_total: parseFloat(calculatedTotal),
+      pricing_mode: pricingMode,
+      // In target mode, send a synthetic per-unit pair so the server still
+      // has rate/total. Server treats pricing_mode='target' as authoritative
+      // for rendering ("Target: $X" vs "Qty × Rate").
+      vendor_rate: isTarget ? parseFloat(targetTotal) : parseFloat(vendorRate),
+      vendor_rate_unit: isTarget ? "flat" : vendorRateUnit,
+      vendor_total: isTarget ? parseFloat(targetTotal) : parseFloat(calculatedTotal),
       vendor_currency: vendorCurrency,
       // Serialize datetime-local as a tz-aware ISO string. The raw input
       // value "YYYY-MM-DDTHH:mm" has no timezone, so the server's
@@ -1312,73 +1326,135 @@ function VendorAssignModal({
 
           {/* Rate section */}
           <div className="space-y-3">
-            {/* Row 1: Rate, Rate Unit, Currency */}
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Rate *</label>
-                <input
-                  type="number"
-                  step="0.001"
-                  value={vendorRate}
-                  onChange={(e) => setVendorRate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="0.00"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Rate Unit *</label>
-                <select
-                  value={vendorRateUnit}
-                  onChange={(e) => setVendorRateUnit(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            {/* Pricing mode toggle — switch between per-unit and flat target */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Pricing</label>
+              <div className="inline-flex border border-gray-300 rounded overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setPricingMode("per_unit")}
+                  className={`px-3 py-1.5 text-xs ${
+                    pricingMode === "per_unit"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
                 >
-                  <option value="per_word">Per Word</option>
-                  <option value="per_page">Per Page</option>
-                  <option value="per_hour">Per Hour</option>
-                  <option value="flat">Flat</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
-                <select
-                  value={vendorCurrency}
-                  onChange={(e) => setVendorCurrency(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  Rate × Units
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPricingMode("target")}
+                  className={`px-3 py-1.5 text-xs border-l border-gray-300 ${
+                    pricingMode === "target"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                  title="Use when wordcount or rate is unknown — quote a flat target amount"
                 >
-                  <option value="CAD">CAD</option>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="GBP">GBP</option>
-                </select>
+                  Target amount
+                </button>
               </div>
             </div>
-            {suggestedRate && (
-              <p className="text-xs text-gray-400">
-                Vendor&apos;s rate: ${suggestedRate.rate} {unitDisplayName(suggestedRate.calculation_unit)} ({suggestedRate.currency})
-              </p>
-            )}
-            {/* Row 2: Units, Total */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">{unitLabel}</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={units}
-                  onChange={(e) => setUnits(e.target.value)}
-                  disabled={vendorRateUnit === 'flat'}
-                  className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${vendorRateUnit === 'flat' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Total</label>
-                <div className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-700">
-                  {vendorCurrency} ${calculatedTotal}
+
+            {pricingMode === "target" ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Target total *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={targetTotal}
+                    onChange={(e) => setTargetTotal(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Flat amount the vendor is being offered"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
+                  <select
+                    value={vendorCurrency}
+                    onChange={(e) => setVendorCurrency(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="CAD">CAD</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="GBP">GBP</option>
+                  </select>
                 </div>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Row 1: Rate, Rate Unit, Currency */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Rate *</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={vendorRate}
+                      onChange={(e) => setVendorRate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Rate Unit *</label>
+                    <select
+                      value={vendorRateUnit}
+                      onChange={(e) => setVendorRateUnit(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="per_word">Per Word</option>
+                      <option value="per_page">Per Page</option>
+                      <option value="per_hour">Per Hour</option>
+                      <option value="flat">Flat</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
+                    <select
+                      value={vendorCurrency}
+                      onChange={(e) => setVendorCurrency(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="CAD">CAD</option>
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                      <option value="GBP">GBP</option>
+                    </select>
+                  </div>
+                </div>
+                {suggestedRate && (
+                  <p className="text-xs text-gray-400">
+                    Vendor&apos;s rate: ${suggestedRate.rate} {unitDisplayName(suggestedRate.calculation_unit)} ({suggestedRate.currency})
+                  </p>
+                )}
+                {/* Row 2: Units, Total */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">{unitLabel}</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={units}
+                      onChange={(e) => setUnits(e.target.value)}
+                      disabled={vendorRateUnit === 'flat'}
+                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${vendorRateUnit === 'flat' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Total</label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-700">
+                      {vendorCurrency} ${calculatedTotal}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Margin indicator */}
@@ -2716,11 +2792,23 @@ function WorkflowPipeline({
                   </div>
                 )}
 
-                {/* Line 3: Rate info (vendor steps with rate) */}
+                {/* Line 3: Rate info (vendor steps with rate). Target-mode steps
+                    show "Target: $X" rather than "Rate/Unit · Total". */}
                 {step.actor_type === "external_vendor" && step.vendor_rate && (
                   <div className="text-sm text-gray-500 mt-1">
-                    ${step.vendor_rate}/{step.vendor_rate_unit} · {step.vendor_currency} $
-                    {step.vendor_total?.toFixed(2)}
+                    {(step as any).pricing_mode === "target" ? (
+                      <>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 mr-2">
+                          Target
+                        </span>
+                        {step.vendor_currency} ${step.vendor_total?.toFixed(2)}
+                      </>
+                    ) : (
+                      <>
+                        ${step.vendor_rate}/{step.vendor_rate_unit} · {step.vendor_currency} $
+                        {step.vendor_total?.toFixed(2)}
+                      </>
+                    )}
                     {/* Adjust payable link */}
                     {step.payable && !['paid', 'cancelled'].includes(step.payable.status) && onAdjustPayable && (
                       <button

@@ -103,7 +103,7 @@ serve(async (req: Request) => {
       }
 
       case "direct_assign": {
-        const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions } = body;
+        const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, pricing_mode } = body;
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
 
         const gate = await gateAssignment(supabase, "direct_assign", vendor_id, step, workflow);
@@ -115,6 +115,7 @@ serve(async (req: Request) => {
         const _n = vendor?.full_name || "Unknown Vendor";
         await supabase.from("order_workflow_steps").update({
           vendor_id, status: "accepted",
+          pricing_mode: pricing_mode || "per_unit",
           vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null,
           vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD",
           deadline: deadline || null, instructions: instructions || null,
@@ -140,7 +141,7 @@ serve(async (req: Request) => {
       }
 
       case "offer_vendor": {
-        const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits } = body;
+        const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits, pricing_mode } = body;
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
 
         const gate = await gateAssignment(supabase, "offer_vendor", vendor_id, step, workflow);
@@ -151,6 +152,7 @@ serve(async (req: Request) => {
         const expiresAt = expires_in_hours ? new Date(Date.now() + expires_in_hours * 3600000).toISOString() : null;
         const { data: insertedOffer } = await supabase.from("vendor_step_offers").insert({
           step_id, vendor_id, status: "pending",
+          pricing_mode: pricing_mode || "per_unit",
           vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null,
           vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD",
           deadline: deadline || null, expires_at: expiresAt,
@@ -161,6 +163,7 @@ serve(async (req: Request) => {
         }).select("id").single();
         await supabase.from("order_workflow_steps").update({
           status: "offered", offered_at: new Date().toISOString(), instructions: instructions || step.instructions,
+          pricing_mode: pricing_mode || "per_unit",
         }).eq("id", step_id);
         if (vendor_rate && vendor_total) {
           const units = vendor_rate > 0 ? vendor_total / vendor_rate : 1;
@@ -183,7 +186,7 @@ serve(async (req: Request) => {
       }
 
       case "offer_multiple": {
-        const { vendors: vendorList, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits } = body;
+        const { vendors: vendorList, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits, pricing_mode } = body;
         if (!vendorList?.length) return json({ success: false, error: "No vendors provided" }, 400);
 
         // QMS gating per vendor. Block-mode: fail the whole call if any vendor is ineligible.
@@ -208,6 +211,7 @@ serve(async (req: Request) => {
           const offerTotal = v.vendor_total ?? vendor_total;
           const { data: insertedOffer } = await supabase.from("vendor_step_offers").insert({
             step_id, vendor_id: v.vendor_id, status: "pending",
+            pricing_mode: pricing_mode || "per_unit",
             vendor_rate: offerRate ?? null, vendor_rate_unit: vendor_rate_unit ?? null,
             vendor_total: offerTotal ?? null, vendor_currency: vendor_currency || "CAD",
             deadline: deadline || null, expires_at: expiresAt,
@@ -218,7 +222,10 @@ serve(async (req: Request) => {
           }).select("id").single();
           if (insertedOffer?.id) insertedOffersByVendor[v.vendor_id] = insertedOffer.id;
         }
-        await supabase.from("order_workflow_steps").update({ status: "offered", offered_at: new Date().toISOString(), instructions: instructions || step.instructions }).eq("id", step_id);
+        await supabase.from("order_workflow_steps").update({
+          status: "offered", offered_at: new Date().toISOString(), instructions: instructions || step.instructions,
+          pricing_mode: pricing_mode || "per_unit",
+        }).eq("id", step_id);
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
         // Fan out Brevo notifications in parallel; failures are logged inside
         // notifyVendorAssignment (with a notification_log row) and don't fail

@@ -243,8 +243,22 @@ export default function AdminCreateOrder() {
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const [linkedProject, setLinkedProject] = useState<ProjectSuggestion | null>(null);
   const projectDebounceRef = useRef<number | null>(null);
-  const [files, setFiles] = useState<File[]>([]);
+  type AttachedFile = {
+    file: File;
+    category: string; // file_categories.slug
+    customLabel?: string;
+  };
+  const [files, setFiles] = useState<AttachedFile[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+
+  const FILE_CATEGORY_OPTIONS: Array<{ value: string; label: string }> = [
+    { value: "to_translate", label: "Source Document" },
+    { value: "work_files", label: "Files to Work Upon" },
+    { value: "reference", label: "Reference File" },
+    { value: "glossary", label: "Glossary" },
+    { value: "style_guide", label: "Style Guide" },
+    { value: "custom", label: "Custom" },
+  ];
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -944,7 +958,19 @@ export default function AdminCreateOrder() {
     if (files.length === 0) return;
     setUploadingFiles(true);
     try {
-      for (const f of files) {
+      // Resolve category slug → id once
+      const slugs = Array.from(new Set(files.map((af) => af.category).filter(Boolean)));
+      const slugToId: Record<string, string> = {};
+      if (slugs.length > 0) {
+        const { data: cats } = await supabase
+          .from("file_categories")
+          .select("id, slug")
+          .in("slug", slugs);
+        for (const c of cats || []) slugToId[c.slug] = c.id;
+      }
+
+      for (const af of files) {
+        const f = af.file;
         const safeName = f.name.replace(/[^A-Za-z0-9._-]/g, "_");
         const storagePath = `quote/${quoteId}/${Date.now()}_${safeName}`;
         const { error: upErr } = await supabase.storage
@@ -957,7 +983,7 @@ export default function AdminCreateOrder() {
           console.error("File upload failed:", upErr.message);
           continue;
         }
-        await supabase.from("quote_files").insert({
+        const row: Record<string, unknown> = {
           quote_id: quoteId,
           original_filename: f.name,
           storage_path: storagePath,
@@ -965,7 +991,12 @@ export default function AdminCreateOrder() {
           mime_type: f.type || "application/octet-stream",
           upload_status: "uploaded",
           is_staff_created: true,
-        });
+          file_category_id: slugToId[af.category] || null,
+        };
+        if (af.category === "custom" && af.customLabel?.trim()) {
+          row.custom_label = af.customLabel.trim();
+        }
+        await supabase.from("quote_files").insert(row);
       }
     } finally {
       setUploadingFiles(false);
@@ -2118,7 +2149,7 @@ export default function AdminCreateOrder() {
           <section className="bg-white border rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-700">
-                Source files
+                Project files
               </h2>
               <label className="text-xs text-teal-600 hover:text-teal-700 cursor-pointer flex items-center gap-1">
                 <Plus className="w-3 h-3" />
@@ -2129,7 +2160,16 @@ export default function AdminCreateOrder() {
                   className="hidden"
                   onChange={(e) => {
                     const chosen = Array.from(e.target.files || []);
-                    if (chosen.length) setFiles((prev) => [...prev, ...chosen]);
+                    if (chosen.length) {
+                      setFiles((prev) => [
+                        ...prev,
+                        ...chosen.map((file) => ({
+                          file,
+                          category: "to_translate",
+                          customLabel: "",
+                        })),
+                      ]);
+                    }
                     e.target.value = "";
                   }}
                 />
@@ -2137,32 +2177,69 @@ export default function AdminCreateOrder() {
             </div>
             {files.length === 0 ? (
               <p className="text-xs text-gray-500">
-                No files attached. Source documents, reference material, TMs,
-                glossaries — all welcome.
+                No files attached. Source documents, files to work upon,
+                reference material, glossaries, style guides — tag each one
+                so the vendor knows what's what.
               </p>
             ) : (
               <ul className="divide-y divide-gray-100 border rounded-md">
-                {files.map((f, i) => (
+                {files.map((af, i) => (
                   <li
-                    key={`${f.name}-${i}`}
-                    className="flex items-center justify-between px-3 py-2 text-sm"
+                    key={`${af.file.name}-${i}`}
+                    className="px-3 py-2 text-sm space-y-2"
                   >
-                    <div className="truncate mr-2">
-                      <span className="text-gray-900">{f.name}</span>
-                      <span className="text-xs text-gray-500 ml-2">
-                        {(f.size / 1024).toFixed(1)} KB
-                      </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="truncate min-w-0 flex-1">
+                        <span className="text-gray-900">{af.file.name}</span>
+                        <span className="text-xs text-gray-500 ml-2">
+                          {(af.file.size / 1024).toFixed(1)} KB
+                        </span>
+                      </div>
+                      <select
+                        value={af.category}
+                        onChange={(e) =>
+                          setFiles((prev) =>
+                            prev.map((p, idx) =>
+                              idx === i ? { ...p, category: e.target.value } : p,
+                            ),
+                          )
+                        }
+                        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+                      >
+                        {FILE_CATEGORY_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFiles((prev) => prev.filter((_, idx) => idx !== i))
+                        }
+                        className="text-gray-400 hover:text-red-600 p-1"
+                        title="Remove"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setFiles((prev) => prev.filter((_, idx) => idx !== i))
-                      }
-                      className="text-gray-400 hover:text-red-600 p-1"
-                      title="Remove"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {af.category === "custom" && (
+                      <input
+                        type="text"
+                        value={af.customLabel || ""}
+                        onChange={(e) =>
+                          setFiles((prev) =>
+                            prev.map((p, idx) =>
+                              idx === i
+                                ? { ...p, customLabel: e.target.value }
+                                : p,
+                            ),
+                          )
+                        }
+                        placeholder="Custom label (e.g. Vendor brief, Style sample)"
+                        className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    )}
                   </li>
                 ))}
               </ul>
