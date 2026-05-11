@@ -2460,8 +2460,10 @@ function WorkflowPipeline({
                           </div>
                         )}
 
-                        {/* Proposed counter – pending review */}
-                        {offer.counter_status === 'pending' && (
+                        {/* Proposed counter – pending review.
+                            vendor-counter-offer writes counter_status='proposed';
+                            DB convention is 'proposed', not 'pending'. */}
+                        {offer.counter_status === 'proposed' && (
                           <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-xs">
                             <div className="font-medium text-yellow-800 mb-2">
                               🔔 Counter-Proposal <span className="font-normal text-yellow-600">(pending)</span>

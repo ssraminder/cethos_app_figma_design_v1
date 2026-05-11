@@ -260,8 +260,11 @@ serve(async (req: Request) => {
       const activeOffers = offerList.filter(
         (o: any) => o.status === "pending" || o.status === "offered",
       );
+      // 'proposed' is what vendor-counter-offer writes when a vendor
+      // submits a counter that needs admin review. Older code used
+      // 'pending' but the DB has never carried that value.
       const hasPendingCounter = offerList.some(
-        (o: any) => o.counter_status === "pending",
+        (o: any) => o.counter_status === "proposed",
       );
 
       steps.push({
