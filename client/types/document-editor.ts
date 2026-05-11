@@ -13,9 +13,12 @@ export type FileProcessingStatus =
 
 export type FileCategoryCode =
   | "to_translate"
+  | "work_files"
   | "reference"
   | "supporting"
-  | "do_not_translate";
+  | "do_not_translate"
+  | "glossary"
+  | "style_guide";
 
 export type Complexity = "easy" | "medium" | "hard";
 
@@ -348,9 +351,12 @@ export const DEFAULT_DOCUMENT_TYPES = [
 
 export const FILE_CATEGORY_DISPLAY: Record<FileCategoryCode, { label: string; color: string }> = {
   to_translate: { label: "To Translate", color: "bg-teal-100 text-teal-800" },
+  work_files: { label: "Files to Work Upon", color: "bg-teal-100 text-teal-800" },
   reference: { label: "Reference", color: "bg-blue-100 text-blue-800" },
   supporting: { label: "Supporting", color: "bg-purple-100 text-purple-800" },
   do_not_translate: { label: "Do Not Translate", color: "bg-gray-100 text-gray-800" },
+  glossary: { label: "Glossary", color: "bg-amber-100 text-amber-800" },
+  style_guide: { label: "Style Guide", color: "bg-amber-100 text-amber-800" },
 };
 
 export const PROCESSING_STATUS_DISPLAY: Record<FileProcessingStatus, { label: string; color: string; icon?: string }> = {
