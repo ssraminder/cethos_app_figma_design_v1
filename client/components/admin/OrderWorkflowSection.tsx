@@ -1121,7 +1121,21 @@ function VendorAssignModal({
   const marginColor =
     margin === null ? "gray" : margin >= 50 ? "green" : margin >= minMarginPercent ? "yellow" : "red";
 
-  const canSubmit = vendorRate !== "" && parseFloat(vendorRate) > 0 && vendorRateUnit && units !== "" && parseFloat(units) > 0;
+  // Deadline is required for all assign/offer flows.
+  // For offer flows, the offer expiry must land before the deadline so
+  // vendors can't accept after their delivery window has already started.
+  const deadlineDate = deadline ? new Date(deadline) : null;
+  const expiryDate =
+    mode !== "assign" && expiresInHours !== "0"
+      ? new Date(Date.now() + parseInt(expiresInHours) * 3600_000)
+      : null;
+  const expiryBeforeDeadline =
+    !expiryDate || !deadlineDate || expiryDate.getTime() < deadlineDate.getTime();
+
+  const canSubmit =
+    vendorRate !== "" && parseFloat(vendorRate) > 0 &&
+    vendorRateUnit && units !== "" && parseFloat(units) > 0 &&
+    !!deadline && expiryBeforeDeadline;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -1353,15 +1367,29 @@ function VendorAssignModal({
             </div>
           )}
 
-          {/* Deadline */}
+          {/* Deadline — required */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Deadline</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Deadline <span className="text-red-500">*</span>
+            </label>
             <input
               type="datetime-local"
               value={deadline}
+              required
               onChange={(e) => setDeadline(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                !deadline ? "border-red-300" : "border-gray-200"
+              }`}
             />
+            {!deadline && (
+              <p className="mt-1 text-xs text-red-600">Deadline is required.</p>
+            )}
+            {deadline && expiryDate && !expiryBeforeDeadline && (
+              <p className="mt-1 text-xs text-red-600">
+                Offer expiry ({expiryDate.toLocaleString()}) must be before the deadline.
+                Pick a shorter expiry or a later deadline.
+              </p>
+            )}
           </div>
 
           {/* Instructions */}
