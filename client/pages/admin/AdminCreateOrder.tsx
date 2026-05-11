@@ -27,7 +27,7 @@ import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { toast } from "sonner";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import CustomerSearch, { CustomerHit } from "@/components/shared/CustomerSearch";
-import { ArrowLeft, Plus, Trash2, Loader2, AlertCircle, Briefcase, Zap } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Loader2, AlertCircle, Briefcase, Zap, Copy, Check } from "lucide-react";
 
 // ═════════════════════════════════════════════════════════════════
 // TYPES
@@ -142,6 +142,53 @@ const num = (v: string): number => {
 // ═════════════════════════════════════════════════════════════════
 // COMPONENT
 // ═════════════════════════════════════════════════════════════════
+
+// Inline pill that shows the linked internal_projects.project_number
+// with a copy-to-clipboard button. Used in the create-order Project
+// picker so staff can hand the PRJ-YYYY-NNNNN out to clients / paste
+// it into external systems before the order is even submitted.
+function ProjectNumberPill({
+  projectNumber,
+  onUnlink,
+}: {
+  projectNumber: string;
+  onUnlink: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(projectNumber);
+      setCopied(true);
+      toast.success("Project number copied");
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+  return (
+    <div className="mt-1 inline-flex items-center gap-1 text-xs">
+      <div className="inline-flex items-center bg-teal-50 border border-teal-200 rounded-md text-teal-800">
+        <span className="px-2 py-1 font-medium">↪ {projectNumber}</span>
+        <button
+          type="button"
+          onClick={onCopy}
+          title="Copy project number"
+          aria-label="Copy project number"
+          className="px-2 py-1 border-l border-teal-200 hover:bg-teal-100 rounded-r-md"
+        >
+          {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={onUnlink}
+        className="text-gray-500 hover:text-gray-700 underline ml-1"
+      >
+        unlink
+      </button>
+    </div>
+  );
+}
 
 export default function AdminCreateOrder() {
   const navigate = useNavigate();
@@ -313,6 +360,47 @@ export default function AdminCreateOrder() {
     // RPC match this exact project on submit.
     setClientProjectNumber(p.client_project_number ?? "");
     setProjectDropdownOpen(false);
+  };
+
+  // Create a new internal project NOW (rather than waiting for order
+  // submit) so staff can see + copy the PRJ-YYYY-NNNNN number
+  // immediately. Calls find_or_create_internal_project — if a project
+  // with the same (company, client_project_number) already exists, the
+  // RPC returns its id rather than spawning a duplicate.
+  const [creatingProject, setCreatingProject] = useState(false);
+  const createProjectNow = async () => {
+    if (!customer) return;
+    const label = clientProjectNumber.trim();
+    if (!label) return;
+    setCreatingProject(true);
+    try {
+      const { data: projectId, error: rpcErr } = await supabase.rpc(
+        "find_or_create_internal_project",
+        {
+          p_customer_id: customer.id,
+          p_company_id: customer.company_id ?? null,
+          p_client_project_number: label,
+          p_created_by_staff_id: session?.staffId ?? null,
+        },
+      );
+      if (rpcErr) throw rpcErr;
+      if (!projectId) throw new Error("RPC returned no project id");
+      // Fetch the freshly-issued PRJ number so we can show it.
+      const res = await sbFetch(
+        `internal_projects?select=id,project_number,client_project_number,name,updated_at&id=eq.${projectId}&limit=1`,
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = await res.json();
+      if (Array.isArray(rows) && rows[0]) {
+        setLinkedProject(rows[0]);
+        setProjectDropdownOpen(false);
+        toast.success(`Project ${rows[0].project_number} ready`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to create project");
+    } finally {
+      setCreatingProject(false);
+    }
   };
 
   // ── Client PM picker: search company_project_managers under the customer's
@@ -802,11 +890,15 @@ export default function AdminCreateOrder() {
     ) {
       return `${customer.full_name || "Customer"} requires a client project number`;
     }
-    for (const li of lineItems) {
-      if (!li.description.trim()) return "Every line item needs a description";
-      const qty = li.calculationUnit === "flat" ? 1 : num(li.unitQuantity);
-      if (qty <= 0) return "Every line item needs a positive quantity";
-      if (num(li.baseRate) <= 0) return "Every line item needs a positive rate";
+    // Line items only apply to quote mode now. Direct orders bill via
+    // order_receivables on the Finance tab post-create.
+    if (mode !== "direct_order") {
+      for (const li of lineItems) {
+        if (!li.description.trim()) return "Every line item needs a description";
+        const qty = li.calculationUnit === "flat" ? 1 : num(li.unitQuantity);
+        if (qty <= 0) return "Every line item needs a positive quantity";
+        if (num(li.baseRate) <= 0) return "Every line item needs a positive rate";
+      }
     }
     return null;
   };
@@ -895,28 +987,41 @@ export default function AdminCreateOrder() {
 
     setSubmitting(true);
     try {
-      const documents = lineItems.map((li) => {
-        const qty = li.calculationUnit === "flat" ? 1 : num(li.unitQuantity);
-        const rate = num(li.baseRate);
-        return {
-          label: li.description.trim(),
-          calculationUnit: li.calculationUnit,
-          unitQuantity: qty,
-          baseRate: rate,
-          lineTotal: Math.round(qty * rate * 100) / 100,
-        };
-      });
+      // Direct orders skip line items: receivables are added on the
+      // order Finance tab after creation and the order_receivables
+      // trigger recomputes totals. Quote mode keeps the existing
+      // documents+pricing snapshot.
+      const documents = mode === "direct_order"
+        ? []
+        : lineItems.map((li) => {
+            const qty = li.calculationUnit === "flat" ? 1 : num(li.unitQuantity);
+            const rate = num(li.baseRate);
+            return {
+              label: li.description.trim(),
+              calculationUnit: li.calculationUnit,
+              unitQuantity: qty,
+              baseRate: rate,
+              lineTotal: Math.round(qty * rate * 100) / 100,
+            };
+          });
 
-      const pricing = {
-        subtotal: totals.subtotal,
-        certificationTotal: 0,
-        rushFee: totals.rush,
-        deliveryFee: totals.delivery,
-        taxRate: totals.rate,
-        taxAmount: totals.tax,
-        total: totals.total,
-        currency,
-      };
+      const pricing = mode === "direct_order"
+        ? {
+            subtotal: 0, certificationTotal: 0,
+            rushFee: 0, deliveryFee: 0,
+            taxRate: 0, taxAmount: 0, total: 0,
+            currency,
+          }
+        : {
+            subtotal: totals.subtotal,
+            certificationTotal: 0,
+            rushFee: totals.rush,
+            deliveryFee: totals.delivery,
+            taxRate: totals.rate,
+            taxAmount: totals.tax,
+            total: totals.total,
+            currency,
+          };
 
       if (mode === "quote") {
         // create-fast-quote body
@@ -1572,7 +1677,15 @@ export default function AdminCreateOrder() {
             </div>
           </section>
 
-          {/* Line items */}
+          {/* Line items — quote mode only. Direct orders skip this here
+              and use the EditableReceivablesBreakdown on the order Finance
+              tab once the order is created: each receivable carries its
+              own description / quantity / rate / PO / project number.
+              Keeping line-items on direct-order create was writing them
+              to ai_analysis_results, which the order_receivables-based
+              billing trigger doesn't see — so they were effectively
+              orphaned for invoicing. */}
+          {mode !== "direct_order" && (
           <section className="bg-white border rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-700">Line items</h2>
@@ -1685,6 +1798,7 @@ export default function AdminCreateOrder() {
               })}
             </div>
           </section>
+          )}
 
           {/* Admin fields: branch + PO + client project number */}
           <section className="bg-white border rounded-lg p-4 space-y-4">
@@ -1785,16 +1899,10 @@ export default function AdminCreateOrder() {
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400"
                 />
                 {linkedProject && (
-                  <div className="mt-1 flex items-center gap-2 text-xs text-teal-700">
-                    <span className="font-medium">↪ {linkedProject.project_number}</span>
-                    <button
-                      type="button"
-                      onClick={unlinkProject}
-                      className="text-gray-500 hover:text-gray-700 underline"
-                    >
-                      unlink (create new instead)
-                    </button>
-                  </div>
+                  <ProjectNumberPill
+                    projectNumber={linkedProject.project_number}
+                    onUnlink={unlinkProject}
+                  />
                 )}
                 {projectDropdownOpen && customer &&
                   (projectSuggestions.length > 0 || clientProjectNumber.trim()) && (
@@ -1833,13 +1941,28 @@ export default function AdminCreateOrder() {
                             (p.client_project_number ?? "").toLowerCase() ===
                             clientProjectNumber.trim().toLowerCase(),
                         ) && (
-                          <li className="px-3 py-2 text-xs bg-gray-50 text-gray-600 italic">
-                            {projectSuggestions.length > 0
-                              ? "Or create new: "
-                              : "No match. New project will be created with label: "}
-                            <span className="text-gray-900 font-medium not-italic">
-                              {clientProjectNumber.trim()}
-                            </span>
+                          <li className="px-3 py-2 text-xs bg-gray-50 text-gray-700">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="italic">
+                                {projectSuggestions.length > 0
+                                  ? "Or create new: "
+                                  : "No match. Label: "}
+                                <span className="text-gray-900 font-medium not-italic">
+                                  {clientProjectNumber.trim()}
+                                </span>
+                              </span>
+                              <button
+                                type="button"
+                                disabled={creatingProject || !!linkedProject}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  createProjectNow();
+                                }}
+                                className="px-2 py-1 text-xs bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed not-italic font-medium"
+                              >
+                                {creatingProject ? "Creating…" : "Create now → get PRJ #"}
+                              </button>
+                            </div>
                           </li>
                         )}
                     </ul>
@@ -2046,7 +2169,10 @@ export default function AdminCreateOrder() {
             )}
           </section>
 
-          {/* Extras + totals */}
+          {/* Extras + totals — quote mode only. Direct orders compute
+              totals on the fly from order_receivables; the Finance tab
+              is where rush/discount/surcharge/tax now live. */}
+          {mode !== "direct_order" && (
           <section className="bg-white border rounded-lg p-4 space-y-3">
             <h2 className="text-sm font-semibold text-gray-700">Totals</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -2140,6 +2266,23 @@ export default function AdminCreateOrder() {
               </div>
             </div>
           </section>
+          )}
+
+          {/* Direct-order create flow tells staff where the money goes
+              next. The Finance tab is the canonical place to add
+              receivables now. */}
+          {mode === "direct_order" && (
+            <section className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h2 className="text-sm font-semibold text-blue-800 mb-1">Next: add receivables</h2>
+              <p className="text-xs text-blue-700">
+                Direct orders skip line items here. After you submit, head
+                to the order's <strong>Finance</strong> tab and add
+                receivable rows — each carries its own description,
+                quantity, rate, tax, PO, and client project number. The
+                order's subtotal / tax / total recompute automatically.
+              </p>
+            </section>
+          )}
 
           {/* Notes */}
           <section className="bg-white border rounded-lg p-4 space-y-2">
