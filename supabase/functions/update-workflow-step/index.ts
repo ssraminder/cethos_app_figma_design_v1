@@ -33,12 +33,42 @@ async function gateAssignment(
   return gate;
 }
 
+// Assign/offer flows require a deadline. For offer flows, the resulting
+// offer expiry (now + expires_in_hours) must also land before the
+// deadline so a vendor can't accept after the delivery window has
+// already opened. Returns null when valid, or an error message string.
+function validateDeadlineAndExpiry(action: string, body: any): string | null {
+  if (action !== "direct_assign" && action !== "offer_vendor" && action !== "offer_multiple") {
+    return null;
+  }
+  const deadline = body?.deadline ? new Date(body.deadline) : null;
+  if (!deadline || isNaN(deadline.getTime())) {
+    return "Deadline is required for assign/offer actions.";
+  }
+  const isOffer = action === "offer_vendor" || action === "offer_multiple";
+  if (isOffer && body?.expires_in_hours) {
+    const hours = Number(body.expires_in_hours);
+    if (Number.isFinite(hours) && hours > 0) {
+      const expiry = new Date(Date.now() + hours * 3600_000);
+      if (expiry.getTime() >= deadline.getTime()) {
+        return "Offer expiry must be before the deadline.";
+      }
+    }
+  }
+  return null;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   try {
     const body = await req.json();
     const { step_id, action } = body;
     if (!step_id || !action) return json({ success: false, error: "Missing step_id or action" }, 400);
+
+    const validationError = validateDeadlineAndExpiry(action, body);
+    if (validationError) {
+      return json({ success: false, error: validationError }, 400);
+    }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: step, error: stepErr } = await supabase
