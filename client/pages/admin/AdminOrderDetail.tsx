@@ -442,6 +442,7 @@ export default function AdminOrderDetail() {
   const [uploading, setUploading] = useState(false);
   const [isDelivering, setIsDelivering] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("reference");
+  const [uploadCustomLabel, setUploadCustomLabel] = useState("");
   const [uploadStaffNotes, setUploadStaffNotes] = useState("");
 
   // File selection & send modal state
@@ -581,7 +582,7 @@ export default function AdminOrderDetail() {
     try {
       const { data, error } = await supabase
         .from("quote_files")
-        .select("id, original_filename, file_size, mime_type, storage_path, file_category_id, is_staff_created, review_status, review_version, staff_notes, created_at, is_combined, source_file_ids, combined_from_count, file_categories!file_category_id(id, name, slug)")
+        .select("id, original_filename, file_size, mime_type, storage_path, file_category_id, custom_label, is_staff_created, review_status, review_version, staff_notes, created_at, is_combined, source_file_ids, combined_from_count, file_categories!file_category_id(id, name, slug)")
         .eq("quote_id", quoteId)
         .is("deleted_at", null)
         .in("upload_status", ["uploaded", "completed"])
@@ -653,7 +654,7 @@ export default function AdminOrderDetail() {
         .select(`
           id, quote_id, original_filename, storage_path, file_size, mime_type,
           upload_status, is_staff_created, created_at,
-          file_category_id, review_status, review_comment, reviewed_at, review_version,
+          file_category_id, custom_label, review_status, review_comment, reviewed_at, review_version,
           staff_notes,
           file_categories ( id, name, slug )
         `)
@@ -753,6 +754,9 @@ export default function AdminOrderDetail() {
         formData.append("staffId", currentStaff.staffId);
         formData.append("processWithAI", "false");
         formData.append("file_category", categorySlug);
+        if (categorySlug === "custom" && uploadCustomLabel.trim()) {
+          formData.append("custom_label", uploadCustomLabel.trim());
+        }
         if (uploadStaffNotes.trim()) {
           formData.append("staffNotes", uploadStaffNotes.trim());
         }
@@ -3541,11 +3545,18 @@ export default function AdminOrderDetail() {
                                 <p className="text-sm font-medium text-gray-900 truncate">
                                   {file.original_filename}
                                 </p>
-                                {(file.file_categories as any)?.name && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
-                                    {(file.file_categories as any).name}
-                                  </span>
-                                )}
+                                {(() => {
+                                  const cat = (file.file_categories as any);
+                                  const labelText =
+                                    cat?.slug === "custom" && file.custom_label
+                                      ? file.custom_label
+                                      : cat?.name;
+                                  return labelText ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
+                                      {labelText}
+                                    </span>
+                                  ) : null;
+                                })()}
                               </div>
                               <p className="text-xs text-gray-500">
                                 {file.file_size
@@ -3627,11 +3638,18 @@ export default function AdminOrderDetail() {
                           <div key={rf.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
                             <Paperclip className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                             <span className="truncate text-gray-600">{rf.original_filename}</span>
-                            {(rf.file_categories as any)?.name && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-700 whitespace-nowrap flex-shrink-0">
-                                {(rf.file_categories as any).name}
-                              </span>
-                            )}
+                            {(() => {
+                              const cat = (rf.file_categories as any);
+                              const labelText =
+                                cat?.slug === "custom" && rf.custom_label
+                                  ? rf.custom_label
+                                  : cat?.name;
+                              return labelText ? (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-700 whitespace-nowrap flex-shrink-0">
+                                  {labelText}
+                                </span>
+                              ) : null;
+                            })()}
                             <span className="text-xs text-gray-400 flex-shrink-0">
                               {rf.file_size ? `${(rf.file_size / 1024).toFixed(1)} KB` : "—"}
                             </span>
@@ -5384,6 +5402,7 @@ export default function AdminOrderDetail() {
                     { value: "reference", label: "Reference File", color: "gray" },
                     { value: "glossary", label: "Glossary", color: "gray" },
                     { value: "style_guide", label: "Style Guide", color: "gray" },
+                    { value: "custom", label: "Custom", color: "gray" },
                   ].map((cat) => (
                     <button
                       key={cat.value}
@@ -5401,13 +5420,22 @@ export default function AdminOrderDetail() {
                     </button>
                   ))}
                 </div>
+                {uploadCategory === "custom" && (
+                  <input
+                    type="text"
+                    value={uploadCustomLabel}
+                    onChange={(e) => setUploadCustomLabel(e.target.value)}
+                    placeholder="e.g. Vendor brief, Style sample, Invoice copy"
+                    className="mt-2 w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                )}
               </div>
             )}
 
             {/* Actions */}
             <div className="flex gap-2 justify-end">
               <button
-                onClick={() => { setShowUploadModal(false); setUploadFiles([]); setUploadStaffNotes(""); }}
+                onClick={() => { setShowUploadModal(false); setUploadFiles([]); setUploadStaffNotes(""); setUploadCustomLabel(""); }}
                 disabled={uploading || isDelivering}
                 className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50"
               >

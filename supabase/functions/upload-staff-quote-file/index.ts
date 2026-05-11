@@ -41,6 +41,7 @@ serve(async (req: Request) => {
     const quoteId = formData.get("quoteId") as string | null;
     const staffId = formData.get("staffId") as string | null;
     const fileCategory = formData.get("file_category") as string | null;
+    const customLabel = formData.get("custom_label") as string | null;
     const staffNotes = formData.get("staffNotes") as string | null;
 
     if (!file) throw new Error("Missing required field: file");
@@ -102,6 +103,10 @@ serve(async (req: Request) => {
 
     if (staffNotes && staffNotes.trim()) {
       insertData.staff_notes = staffNotes.trim();
+    }
+
+    if (customLabel && customLabel.trim()) {
+      insertData.custom_label = customLabel.trim();
     }
 
     const { data: fileRecord, error: dbError } = await supabase
