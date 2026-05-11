@@ -119,7 +119,7 @@ serve(async (req: Request) => {
         }
 
         const expiresAt = expires_in_hours ? new Date(Date.now() + expires_in_hours * 3600000).toISOString() : null;
-        await supabase.from("vendor_step_offers").insert({
+        const { data: insertedOffer } = await supabase.from("vendor_step_offers").insert({
           step_id, vendor_id, status: "pending",
           vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null,
           vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD",
@@ -128,7 +128,7 @@ serve(async (req: Request) => {
           negotiation_allowed: negotiation_allowed ?? false,
           max_rate: max_rate ?? null, max_total: max_total ?? null,
           latest_deadline: latest_deadline ?? null, auto_accept_within_limits: auto_accept_within_limits ?? true,
-        });
+        }).select("id").single();
         await supabase.from("order_workflow_steps").update({
           status: "offered", offered_at: new Date().toISOString(), instructions: instructions || step.instructions,
         }).eq("id", step_id);
@@ -145,6 +145,7 @@ serve(async (req: Request) => {
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
         await notifyVendorAssignment({
           supabase, vendor_id, step, workflow, kind: "offer_vendor",
+          offer_id: insertedOffer?.id ?? null,
           vendor_rate, vendor_rate_unit, vendor_total, vendor_currency,
           deadline, expires_at: expiresAt, instructions,
         });
@@ -171,10 +172,11 @@ serve(async (req: Request) => {
         }
 
         const expiresAt = expires_in_hours ? new Date(Date.now() + expires_in_hours * 3600000).toISOString() : null;
+        const insertedOffersByVendor: Record<string, string> = {};
         for (const v of vendorList) {
           const offerRate = v.vendor_rate ?? vendor_rate;
           const offerTotal = v.vendor_total ?? vendor_total;
-          await supabase.from("vendor_step_offers").insert({
+          const { data: insertedOffer } = await supabase.from("vendor_step_offers").insert({
             step_id, vendor_id: v.vendor_id, status: "pending",
             vendor_rate: offerRate ?? null, vendor_rate_unit: vendor_rate_unit ?? null,
             vendor_total: offerTotal ?? null, vendor_currency: vendor_currency || "CAD",
@@ -183,16 +185,19 @@ serve(async (req: Request) => {
             negotiation_allowed: negotiation_allowed ?? false,
             max_rate: max_rate ?? null, max_total: max_total ?? null,
             latest_deadline: latest_deadline ?? null, auto_accept_within_limits: auto_accept_within_limits ?? true,
-          });
+          }).select("id").single();
+          if (insertedOffer?.id) insertedOffersByVendor[v.vendor_id] = insertedOffer.id;
         }
         await supabase.from("order_workflow_steps").update({ status: "offered", offered_at: new Date().toISOString(), instructions: instructions || step.instructions }).eq("id", step_id);
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
         // Fan out Brevo notifications in parallel; failures are logged inside
-        // notifyVendorAssignment and don't fail the offer write.
+        // notifyVendorAssignment (with a notification_log row) and don't fail
+        // the offer write.
         await Promise.all(
           vendorList.map((v: any) =>
             notifyVendorAssignment({
               supabase, vendor_id: v.vendor_id, step, workflow, kind: "offer_vendor",
+              offer_id: insertedOffersByVendor[v.vendor_id] ?? null,
               vendor_rate: v.vendor_rate ?? vendor_rate,
               vendor_rate_unit, vendor_currency,
               vendor_total: v.vendor_total ?? vendor_total,

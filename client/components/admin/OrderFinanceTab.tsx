@@ -298,7 +298,9 @@ function ReceivableBreakdown({
             <tr className="border-b border-gray-100">
               <td className="py-2 px-4 text-gray-600">Pre-tax Subtotal</td>
               <td className="py-2 px-4 text-right font-medium text-gray-900">
-                {formatCurrency(of.pre_tax, of.currency)}
+                {/* total − tax is correct under both pre- and post-normalization
+                    conventions; of.pre_tax double-counts cert on old records. */}
+                {formatCurrency(of.total - of.tax, of.currency)}
               </td>
             </tr>
             <tr className="border-b border-gray-100">

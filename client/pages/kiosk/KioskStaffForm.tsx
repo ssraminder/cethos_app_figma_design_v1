@@ -305,15 +305,19 @@ export default function KioskStaffForm({
       }
     }
 
-    const subtotal =
+    // Pre-tax = translation + cert + rush - discount + surcharge
+    const preTax =
       subtotalBefore + rushFee - discountAmount + surchargeAmount;
     const taxRate = selectedTax?.rate || 0;
-    const taxAmount = subtotal * taxRate;
-    const total = subtotal + taxAmount;
+    const taxAmount = preTax * taxRate;
+    const total = preTax + taxAmount;
     return {
       translationSubtotal,
       certificationTotal,
-      subtotal,
+      // `subtotal` per 20260511_normalize_subtotal_convention is translation
+      // only. Keeping the field name for downstream payload compatibility.
+      subtotal: translationSubtotal,
+      preTax,
       taxRate,
       taxAmount,
       total,

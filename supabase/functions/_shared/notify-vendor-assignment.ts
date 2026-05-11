@@ -11,6 +11,7 @@ interface NotifyArgs {
   step: any;
   workflow: any;
   kind: "direct_assign" | "offer_vendor";
+  offer_id?: string | null;
   vendor_rate?: number | null;
   vendor_rate_unit?: string | null;
   vendor_total?: number | null;
@@ -18,6 +19,45 @@ interface NotifyArgs {
   deadline?: string | null;
   expires_at?: string | null;
   instructions?: string | null;
+}
+
+// Writes a row to notification_log so vendor-offer sends are auditable the
+// same way customer/admin emails are. Failures here MUST NOT throw — this
+// helper itself runs in a fire-and-forget context inside update-workflow-step.
+async function logNotification(
+  supabase: any,
+  fields: {
+    event_type: string;
+    recipient_email: string;
+    recipient_name?: string | null;
+    recipient_id?: string | null;
+    order_id?: string | null;
+    step_id?: string | null;
+    offer_id?: string | null;
+    subject: string;
+    status: "sent" | "failed";
+    error_message?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  try {
+    await supabase.from("notification_log").insert({
+      event_type: fields.event_type,
+      recipient_type: "vendor",
+      recipient_email: fields.recipient_email,
+      recipient_name: fields.recipient_name ?? null,
+      recipient_id: fields.recipient_id ?? null,
+      order_id: fields.order_id ?? null,
+      step_id: fields.step_id ?? null,
+      offer_id: fields.offer_id ?? null,
+      subject: fields.subject,
+      status: fields.status,
+      error_message: fields.error_message ?? null,
+      metadata: fields.metadata ?? {},
+    });
+  } catch (e: any) {
+    console.error("notify-vendor-assignment notification_log insert failed:", e?.message || e);
+  }
 }
 
 const VENDOR_PORTAL_URL =
@@ -195,14 +235,74 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
     });
 
     const result = await res.json().catch(() => ({}));
+    const eventType = isOffer ? "vendor_offer" : "vendor_assignment";
+
     if (!res.ok) {
       console.error("notify-vendor-assignment Brevo error:", JSON.stringify(result));
+      await logNotification(supabase, {
+        event_type: eventType,
+        recipient_email: vendor.email,
+        recipient_name: vendor.full_name ?? null,
+        recipient_id: vendor_id,
+        order_id: workflow?.order_id ?? null,
+        step_id: step?.id ?? null,
+        offer_id: args.offer_id ?? null,
+        subject,
+        status: "failed",
+        error_message: `Brevo ${res.status}: ${JSON.stringify(result).slice(0, 500)}`,
+        metadata: {
+          kind,
+          order_number: order?.order_number ?? null,
+          step_name: step?.name ?? null,
+          cc: ccList,
+        },
+      });
       return;
     }
+
     console.log(
       `notify-vendor-assignment ${kind} sent to ${vendor.email} (msg ${result?.messageId})`,
     );
+    await logNotification(supabase, {
+      event_type: eventType,
+      recipient_email: vendor.email,
+      recipient_name: vendor.full_name ?? null,
+      recipient_id: vendor_id,
+      order_id: workflow?.order_id ?? null,
+      step_id: step?.id ?? null,
+      offer_id: args.offer_id ?? null,
+      subject,
+      status: "sent",
+      metadata: {
+        kind,
+        order_number: order?.order_number ?? null,
+        step_name: step?.name ?? null,
+        brevo_message_id: result?.messageId ?? null,
+        cc: ccList,
+      },
+    });
   } catch (err: any) {
     console.error("notify-vendor-assignment threw:", err?.message || err);
+    // Best-effort: log the throw if we know enough.
+    try {
+      const { data: vendorRow } = await args.supabase
+        .from("vendors").select("email, full_name").eq("id", args.vendor_id).maybeSingle();
+      if (vendorRow?.email) {
+        await logNotification(args.supabase, {
+          event_type: args.kind === "offer_vendor" ? "vendor_offer" : "vendor_assignment",
+          recipient_email: vendorRow.email,
+          recipient_name: vendorRow.full_name ?? null,
+          recipient_id: args.vendor_id,
+          order_id: args.workflow?.order_id ?? null,
+          step_id: args.step?.id ?? null,
+          offer_id: args.offer_id ?? null,
+          subject: `(threw) ${args.kind} for vendor ${args.vendor_id}`,
+          status: "failed",
+          error_message: err?.message || String(err),
+        });
+      }
+    } catch {
+      /* swallow */
+    }
   }
 }

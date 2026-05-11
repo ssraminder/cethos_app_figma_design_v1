@@ -336,7 +336,20 @@ export default function EditOrderModal({
   };
 
   const recalculateTotals = () => {
-    const subtotal = order.subtotal || 0;
+    // Derive translation-only subtotal from the canonical identity
+    //   translation = total − tax − rush − delivery − surcharge + discount − cert
+    // which holds under both pre- and post-20260511_normalize_subtotal_convention
+    // conventions. Using `order.subtotal` directly would double-count cert on
+    // pre-normalization rows.
+    const subtotal = Math.max(0,
+      Number(order.total_amount || 0)
+      - Number(order.tax_amount || 0)
+      - Number(order.rush_fee || 0)
+      - Number(order.delivery_fee || 0)
+      - Number(order.surcharge_total || 0)
+      + Number(order.discount_total || 0)
+      - Number(order.certification_total || 0)
+    );
 
     // Certifications
     const certTotal = certifications
