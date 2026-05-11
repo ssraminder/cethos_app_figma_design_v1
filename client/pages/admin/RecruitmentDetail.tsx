@@ -3746,17 +3746,18 @@ export default function RecruitmentDetail() {
   };
 
   const callEdgeFunction = async (fnSlug: string, body: Record<string, unknown>) => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://lmzoyezvsjgsxveoakdr.supabase.co";
-    const resp = await fetch(`${supabaseUrl}/functions/v1/${fnSlug}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const json = await resp.json();
-    if (!resp.ok || json?.success === false) {
-      throw new Error(json?.error || `HTTP ${resp.status}`);
+    // Use supabase.functions.invoke so the staff session JWT + anon apikey
+    // are attached automatically. The previous hand-rolled fetch omitted
+    // both headers, which made the Supabase gateway 401 functions deployed
+    // with verify_jwt=true.
+    const { data, error } = await supabase.functions.invoke(fnSlug, { body });
+    if (error) {
+      throw new Error((error as { message?: string })?.message || `Edge function ${fnSlug} failed`);
     }
-    return json;
+    if (data && typeof data === "object" && (data as { success?: boolean }).success === false) {
+      throw new Error((data as { error?: string }).error || `Edge function ${fnSlug} returned success:false`);
+    }
+    return data;
   };
 
   const [rerunPrescreenBusy, setRerunPrescreenBusy] = useState(false);
