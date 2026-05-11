@@ -1375,7 +1375,8 @@ function VendorAssignModal({
           {/* Deadline — required */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              Deadline <span className="text-red-500">*</span>
+              Deadline <span className="text-red-500">*</span>{" "}
+              <span className="font-normal text-gray-400">({Intl.DateTimeFormat().resolvedOptions().timeZone})</span>
             </label>
             <input
               type="datetime-local"
@@ -1386,13 +1387,23 @@ function VendorAssignModal({
                 !deadline ? "border-red-300" : "border-gray-200"
               }`}
             />
+            {deadline && deadlineDate && !isNaN(deadlineDate.getTime()) && (
+              <p className="mt-1 text-xs text-gray-500">
+                = {deadlineDate.toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} UTC
+                {" · "}
+                <span title="What this looks like to a vendor in this timezone">
+                  vendor in MDT sees{" "}
+                  {deadlineDate.toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Edmonton" })}
+                </span>
+              </p>
+            )}
             {!deadline && (
               <p className="mt-1 text-xs text-red-600">Deadline is required.</p>
             )}
             {deadline && expiryDate && !expiryBeforeDeadline && (
               <p className="mt-1 text-xs text-red-600">
-                Offer expiry ({expiryDate.toLocaleString()}) must be before the deadline.
-                Pick a shorter expiry or a later deadline.
+                Offer expiry ({expiryDate.toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })} {Intl.DateTimeFormat().resolvedOptions().timeZone})
+                must be before the deadline. Pick a shorter expiry or a later deadline.
               </p>
             )}
           </div>
