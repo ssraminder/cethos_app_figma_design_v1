@@ -569,9 +569,9 @@ function VendorFinderModal({
   }, [isOpen]);
 
   const handleReset = () => {
-    setFilterSourceLang(resolvedSourceLang);
-    setFilterTargetLang(resolvedTargetLang);
-    setFilterServiceId(serviceId || "");
+    setFilterSourceLang("");
+    setFilterTargetLang("");
+    setFilterServiceId("");
     setNativeLanguages([]);
     setNativeLangSearch('');
     setCountry("");
@@ -582,6 +582,8 @@ function VendorFinderModal({
     setSortBy("match_score");
     setVendorNameOptions([]);
     setNameSearchOpen(false);
+    // Auto-search with cleared filters so the user immediately sees the full pool
+    setTimeout(() => { doSearch(); }, 0);
   };
 
   const toggleSelect = (id: string) => {
@@ -826,8 +828,9 @@ function VendorFinderModal({
                     <button
                       onClick={() => { handleReset(); }}
                       className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50"
+                      title="Clear every filter and search the full vendor pool"
                     >
-                      Reset Filters
+                      Clear filters
                     </button>
                   </div>
                 </div>
