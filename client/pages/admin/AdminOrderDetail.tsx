@@ -21,6 +21,8 @@ import {
   ArrowLeft,
   Brain,
   Briefcase,
+  Copy,
+  Check,
   Building,
   CheckCircle,
   Clock,
@@ -283,6 +285,35 @@ const WORK_STATUSES = [
   { value: "review", label: "Review", color: "amber" },
   { value: "completed", label: "Completed", color: "green" },
 ];
+
+// Small icon button that copies the given string to the clipboard. Flips
+// the icon to a check for 1.5s on success. Used for things like the PRJ
+// project number that staff routinely paste into external tools (XTRF,
+// invoice templates, email).
+function CopyButton({ value, label }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      toast.success(`${label || "Value"} copied`);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      title={`Copy ${label || value}`}
+      aria-label={`Copy ${label || value}`}
+      className="px-2 py-1.5 hover:bg-teal-100 rounded-r-md transition-colors"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
 
 export default function AdminOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -2543,24 +2574,27 @@ export default function AdminOrderDetail() {
         </Link>
 
         {projectInfo && (
-          <Link
-            to={`/admin/projects/${order.internal_project_id}`}
-            className="inline-flex items-center gap-2 mb-3 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-md text-sm text-teal-800 transition-colors"
-          >
-            <Briefcase className="w-4 h-4" />
-            <span>
-              Part of{" "}
-              <span className="font-semibold">{projectInfo.project_number}</span>
-              {projectInfo.sibling_count > 0 && (
-                <>
-                  {" "}
-                  · {projectInfo.sibling_count} prior task
-                  {projectInfo.sibling_count === 1 ? "" : "s"}
-                </>
-              )}
-            </span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </Link>
+          <div className="inline-flex items-center gap-1 mb-3 bg-teal-50 border border-teal-200 rounded-md text-sm text-teal-800">
+            <Link
+              to={`/admin/projects/${order.internal_project_id}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 hover:bg-teal-100 rounded-l-md transition-colors"
+            >
+              <Briefcase className="w-4 h-4" />
+              <span>
+                Part of{" "}
+                <span className="font-semibold">{projectInfo.project_number}</span>
+                {projectInfo.sibling_count > 0 && (
+                  <>
+                    {" "}
+                    · {projectInfo.sibling_count} prior task
+                    {projectInfo.sibling_count === 1 ? "" : "s"}
+                  </>
+                )}
+              </span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
+            <CopyButton value={projectInfo.project_number} label="Project number" />
+          </div>
         )}
 
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">

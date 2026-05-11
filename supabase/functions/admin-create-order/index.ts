@@ -74,8 +74,13 @@ serve(async (req: Request) => {
       throw new Error("Missing required field: order.sourceLanguageId");
     if (!order?.targetLanguageId)
       throw new Error("Missing required field: order.targetLanguageId");
-    if (!documents || !Array.isArray(documents) || documents.length === 0) {
-      throw new Error("At least one line item is required");
+    // admin-create-order is the direct-order path; post-cutover, direct
+    // orders bill via order_receivables on the Finance tab and no
+    // longer carry line items at create time. An empty documents array
+    // is the new normal; we still tolerate non-empty for legacy
+    // callers that pass line items.
+    if (!Array.isArray(documents)) {
+      throw new Error("documents must be an array (use [] for direct orders without line items)");
     }
     if (
       !pricing ||
