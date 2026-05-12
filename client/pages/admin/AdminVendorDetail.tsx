@@ -12,6 +12,7 @@ import VendorRatesTab from "./vendor-detail/VendorRatesTab";
 import VendorPaymentTab from "./vendor-detail/VendorPaymentTab";
 import VendorAuthTab from "./vendor-detail/VendorAuthTab";
 import VendorJobsTab from "./vendor-detail/VendorJobsTab";
+import VendorNdaTab from "./vendor-detail/VendorNdaTab";
 
 const TAB_KEYS = [
   "profile",
@@ -20,6 +21,7 @@ const TAB_KEYS = [
   "rates",
   "payment",
   "auth",
+  "nda",
   "jobs",
 ] as const;
 
@@ -32,6 +34,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   rates: "Rates",
   payment: "Payment",
   auth: "Auth / Invitation",
+  nda: "NDA",
   jobs: "Jobs",
 };
 
@@ -211,6 +214,13 @@ export default function AdminVendorDetail() {
 
         <TabsContent value="auth">
           <VendorAuthTab
+            vendorData={vendorData}
+            onRefresh={refreshVendorData}
+          />
+        </TabsContent>
+
+        <TabsContent value="nda">
+          <VendorNdaTab
             vendorData={vendorData}
             onRefresh={refreshVendorData}
           />
