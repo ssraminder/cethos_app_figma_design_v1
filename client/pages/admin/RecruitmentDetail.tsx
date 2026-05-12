@@ -187,8 +187,11 @@ const ISO_DOC_TYPES: Array<{
 
   // Verification / quality
   { slug: "professional_translation_cert", label: "Professional translation certificate (ATA / CTTIC / ITI / NAATI / etc.)", rationale: "Strengthens competence file; required by some clients", group: "verification" },
-  { slug: "reference_letter", label: "Two professional reference letters", rationale: "Independent verification of professional standing", group: "verification", default_selected: true },
   { slug: "language_proficiency", label: "Language proficiency proof (C2 / native attestation)", rationale: "Required for the target language(s) — especially non-native work", group: "verification" },
+  // NOTE: reference letters are NOT in this list — references are collected
+  // via the dedicated Request References flow (cvp-request-references →
+  // structured rubric submission by each reference), which is meaningfully
+  // better than collecting potentially-fakeable PDF letters.
 
   // Specialization
   { slug: "subject_specialization_proof", label: "Subject specialization evidence (per claimed domain)", rationale: "ISO 17100 § 6.1.6 — domain claim must be evidenced (degree, cert, or portfolio)", group: "specialization" },
@@ -3901,13 +3904,14 @@ export default function RecruitmentDetail() {
 
     return [
       `<p>Hi ${name},</p>`,
-      `<p>Thanks for your application. Before we can finalize your onboarding to the Cethos vendor network, we need to assemble your ISO 17100 competence file. The standard requires every translator to qualify via <strong>one of three routes</strong> (translation degree, other-field degree + 2y experience, or 5y experience alone) plus documentation of language proficiency, references, and confidentiality.</p>`,
+      `<p>Thanks for your application. Before we can finalize your onboarding to the Cethos vendor network, we need to assemble your ISO 17100 competence file. The standard requires every translator to qualify via <strong>one of three routes</strong> (translation degree, other-field degree + 2y experience, or 5y experience alone) plus documentation of language proficiency and confidentiality.</p>`,
       `<p><strong>Please send the following documents</strong> &mdash; you can reply directly to this email with PDFs attached:</p>`,
       `<ul>`,
       itemsHtml,
       `</ul>`,
+      `<p><strong>Professional references</strong> &mdash; handled separately. If we haven't already, we'll send a short form to two of your professional references; they reply directly to us so the verification stays independent. No reference letters needed from you.</p>`,
       `<p><strong>Confidentiality (NDA)</strong> &mdash; we have an in-portal clickwrap signing flow. Once your application is approved you'll be invited to sign electronically; no separate PDF is needed.</p>`,
-      `<p>If anything is unclear or you don't have a particular document, just reply and let us know — we can usually work around gaps with reference letters.</p>`,
+      `<p>If anything is unclear or you don't have a particular document, just reply and let us know.</p>`,
       `<p>Best regards,<br/>Cethos Recruitment Team</p>`,
     ].join("\n");
   };
@@ -5079,8 +5083,9 @@ export default function RecruitmentDetail() {
                         Tick what the applicant still owes you. Email body updates live.
                       </p>
                     </div>
-                    <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 mb-3">
-                      <strong>Note:</strong> NDA is handled by the in-portal clickwrap once the applicant is approved — don't request a separate signed PDF unless they can't access the portal.
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 mb-3 space-y-1">
+                      <div><strong>References</strong> &mdash; not in this list. Use the dedicated <em>Request References</em> button so each contact submits via the structured rubric form (more reliable than collecting reference letters).</div>
+                      <div><strong>NDA</strong> &mdash; handled by the in-portal clickwrap once the applicant is approved. Don't request a separate signed PDF unless they can't access the portal.</div>
                     </div>
                     <div className="space-y-3">
                       {ISO_DOC_GROUPS.map((g) => {
