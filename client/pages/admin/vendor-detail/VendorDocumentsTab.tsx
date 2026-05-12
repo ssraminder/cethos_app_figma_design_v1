@@ -28,6 +28,7 @@ import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import type { TabProps } from "./types";
 import IsoAssessmentSection from "./IsoAssessmentSection";
+import VendorReferencesSection from "./VendorReferencesSection";
 
 interface CvpApplication {
   id: string;
@@ -323,13 +324,16 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
         )}
       </section>
 
-      {/* References */}
+      {/* Vendor-side references (post-onboarding) */}
+      <VendorReferencesSection vendorId={vendor.id} />
+
+      {/* References from recruitment application */}
       <section className="bg-white border border-gray-200 rounded-lg p-5">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Mail className="w-4 h-4 text-gray-500" />
             <h3 className="text-sm font-semibold text-gray-900">
-              References ({refs.length})
+              References — recruitment application ({refs.length})
             </h3>
           </div>
           {application && (
