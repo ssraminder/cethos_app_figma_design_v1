@@ -165,18 +165,51 @@ interface RateSuggestion {
   test_bucket: string;
 }
 
-// ISO 17100 document types — Phase 1 hard-coded list. Becomes a config
-// table once we wire up the vendor_documents upload flow.
-const ISO_DOC_TYPES: Array<{ slug: string; label: string; rationale: string }> = [
-  { slug: "degree_translation_studies", label: "Degree in translation studies or linguistics", rationale: "ISO 17100 §3.1.4 — recognized higher-education qualification" },
-  { slug: "professional_translation_certificate", label: "Professional translation certificate (ATA / CTTIC / ITI / etc.)", rationale: "Equivalent qualification route" },
-  { slug: "experience_evidence", label: "Evidence of 2y full-time (or 5y part-time) translation experience", rationale: "Required without formal qualification" },
-  { slug: "reference_letter", label: "Two professional reference letters", rationale: "Independent verification" },
-  { slug: "language_proficiency", label: "Language proficiency evidence (C2 or native)", rationale: "Required for the target language" },
-  { slug: "subject_matter_qualification", label: "Subject-matter specialization proof (legal / medical / technical)", rationale: "If you claim specialization" },
-  { slug: "business_registration", label: "Business registration / sole-trader certificate", rationale: "For invoicing & compliance" },
-  { slug: "insurance_certificate", label: "Professional indemnity (E&O) insurance certificate", rationale: "Risk mitigation" },
-  { slug: "nda_signed", label: "Signed Cethos NDA", rationale: "Confidentiality" },
+// ISO 17100 document checklist mapped to file_categories.slug values.
+// Grouped by purpose so the modal renders sections.
+const ISO_DOC_TYPES: Array<{
+  slug: string;
+  label: string;
+  rationale: string;
+  group: "competence_a" | "competence_b" | "competence_c" | "verification" | "specialization" | "business" | "ongoing";
+  default_selected?: boolean;
+}> = [
+  // Route (a) — translation degree
+  { slug: "degree_translation_studies", label: "Translation / linguistics degree", rationale: "ISO 17100 § 3.1.4 route (a) — recognized higher-ed in translation or linguistics", group: "competence_a" },
+  { slug: "degree_transcript", label: "Academic transcript", rationale: "Supports the degree submission", group: "competence_a" },
+
+  // Route (b) — other degree + 2y experience
+  { slug: "degree_other_field", label: "Other-field degree (paired with 2y experience)", rationale: "ISO 17100 § 3.1.4 route (b) — recognized higher-ed in any field", group: "competence_b" },
+  { slug: "experience_evidence", label: "Evidence of 2 years professional translation experience", rationale: "Required to validate route (b)", group: "competence_b" },
+
+  // Route (c) — 5y experience only
+  { slug: "experience_evidence", label: "Evidence of 5 years professional translation experience", rationale: "ISO 17100 § 3.1.4 route (c) — no degree required", group: "competence_c" },
+
+  // Verification / quality
+  { slug: "professional_translation_cert", label: "Professional translation certificate (ATA / CTTIC / ITI / NAATI / etc.)", rationale: "Strengthens competence file; required by some clients", group: "verification" },
+  { slug: "reference_letter", label: "Two professional reference letters", rationale: "Independent verification of professional standing", group: "verification", default_selected: true },
+  { slug: "language_proficiency", label: "Language proficiency proof (C2 / native attestation)", rationale: "Required for the target language(s) — especially non-native work", group: "verification" },
+
+  // Specialization
+  { slug: "subject_specialization_proof", label: "Subject specialization evidence (per claimed domain)", rationale: "ISO 17100 § 6.1.6 — domain claim must be evidenced (degree, cert, or portfolio)", group: "specialization" },
+  { slug: "sworn_translator_accreditation", label: "Sworn / certified translator accreditation", rationale: "Required for certified-translation work in many jurisdictions", group: "specialization" },
+
+  // Business / compliance
+  { slug: "business_registration", label: "Business registration / tax certificate", rationale: "For invoicing & jurisdiction-specific tax compliance", group: "business" },
+  { slug: "insurance_certificate", label: "Professional indemnity (E&O) insurance certificate", rationale: "Risk mitigation; auditor will ask", group: "business" },
+
+  // Ongoing competence
+  { slug: "cpd_certificate", label: "Recent CPD record", rationale: "ISO 17100 wants ongoing competence evidence — training, conferences, etc.", group: "ongoing" },
+];
+
+const ISO_DOC_GROUPS: Array<{ key: string; label: string }> = [
+  { key: "competence_a", label: "Route (a) — Translation degree" },
+  { key: "competence_b", label: "Route (b) — Other-field degree + 2y experience" },
+  { key: "competence_c", label: "Route (c) — 5y experience only" },
+  { key: "verification", label: "Verification & quality" },
+  { key: "specialization", label: "Subject specialization" },
+  { key: "business", label: "Business & compliance" },
+  { key: "ongoing", label: "Ongoing competence" },
 ];
 
 interface TestSubmission {
@@ -3839,43 +3872,51 @@ export default function RecruitmentDetail() {
 
   const openRequestDocsModal = () => {
     if (!app) return;
-    // Default selection: docs that map to gaps we can detect cheaply
-    const defaultSelected: string[] = [];
-    if (!app.cv_storage_path) defaultSelected.push("experience_evidence");
-    // Reference letters & NDA almost always needed for ISO file
-    defaultSelected.push("reference_letter", "nda_signed");
+    // Default selection: everything that's typically required for the ISO
+    // file. Staff unticks anything they've already received. NDA is handled
+    // separately via the in-portal clickwrap flow — not in this modal.
+    const defaultSelected: string[] = ISO_DOC_TYPES
+      .filter((d) => d.default_selected || ["competence_a", "competence_b", "competence_c", "verification", "business"].includes(d.group))
+      .map((d) => d.slug);
 
     const name = app.full_name || "there";
-    const subject = `Cethos — additional documents needed for your translator profile`;
-    const lines = [
-      `<p>Hi ${name},</p>`,
-      `<p>Thanks for your application. Before we can finalize your onboarding to the Cethos vendor network, we need a few additional documents on file. Cethos is ISO 17100 certified for translation services, which requires us to keep evidence of translator competence for every vendor.</p>`,
-      `<p><strong>Could you please send us:</strong></p>`,
-      `<ul>`,
-      ...defaultSelected.map((slug) => {
-        const dt = ISO_DOC_TYPES.find((d) => d.slug === slug);
-        return dt ? `<li><strong>${dt.label}</strong> &mdash; ${dt.rationale}</li>` : "";
-      }).filter(Boolean),
-      `</ul>`,
-      `<p>You can reply to this email with the documents attached. Most translators send these as PDF scans.</p>`,
-      `<p>If you have any questions, just reply to this email.</p>`,
-      `<p>Best,<br/>Cethos Recruitment Team</p>`,
-    ];
+    const subject = `Cethos — documents needed for your translator profile (ISO 17100)`;
     setDocsSubject(subject);
-    setDocsBody(lines.join("\n"));
     setSelectedDocTypes(defaultSelected);
+    setDocsBody(buildDocsEmailBody(name, defaultSelected));
     setDocsModalOpen(true);
+  };
+
+  const buildDocsEmailBody = (name: string, selected: string[]): string => {
+    const seen = new Set<string>();
+    const itemsHtml = selected
+      .map((slug) => {
+        if (seen.has(slug)) return ""; // dedupe across competence routes
+        seen.add(slug);
+        const dt = ISO_DOC_TYPES.find((d) => d.slug === slug);
+        return dt ? `<li><strong>${dt.label}</strong> &mdash; <span style="color:#666">${dt.rationale}</span></li>` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    return [
+      `<p>Hi ${name},</p>`,
+      `<p>Thanks for your application. Before we can finalize your onboarding to the Cethos vendor network, we need to assemble your ISO 17100 competence file. The standard requires every translator to qualify via <strong>one of three routes</strong> (translation degree, other-field degree + 2y experience, or 5y experience alone) plus documentation of language proficiency, references, and confidentiality.</p>`,
+      `<p><strong>Please send the following documents</strong> &mdash; you can reply directly to this email with PDFs attached:</p>`,
+      `<ul>`,
+      itemsHtml,
+      `</ul>`,
+      `<p><strong>Confidentiality (NDA)</strong> &mdash; we have an in-portal clickwrap signing flow. Once your application is approved you'll be invited to sign electronically; no separate PDF is needed.</p>`,
+      `<p>If anything is unclear or you don't have a particular document, just reply and let us know — we can usually work around gaps with reference letters.</p>`,
+      `<p>Best regards,<br/>Cethos Recruitment Team</p>`,
+    ].join("\n");
   };
 
   const toggleDocType = (slug: string) => {
     setSelectedDocTypes((prev) => {
       const next = prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug];
-      // Rebuild the bullet list in the body so the email stays in sync
-      const ul = [`<ul>`, ...next.map((s) => {
-        const dt = ISO_DOC_TYPES.find((d) => d.slug === s);
-        return dt ? `<li><strong>${dt.label}</strong> &mdash; ${dt.rationale}</li>` : "";
-      }).filter(Boolean), `</ul>`].join("\n");
-      setDocsBody((body) => body.replace(/<ul>[\s\S]*?<\/ul>/, ul));
+      const name = app?.full_name || "there";
+      setDocsBody(buildDocsEmailBody(name, next));
       return next;
     });
   };
@@ -5032,22 +5073,41 @@ export default function RecruitmentDetail() {
                 </div>
                 <div className="px-6 py-4 overflow-y-auto space-y-4 flex-1">
                   <div>
-                    <p className="text-xs font-medium text-gray-700 mb-2">ISO 17100 documents to request</p>
-                    <div className="grid grid-cols-1 gap-1.5">
-                      {ISO_DOC_TYPES.map((dt) => (
-                        <label key={dt.slug} className="flex items-start gap-2 text-xs p-2 rounded hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={selectedDocTypes.includes(dt.slug)}
-                            onChange={() => toggleDocType(dt.slug)}
-                            className="mt-0.5"
-                          />
-                          <span>
-                            <span className="font-medium text-gray-900">{dt.label}</span>
-                            <span className="block text-gray-500">{dt.rationale}</span>
-                          </span>
-                        </label>
-                      ))}
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-gray-700">ISO 17100 competence file</p>
+                      <p className="text-[11px] text-gray-500">
+                        Tick what the applicant still owes you. Email body updates live.
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 mb-3">
+                      <strong>Note:</strong> NDA is handled by the in-portal clickwrap once the applicant is approved — don't request a separate signed PDF unless they can't access the portal.
+                    </div>
+                    <div className="space-y-3">
+                      {ISO_DOC_GROUPS.map((g) => {
+                        const groupItems = ISO_DOC_TYPES.filter((d) => d.group === g.key);
+                        if (groupItems.length === 0) return null;
+                        return (
+                          <div key={g.key}>
+                            <p className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide mb-1">{g.label}</p>
+                            <div className="space-y-1">
+                              {groupItems.map((dt) => (
+                                <label key={`${g.key}-${dt.slug}-${dt.label}`} className="flex items-start gap-2 text-xs p-2 rounded hover:bg-gray-50 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedDocTypes.includes(dt.slug)}
+                                    onChange={() => toggleDocType(dt.slug)}
+                                    className="mt-0.5"
+                                  />
+                                  <span>
+                                    <span className="font-medium text-gray-900">{dt.label}</span>
+                                    <span className="block text-gray-500">{dt.rationale}</span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                   <div>
