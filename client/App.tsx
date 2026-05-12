@@ -115,6 +115,7 @@ import LegalPage from "./pages/LegalPage";
 
 // Admin Settings pages
 import PricingSettings from "./pages/admin/settings/PricingSettings";
+import NegotiationAutomationSettings from "./pages/admin/settings/NegotiationAutomationSettings";
 import ComplexitySettings from "./pages/admin/settings/ComplexitySettings";
 import TurnaroundSettings from "./pages/admin/settings/TurnaroundSettings";
 import DocumentTypesSettings from "./pages/admin/settings/DocumentTypesSettings";
@@ -419,6 +420,10 @@ const App = () => (
                     <Route
                       path="settings/pricing"
                       element={<PricingSettings />}
+                    />
+                    <Route
+                      path="settings/negotiation-automation"
+                      element={<NegotiationAutomationSettings />}
                     />
                     <Route
                       path="settings/complexity"
