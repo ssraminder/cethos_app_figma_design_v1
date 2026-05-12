@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS vendor_rate_suggestions (
   pool_median NUMERIC(10,4),
   pool_p75 NUMERIC(10,4),
   pool_n INT,
-  margin_multiplier NUMERIC(4,3) NOT NULL DEFAULT 0.30,
+  margin_multiplier NUMERIC(4,3) NOT NULL DEFAULT 0.20,
   test_score_used INT,
   test_bucket TEXT,
 

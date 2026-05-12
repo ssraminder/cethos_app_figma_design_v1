@@ -31,8 +31,10 @@ const CORS = {
 };
 
 const FALLBACK_CLIENT_RATE_CAD_PER_PAGE = 65;
-const MARGIN_MULTIPLIER = 0.30;
-const FLOOR_MULTIPLIER = 0.15;
+// 20% ceiling — leaves headroom for vendor counter-negotiation while still
+// preserving the 80% gross-margin floor staff agreed to. Was 30% in v1.
+const MARGIN_MULTIPLIER = 0.20;
+const FLOOR_MULTIPLIER = 0.10;
 const POOL_MIN_SAMPLES = 5;
 
 const PROMPT_VERSION = "deterministic-v1";
@@ -223,7 +225,7 @@ serve(async (req) => {
     // ── 5. Build reasoning string ──
     const reasoning = [
       `Client per-page rate for ${source_language.toUpperCase()} → ${target_language.toUpperCase()}: CAD $${clientRate.toFixed(2)} (${clientRateSource}).`,
-      `Margin policy: vendor cap = 30% of client = CAD $${ceiling.toFixed(2)}.`,
+      `Margin policy: vendor cap = ${Math.round(MARGIN_MULTIPLIER * 100)}% of client = CAD $${ceiling.toFixed(2)} (leaves room to negotiate).`,
       testScore != null
         ? `Test score ${testScore}/100 (${bucket}) → suggested ${Math.round(factor * 100)}% of ceiling.`
         : `No test score on this lane → defaulting to 70% of ceiling (conservative).`,
