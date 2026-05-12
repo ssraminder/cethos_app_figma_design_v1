@@ -253,6 +253,96 @@ serve(async (req) => {
       if (finalRate < antiLowballFloor) finalRate = Math.round(antiLowballFloor * 100) / 100;
     }
 
+    // ── 5.5 Decide HITL vs auto-execute ────────────────────────────────
+    const { data: settings } = await sb
+      .from("negotiation_settings")
+      .select("mode, auto_confidence_threshold, auto_max_uplift_pct, auto_max_deadline_extension_hours, auto_only_for_services, paused")
+      .eq("id", 1)
+      .maybeSingle();
+
+    const wantsAuto = !!settings && !settings.paused && (
+      settings.mode === "auto" ||
+      (settings.mode === "mixed" && aiResult.confidence >= Number(settings.auto_confidence_threshold))
+    );
+    // auto_only_for_services empty = all services allowed.
+    const serviceAllowed = !settings?.auto_only_for_services?.length
+      || settings.auto_only_for_services.includes(step.service_id);
+
+    // Auto-execute bounds:
+    // - accept only if vendor's counter rate is within max_uplift of original
+    // - reject can auto-execute always (it's a polite decline)
+    // - counter must not propose deadline extension > max hours
+    const uplift = originalRate > 0 ? (counterRate - originalRate) / originalRate : 0;
+    const maxUplift = Number(settings?.auto_max_uplift_pct ?? 0.05);
+    const acceptInBounds = finalAction === "accept" && uplift <= maxUplift;
+    const counterInBounds = finalAction === "counter" && finalRate != null; // bounds already enforced above
+    const rejectInBounds = finalAction === "reject";
+    const escalateBlocksAuto = finalAction === "escalate";
+
+    const canAutoExecute = wantsAuto && serviceAllowed && !escalateBlocksAuto && (
+      acceptInBounds || counterInBounds || rejectInBounds
+    );
+
+    let modeUsed: "hitl" | "auto" = "hitl";
+    let autoExecutedAction: string | null = null;
+    let autoExecutedAt: string | null = null;
+
+    if (canAutoExecute) {
+      // Call admin-respond-counter-offer via the supabase service-role client.
+      // It accepts { offer_id, action, staff_id, rejection_reason }. For
+      // counter-back actions, we still call action='reject' with a structured
+      // reason — the proper counter-back endpoint will land in a follow-up.
+      try {
+        if (finalAction === "accept") {
+          const r = await fetch(
+            `${Deno.env.get("SUPABASE_URL")}/functions/v1/admin-respond-counter-offer`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ offer_id, action: "accept", staff_id: null }),
+            },
+          );
+          if (r.ok) {
+            modeUsed = "auto";
+            autoExecutedAction = "accept";
+            autoExecutedAt = new Date().toISOString();
+          }
+        } else if (finalAction === "reject") {
+          const r = await fetch(
+            `${Deno.env.get("SUPABASE_URL")}/functions/v1/admin-respond-counter-offer`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                offer_id,
+                action: "reject",
+                staff_id: null,
+                rejection_reason: `[AI Negotiator] ${aiResult.reasoning}`,
+              }),
+            },
+          );
+          if (r.ok) {
+            modeUsed = "auto";
+            autoExecutedAction = "reject";
+            autoExecutedAt = new Date().toISOString();
+          }
+        }
+        // 'counter' action auto-execution is intentionally deferred — needs a
+        // dedicated admin-counter-back endpoint that doesn't exist yet. For
+        // now counter actions stay in HITL even if mode=auto.
+      } catch (err) {
+        console.error("Auto-execute failed:", err);
+      }
+    }
+
     // ── 6. Write the decision row ──────────────────────────────────────
     const { data: insertedDecision } = await sb
       .from("vendor_negotiation_decisions")
@@ -261,7 +351,7 @@ serve(async (req) => {
         vendor_id: offer.vendor_id,
         step_id: offer.step_id,
         application_id: vendor?.application_id ?? null,
-        mode: "hitl", // Phase 1: always HITL. Phase 2 will branch here.
+        mode: modeUsed,
         trigger_event,
         original_rate: originalRate,
         original_total: originalTotal,
@@ -294,6 +384,11 @@ serve(async (req) => {
         ai_data_references: aiResult.data_references,
         ai_model_version: aiResult.model_used,
         ai_prompt_version: PROMPT_VERSION,
+        // If auto-executed, capture the staff_action too so we can compute
+        // calibration later without joining anywhere.
+        staff_decision: autoExecutedAction ? "approved_ai" : null,
+        staff_action: autoExecutedAction as "accept" | "reject" | "counter" | null,
+        decided_at: autoExecutedAt,
       })
       .select("id")
       .single();
@@ -301,8 +396,9 @@ serve(async (req) => {
     return json({
       success: true,
       decision_id: insertedDecision?.id ?? null,
-      mode_used: "hitl",
-      auto_executed: false,
+      mode_used: modeUsed,
+      auto_executed: !!autoExecutedAction,
+      auto_executed_action: autoExecutedAction,
       action: finalAction,
       proposed_rate: finalRate,
       proposed_total: finalTotal,
