@@ -2152,6 +2152,46 @@ function WorkflowPipeline({
   minMarginPercent = 30,
 }: WorkflowPipelineProps) {
   const [editDeadlineStepId, setEditDeadlineStepId] = useState<string | null>(null);
+
+  // AI negotiation recommendations — keyed by offer.id. Lazy: fetched on
+  // demand when staff clicks "Get AI recommendation" on the counter card.
+  type NegotiationRec = {
+    decision_id: string | null;
+    action: "accept" | "reject" | "counter" | "escalate";
+    proposed_rate: number | null;
+    proposed_total: number | null;
+    proposed_deadline: string | null;
+    reasoning: string;
+    confidence: number;
+    concerns: string[];
+    data_references: Record<string, unknown>;
+    context_summary: {
+      client_rate: number;
+      ceiling: number;
+      pool: { median: number | null; n: number };
+      vendor_history: { jobs_completed: number; accept_rate: number | null };
+    };
+  };
+  const [negotiationRecs, setNegotiationRecs] = useState<Record<string, NegotiationRec>>({});
+  const [negotiatingOfferId, setNegotiatingOfferId] = useState<string | null>(null);
+  const [negotiationError, setNegotiationError] = useState<Record<string, string>>({});
+
+  const fetchNegotiationRec = async (offerId: string) => {
+    setNegotiatingOfferId(offerId);
+    setNegotiationError((m) => ({ ...m, [offerId]: "" }));
+    try {
+      const { data, error } = await supabase.functions.invoke("vendor-negotiate-counter", {
+        body: { offer_id: offerId },
+      });
+      if (error) throw new Error(error.message || "Negotiator failed");
+      if ((data as any)?.success === false) throw new Error((data as any)?.error || "Negotiator returned failure");
+      setNegotiationRecs((s) => ({ ...s, [offerId]: data as NegotiationRec }));
+    } catch (err: any) {
+      setNegotiationError((m) => ({ ...m, [offerId]: err?.message || "Failed" }));
+    } finally {
+      setNegotiatingOfferId(null);
+    }
+  };
   const [editDeadlineValue, setEditDeadlineValue] = useState('');
   const [editDeadlineReason, setEditDeadlineReason] = useState('');
   const [editDeadlineLoading, setEditDeadlineLoading] = useState(false);
@@ -2691,6 +2731,122 @@ function WorkflowPipeline({
                                 </div>
                               )}
                             </div>
+
+                            {/* AI Negotiation Recommendation (HITL Phase 1) */}
+                            <div className="mt-3 pt-3 border-t border-yellow-200">
+                              {!negotiationRecs[offer.id] && !negotiationError[offer.id] && (
+                                <button
+                                  type="button"
+                                  onClick={() => fetchNegotiationRec(offer.id)}
+                                  disabled={negotiatingOfferId === offer.id}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100 rounded disabled:opacity-50"
+                                >
+                                  {negotiatingOfferId === offer.id ? (
+                                    <><Loader2 className="w-3 h-3 animate-spin" /> Thinking...</>
+                                  ) : (
+                                    <>✨ Get AI recommendation</>
+                                  )}
+                                </button>
+                              )}
+                              {negotiationError[offer.id] && (
+                                <div className="text-xs text-red-600">
+                                  Negotiation failed: {negotiationError[offer.id]}{" "}
+                                  <button
+                                    onClick={() => fetchNegotiationRec(offer.id)}
+                                    className="text-violet-700 underline hover:text-violet-900"
+                                  >
+                                    Retry
+                                  </button>
+                                </div>
+                              )}
+                              {negotiationRecs[offer.id] && (
+                                <div className="rounded-md bg-violet-50 border border-violet-200 p-3 space-y-2 text-xs">
+                                  <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-violet-900">
+                                        AI recommends:
+                                      </span>
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wide ${
+                                        negotiationRecs[offer.id].action === "accept"
+                                          ? "bg-green-100 text-green-800"
+                                          : negotiationRecs[offer.id].action === "reject"
+                                          ? "bg-red-100 text-red-800"
+                                          : negotiationRecs[offer.id].action === "counter"
+                                          ? "bg-amber-100 text-amber-800"
+                                          : "bg-gray-100 text-gray-700"
+                                      }`}>
+                                        {negotiationRecs[offer.id].action}
+                                      </span>
+                                      {negotiationRecs[offer.id].action === "counter" && negotiationRecs[offer.id].proposed_rate && (
+                                        <span className="text-violet-900 font-semibold">
+                                          @ ${Number(negotiationRecs[offer.id].proposed_rate).toFixed(2)}/{offer.vendor_rate_unit || "page"}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-violet-700">
+                                      Confidence {Math.round(negotiationRecs[offer.id].confidence * 100)}%
+                                    </span>
+                                  </div>
+                                  <p className="text-violet-800 leading-relaxed">
+                                    {negotiationRecs[offer.id].reasoning}
+                                  </p>
+                                  {negotiationRecs[offer.id].concerns.length > 0 && (
+                                    <div className="text-amber-800">
+                                      <span className="font-semibold">Concerns:</span>{" "}
+                                      {negotiationRecs[offer.id].concerns.join("; ")}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-3 text-violet-700 text-[11px]">
+                                    <span>Client rate: ${negotiationRecs[offer.id].context_summary.client_rate.toFixed(2)}/page</span>
+                                    <span>Ceiling: ${negotiationRecs[offer.id].context_summary.ceiling.toFixed(2)}</span>
+                                    {negotiationRecs[offer.id].context_summary.pool.median && (
+                                      <span>Pool median: ${Number(negotiationRecs[offer.id].context_summary.pool.median).toFixed(2)} (n={negotiationRecs[offer.id].context_summary.pool.n})</span>
+                                    )}
+                                    <span>
+                                      Vendor: {negotiationRecs[offer.id].context_summary.vendor_history.jobs_completed} jobs
+                                      {negotiationRecs[offer.id].context_summary.vendor_history.accept_rate != null && (
+                                        <> · {Math.round((negotiationRecs[offer.id].context_summary.vendor_history.accept_rate as number) * 100)}% accept</>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="pt-1 flex items-center gap-2">
+                                    {negotiationRecs[offer.id].action === "accept" && (
+                                      <button
+                                        onClick={() => {
+                                          if (confirm(`Apply AI recommendation: accept the counter as-is?`)) {
+                                            handleRespondCounter(offer.id, "accept");
+                                          }
+                                        }}
+                                        disabled={counterLoadingId === offer.id}
+                                        className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded text-xs font-medium disabled:opacity-50"
+                                      >
+                                        ✓ Apply: Accept
+                                      </button>
+                                    )}
+                                    {negotiationRecs[offer.id].action === "reject" && (
+                                      <button
+                                        onClick={() => onSetRejectingOfferId(offer.id)}
+                                        className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded text-xs font-medium"
+                                      >
+                                        ✕ Apply: Reject
+                                      </button>
+                                    )}
+                                    {negotiationRecs[offer.id].action === "counter" && (
+                                      <span className="text-[11px] text-violet-700 italic">
+                                        Counter-back not yet wired to a one-click action — use Accept/Reject above or wait for Phase 2 counter-respond.
+                                      </span>
+                                    )}
+                                    <button
+                                      onClick={() => fetchNegotiationRec(offer.id)}
+                                      className="ml-auto px-2 py-0.5 text-[11px] text-violet-700 hover:bg-violet-100 rounded"
+                                    >
+                                      Re-run
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
                             <div className="mt-3 flex gap-2">
                               <button
                                 className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded inline-flex items-center gap-1 disabled:opacity-50"
