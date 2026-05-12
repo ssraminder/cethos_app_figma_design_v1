@@ -27,6 +27,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import type { TabProps } from "./types";
+import IsoAssessmentSection from "./IsoAssessmentSection";
 
 interface CvpApplication {
   id: string;
@@ -227,6 +228,9 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
           </div>
         </div>
       )}
+
+      {/* ISO 17100 assessment */}
+      <IsoAssessmentSection vendorId={vendor.id} />
 
       {/* CV (post-onboarding uploads from vendor portal) */}
       <section className="bg-white border border-gray-200 rounded-lg p-5">
