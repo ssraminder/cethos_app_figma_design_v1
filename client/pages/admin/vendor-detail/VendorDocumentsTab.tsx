@@ -10,7 +10,7 @@
  * Phase B (next): per-doc ISO 17100 assessment.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Loader2,
   FileText,
@@ -22,11 +22,52 @@ import {
   AlertCircle,
   ChevronRight,
   ExternalLink,
+  Sparkles,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  HelpCircle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import type { TabProps } from "./types";
+
+// ISO 17100 criterion ordering for display — qualifications first (the
+// hard gate), then competences in the order the standard lists them.
+const ISO_CRITERIA: Array<{ key: string; label: string; section: string }> = [
+  { key: "qualifications", label: "Qualifications", section: "§6.1.4" },
+  { key: "translation_competence", label: "Translation competence", section: "§6.1.2 a" },
+  { key: "linguistic_textual_competence", label: "Linguistic & textual competence", section: "§6.1.2 b" },
+  { key: "research_competence", label: "Research & information acquisition", section: "§6.1.2 c" },
+  { key: "cultural_competence", label: "Cultural competence", section: "§6.1.2 d" },
+  { key: "technical_competence", label: "Technical competence", section: "§6.1.2 e" },
+  { key: "domain_competence", label: "Domain competence", section: "§6.1.2 f" },
+];
+
+interface IsoCriterionVerdict {
+  verdict: "pass" | "partial" | "fail" | "insufficient_evidence" | string;
+  evidence?: string[];
+  reasoning?: string;
+}
+
+interface IsoAssessmentResult {
+  overall?: string;
+  overall_reasoning?: string;
+  criteria?: Record<string, IsoCriterionVerdict>;
+}
+
+interface IsoAssessmentRow {
+  id: string;
+  vendor_id: string;
+  model: string;
+  prompt_version: string;
+  overall_verdict: string | null;
+  result: IsoAssessmentResult | null;
+  created_at: string;
+  corrected_at: string | null;
+}
 
 interface CvpApplication {
   id: string;
@@ -78,6 +119,39 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
   const [refs, setRefs] = useState<CvpReference[]>([]);
   const [nda, setNda] = useState<NdaSig | null>(null);
   const [downloadingCv, setDownloadingCv] = useState(false);
+
+  // ISO 17100 assessment state.
+  const [latestAssessment, setLatestAssessment] = useState<IsoAssessmentRow | null>(null);
+  const [assessmentHistory, setAssessmentHistory] = useState<IsoAssessmentRow[]>([]);
+  const [assessing, setAssessing] = useState(false);
+
+  const loadAssessments = useCallback(async () => {
+    const { data } = await supabase
+      .from("vendor_iso17100_assessments")
+      .select("id, vendor_id, model, prompt_version, overall_verdict, result, created_at, corrected_at")
+      .eq("vendor_id", vendor.id)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    const rows = (data ?? []) as IsoAssessmentRow[];
+    setAssessmentHistory(rows);
+    setLatestAssessment(rows[0] ?? null);
+  }, [vendor.id]);
+
+  const runAssessment = async () => {
+    setAssessing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("vendor-iso17100-assess", {
+        body: { vendor_id: vendor.id },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Assessment failed");
+      toast.success("ISO 17100 assessment complete");
+      await loadAssessments();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Assessment failed");
+    }
+    setAssessing(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -135,13 +209,14 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
       setApplication(app);
       setRefs(referenceRows);
       setNda(ndaWithVersion);
+      await loadAssessments();
       setLoading(false);
     }
     load();
     return () => {
       cancelled = true;
     };
-  }, [vendor.id, vendor.email]);
+  }, [vendor.id, vendor.email, loadAssessments]);
 
   const downloadCv = async () => {
     if (!application?.id) return;
@@ -197,6 +272,13 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
           </div>
         </div>
       )}
+
+      <IsoAssessmentSection
+        latest={latestAssessment}
+        history={assessmentHistory}
+        running={assessing}
+        onRun={runAssessment}
+      />
 
       {/* CV */}
       <section className="bg-white border border-gray-200 rounded-lg p-5">
@@ -423,6 +505,219 @@ function RefStatusBadge({ r }: { r: CvpReference }) {
       Pending
     </span>
   );
+}
+
+interface IsoAssessmentSectionProps {
+  latest: IsoAssessmentRow | null;
+  history: IsoAssessmentRow[];
+  running: boolean;
+  onRun: () => Promise<void>;
+}
+
+function IsoAssessmentSection({ latest, history, running, onRun }: IsoAssessmentSectionProps) {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg p-5">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-teal-600" />
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              ISO 17100 assessment
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              AI-evaluated against §6.1.2 competences and §6.1.4 qualifications. {" "}
+              {latest && (
+                <>
+                  Last run {new Date(latest.created_at).toLocaleString()} ·
+                  {" "}
+                  <span className="font-mono">{latest.model}</span> ·
+                  prompt {latest.prompt_version}
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onRun}
+          disabled={running}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 rounded hover:bg-teal-700 disabled:opacity-50"
+        >
+          {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          {running ? "Running…" : latest ? "Re-run" : "Run assessment"}
+        </button>
+      </div>
+
+      {!latest ? (
+        <p className="text-xs text-gray-400 italic">
+          No assessment yet. Click "Run assessment" to score this vendor against the ISO 17100 criteria.
+        </p>
+      ) : (
+        <>
+          <OverallVerdictBanner verdict={latest.overall_verdict} reasoning={latest.result?.overall_reasoning} />
+
+          {expanded && (
+            <div className="mt-4 space-y-2">
+              {ISO_CRITERIA.map(({ key, label, section }) => {
+                const c = latest.result?.criteria?.[key];
+                return (
+                  <CriterionRow key={key} label={label} section={section} verdict={c} />
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-4 flex items-center justify-between text-xs">
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="text-teal-700 hover:text-teal-900"
+            >
+              {expanded ? "Collapse details" : "Expand details"}
+            </button>
+            {history.length > 1 && (
+              <details>
+                <summary className="text-gray-500 cursor-pointer hover:text-gray-700">
+                  Assessment history ({history.length})
+                </summary>
+                <div className="mt-2 space-y-1">
+                  {history.map((h) => (
+                    <div
+                      key={h.id}
+                      className="flex items-center justify-between border-t border-gray-100 pt-1"
+                    >
+                      <span className="text-gray-700">
+                        {new Date(h.created_at).toLocaleString()}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <VerdictPill verdict={h.overall_verdict} />
+                        <span className="font-mono text-[10px] text-gray-400">
+                          {h.prompt_version}
+                        </span>
+                        {h.corrected_at && (
+                          <span className="text-[10px] text-purple-600">
+                            corrected
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function OverallVerdictBanner({
+  verdict,
+  reasoning,
+}: {
+  verdict: string | null;
+  reasoning: string | undefined;
+}) {
+  const v = verdict ?? "insufficient_evidence";
+  const { bg, border, text, Icon } = verdictStyle(v);
+  return (
+    <div className={`p-3 rounded border ${bg} ${border} flex items-start gap-2`}>
+      <Icon className={`w-5 h-5 ${text} flex-shrink-0 mt-0.5`} />
+      <div className="flex-1 min-w-0">
+        <div className={`text-sm font-semibold ${text}`}>
+          Overall: {verdictLabel(v)}
+        </div>
+        {reasoning && (
+          <p className="text-xs text-gray-700 mt-1 whitespace-pre-wrap">{reasoning}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CriterionRow({
+  label,
+  section,
+  verdict,
+}: {
+  label: string;
+  section: string;
+  verdict: IsoCriterionVerdict | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const v = verdict?.verdict ?? "insufficient_evidence";
+  const { bg, border, text, Icon } = verdictStyle(v);
+  return (
+    <div className={`rounded border ${border} ${bg}`}>
+      <button
+        onClick={() => setOpen((s) => !s)}
+        className="w-full flex items-center gap-3 px-3 py-2 text-left"
+      >
+        <Icon className={`w-4 h-4 ${text} flex-shrink-0`} />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-gray-900">{label}</div>
+          <div className="text-[11px] text-gray-500">ISO 17100 {section}</div>
+        </div>
+        <VerdictPill verdict={v} />
+        <ChevronRight
+          className={`w-4 h-4 text-gray-400 transition-transform ${open ? "rotate-90" : ""}`}
+        />
+      </button>
+      {open && verdict && (
+        <div className="px-3 pb-3 pt-1 text-xs text-gray-700 space-y-2">
+          {verdict.reasoning && (
+            <p className="whitespace-pre-wrap">{verdict.reasoning}</p>
+          )}
+          {verdict.evidence && verdict.evidence.length > 0 && (
+            <div>
+              <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">
+                Evidence cited
+              </div>
+              <ul className="list-disc list-inside space-y-0.5">
+                {verdict.evidence.map((e, i) => (
+                  <li key={i} className="text-gray-700">{e}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VerdictPill({ verdict }: { verdict: string | null }) {
+  const v = verdict ?? "insufficient_evidence";
+  const { bg, text } = verdictStyle(v);
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${bg} ${text}`}>
+      {verdictLabel(v)}
+    </span>
+  );
+}
+
+function verdictStyle(v: string) {
+  switch (v) {
+    case "pass":
+      return { bg: "bg-green-50", border: "border-green-200", text: "text-green-700", Icon: CheckCircle2 };
+    case "partial":
+      return { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", Icon: AlertTriangle };
+    case "fail":
+      return { bg: "bg-red-50", border: "border-red-200", text: "text-red-700", Icon: XCircle };
+    case "insufficient_evidence":
+    default:
+      return { bg: "bg-gray-50", border: "border-gray-200", text: "text-gray-600", Icon: HelpCircle };
+  }
+}
+
+function verdictLabel(v: string) {
+  switch (v) {
+    case "pass": return "Pass";
+    case "partial": return "Partial";
+    case "fail": return "Fail";
+    case "insufficient_evidence": return "Insufficient evidence";
+    default: return v;
+  }
 }
 
 function RatingStars({ rating }: { rating: number }) {
