@@ -18,6 +18,64 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-11 — Vendor negotiation agent: HITL → Auto graduated rollout
+- **Decision:** Build a vendor counter-offer negotiator that ships HITL-first, then graduates to autonomous via an admin toggle. Aggressive counter-back tactic (30% anchor, not midpoint). All services enabled from day 1 — no per-service rollout list. Hard bounds enforced server-side: never above ceiling (20% of client rate), never below anti-lowball floor (12%). Claude can recommend an action and write reasoning but cannot break the bounds.
+- **Schema:** `negotiation_settings` (singleton row — mode hitl/mixed/auto, confidence threshold, max uplift %, max deadline ext hours, paused kill switch, notify email, optional `auto_only_for_services` array — empty means all). `vendor_negotiation_decisions` (full audit + future training data — context snapshot, AI output, staff response, outcome columns ready for Phase 3 self-learning).
+- **Edge functions:** `vendor-negotiate-counter` (loads offer + counter + pool stats + vendor history + COL + experience + test score, calls Claude Opus 4.7 with structured prompt, hard bounds enforced server-side, auto-executes accept/reject via `admin-respond-counter-offer` when mode allows; falls back to deterministic if Claude unavailable). `negotiation-hitl-reminder` (hourly pg_cron sweep, rolls undecided HITL recs >1h into a digest email, 8h re-remind window). Vendor repo `vendor-counter-offer` now wakes the negotiator asynchronously after `counter_status='proposed'`.
+- **UI:** `/admin/settings/negotiation-automation` with mode radio, confidence slider, max uplift slider, pause kill switch, activity counters. AI recommendation card inside the existing counter-proposal panel in OrderWorkflowSection.
+- **Phase plan:** Phase 1 (HITL) and Phase 2 (Auto toggle + cron + auto-trigger) shipped 2026-05-11. Phase 3 = outcome tracker + calibration dashboard + auto-threshold tuning. Phase 4 = fully automated rollout once calibration crosses 97% per service.
+- **Counter-back one-click:** intentionally deferred — needs a dedicated admin-counter-back endpoint that doesn't exist yet. Counter actions stay HITL even when mode=auto.
+- **Status:** active. PRs #571 (Phase 1), #572 (Phase 2), cethosvendorportal#71 (vendor counter trigger). All migrations applied, all edge functions deployed.
+- **Affects:** `negotiation_settings`, `vendor_negotiation_decisions`, `vendor-negotiate-counter`, `negotiation-hitl-reminder`, `vendor-counter-offer` (vendor repo), `OrderWorkflowSection.tsx`, new `NegotiationAutomationSettings.tsx`.
+
+### 2026-05-11 — AI vendor rate suggester: 20% ceiling, hybrid deterministic + Claude
+- **Decision:** When suggesting a rate for a new vendor, anchor at 20% of the client per-page price (median of `ai_analysis_results.base_rate` for the source lang; CAD $65 fallback when <5 samples). Multiply by: test-score bucket (0.70–0.95) × country COL bucket (0.85–1.10 from World Bank-style 4 tiers) × experience tier (0.95–1.10 from 0-2y / 3-5y / 6-9y / 10y+). Clamp to ceiling. Hard anti-lowball floor: never below 12% of client rate regardless of score/country/experience — "don't insult with a lowball" is an explicit rule. Claude Haiku 4.5 writes the reasoning paragraph but never picks the number (keeps ISO 17100 audit clean). Falls back to template if Claude unavailable.
+- **20% (not 30%):** explicit staff direction — leaves room to negotiate up from the AI anchor.
+- **Schema:** `vendor_rate_suggestions` table — full audit (inputs, modifiers, ai_reasoning, ai_reasoning_source claude/template, prompt_version). Every historical suggestion is reproducible.
+- **Surfaces:** `VendorRatesTab` "Suggest rate" button (single-lane add), per-test-combination "Suggest rate" inline button on `RecruitmentDetail`.
+- **Per-word lanes deferred:** current per-word data on this project is direct-order target-mode noise, not real per-word client pricing. Phase 2+ when real data accumulates.
+- **Status:** active. PRs #567 (Phase 1, 30% ceiling), #570 (Phase 2, COL+experience+Claude), 20% adjustment merged with #567. Edge function `cvp-suggest-vendor-rate` deployed.
+- **Affects:** `vendor_rate_suggestions`, `cvp-suggest-vendor-rate`, `VendorRatesTab.tsx`, `RecruitmentDetail.tsx`.
+
+### 2026-05-11 — Target-based pricing = DEFERRED (no payable until settled), not flat-price
+- **Decision:** "Target" pricing mode on vendor offers means the task is created WITHOUT a financial commitment — no `vendor_payables` row is inserted, indicative total is optional. NOT a flat-amount price. This is the escape hatch for "I'm assigning the vendor now, will settle the rate later" instead of seeding a dummy rate as staff were doing before.
+- **Rationale:** Initial v1 of the target toggle treated it as a flat-amount price (just enter the total). User clarified after testing: "the idea of target based is that we are able to create an order without payables and receivables." Reframed.
+- **UI:** Admin offer modal toggle renamed "Target (no payable)" with helper text. Indicative total field is optional — leave blank to defer entirely. `canSubmit` no longer requires a target total. Workflow card renders "Target · Pricing TBD" when no total, "Target · $X (indicative)" when an indicative amount was entered.
+- **Finance tab "Target amount"** was actually a flat-price receivable concept (receivables are added manually with known numbers) — to avoid name collision, renamed to **"Flat amount" / Flat badge** there.
+- **`update-workflow-step`:** skips the `vendor_payables` insert when `pricing_mode='target'` for both direct_assign and offer_vendor. Vendor portal handles null total in target mode with "Pricing TBD".
+- **Status:** active. PRs #563 (Phase 1, flat-amount semantics), #564 (semantic fix to deferred), #569 (recruitment inline rate suggest + Request Documents).
+- **Affects:** `pricing_mode` columns on `order_receivables`, `vendor_step_offers`, `order_workflow_steps`. `update-workflow-step`, `vendor-get-jobs`, `vendor-get-job-detail`, `get-order-workflow`, `OrderWorkflowSection.tsx`, `OrderFinanceTab.tsx`, vendor portal `JobBoard` + `JobDetailModal` + `JobActionModals` + `NegotiateModal`.
+
+### 2026-05-11 — Edge-function deployment convention: --no-verify-jwt, self-validate
+- **Decision:** Standard pattern across both admin (`cethos_app_figma_design_v1`) and vendor (`cethos-vendor`) repos: deploy edge functions with `--no-verify-jwt`. Each function validates its own session/auth internally where needed. Vendor portal uses a custom session token (not Supabase auth) — gateway JWT verification can't validate it. Applicant flows (cvp-submit-*) need to be reachable without any auth at all. Staff functions use `supabase.functions.invoke` which attaches the staff Supabase JWT, but the function still receives it as a header — it doesn't depend on gateway verification.
+- **Trigger:** Discovered 35 cvp-* + 13 vendor-* functions had source committed but were never deployed (404 in console). One batch deploy via `supabase functions deploy <name> --no-verify-jwt`. User explicitly authorized: "B deploy them in batch".
+- **Audit note:** Previously two functions (`generate-order-instructions`, `cvp-get-cv-url`) were also undeployed and 404'd quietly. Lesson: don't assume a function exists just because the source is in the repo.
+- **Hand-rolled fetch pitfall:** `callEdgeFunction` in `RecruitmentDetail.tsx` was using raw `fetch` with no Authorization/apikey headers — Supabase gateway 401'd functions with `verify_jwt=true`. Fixed by switching to `supabase.functions.invoke` (PR #565). Pattern: prefer `supabase.functions.invoke` over hand-rolled fetch unless you have a specific reason.
+- **Status:** active convention.
+- **Affects:** every edge function deployment in this project.
+
+### 2026-05-11 — ISO 17100 readiness: a recurring constraint
+- **Decision:** Every AI-driven decision (rate suggestions, negotiation, document analysis) must produce an audit trail that an ISO 17100 auditor can verify. Implications across features:
+  - Store the exact inputs the AI saw (context snapshot)
+  - Store the AI's output (action + reasoning + confidence)
+  - Store the deterministic policy parameters (multipliers, thresholds, prompt_version)
+  - Never let Claude pick a number that bypasses hard-coded bounds — Claude writes reasoning, deterministic code picks the rate
+- **Document workflow plan:** `Request Documents` button shipped on RecruitmentDetail (PR #569). 9 ISO 17100 doc types as checkboxes (degree / professional cert / experience evidence / 2 references / language proficiency / specialization / business reg / insurance / NDA). Email body auto-syncs with selected types. Sends via Brevo raw email + `cvp_outbound_messages` audit. Full upload UI + AI doc analysis + ISO readiness scorecard still pending.
+- **Vendor docs upload:** planned but not built. Schema would be `vendor_documents` (file + type + AI analysis + verification status) on a private `vendor-iso-documents` bucket.
+- **Status:** ongoing constraint. Reference back to this on any feature touching vendor competence evidence.
+- **Affects:** all AI-driven features. Specifically `vendor_rate_suggestions`, `vendor_negotiation_decisions` audit columns.
+
+### 2026-05-11 — Show internal project number on orders list
+- **Decision:** Orders list (`AdminOrdersList`) shows the PRJ-YYYY-NNNNN under the ORD-XXXX whenever the order is linked to an internal project. Implemented via embed of `internal_projects(project_number)` through existing `internal_project_id` FK. No new schema.
+- **Status:** active. PR #566.
+- **Affects:** `AdminOrdersList.tsx` only.
+
+### 2026-05-11 — Custom file label + per-file picker in direct-order create
+- **Decision:** File uploads in direct-order create get a per-file category dropdown (Source Document / Files to Work Upon / Reference File / Glossary / Style Guide / Custom). "Custom" reveals a free-text label input stored on `quote_files.custom_label`. Source-list badge prefers `custom_label` over the standard category name when both exist.
+- **New file category:** `work_files` ("Files to Work Upon") for working files the vendor edits directly (bilingual files, in-progress translations) — distinct from "Source Document".
+- **Status:** active. PRs #562 (work_files), #563 (custom + direct-order picker).
+- **Affects:** `file_categories` table, `quote_files.custom_label`, `upload-staff-quote-file` (accepts `custom_label`), `AdminCreateOrder.tsx`, `AdminOrderDetail.tsx`.
+
 ### 2026-05-08 — Direct-order PO moves from order-level to per-receivable-line
 - **Decision:** For `is_direct_order = true` orders, the PO number (and client project number per line) lives on `order_receivables.po_number`, not on `orders.po_number`. Quote-converted orders (certified/OCR/website checkout) are unchanged — they keep using `orders.po_number`.
 - **Rationale:** Agency clients (TRSB pattern) bill a single direct order against multiple POs sent at different times after delivery. The order-level single PO field can't model that. The new model is also a cleaner billing primitive: receivable lines map 1:1 to invoice lines.
