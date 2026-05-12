@@ -71,6 +71,20 @@ interface NdaSig {
   template_version_label?: string | null;
 }
 
+interface VendorCv {
+  id: string;
+  version: number;
+  file_name: string;
+  file_size_bytes: number | null;
+  content_type: string | null;
+  uploaded_by_vendor: boolean;
+  notes: string | null;
+  is_current: boolean;
+  superseded_at: string | null;
+  created_at: string;
+  download_url: string | null;
+}
+
 export default function VendorDocumentsTab({ vendorData }: TabProps) {
   const { vendor } = vendorData;
   const [loading, setLoading] = useState(true);
@@ -78,6 +92,7 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
   const [refs, setRefs] = useState<CvpReference[]>([]);
   const [nda, setNda] = useState<NdaSig | null>(null);
   const [downloadingCv, setDownloadingCv] = useState(false);
+  const [vendorCvs, setVendorCvs] = useState<VendorCv[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,10 +146,25 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
         ndaWithVersion = { ...ndaWithVersion, template_version_label: tpl?.version_label ?? null };
       }
 
+      // Vendor-uploaded CV versions (post-onboarding). Edge function
+      // returns the list with short-lived signed URLs.
+      let vendorCvRows: VendorCv[] = [];
+      try {
+        const { data: cvList } = await supabase.functions.invoke("vendor-list-cvs", {
+          body: { vendor_id: vendor.id, expiry_seconds: 600 },
+        });
+        if (cvList?.success && Array.isArray(cvList.cvs)) {
+          vendorCvRows = cvList.cvs as VendorCv[];
+        }
+      } catch {
+        /* tolerate — section will show empty state */
+      }
+
       if (cancelled) return;
       setApplication(app);
       setRefs(referenceRows);
       setNda(ndaWithVersion);
+      setVendorCvs(vendorCvRows);
       setLoading(false);
     }
     load();
@@ -198,12 +228,75 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
         </div>
       )}
 
-      {/* CV */}
+      {/* CV (post-onboarding uploads from vendor portal) */}
       <section className="bg-white border border-gray-200 rounded-lg p-5">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4 text-gray-500" />
-            <h3 className="text-sm font-semibold text-gray-900">CV</h3>
+            <h3 className="text-sm font-semibold text-gray-900">
+              CV — vendor uploads
+              {vendorCvs.length > 0 && (
+                <span className="ml-2 text-xs font-normal text-gray-500">
+                  {vendorCvs.length} {vendorCvs.length === 1 ? "version" : "versions"}
+                </span>
+              )}
+            </h3>
+          </div>
+        </div>
+        {vendorCvs.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">
+            Vendor has not uploaded a CV through the portal yet.
+          </p>
+        ) : (
+          <div className="border border-gray-100 rounded divide-y divide-gray-100">
+            {vendorCvs.map((cv) => (
+              <div
+                key={cv.id}
+                className={`flex items-start justify-between gap-4 px-3 py-2.5 text-xs ${
+                  cv.is_current ? "bg-emerald-50/40" : ""
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-900">
+                    v{cv.version} {cv.is_current && (
+                      <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800">
+                        Current
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-gray-500 mt-0.5 truncate">{cv.file_name}</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">
+                    {cv.file_size_bytes ? `${(cv.file_size_bytes / 1024).toFixed(0)} KB · ` : ""}
+                    {new Date(cv.created_at).toLocaleString()}
+                    {cv.uploaded_by_vendor ? " · by vendor" : " · by staff"}
+                    {cv.superseded_at && ` · superseded ${new Date(cv.superseded_at).toLocaleDateString()}`}
+                  </div>
+                  {cv.notes && (
+                    <p className="text-[11px] text-gray-600 mt-1 italic">"{cv.notes}"</p>
+                  )}
+                </div>
+                {cv.download_url && (
+                  <a
+                    href={cv.download_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-teal-700 bg-white border border-teal-300 rounded hover:bg-teal-50"
+                  >
+                    <Download className="w-3 h-3" /> Download
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* CV — recruitment application (legacy / first CV) */}
+      <section className="bg-white border border-gray-200 rounded-lg p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-gray-500" />
+            <h3 className="text-sm font-semibold text-gray-900">CV — recruitment application</h3>
           </div>
           {application?.cv_storage_path && (
             <button
@@ -222,7 +315,7 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
             submitted {new Date(application.created_at).toLocaleDateString()}.
           </p>
         ) : (
-          <p className="text-xs text-gray-400 italic">No CV on file.</p>
+          <p className="text-xs text-gray-400 italic">No recruitment CV on file.</p>
         )}
       </section>
 
