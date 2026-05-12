@@ -22,6 +22,9 @@ import {
   FileText,
   Ban,
   RefreshCw,
+  Sparkles,
+  FileSearch,
+  X as XIcon,
 } from "lucide-react";
 import { format, formatDistanceToNow, differenceInHours, addMonths } from "date-fns";
 
@@ -148,6 +151,33 @@ interface TestCombination {
   approved_rate: number | null;
   created_at: string;
 }
+
+interface RateSuggestion {
+  recommended_rate: number;
+  alternative_higher: number;
+  alternative_lower: number;
+  currency: string;
+  reasoning: string;
+  client_rate_used: number;
+  ceiling: number;
+  floor: number;
+  test_score_used: number | null;
+  test_bucket: string;
+}
+
+// ISO 17100 document types — Phase 1 hard-coded list. Becomes a config
+// table once we wire up the vendor_documents upload flow.
+const ISO_DOC_TYPES: Array<{ slug: string; label: string; rationale: string }> = [
+  { slug: "degree_translation_studies", label: "Degree in translation studies or linguistics", rationale: "ISO 17100 §3.1.4 — recognized higher-education qualification" },
+  { slug: "professional_translation_certificate", label: "Professional translation certificate (ATA / CTTIC / ITI / etc.)", rationale: "Equivalent qualification route" },
+  { slug: "experience_evidence", label: "Evidence of 2y full-time (or 5y part-time) translation experience", rationale: "Required without formal qualification" },
+  { slug: "reference_letter", label: "Two professional reference letters", rationale: "Independent verification" },
+  { slug: "language_proficiency", label: "Language proficiency evidence (C2 or native)", rationale: "Required for the target language" },
+  { slug: "subject_matter_qualification", label: "Subject-matter specialization proof (legal / medical / technical)", rationale: "If you claim specialization" },
+  { slug: "business_registration", label: "Business registration / sole-trader certificate", rationale: "For invoicing & compliance" },
+  { slug: "insurance_certificate", label: "Professional indemnity (E&O) insurance certificate", rationale: "Risk mitigation" },
+  { slug: "nda_signed", label: "Signed Cethos NDA", rationale: "Confidentiality" },
+];
 
 interface TestSubmission {
   id: string;
@@ -3468,6 +3498,18 @@ export default function RecruitmentDetail() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [rejectionDraft, setRejectionDraft] = useState("");
   const [savingDraft, setSavingDraft] = useState(false);
+
+  // Rate suggester state — per-combination cache
+  const [rateSuggestions, setRateSuggestions] = useState<Record<string, RateSuggestion | null>>({});
+  const [rateSuggestingId, setRateSuggestingId] = useState<string | null>(null);
+  const [rateSuggestError, setRateSuggestError] = useState<Record<string, string>>({});
+
+  // Request-documents modal state
+  const [docsModalOpen, setDocsModalOpen] = useState(false);
+  const [docsSubject, setDocsSubject] = useState("");
+  const [docsBody, setDocsBody] = useState("");
+  const [selectedDocTypes, setSelectedDocTypes] = useState<string[]>([]);
+  const [sendingDocs, setSendingDocs] = useState(false);
   const [flagFeedback, setFlagFeedback] = useState<FlagFeedback[]>([]);
   const [conversation, setConversation] = useState<ConversationItem[]>([]);
   const [safeMode, setSafeMode] = useState<{
@@ -3758,6 +3800,111 @@ export default function RecruitmentDetail() {
       throw new Error((data as { error?: string }).error || `Edge function ${fnSlug} returned success:false`);
     }
     return data;
+  };
+
+  // Per-combination rate suggestion. Caches in rateSuggestions so staff can
+  // open multiple combos without re-hitting Claude/the pool query.
+  const handleSuggestRateForCombo = async (combo: TestCombination) => {
+    if (!id) return;
+    const src = languages[combo.source_language_id];
+    const tgt = languages[combo.target_language_id];
+    if (!src || !tgt) {
+      setRateSuggestError((m) => ({ ...m, [combo.id]: "Language code not resolved yet" }));
+      return;
+    }
+    setRateSuggestingId(combo.id);
+    setRateSuggestError((m) => ({ ...m, [combo.id]: "" }));
+    try {
+      const data = await callEdgeFunction("cvp-suggest-vendor-rate", {
+        application_id: id,
+        source_language: src,
+        target_language: tgt,
+        calculation_unit: "per_page",
+      });
+      if ((data as any)?.do_not_hire) {
+        setRateSuggestError((m) => ({
+          ...m,
+          [combo.id]: (data as any).reason || "Do not hire on this lane",
+        }));
+        setRateSuggestions((s) => ({ ...s, [combo.id]: null }));
+        return;
+      }
+      setRateSuggestions((s) => ({ ...s, [combo.id]: data as RateSuggestion }));
+    } catch (err: any) {
+      setRateSuggestError((m) => ({ ...m, [combo.id]: err?.message || "Suggest failed" }));
+    } finally {
+      setRateSuggestingId(null);
+    }
+  };
+
+  const openRequestDocsModal = () => {
+    if (!app) return;
+    // Default selection: docs that map to gaps we can detect cheaply
+    const defaultSelected: string[] = [];
+    if (!app.cv_storage_path) defaultSelected.push("experience_evidence");
+    // Reference letters & NDA almost always needed for ISO file
+    defaultSelected.push("reference_letter", "nda_signed");
+
+    const name = app.full_name || "there";
+    const subject = `Cethos — additional documents needed for your translator profile`;
+    const lines = [
+      `<p>Hi ${name},</p>`,
+      `<p>Thanks for your application. Before we can finalize your onboarding to the Cethos vendor network, we need a few additional documents on file. Cethos is ISO 17100 certified for translation services, which requires us to keep evidence of translator competence for every vendor.</p>`,
+      `<p><strong>Could you please send us:</strong></p>`,
+      `<ul>`,
+      ...defaultSelected.map((slug) => {
+        const dt = ISO_DOC_TYPES.find((d) => d.slug === slug);
+        return dt ? `<li><strong>${dt.label}</strong> &mdash; ${dt.rationale}</li>` : "";
+      }).filter(Boolean),
+      `</ul>`,
+      `<p>You can reply to this email with the documents attached. Most translators send these as PDF scans.</p>`,
+      `<p>If you have any questions, just reply to this email.</p>`,
+      `<p>Best,<br/>Cethos Recruitment Team</p>`,
+    ];
+    setDocsSubject(subject);
+    setDocsBody(lines.join("\n"));
+    setSelectedDocTypes(defaultSelected);
+    setDocsModalOpen(true);
+  };
+
+  const toggleDocType = (slug: string) => {
+    setSelectedDocTypes((prev) => {
+      const next = prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug];
+      // Rebuild the bullet list in the body so the email stays in sync
+      const ul = [`<ul>`, ...next.map((s) => {
+        const dt = ISO_DOC_TYPES.find((d) => d.slug === s);
+        return dt ? `<li><strong>${dt.label}</strong> &mdash; ${dt.rationale}</li>` : "";
+      }).filter(Boolean), `</ul>`].join("\n");
+      setDocsBody((body) => body.replace(/<ul>[\s\S]*?<\/ul>/, ul));
+      return next;
+    });
+  };
+
+  const handleSendDocsRequest = async () => {
+    if (!id) return;
+    if (selectedDocTypes.length === 0) {
+      toast.error("Pick at least one document type");
+      return;
+    }
+    if (!docsBody.trim()) {
+      toast.error("Email body is empty");
+      return;
+    }
+    setSendingDocs(true);
+    try {
+      await callEdgeFunction("cvp-request-documents", {
+        application_id: id,
+        subject: docsSubject,
+        body_html: docsBody,
+        missing_doc_types: selectedDocTypes,
+      });
+      toast.success("Document request sent");
+      setDocsModalOpen(false);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to send request");
+    } finally {
+      setSendingDocs(false);
+    }
   };
 
   const [rerunPrescreenBusy, setRerunPrescreenBusy] = useState(false);
@@ -4658,6 +4805,44 @@ export default function RecruitmentDetail() {
                           {combo.approved_rate && <span> at ${Number(combo.approved_rate).toFixed(2)}</span>}
                         </div>
                       )}
+
+                      {/* Rate suggester — per-lane AI suggestion at 20% of
+                          client per-page price, test-tiered. */}
+                      <div className="mt-2 pt-2 border-t border-gray-100">
+                        <button
+                          type="button"
+                          onClick={() => handleSuggestRateForCombo(combo)}
+                          disabled={rateSuggestingId === combo.id}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50 rounded disabled:opacity-40"
+                        >
+                          {rateSuggestingId === combo.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3 h-3" />
+                          )}
+                          {rateSuggestions[combo.id] ? "Re-suggest rate" : "Suggest rate"}
+                        </button>
+                        {rateSuggestError[combo.id] && (
+                          <p className="text-xs text-red-600 mt-1.5">{rateSuggestError[combo.id]}</p>
+                        )}
+                        {rateSuggestions[combo.id] && (
+                          <div className="mt-2 p-2.5 rounded-md bg-violet-50 border border-violet-200 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <span className="font-medium text-violet-900">
+                                Recommended: {rateSuggestions[combo.id]!.currency} ${rateSuggestions[combo.id]!.recommended_rate.toFixed(2)}/page
+                              </span>
+                              <span className="text-violet-700">
+                                Test {rateSuggestions[combo.id]!.test_score_used ?? "—"} ({rateSuggestions[combo.id]!.test_bucket})
+                              </span>
+                            </div>
+                            <p className="text-violet-800 leading-relaxed">{rateSuggestions[combo.id]!.reasoning}</p>
+                            <div className="text-violet-700">
+                              Alternatives: ↓ ${rateSuggestions[combo.id]!.alternative_lower.toFixed(2)} · ↑ ${rateSuggestions[combo.id]!.alternative_higher.toFixed(2)}
+                              <span className="ml-2 text-violet-600">Ceiling ${rateSuggestions[combo.id]!.ceiling.toFixed(2)} / Floor ${rateSuggestions[combo.id]!.floor.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       {sub && (
                         <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 space-y-0.5">
                           <div>Token status: <span className="font-medium text-gray-700">{sub.status}</span></div>
@@ -4818,8 +5003,92 @@ export default function RecruitmentDetail() {
                 {actionLoading === "info_requested" ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
                 Request Info
               </button>
+              <button
+                onClick={openRequestDocsModal}
+                disabled={actionLoading !== null}
+                className="col-span-2 flex items-center justify-center gap-1.5 px-3 py-2.5 border-2 border-indigo-500 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 disabled:opacity-50 transition-colors"
+                title="Draft an email asking the applicant for ISO 17100 documents we still need"
+              >
+                <FileSearch className="w-4 h-4" />
+                Request Documents
+              </button>
             </div>
           </Section>
+
+          {/* Request Documents modal */}
+          {docsModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Request Documents</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Tick the docs you need; the email body updates automatically.
+                    </p>
+                  </div>
+                  <button onClick={() => setDocsModalOpen(false)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md">
+                    <XIcon className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="px-6 py-4 overflow-y-auto space-y-4 flex-1">
+                  <div>
+                    <p className="text-xs font-medium text-gray-700 mb-2">ISO 17100 documents to request</p>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {ISO_DOC_TYPES.map((dt) => (
+                        <label key={dt.slug} className="flex items-start gap-2 text-xs p-2 rounded hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedDocTypes.includes(dt.slug)}
+                            onChange={() => toggleDocType(dt.slug)}
+                            className="mt-0.5"
+                          />
+                          <span>
+                            <span className="font-medium text-gray-900">{dt.label}</span>
+                            <span className="block text-gray-500">{dt.rationale}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Subject</label>
+                    <input
+                      type="text"
+                      value={docsSubject}
+                      onChange={(e) => setDocsSubject(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Email body (HTML)</label>
+                    <textarea
+                      value={docsBody}
+                      onChange={(e) => setDocsBody(e.target.value)}
+                      rows={12}
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-gray-100">
+                  <button
+                    onClick={() => setDocsModalOpen(false)}
+                    disabled={sendingDocs}
+                    className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSendDocsRequest}
+                    disabled={sendingDocs || selectedDocTypes.length === 0}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {sendingDocs && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Send request
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Rejection Email Editor (conditional) */}
           {(app.rejection_email_status === "queued" || app.rejection_email_status === "intercepted") && (
