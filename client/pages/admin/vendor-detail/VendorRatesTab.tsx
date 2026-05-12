@@ -8,6 +8,7 @@ import {
   DollarSign,
   RefreshCw,
   X,
+  Sparkles,
 } from "lucide-react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
@@ -16,9 +17,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { supabase } from "@/lib/supabase";
 import type { TabPropsWithServices, VendorRate } from "./types";
 import { POPULAR_CURRENCIES } from "./constants";
 import { getLanguageName } from "./data/languages";
+
+interface RateSuggestion {
+  recommended_rate: number;
+  alternative_higher: number;
+  alternative_lower: number;
+  currency: string;
+  reasoning: string;
+  client_rate_used: number;
+  ceiling: number;
+  floor: number;
+  test_score_used: number | null;
+  test_bucket: string;
+}
 
 interface RateFormData {
   service_id: string;
@@ -50,6 +65,9 @@ export default function VendorRatesTab({
   const [form, setForm] = useState<RateFormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState<RateSuggestion | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   // Group rates by service category
   const groupedRates = useMemo(() => {
@@ -158,7 +176,63 @@ export default function VendorRatesTab({
       currency:
         vendor.preferred_rate_currency ?? vendor.rate_currency ?? "CAD",
     });
+    setSuggestion(null);
+    setSuggestError(null);
     setModalOpen(true);
+  };
+
+  const handleSuggestRate = async () => {
+    if (!form.language_pair_id) {
+      setSuggestError("Pick a language pair first — suggestions are per-lane.");
+      return;
+    }
+    if (form.calculation_unit !== "per_page") {
+      setSuggestError("Phase 1 supports per-page only. Set the unit to Per Page.");
+      return;
+    }
+    const lp = languagePairs.find((p) => p.id === form.language_pair_id);
+    if (!lp) {
+      setSuggestError("Language pair not found.");
+      return;
+    }
+    setSuggesting(true);
+    setSuggestError(null);
+    setSuggestion(null);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "cvp-suggest-vendor-rate",
+        {
+          body: {
+            vendor_id: vendor.id,
+            source_language: lp.source_language,
+            target_language: lp.target_language,
+            service_id: form.service_id || null,
+            calculation_unit: "per_page",
+          },
+        },
+      );
+      if (error) throw new Error(error.message || "Suggester failed");
+      if ((data as any)?.do_not_hire) {
+        setSuggestError((data as any).reason || "Do not hire on this lane");
+        return;
+      }
+      if ((data as any)?.success === false) {
+        throw new Error((data as any).error || "Suggester returned failure");
+      }
+      const s = data as RateSuggestion;
+      setSuggestion(s);
+      setForm((f) => ({ ...f, rate: String(s.recommended_rate), currency: s.currency }));
+    } catch (err: any) {
+      setSuggestError(err?.message || "Suggest failed");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  const applyAlternative = (kind: "higher" | "lower") => {
+    if (!suggestion) return;
+    const value = kind === "higher" ? suggestion.alternative_higher : suggestion.alternative_lower;
+    setForm((f) => ({ ...f, rate: String(value) }));
   };
 
   const openEditModal = (rate: VendorRate) => {
@@ -474,9 +548,31 @@ export default function VendorRatesTab({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Rate *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Rate *
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSuggestRate}
+                  disabled={suggesting || !!editingRate || !form.language_pair_id || form.calculation_unit !== "per_page"}
+                  title={
+                    !form.language_pair_id
+                      ? "Pick a language pair to enable suggestions"
+                      : form.calculation_unit !== "per_page"
+                      ? "Phase 1 supports per-page only"
+                      : "Suggest a competitive rate (≤30% of client price)"
+                  }
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {suggesting ? (
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3 h-3" />
+                  )}
+                  Suggest rate
+                </button>
+              </div>
               <input
                 type="number"
                 step="0.0001"
@@ -487,6 +583,42 @@ export default function VendorRatesTab({
                 placeholder="0.0000"
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
+              {suggestError && (
+                <p className="text-xs text-red-600 mt-1.5">{suggestError}</p>
+              )}
+              {suggestion && (
+                <div className="mt-2 p-2.5 rounded-md bg-violet-50 border border-violet-200 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-violet-900">
+                      Recommended: {suggestion.currency} ${suggestion.recommended_rate.toFixed(2)}/page
+                    </span>
+                    <span className="text-violet-700">
+                      Test: {suggestion.test_score_used ?? "—"} ({suggestion.test_bucket})
+                    </span>
+                  </div>
+                  <p className="text-violet-800 leading-relaxed">{suggestion.reasoning}</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-violet-700">Alternatives:</span>
+                    <button
+                      type="button"
+                      onClick={() => applyAlternative("lower")}
+                      className="px-1.5 py-0.5 rounded bg-white border border-violet-300 text-violet-700 hover:bg-violet-100"
+                    >
+                      ↓ ${suggestion.alternative_lower.toFixed(2)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyAlternative("higher")}
+                      className="px-1.5 py-0.5 rounded bg-white border border-violet-300 text-violet-700 hover:bg-violet-100"
+                    >
+                      ↑ ${suggestion.alternative_higher.toFixed(2)}
+                    </button>
+                    <span className="text-violet-600 ml-auto">
+                      Ceiling ${suggestion.ceiling.toFixed(2)} / Floor ${suggestion.floor.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
