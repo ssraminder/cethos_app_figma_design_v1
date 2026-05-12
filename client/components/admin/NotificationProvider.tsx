@@ -141,11 +141,17 @@ export default function NotificationProvider({
         async (payload) => {
           console.log("🔔 New order received:", payload.new);
 
-          const { data: customer } = await supabase
-            .from("customers")
-            .select("full_name, email")
-            .eq("id", payload.new.customer_id)
-            .single();
+          // customer_id is null for guest checkouts. Skip the lookup —
+          // PostgREST 400s on `id=eq.null` and the fallback name handles it.
+          const customer = payload.new.customer_id
+            ? (
+                await supabase
+                  .from("customers")
+                  .select("full_name, email")
+                  .eq("id", payload.new.customer_id)
+                  .single()
+              ).data
+            : null;
 
           const customerName = customer?.full_name || customer?.email || "Customer";
           const orderNum = payload.new.order_number || "New";
@@ -180,11 +186,18 @@ export default function NotificationProvider({
         async (payload) => {
           console.log("🔔 New quote received:", payload.new);
 
-          const { data: customer } = await supabase
-            .from("customers")
-            .select("full_name, email")
-            .eq("id", payload.new.customer_id)
-            .single();
+          // Quote requests usually arrive before the customer record is
+          // created — customer_id is null at INSERT time. PostgREST 400s
+          // on `id=eq.null`, so only run the lookup when there's an id.
+          const customer = payload.new.customer_id
+            ? (
+                await supabase
+                  .from("customers")
+                  .select("full_name, email")
+                  .eq("id", payload.new.customer_id)
+                  .single()
+              ).data
+            : null;
 
           const customerName = customer?.full_name || customer?.email || "Customer";
           const quoteNum = payload.new.quote_number || "New";
