@@ -284,6 +284,30 @@ serve(async (req: Request) => {
         return json({ success: true, remaining_offers: remainingCount });
       }
 
+      case "retract_offers": {
+        // Bulk: retract every active offer on the step + cancel pending
+        // payables + reset the step to 'pending'. The UI "Retract All"
+        // button calls this; doing it server-side keeps it atomic instead
+        // of N round trips from the client.
+        const nowIso = new Date().toISOString();
+        const { data: retracted } = await supabase
+          .from("vendor_step_offers")
+          .update({ status: "retracted", responded_at: nowIso })
+          .eq("step_id", step_id)
+          .in("status", ["pending", "offered", "accepted"])
+          .select("id");
+        await supabase
+          .from("vendor_payables")
+          .update({ status: "cancelled" })
+          .eq("workflow_step_id", step_id)
+          .eq("status", "pending");
+        await supabase
+          .from("order_workflow_steps")
+          .update({ status: "pending", vendor_id: null, offered_at: null, accepted_at: null })
+          .eq("id", step_id);
+        return json({ success: true, retracted_count: retracted?.length ?? 0 });
+      }
+
       case "unassign_vendor": {
         const { reason, notes, payable_action, adjusted_amount, retract_offers, preserve_files } = body;
         await supabase.from("order_workflow_steps").update({
