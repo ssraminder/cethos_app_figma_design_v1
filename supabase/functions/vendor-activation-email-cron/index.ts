@@ -93,17 +93,26 @@ serve(async (req: Request) => {
   // Delegate the actual send to vendor-send-activation-emails. That
   // function already handles Brevo + notification_log audit; we just
   // pass it the picked vendor_ids + any subject/body overrides.
+  // Use the project's anon key for the inner call — the gateway accepts
+  // it as a valid JWT and we previously saw service-role bearers fail
+  // silently here (no body returned, sent/failed both 0). Anon JWT is
+  // public anyway (it's in the vendor portal bundle).
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  // Use `||` not `??` so an empty-string env var falls back to the
+  // hardcoded key. Previously `??` was passing `""` through, producing
+  // `Bearer ` and a 401 UNAUTHORIZED_INVALID_JWT_FORMAT from the gateway.
+  const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") || "").trim()
+    || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
   let sentCount = 0;
   let failedCount = 0;
+  let lastError: string | null = null;
   try {
     const res = await fetch(`${supabaseUrl}/functions/v1/vendor-send-activation-emails`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${serviceRole}`,
-        apikey: serviceRole,
+        Authorization: `Bearer ${anonKey}`,
+        apikey: anonKey,
       },
       body: JSON.stringify({
         vendor_ids: eligible,
@@ -111,10 +120,17 @@ serve(async (req: Request) => {
         body_html_override: schedule.body_html_override ?? undefined,
       }),
     });
-    const result = await res.json().catch(() => ({}));
-    sentCount = (result?.data?.sent ?? 0) as number;
-    failedCount = (result?.data?.failed ?? 0) as number;
+    const text = await res.text();
+    let result: Record<string, unknown> = {};
+    try { result = JSON.parse(text) as Record<string, unknown>; } catch { /* non-json */ }
+    sentCount = ((result?.data as Record<string, unknown> | undefined)?.sent ?? 0) as number;
+    failedCount = ((result?.data as Record<string, unknown> | undefined)?.failed ?? 0) as number;
+    if (!res.ok || sentCount === 0) {
+      lastError = `inner ${res.status}: ${text.slice(0, 500)}`;
+      console.error("vendor-activation-email-cron: inner returned no sends", lastError);
+    }
   } catch (e) {
+    lastError = e instanceof Error ? e.message : String(e);
     console.error("vendor-activation-email-cron: delegate send failed", e);
   }
 
@@ -127,5 +143,5 @@ serve(async (req: Request) => {
     })
     .eq("id", 1);
 
-  return json({ ok: true, sent: sentCount, failed: failedCount, candidates: eligible.length });
+  return json({ ok: true, sent: sentCount, failed: failedCount, candidates: eligible.length, last_error: lastError });
 });
