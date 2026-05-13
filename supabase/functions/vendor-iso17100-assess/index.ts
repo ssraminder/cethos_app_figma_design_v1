@@ -57,6 +57,12 @@ You MUST output ONLY valid JSON, no commentary, matching exactly:
   }
 }
 
+When the snapshot includes a "reference_competence_aggregate", it is anchored-MCQ data from professional references — primary evidence. Use the aggregation:
+ - 2+ references at level (a) or (b) on a competence → strong evidence; verdict should be at least "partial", lean "pass" when no contradicting signal.
+ - Any reference at (d) → negative signal; verdict at most "partial", "fail" if multiple refs are at (d).
+ - All references at (e) → no signal from references; fall back to other evidence.
+ - Cite the aggregated count in the evidence array, e.g. "reference MCQ: 2 of 2 rated translation_competence at (a) or (b)".
+
 Be honest about gaps. "insufficient_evidence" is the correct verdict when the input doesn't support a confident judgment — do not infer competence from absence of negative signals.`;
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -100,10 +106,21 @@ serve(async (req: Request) => {
     if (application) {
       const { data: r } = await sb
         .from("cvp_application_references")
-        .select("id, reference_name, reference_company, reference_relationship, feedback_text, feedback_rating, feedback_received_at, declined_at, ai_analysis")
+        .select("id, reference_name, reference_company, reference_relationship, feedback_text, feedback_rating, feedback_received_at, declined_at, ai_analysis, competence_responses")
         .eq("application_id", application.id)
         .order("created_at", { ascending: false });
       referenceRows = r ?? [];
+    }
+
+    // Phase 5a — also pull vendor-side references (post-onboarding asks).
+    // The MCQ structure is identical, so we merge into the same array.
+    const { data: vendorRefRows } = await sb
+      .from("vendor_references")
+      .select("id, reference_name, reference_company, reference_relationship, feedback_text, feedback_rating, feedback_received_at, declined_at, ai_analysis, competence_responses")
+      .eq("vendor_id", vendorId)
+      .order("created_at", { ascending: false });
+    if (vendorRefRows && vendorRefRows.length > 0) {
+      referenceRows = [...referenceRows, ...vendorRefRows];
     }
 
     const { data: pairs } = await sb
@@ -154,7 +171,13 @@ serve(async (req: Request) => {
         feedback_received: !!r.feedback_received_at,
         declined: !!r.declined_at,
         ai_analysis: r.ai_analysis,
+        competence_responses: r.competence_responses,
       })),
+      // Per-competence MCQ aggregate across all received references.
+      // Deterministic counts so the LLM doesn't have to do the math
+      // (and the audit trail shows the exact aggregation). a/b = pass
+      // signal, c = partial, d = fail signal, e = no signal.
+      reference_competence_aggregate: aggregateReferenceCompetence(referenceRows),
       language_pairs: (pairs ?? []).map((p) => ({
         source: p.source_language,
         target: p.target_language,
@@ -303,6 +326,54 @@ interface DraftItem {
   rationale: string;
   kind: "file" | "profile_field";
   profile_column?: string;
+}
+
+// Phase 5a — deterministic aggregate of reference MCQ answers per
+// §6.1.2 competence. Used both as input to Claude and as audit-grade
+// evidence the assessment row can be traced back to.
+function aggregateReferenceCompetence(refs: Array<Record<string, unknown>>) {
+  const competences = [
+    "translation_competence",
+    "linguistic_textual_competence",
+    "research_competence",
+    "cultural_competence",
+    "technical_competence",
+    "domain_competence",
+  ];
+  const result: Record<string, { a: number; b: number; c: number; d: number; e: number; total: number }> = {};
+  for (const c of competences) result[c] = { a: 0, b: 0, c: 0, d: 0, e: 0, total: 0 };
+
+  let receivedCount = 0;
+  for (const r of refs) {
+    if (!r.feedback_received_at) continue;
+    receivedCount++;
+    const cr = r.competence_responses as Record<string, string> | null;
+    if (!cr) continue;
+    for (const c of competences) {
+      const v = cr[c];
+      if (v === "a" || v === "b" || v === "c" || v === "d" || v === "e") {
+        result[c][v]++;
+        result[c].total++;
+      }
+    }
+  }
+
+  return {
+    received_count: receivedCount,
+    per_competence: result,
+    // Roll-up: per competence, "pass_signals" = a+b count, "fail_signals" = d count.
+    summary: Object.fromEntries(
+      competences.map((c) => [
+        c,
+        {
+          pass_signals: result[c].a + result[c].b,
+          partial_signals: result[c].c,
+          fail_signals: result[c].d,
+          no_signal: result[c].e,
+        },
+      ]),
+    ),
+  };
 }
 
 function pickDraftItems(
