@@ -131,7 +131,7 @@ function buildEmail(args: { firstName: string; vendorPortalUrl: string; unsubscr
   </p>
 </td></tr>
 <tr><td style="padding:14px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-  Sent by Cethos Solutions Inc. You're receiving this because you've worked with CETHOS as a freelance linguist. Prefer not to receive announcements like this? <a href="${unsub}" style="color:#0891B2;">Unsubscribe in one click</a>.
+  Sent by Cethos Solutions Inc. You're receiving this because you've worked with CETHOS as a freelance linguist. Prefer not to receive announcements like this? <a href="${unsub}" style="color:#0891B2;">Unsubscribe in one click</a> — note that unsubscribing will also deactivate your vendor profile, so we won't route new job offers to you until you ask us to reactivate it.
 </td></tr>
 </table></td></tr></table></body></html>`;
   return { subject: "We're moving to a new vendor portal — your sign-in is ready", html };
