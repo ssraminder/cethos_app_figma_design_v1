@@ -148,6 +148,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Vendors",
   },
   {
+    label: "ISO 17100 quizzes",
+    path: "/admin/iso-quizzes",
+    icon: GraduationCap,
+    section: "Vendors",
+  },
+  {
     label: "Trainings",
     path: "/admin/trainings",
     icon: GraduationCap,
