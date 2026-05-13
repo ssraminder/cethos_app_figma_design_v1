@@ -116,11 +116,88 @@ serve(async (req: Request) => {
     if (quoteErr) throw new Error(`Failed to load quote: ${quoteErr.message}`);
     if (!quote) throw new Error(`Quote not found: ${quoteId}`);
 
+    // ── Post-payment guard ────────────────────────────────────────────────
+    // Refuse to mutate analysis/totals once any linked order has captured
+    // payment. Mirrors the DB-side guard in recalculate_quote_*; this catches
+    // the same race a layer earlier so we don't even soft-delete history on a
+    // paid quote. Required after the ORD-2026-10201 incident where a
+    // re-analysis fired while the customer was still on Stripe Checkout and
+    // silently lowered the displayed total below the captured amount.
+    const { data: paidOrders, error: paidErr } = await sb
+      .from("orders")
+      .select("id, order_number, amount_paid")
+      .eq("quote_id", quoteId)
+      .gt("amount_paid", 0);
+    if (paidErr) {
+      throw new Error(`Failed to check payment status: ${paidErr.message}`);
+    }
+    if (paidOrders && paidOrders.length > 0) {
+      return jsonResponse(
+        {
+          success: false,
+          error: "Quote is locked: linked order has captured payment.",
+          paid_orders: paidOrders.map((o) => o.order_number),
+        },
+        409,
+      );
+    }
+
     const taxRate = num(quote.tax_rate, 0);
     const rushFee = num(quote.rush_fee, 0);
     const deliveryFee = num(quote.delivery_fee, 0);
     const surchargeTotal = num(quote.surcharge_total, 0);
     const discountTotal = num(quote.discount_total, 0);
+
+    // ── Resolve ocr_batch_files → quote_files mapping ─────────────────────
+    // Old behaviour stored quote_file_id=null, severing the link from analysis
+    // back to the uploaded file. That breaks recalculate_document_group's
+    // translatable_word_count lookup (it joins by quote_file_id) and lets
+    // quote_document_groups silently desync from new analysis. Resolve here:
+    //   1. ocr_batch_files.quote_file_id when the batch row carries one
+    //   2. quote_files.original_filename fallback (case-insensitive)
+    const batchFileIds = documents
+      .map((d) => d.ocrBatchFileId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+    const batchFileMap = new Map<string, string | null>();
+    if (batchFileIds.length > 0) {
+      const { data: batchFiles, error: batchFilesErr } = await sb
+        .from("ocr_batch_files")
+        .select("id, quote_file_id, filename, original_filename")
+        .in("id", batchFileIds);
+      if (!batchFilesErr && batchFiles) {
+        for (const bf of batchFiles) {
+          batchFileMap.set(bf.id, bf.quote_file_id ?? null);
+        }
+      }
+    }
+
+    const { data: quoteFiles } = await sb
+      .from("quote_files")
+      .select("id, original_filename")
+      .eq("quote_id", quoteId)
+      .is("deleted_at", null);
+    const filenameToQuoteFileId = new Map<string, string>();
+    for (const qf of quoteFiles ?? []) {
+      if (qf.original_filename) {
+        filenameToQuoteFileId.set(
+          qf.original_filename.trim().toLowerCase(),
+          qf.id,
+        );
+      }
+    }
+
+    function resolveQuoteFileId(doc: DocPayload): string | null {
+      if (doc.ocrBatchFileId) {
+        const mapped = batchFileMap.get(doc.ocrBatchFileId);
+        if (mapped) return mapped;
+      }
+      if (doc.filename) {
+        const hit = filenameToQuoteFileId.get(doc.filename.trim().toLowerCase());
+        if (hit) return hit;
+      }
+      return null;
+    }
 
     // ── Soft-delete existing pricing rows for this quote ──
     const nowIso = new Date().toISOString();
@@ -146,9 +223,10 @@ serve(async (req: Request) => {
       const certPrice = round2(num(doc.certificationPrice, 0));
       return {
         quote_id: quoteId,
-        // ocrBatchFileId is from ocr_batch_files; ai_analysis_results.quote_file_id
-        // FK targets quote_files. Leave null to avoid FK violation.
-        quote_file_id: null,
+        // Resolved via ocr_batch_files.quote_file_id (or filename fallback)
+        // so recalculate_document_group can find this row by quote_file_id
+        // and quote_document_groups stay in sync with the new analysis.
+        quote_file_id: resolveQuoteFileId(doc),
         ocr_provider: "manual",
         manual_filename: doc.filename || null,
         detected_document_type: doc.detectedDocumentType || null,
@@ -231,6 +309,36 @@ serve(async (req: Request) => {
 
     if (updateErr) {
       throw new Error(`Failed to update quote: ${updateErr.message}`);
+    }
+
+    // ── Resync quote_document_groups to the new analysis ──────────────────
+    // Groups are the canonical billing source for the quote/order sidebar
+    // (AdminQuoteDetail.tsx prefers groups over analysis when both exist).
+    // Without this step, groups carry stale line totals from the prior
+    // analysis run and the OCR Pricing tab + order sidebar diverge silently.
+    // recalculate_document_group reads ai_analysis_results.translatable_word_count
+    // joined by quote_file_id — which works now that we link analysis rows
+    // to their file above.
+    try {
+      const { data: groupIds, error: groupListErr } = await sb
+        .from("quote_document_groups")
+        .select("id")
+        .eq("quote_id", quoteId);
+      if (!groupListErr && groupIds) {
+        for (const g of groupIds) {
+          await sb.rpc("recalculate_document_group", { p_group_id: g.id });
+        }
+        if (groupIds.length > 0) {
+          await sb.rpc("recalculate_quote_from_groups", {
+            p_quote_id: quoteId,
+          });
+        }
+      }
+    } catch (groupErr) {
+      console.warn(
+        "Non-fatal: failed to resync quote_document_groups",
+        groupErr,
+      );
     }
 
     // ── Link OCR batch to quote (best-effort; non-fatal) ──
