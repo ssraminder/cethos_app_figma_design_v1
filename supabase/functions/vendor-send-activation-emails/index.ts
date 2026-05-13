@@ -83,7 +83,14 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
 
-  let body: { dry_run?: boolean; vendor_ids?: string[]; force_resend?: boolean } = {};
+  let body: {
+    dry_run?: boolean;
+    vendor_ids?: string[];
+    force_resend?: boolean;
+    test_email?: string;             // send a single test to this address
+    subject_override?: string;       // override the default subject
+    body_html_override?: string;     // override the default body html
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -94,6 +101,38 @@ serve(async (req: Request) => {
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
+
+  // ── Test-send mode: one email to the requested address, no DB lookups,
+  // no notification_log row. Used by the admin modal's "Send test"
+  // button to preview the actual delivered email.
+  if (body.test_email) {
+    const vendorPortalUrl = Deno.env.get("VENDOR_PORTAL_URL") ?? VENDOR_URL_FALLBACK;
+    const defaults = buildEmail({ firstName: "(test)", vendorPortalUrl });
+    const subject = body.subject_override?.trim() || defaults.subject;
+    const html = body.body_html_override?.trim() || defaults.html;
+
+    const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
+    if (!BREVO_API_KEY) return json({ success: false, error: "BREVO_API_KEY not configured" }, 500);
+    try {
+      const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          to: [{ email: body.test_email }],
+          sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
+          replyTo: { email: "vendor@cethos.com", name: "Cethos Vendor Ops" },
+          subject: `[TEST] ${subject}`,
+          htmlContent: html,
+          tags: ["vendor-activation-email-test"],
+        }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) return json({ success: false, error: `Brevo ${res.status}: ${JSON.stringify(result).slice(0, 500)}` }, 502);
+      return json({ success: true, data: { test_sent_to: body.test_email, brevo_message_id: (result as Record<string, unknown>)?.messageId ?? null } });
+    } catch (e) {
+      return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  }
 
   // Pull candidate vendors. Exclude suspended/inactive. Optional filter
   // to specific IDs.
@@ -171,7 +210,15 @@ serve(async (req: Request) => {
 
   for (const v of needsActivation) {
     const firstName = (v.full_name || "").split(" ")[0] || "";
-    const { subject, html } = buildEmail({ firstName, vendorPortalUrl });
+    const defaults = buildEmail({ firstName, vendorPortalUrl });
+    // Per-vendor overrides: %FIRSTNAME% substitution is supported so a
+    // global override template can still personalise.
+    const subject = body.subject_override?.trim()
+      ? body.subject_override.replace(/%FIRSTNAME%/g, firstName)
+      : defaults.subject;
+    const html = body.body_html_override?.trim()
+      ? body.body_html_override.replace(/%FIRSTNAME%/g, firstName)
+      : defaults.html;
 
     let emailSent = false;
     let emailError: string | null = null;
