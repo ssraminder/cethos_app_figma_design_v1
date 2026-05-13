@@ -64,7 +64,9 @@ const DEFAULT_BODY_HTML = `<h1 style="font-size:18px;font-weight:600;color:#0f76
 <p>Reply to this email or write to <a href="mailto:vm@cethos.com" style="color:#0891B2;">vm@cethos.com</a> and we'll sort it out the same day. If you don't receive your one-time code within a couple of minutes, please check spam — and let us know if it's still not arriving.</p>
 <p>Thank you for the work you do with us. We're glad to have you with us on this next chapter.</p>
 
-<p style="margin:18px 0 0;">Warm regards,<br/><strong>Vendor Manager</strong><br/>Cethos Solutions Inc.<br/><a href="mailto:vm@cethos.com" style="color:#0891B2;">vm@cethos.com</a></p>`;
+<p style="margin:18px 0 0;">Warm regards,<br/><strong>Vendor Manager</strong><br/>Cethos Solutions Inc.<br/><a href="mailto:vm@cethos.com" style="color:#0891B2;">vm@cethos.com</a></p>
+
+<p style="color:#6B7280;font-size:12px;margin-top:24px;border-top:1px solid #e5e7eb;padding-top:12px;">Sent by Cethos Solutions Inc. You're receiving this because you've worked with CETHOS as a freelance linguist. Prefer not to receive announcements like this? <a href="%UNSUBSCRIBE_URL%" style="color:#0891B2;">Unsubscribe in one click</a>.</p>`;
 
 interface ScheduleRow {
   enabled: boolean;
@@ -306,7 +308,7 @@ export function VendorActivationEmailModal({ open, onClose }: Props) {
                     className="w-full px-3 py-2 border border-gray-300 rounded text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
                   />
                   <p className="text-[11px] text-gray-500">
-                    HTML. <code>%FIRSTNAME%</code> is substituted per vendor.
+                    HTML. <code>%FIRSTNAME%</code> and <code>%UNSUBSCRIBE_URL%</code> are substituted per vendor.
                   </p>
                 </div>
                 <div className="border border-gray-200 rounded bg-gray-50 overflow-hidden">

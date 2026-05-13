@@ -30,6 +30,16 @@ const CORS = {
 const VENDOR_URL_FALLBACK = "https://vendor.cethos.com";
 const DEDUP_WINDOW_DAYS = 7;
 
+// Per-vendor unsubscribe links. The portal URL is what the recipient
+// sees and clicks; the edge-function URL is what Gmail/Yahoo POST to
+// for the RFC 8058 one-click List-Unsubscribe header.
+function unsubscribeLink(vendorPortalUrl: string, vendorId: string): string {
+  return `${vendorPortalUrl}/unsubscribe?token=${vendorId}`;
+}
+function unsubscribePostEndpoint(supabaseUrl: string, vendorId: string): string {
+  return `${supabaseUrl}/functions/v1/cvp-unsubscribe?token=${vendorId}`;
+}
+
 function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -46,9 +56,10 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function buildEmail(args: { firstName: string; vendorPortalUrl: string }): { subject: string; html: string } {
+function buildEmail(args: { firstName: string; vendorPortalUrl: string; unsubscribeUrl: string }): { subject: string; html: string } {
   const portal = escapeHtml(args.vendorPortalUrl);
   const portalDomain = portal.replace("https://", "").replace("http://", "");
+  const unsub = escapeHtml(args.unsubscribeUrl);
   const html = `<!doctype html><html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;color:#111827;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;"><tr><td align="center">
 <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
@@ -120,7 +131,7 @@ function buildEmail(args: { firstName: string; vendorPortalUrl: string }): { sub
   </p>
 </td></tr>
 <tr><td style="padding:14px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-  Sent by Cethos Solutions Inc. You're receiving this because you've worked with CETHOS as a freelance linguist. Prefer not to receive announcements like this? Reply with "unsubscribe" and we'll remove you.
+  Sent by Cethos Solutions Inc. You're receiving this because you've worked with CETHOS as a freelance linguist. Prefer not to receive announcements like this? <a href="${unsub}" style="color:#0891B2;">Unsubscribe in one click</a>.
 </td></tr>
 </table></td></tr></table></body></html>`;
   return { subject: "We're moving to a new vendor portal — your sign-in is ready", html };
@@ -154,9 +165,17 @@ serve(async (req: Request) => {
   // button to preview the actual delivered email.
   if (body.test_email) {
     const vendorPortalUrl = Deno.env.get("VENDOR_PORTAL_URL") ?? VENDOR_URL_FALLBACK;
-    const defaults = buildEmail({ firstName: "(test)", vendorPortalUrl });
-    const subject = body.subject_override?.trim() || defaults.subject;
-    const html = body.body_html_override?.trim() || defaults.html;
+    // Test mode: synthetic vendor id so the unsubscribe link still
+    // renders. The cvp-unsubscribe endpoint rejects unknown tokens
+    // so this is a no-op if clicked.
+    const testVendorId = "00000000-0000-0000-0000-000000000000";
+    const unsubUrl = unsubscribeLink(vendorPortalUrl, testVendorId);
+    const defaults = buildEmail({ firstName: "(test)", vendorPortalUrl, unsubscribeUrl: unsubUrl });
+    const subjectRaw = body.subject_override?.trim() || defaults.subject;
+    const subject = subjectRaw.replace(/%UNSUBSCRIBE_URL%/g, unsubUrl);
+    const html = (body.body_html_override?.trim() || defaults.html)
+      .replace(/%UNSUBSCRIBE_URL%/g, unsubUrl)
+      .replace(/%FIRSTNAME%/g, "(test)");
 
     const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
     if (!BREVO_API_KEY) return json({ success: false, error: "BREVO_API_KEY not configured" }, 500);
@@ -166,8 +185,8 @@ serve(async (req: Request) => {
         headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           to: [{ email: body.test_email }],
-          sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
-          replyTo: { email: "vendor@cethos.com", name: "Cethos Vendor Ops" },
+          sender: { name: "Cethos Vendor Management", email: "donotreply@cethos.com" },
+          replyTo: { email: "vm@cethos.com", name: "Cethos Vendor Manager" },
           subject: `[TEST] ${subject}`,
           htmlContent: html,
           tags: ["vendor-activation-email-test"],
@@ -251,21 +270,28 @@ serve(async (req: Request) => {
 
   const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
   const vendorPortalUrl = Deno.env.get("VENDOR_PORTAL_URL") ?? VENDOR_URL_FALLBACK;
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 
   const errors: string[] = [];
   let sent = 0;
 
   for (const v of needsActivation) {
     const firstName = (v.full_name || "").split(" ")[0] || "";
-    const defaults = buildEmail({ firstName, vendorPortalUrl });
-    // Per-vendor overrides: %FIRSTNAME% substitution is supported so a
-    // global override template can still personalise.
-    const subject = body.subject_override?.trim()
-      ? body.subject_override.replace(/%FIRSTNAME%/g, firstName)
-      : defaults.subject;
-    const html = body.body_html_override?.trim()
-      ? body.body_html_override.replace(/%FIRSTNAME%/g, firstName)
-      : defaults.html;
+    const unsubUrl = unsubscribeLink(vendorPortalUrl, v.id);
+    const defaults = buildEmail({ firstName, vendorPortalUrl, unsubscribeUrl: unsubUrl });
+    // Per-vendor overrides: %FIRSTNAME% and %UNSUBSCRIBE_URL% substitution
+    // is supported so a global override template can still personalise.
+    const subject = (body.subject_override?.trim() || defaults.subject)
+      .replace(/%FIRSTNAME%/g, firstName)
+      .replace(/%UNSUBSCRIBE_URL%/g, unsubUrl);
+    const html = (body.body_html_override?.trim() || defaults.html)
+      .replace(/%FIRSTNAME%/g, firstName)
+      .replace(/%UNSUBSCRIBE_URL%/g, unsubUrl);
+
+    // RFC 8058 one-click unsubscribe header — required for Gmail/Yahoo
+    // bulk-sender compliance. Mail clients POST to this without browser
+    // navigation; the cvp-unsubscribe edge function handles the token.
+    const listUnsubHeader = `<${unsubscribePostEndpoint(supabaseUrl, v.id)}>, <mailto:vm@cethos.com?subject=unsubscribe>`;
 
     let emailSent = false;
     let emailError: string | null = null;
@@ -284,11 +310,15 @@ serve(async (req: Request) => {
           },
           body: JSON.stringify({
             to: [{ email: v.email, name: v.full_name || v.email }],
-            sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
-            replyTo: { email: "vendor@cethos.com", name: "Cethos Vendor Ops" },
+            sender: { name: "Cethos Vendor Management", email: "donotreply@cethos.com" },
+            replyTo: { email: "vm@cethos.com", name: "Cethos Vendor Manager" },
             subject,
             htmlContent: html,
             tags: ["vendor-activation-email", `vendor-${v.id}`],
+            headers: {
+              "List-Unsubscribe": listUnsubHeader,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
           }),
         });
         const result = await res.json().catch(() => ({}));
