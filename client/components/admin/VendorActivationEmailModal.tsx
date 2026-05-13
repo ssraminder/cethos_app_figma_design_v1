@@ -26,17 +26,45 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-const DEFAULT_SUBJECT = "Action needed — activate your Cethos vendor profile";
-const DEFAULT_BODY_HTML = `<p>Hi %FIRSTNAME%,</p>
-<p>We've updated the Cethos vendor portal with two new requirements to keep our network aligned with ISO 17100:2015. To continue receiving job offers, please complete two short steps:</p>
-<ul>
-  <li><strong>Upload your CV</strong> — PDF up to 10 MB</li>
-  <li><strong>Sign the NDA</strong> — two-factor verification via email or phone OTP</li>
+const DEFAULT_SUBJECT = "We're moving to a new vendor portal — your sign-in is ready";
+const DEFAULT_BODY_HTML = `<h1 style="font-size:18px;font-weight:600;color:#0f766e;margin:0 0 16px;">We're moving to a new vendor portal</h1>
+<p>Hi %FIRSTNAME%,</p>
+<p>We're writing to let you know that <strong>CETHOS</strong> is moving to a new Translation Management System — our own <strong>CETHOS Vendor Portal</strong>. You're in one of the first language pools we're rolling this out to, because your work matters to us and we want you set up early.</p>
+
+<h2 style="font-size:15px;color:#0f766e;margin:22px 0 8px;">The move is phased — over the next 2–3 weeks</h2>
+<p style="margin:0 0 6px;">During this window, please expect the following:</p>
+<ul style="padding-left:18px;margin:0 0 12px;">
+  <li>You may receive <strong>job offers from the new Vendor Portal</strong> at <a href="https://vendor.cethos.com" style="color:#0891B2;">vendor.cethos.com</a>.</li>
+  <li>You may still receive offers from <strong>XTRF</strong> for some projects until we complete the cutover.</li>
+  <li>Both are real CETHOS offers — please continue to accept and deliver through whichever system the offer arrives in. We'll confirm by email once XTRF is retired for your language pair.</li>
 </ul>
-<p>Both can be done in under five minutes from the onboarding page.</p>
-<p><a href="https://vendor.cethos.com/onboarding" style="display:inline-block;padding:11px 22px;background:#0891B2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Activate my profile</a></p>
-<p style="color:#6B7280;font-size:13px;">If you've already completed both steps, ignore this email — your profile is already active. Questions? Reply or contact vendor@cethos.com.</p>
-<p>Thanks,<br/>Cethos Vendor Management</p>`;
+
+<h2 style="font-size:15px;color:#0f766e;margin:22px 0 8px;">Three quick things we'd like you to do this week</h2>
+<ol style="padding-left:18px;margin:0 0 16px;">
+  <li style="margin-bottom:10px;"><strong>Sign in to the Vendor Portal</strong> — go to <a href="https://vendor.cethos.com" style="color:#0891B2;">vendor.cethos.com</a> and enter the email address this message was sent to. You'll receive a <strong>one-time code by email</strong> — paste it in and you're in. <strong>No password needed.</strong></li>
+  <li style="margin-bottom:10px;"><strong>Complete the two activation steps</strong> (about 2 minutes). After sign-in we'll ask you to <strong>upload a current CV</strong> (PDF, up to 10 MB) and <strong>sign the NDA</strong> in the portal. These two are required before job offers route to you — both can be done in a single sitting from the onboarding page.</li>
+  <li style="margin-bottom:10px;"><strong>Complete your profile.</strong> Confirm or update your <strong>rates, language pairs, specializations, certifications, availability, and payout method</strong>. This is what we use to route offers to you, so a complete profile means more relevant jobs and faster turnaround on assignment.</li>
+</ol>
+
+<p style="margin:18px 0;text-align:center;"><a href="https://vendor.cethos.com/login" style="display:inline-block;padding:11px 22px;background:#0891B2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Sign in to the Vendor Portal</a></p>
+
+<h2 style="font-size:15px;color:#0f766e;margin:24px 0 8px;">A note on why we're doing this</h2>
+<p>Building our own Portal lets us pay faster, brief you better on each job, and reduce the back and forth that XTRF often creates. Concretely, that means:</p>
+<ul style="padding-left:18px;margin:0 0 12px;">
+  <li><strong>Faster payment</strong> — invoices generate automatically when your delivery is approved, on a shorter payment window than XTRF's defaults.</li>
+  <li><strong>One place for everything on a job</strong> — source files, reference materials, glossary, deadline in your timezone, and special instructions on a single screen.</li>
+  <li><strong>Self-serve profile</strong> — update rates, language pairs, certifications, and payout details whenever you want, without waiting on a vendor manager.</li>
+  <li><strong>Counter-offers in one click</strong> — propose a different rate or deadline and it routes straight to the project manager with full context, no email threads.</li>
+  <li><strong>No more passwords</strong> — sign in with a one-time code emailed to you. Your email is your account.</li>
+  <li><strong>Better records</strong> — your full work history, quality feedback, certifications, and earnings all in one place. Useful for you when invoicing or reapplying anywhere; useful for us when matching the right linguist to a job quickly.</li>
+</ul>
+<p>It's a meaningful investment, and your early feedback in these first weeks will directly shape what comes next. If something's clunky or missing, please tell us.</p>
+
+<h2 style="font-size:15px;color:#0f766e;margin:24px 0 8px;">If anything goes wrong</h2>
+<p>Reply to this email or write to <a href="mailto:vm@cethos.com" style="color:#0891B2;">vm@cethos.com</a> and we'll sort it out the same day. If you don't receive your one-time code within a couple of minutes, please check spam — and let us know if it's still not arriving.</p>
+<p>Thank you for the work you do with us. We're glad to have you with us on this next chapter.</p>
+
+<p style="margin:18px 0 0;">Warm regards,<br/><strong>Vendor Manager</strong><br/>Cethos Solutions Inc.<br/><a href="mailto:vm@cethos.com" style="color:#0891B2;">vm@cethos.com</a></p>`;
 
 interface ScheduleRow {
   enabled: boolean;
