@@ -200,6 +200,8 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
         kind: it.kind,
         profile_column: it.profile_column,
         rationale: it.rationale,
+        quiz_competence: it.quiz_competence,
+        quiz_domain: it.quiz_domain,
       }));
 
     setSending(true);
