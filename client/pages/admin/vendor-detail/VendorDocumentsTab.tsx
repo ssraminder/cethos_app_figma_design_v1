@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import type { TabProps } from "./types";
 import IsoAssessmentSection from "./IsoAssessmentSection";
 import VendorReferencesSection from "./VendorReferencesSection";
+import VendorDocumentRequestSection from "./VendorDocumentRequestSection";
 
 interface CvpApplication {
   id: string;
@@ -232,6 +233,12 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
 
       {/* ISO 17100 assessment */}
       <IsoAssessmentSection vendorId={vendor.id} />
+
+      {/* Admin → vendor: request missing ISO 17100 evidence */}
+      <VendorDocumentRequestSection
+        vendorId={vendor.id}
+        vendorFirstName={(vendor.full_name || "").split(" ")[0] || ""}
+      />
 
       {/* CV (post-onboarding uploads from vendor portal) */}
       <section className="bg-white border border-gray-200 rounded-lg p-5">
