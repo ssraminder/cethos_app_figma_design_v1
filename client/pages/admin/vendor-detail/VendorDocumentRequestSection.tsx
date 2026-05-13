@@ -127,12 +127,21 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
   useEffect(() => { refresh(); }, [refresh]);
 
   const openModal = () => {
-    const suggested = latestAssessment
-      ? suggestRequestSlugsFromAssessment(latestAssessment.result as { criteria?: Record<string, { evidence?: string[] }> } | null)
-      : [];
-    const initial = suggested.length > 0
-      ? suggested
-      : ["degree_translation_studies", "professional_translation_cert", "language_proficiency", "profile_native_languages", "profile_years_experience", "profile_specializations"];
+    // 1) If an auto-created draft exists, prefer ITS items (the assessment
+    //    edge function already picked them based on the snapshot).
+    // 2) Otherwise pull from the latest assessment evidence.
+    // 3) Otherwise fall back to the generic baseline.
+    let initial: string[];
+    if (latestRequest?.status === "draft" && latestRequest.requested_items.length > 0) {
+      initial = latestRequest.requested_items.map((it) => it.slug);
+    } else {
+      const suggested = latestAssessment
+        ? suggestRequestSlugsFromAssessment(latestAssessment.result as { criteria?: Record<string, { evidence?: string[] }> } | null)
+        : [];
+      initial = suggested.length > 0
+        ? suggested
+        : ["degree_translation_studies", "professional_translation_cert", "language_proficiency", "profile_native_languages", "profile_years_experience", "profile_specializations"];
+    }
     setSelectedSlugs(initial);
     setStaffMessage("");
     setSubject("Cethos — documents needed for your translator profile (ISO 17100)");
@@ -224,8 +233,9 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
   }
 
   const hasOpenRequest = latestRequest && ["sent", "partial"].includes(latestRequest.status);
+  const hasDraft = latestRequest?.status === "draft";
   const insufficientEvidence = latestAssessment?.overall_verdict === "insufficient_evidence";
-  const showSmartHint = insufficientEvidence && !hasOpenRequest;
+  const showSmartHint = insufficientEvidence && !hasOpenRequest && !hasDraft;
 
   return (
     <section className="bg-white border border-gray-200 rounded-lg p-5">
@@ -239,12 +249,21 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
         <button
           type="button"
           onClick={openModal}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded ${hasDraft ? "bg-amber-600 hover:bg-amber-700" : "bg-indigo-600 hover:bg-indigo-700"}`}
         >
           <Send className="w-3.5 h-3.5" />
-          {hasOpenRequest ? "Send new request" : "Request documents"}
+          {hasDraft ? "Review draft & send" : hasOpenRequest ? "Send new request" : "Request documents"}
         </button>
       </div>
+
+      {hasDraft && (
+        <div className="mb-3 p-3 rounded-lg border border-amber-200 bg-amber-50 flex items-start gap-2 text-xs">
+          <Sparkles className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+          <div className="text-amber-900">
+            <strong>Smart draft ready</strong> — {latestRequest!.requested_items.length} item{latestRequest!.requested_items.length === 1 ? "" : "s"} auto-selected from the latest insufficient-evidence assessment. Review and click <em>Review draft &amp; send</em> to email the vendor.
+          </div>
+        </div>
+      )}
 
       {showSmartHint && (
         <div className="mb-3 p-3 rounded-lg border border-purple-200 bg-purple-50 flex items-start gap-2 text-xs">
