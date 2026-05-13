@@ -19,6 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { StatCard } from "@/components/admin/StatCard";
+import { VendorActivationEmailModal } from "@/components/admin/VendorActivationEmailModal";
 
 interface Vendor {
   id: string;
@@ -185,6 +186,7 @@ export default function AdminVendorsList() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSending, setBulkSending] = useState(false);
   const [activationBusy, setActivationBusy] = useState(false);
+  const [activationModalOpen, setActivationModalOpen] = useState(false);
 
   async function handleSendActivationEmails(force_resend: boolean) {
     if (activationBusy) return;
@@ -452,13 +454,13 @@ export default function AdminVendorsList() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => handleSendActivationEmails(false)}
+            onClick={() => setActivationModalOpen(true)}
             disabled={activationBusy}
-            title="Email every vendor missing CV or NDA. Dedups against the last 7 days."
+            title="Preview, edit, test, schedule, and send the vendor activation email."
             className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
           >
             {activationBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            Send activation emails
+            Activation emails…
           </button>
           <button
             onClick={() => navigate("/admin/vendors/new")}
@@ -875,6 +877,10 @@ export default function AdminVendorsList() {
         </div>
       )}
 
+      <VendorActivationEmailModal
+        open={activationModalOpen}
+        onClose={() => setActivationModalOpen(false)}
+      />
     </div>
   );
 }
