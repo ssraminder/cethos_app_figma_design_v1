@@ -15,6 +15,8 @@ import {
   Mail,
   Clock,
   XCircle,
+  Send,
+  Loader2,
 } from "lucide-react";
 import { StatCard } from "@/components/admin/StatCard";
 
@@ -182,6 +184,47 @@ export default function AdminVendorsList() {
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSending, setBulkSending] = useState(false);
+  const [activationBusy, setActivationBusy] = useState(false);
+
+  async function handleSendActivationEmails(force_resend: boolean) {
+    if (activationBusy) return;
+    // Dry-run first so the admin sees the cohort size before the real send.
+    setActivationBusy(true);
+    try {
+      const preview = await supabase.functions.invoke("vendor-send-activation-emails", {
+        body: { dry_run: true, force_resend },
+      });
+      if (preview.error) throw preview.error;
+      const candidates = (preview.data?.data?.candidates ?? 0) as number;
+      const skipped = (preview.data?.data?.skipped_recently_emailed ?? 0) as number;
+      if (candidates === 0) {
+        showToast(
+          skipped > 0
+            ? `${skipped} vendor(s) emailed in the last 7 days — none currently due.`
+            : "No vendors are missing CV or NDA — nothing to send.",
+          "success",
+        );
+        return;
+      }
+      const confirmed = window.confirm(
+        `Send activation emails to ${candidates} vendor(s) missing CV or NDA?` +
+          (skipped > 0 ? `\n\n${skipped} vendor(s) skipped (emailed in the last 7 days).` : "") +
+          (force_resend ? "\n\n⚠️ Force-resend is ON — ignoring the 7-day dedup window." : ""),
+      );
+      if (!confirmed) return;
+      const real = await supabase.functions.invoke("vendor-send-activation-emails", {
+        body: { force_resend },
+      });
+      if (real.error) throw real.error;
+      const sent = (real.data?.data?.sent ?? 0) as number;
+      const failed = (real.data?.data?.failed ?? 0) as number;
+      showToast(`Sent ${sent} activation email(s).${failed > 0 ? ` ${failed} failed.` : ""}`, "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to send activation emails", "error");
+    } finally {
+      setActivationBusy(false);
+    }
+  }
 
   // Toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -406,13 +449,25 @@ export default function AdminVendorsList() {
             Manage freelance translators and reviewers
           </p>
         </div>
-        <button
-          onClick={() => navigate("/admin/vendors/new")}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Vendor
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleSendActivationEmails(false)}
+            disabled={activationBusy}
+            title="Email every vendor missing CV or NDA. Dedups against the last 7 days."
+            className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            {activationBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            Send activation emails
+          </button>
+          <button
+            onClick={() => navigate("/admin/vendors/new")}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Vendor
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
