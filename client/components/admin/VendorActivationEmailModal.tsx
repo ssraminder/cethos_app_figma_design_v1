@@ -66,7 +66,7 @@ const DEFAULT_BODY_HTML = `<h1 style="font-size:18px;font-weight:600;color:#0f76
 
 <p style="margin:18px 0 0;">Warm regards,<br/><strong>Vendor Manager</strong><br/>Cethos Solutions Inc.<br/><a href="mailto:vm@cethos.com" style="color:#0891B2;">vm@cethos.com</a></p>
 
-<p style="color:#6B7280;font-size:12px;margin-top:24px;border-top:1px solid #e5e7eb;padding-top:12px;">Sent by Cethos Solutions Inc. You're receiving this because you've worked with CETHOS as a freelance linguist. Prefer not to receive announcements like this? <a href="%UNSUBSCRIBE_URL%" style="color:#0891B2;">Unsubscribe in one click</a>.</p>`;
+<p style="color:#6B7280;font-size:12px;margin-top:24px;border-top:1px solid #e5e7eb;padding-top:12px;">Sent by Cethos Solutions Inc. You're receiving this because you've worked with CETHOS as a freelance linguist. Prefer not to receive announcements like this? <a href="%UNSUBSCRIBE_URL%" style="color:#0891B2;">Unsubscribe in one click</a> — note that unsubscribing will also deactivate your vendor profile, so we won't route new job offers to you until you ask us to reactivate it.</p>`;
 
 interface ScheduleRow {
   enabled: boolean;
