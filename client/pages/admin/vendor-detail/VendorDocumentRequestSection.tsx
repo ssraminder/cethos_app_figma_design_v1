@@ -209,7 +209,11 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
           vendor_id: vendorId,
           requested_items: items,
           subject,
-          body_html: bodyHtml.replace(/\{\{LINK\}\}/g, "PREVIEW-TOKEN"),
+          // Keep the {{LINK}} placeholder literal — the edge function
+          // substitutes it with the full vendor-portal URL once the
+          // request_token exists. Pre-replacing here would drop the
+          // domain and leave only the bare UUID in the email.
+          body_html: bodyHtml,
           staff_message: staffMessage.trim() || null,
           staff_id: staffId ?? null,
           source_assessment_id: latestAssessment?.id ?? null,
