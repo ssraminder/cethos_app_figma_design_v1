@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import type { TabPropsWithCurrencies, Vendor } from "./types";
+import VendorEmailLogAccordion from "./VendorEmailLogAccordion";
 import {
   VENDOR_TYPE_OPTIONS,
   AVAILABILITY_OPTIONS,
@@ -74,39 +75,79 @@ export default function VendorProfileTab({
   const handleSave = async () => {
     setSaving(true);
     try {
-      // additional_emails lives only on the vendors table and isn't routed
-      // through vendor-update-profile (which is the vendor self-service
-      // function). Persist it via direct supabase update from the admin
-      // side, then call the edge function for the rest.
-      if (Array.isArray(form.additional_emails)) {
-        const cleaned = (form.additional_emails as string[])
-          .map((e) => String(e || "").trim())
-          .filter((e) => e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-        const { error: emailErr } = await supabase
-          .from("vendors")
-          .update({ additional_emails: cleaned })
-          .eq("id", vendor.id);
-        if (emailErr) throw emailErr;
+      // vendor-update-profile is a vendor-self-service edge function
+      // that authenticates by treating the bearer as a vendor_sessions
+      // session_token. The admin doesn't have one, so it 401'd every
+      // time. Persist directly via supabase from the admin context —
+      // staff RLS already allows updates to vendors.
+      const updates: Record<string, unknown> = {};
+
+      const setIfPresent = (key: string, transform?: (v: unknown) => unknown) => {
+        if (form[key] !== undefined) {
+          updates[key] = transform ? transform(form[key]) : form[key];
+        }
+      };
+      const trimOrNull = (v: unknown): string | null => {
+        const s = typeof v === "string" ? v.trim() : "";
+        return s || null;
+      };
+      const numOrNull = (v: unknown): number | null => {
+        if (v === "" || v === null || v === undefined) return null;
+        const n = typeof v === "number" ? v : parseFloat(String(v));
+        return Number.isFinite(n) ? n : null;
+      };
+
+      if (form.full_name !== undefined) {
+        const fn = String(form.full_name || "").trim();
+        if (!fn) throw new Error("Full name is required");
+        updates.full_name = fn;
+      }
+      setIfPresent("phone", trimOrNull);
+      setIfPresent("country", trimOrNull);
+      setIfPresent("province_state", trimOrNull);
+      setIfPresent("city", trimOrNull);
+      setIfPresent("vendor_type", trimOrNull);
+      setIfPresent("years_experience", numOrNull);
+      setIfPresent("availability_status", (v) => v || "available");
+      setIfPresent("status", (v) => v || "active");
+      setIfPresent("native_languages", (v) => v ?? []);
+      setIfPresent("preferred_rate_currency", (v) => String(v || "CAD").trim() || "CAD");
+      setIfPresent("tax_id", trimOrNull);
+      setIfPresent("tax_rate", (v) => {
+        const n = numOrNull(v);
+        if (n !== null && (n < 0 || n > 100)) throw new Error("Tax rate must be between 0 and 100");
+        return n;
+      });
+      setIfPresent("minimum_rate", numOrNull);
+      setIfPresent("certifications", (v) => v ?? []);
+      setIfPresent("specializations", (v) => v ?? []);
+      setIfPresent("notes", trimOrNull);
+
+      // When country changes away from Canada, clear province + reset tax —
+      // same rule the (broken) edge function applied.
+      if (typeof form.country === "string" && form.country.trim() !== "Canada") {
+        updates.province_state = null;
+        updates.tax_name = "N/A";
+        updates.tax_rate = 0;
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vendor-update-profile`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            vendor_id: vendor.id,
-            updates: form,
-          }),
-        }
-      );
+      if (Array.isArray(form.additional_emails)) {
+        updates.additional_emails = (form.additional_emails as string[])
+          .map((e) => String(e || "").trim())
+          .filter((e) => e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+      }
 
-      const result = await response.json();
-      if (!result.success) throw new Error(result.error);
+      if (Object.keys(updates).length === 0) {
+        toast.info("No changes to save");
+        setSaving(false);
+        return;
+      }
+
+      const { error: updateErr } = await supabase
+        .from("vendors")
+        .update(updates)
+        .eq("id", vendor.id);
+      if (updateErr) throw updateErr;
 
       toast.success("Profile updated");
       setEditing(false);
@@ -585,6 +626,8 @@ export default function VendorProfileTab({
           </div>
         </div>
       </div>
+
+      <VendorEmailLogAccordion vendorId={vendor.id} vendorEmail={vendor.email ?? null} />
     </div>
   );
 }
