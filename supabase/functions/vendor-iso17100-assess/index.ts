@@ -233,6 +233,51 @@ ${JSON.stringify(snapshot, null, 2)}`;
       );
     }
 
+    // Phase 3 — auto-create a *draft* doc-request when the verdict is
+    // insufficient_evidence and no open request already exists. Admin
+    // sees a banner on the Documents tab; one click to send.
+    let autoDraftId: string | null = null;
+    if (validOverall === "insufficient_evidence") {
+      const { data: existing } = await sb
+        .from("vendor_document_requests")
+        .select("id, status")
+        .eq("vendor_id", vendorId)
+        .in("status", ["draft", "sent", "partial"])
+        .limit(1)
+        .maybeSingle();
+
+      if (!existing) {
+        const items = pickDraftItems(snapshot.vendor, snapshot.application !== null);
+        if (items.length > 0) {
+          const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+          const itemsForStorage = items.map((it) => ({
+            slug: it.slug,
+            label: it.label,
+            kind: it.kind,
+            profile_column: it.profile_column ?? null,
+            rationale: it.rationale,
+            completed_at: null,
+          }));
+          const { data: draft, error: draftErr } = await sb
+            .from("vendor_document_requests")
+            .insert({
+              vendor_id: vendorId,
+              request_token_expires_at: expiresAt,
+              staff_id: null,
+              staff_message: null,
+              subject: null,
+              body_html: null,
+              requested_items: itemsForStorage,
+              source_assessment_id: inserted!.id,
+              status: "draft",
+            })
+            .select("id")
+            .maybeSingle();
+          if (!draftErr && draft) autoDraftId = draft.id;
+        }
+      }
+    }
+
     return json({
       success: true,
       assessment_id: inserted!.id,
@@ -242,9 +287,52 @@ ${JSON.stringify(snapshot, null, 2)}`;
       prompt_version: PROMPT_VERSION,
       result: parsed,
       input_snapshot: snapshot,
+      auto_draft_id: autoDraftId,
     });
   } catch (err) {
     console.error("vendor-iso17100-assess error:", err);
     return json({ success: false, error: (err as Error).message || "Internal error" }, 500);
   }
 });
+
+// Smart pre-selection: build a draft request from the same vendor
+// snapshot Claude saw. Same shape as client/lib/iso17100.ts.
+interface DraftItem {
+  slug: string;
+  label: string;
+  rationale: string;
+  kind: "file" | "profile_field";
+  profile_column?: string;
+}
+
+function pickDraftItems(
+  vendor: { native_languages?: unknown; years_experience?: unknown; specializations?: unknown; certifications?: unknown },
+  hasApplication: boolean,
+): DraftItem[] {
+  const items: DraftItem[] = [];
+  const arr = (v: unknown) => (Array.isArray(v) ? (v as unknown[]) : []);
+
+  if (arr(vendor.native_languages).length === 0) {
+    items.push({ slug: "profile_native_languages", label: "Native language(s) declaration", rationale: "ISO 17100 § 6.1.2 — target-language production at native level", kind: "profile_field", profile_column: "native_languages" });
+  }
+  if (vendor.years_experience == null) {
+    items.push({ slug: "profile_years_experience", label: "Total years of professional translation experience", rationale: "Feeds the §6.1.4 qualifications route assessment", kind: "profile_field", profile_column: "years_experience" });
+  }
+  if (arr(vendor.specializations).length === 0) {
+    items.push({ slug: "profile_specializations", label: "Subject specializations / domains", rationale: "ISO 17100 § 6.1.6 — vendor must declare the domains they work in", kind: "profile_field", profile_column: "specializations" });
+  }
+  if (arr(vendor.certifications).length === 0) {
+    items.push({ slug: "professional_translation_cert", label: "Professional translation certificate (ATA / CTTIC / ITI / NAATI / etc.)", rationale: "Strengthens competence file", kind: "file" });
+  }
+  if (!hasApplication) {
+    // No recruitment record on file — ask for the qualifying-route docs
+    // so the admin has at least one §6.1.4 route they can validate.
+    items.push(
+      { slug: "degree_translation_studies", label: "Translation / linguistics degree", rationale: "ISO 17100 § 3.1.4 route (a)", kind: "file" },
+      { slug: "degree_other_field", label: "Other-field degree (paired with 2y experience)", rationale: "ISO 17100 § 3.1.4 route (b)", kind: "file" },
+      { slug: "experience_evidence_5y", label: "Evidence of 5 years professional translation experience", rationale: "ISO 17100 § 3.1.4 route (c)", kind: "file" },
+      { slug: "language_proficiency", label: "Language proficiency proof (C2 / native attestation)", rationale: "Target-language competence evidence", kind: "file" },
+    );
+  }
+  return items;
+}
