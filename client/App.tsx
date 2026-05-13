@@ -93,6 +93,7 @@ import PaymentsList from "./pages/admin/PaymentsList";
 import PaymentDetail from "./pages/admin/PaymentDetail";
 import ARAgingReport from "./pages/admin/ARAgingReport";
 import AdminVendorsList from "./pages/admin/AdminVendorsList";
+import AdminIsoQuizzes from "./pages/admin/AdminIsoQuizzes";
 import AdminVendorDetail from "./pages/admin/AdminVendorDetail";
 import AdminVendorNew from "./pages/admin/AdminVendorNew";
 import FastQuoteCreate from "./pages/admin/FastQuoteCreate";
@@ -398,6 +399,7 @@ const App = () => (
                     <Route path="vendors" element={<AdminVendorsList />} />
                     <Route path="vendors/new" element={<AdminVendorNew />} />
                     <Route path="vendors/:vendorId" element={<AdminVendorDetail />} />
+                    <Route path="iso-quizzes" element={<AdminIsoQuizzes />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
                     <Route path="recruitment/system/regrade-backfill" element={<RecruitmentRegradeBackfill />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
