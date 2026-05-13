@@ -7,8 +7,10 @@
 //                       vendor-upload-certification)
 //   - "profile_field" → vendor must fill a column on `vendors` (via
 //                       vendor-update-profile / vendor-update-language-pairs)
+//   - "quiz"          → vendor takes an MCQ quiz (Phase 5b Slice 1).
+//                       Auto-graded against iso_competence_quizzes.
 
-export type IsoRequestKind = "file" | "profile_field";
+export type IsoRequestKind = "file" | "profile_field" | "quiz";
 
 export interface IsoRequestItem {
   slug: string;
@@ -22,10 +24,20 @@ export interface IsoRequestItem {
     | "specialization"
     | "business"
     | "ongoing"
-    | "profile";
+    | "profile"
+    | "competence_quiz";
   kind: IsoRequestKind;
   /** When kind === "profile_field", which column on `vendors` it maps to. */
   profile_column?: string;
+  /** When kind === "quiz", the §6.1.2 competence the quiz targets. */
+  quiz_competence?:
+    | "linguistic_textual_competence"
+    | "research_competence"
+    | "cultural_competence"
+    | "technical_competence"
+    | "domain_competence";
+  /** Optional per-domain filter for domain_competence quizzes. */
+  quiz_domain?: string;
 }
 
 export const ISO_REQUEST_ITEMS: IsoRequestItem[] = [
@@ -55,6 +67,15 @@ export const ISO_REQUEST_ITEMS: IsoRequestItem[] = [
   { slug: "profile_native_languages", label: "Native language(s) declaration", rationale: "ISO 17100 § 6.1.2 — target-language production at native-speaker level requires a declared native language", group: "profile", kind: "profile_field", profile_column: "native_languages" },
   { slug: "profile_years_experience", label: "Total years of professional translation experience", rationale: "Feeds the §6.1.4 qualifications route assessment and rate band", group: "profile", kind: "profile_field", profile_column: "years_experience" },
   { slug: "profile_specializations", label: "Subject specializations / domains", rationale: "ISO 17100 § 6.1.6 — vendor must declare the domains they work in", group: "profile", kind: "profile_field", profile_column: "specializations" },
+
+  // ── Competence quizzes (Phase 5b Slice 1) ────────────────────────────────
+  // Short MCQ quizzes auto-graded server-side. Pass threshold 80%. Score
+  // feeds the next ISO assessment as primary evidence per competence.
+  { slug: "quiz_linguistic_textual", label: "Linguistic & textual competence quiz", rationale: "8-question MCQ on grammar, register, typography, punctuation conventions", group: "competence_quiz", kind: "quiz", quiz_competence: "linguistic_textual_competence" },
+  { slug: "quiz_research", label: "Research competence quiz", rationale: "8-question MCQ on source reliability, terminology research, query handling", group: "competence_quiz", kind: "quiz", quiz_competence: "research_competence" },
+  { slug: "quiz_cultural", label: "Cultural competence quiz", rationale: "8-question MCQ on locale conventions, idiom, imagery, register-by-locale", group: "competence_quiz", kind: "quiz", quiz_competence: "cultural_competence" },
+  { slug: "quiz_technical", label: "Technical competence quiz", rationale: "8-question MCQ on CAT tools, file formats, ICE matches, tag handling", group: "competence_quiz", kind: "quiz", quiz_competence: "technical_competence" },
+  { slug: "quiz_domain", label: "Domain competence quiz", rationale: "8-question MCQ on cross-domain conventions (legal, medical, financial, marketing, literary)", group: "competence_quiz", kind: "quiz", quiz_competence: "domain_competence" },
 ];
 
 export const ISO_REQUEST_GROUPS: { key: IsoRequestItem["group"]; label: string }[] = [
@@ -66,6 +87,7 @@ export const ISO_REQUEST_GROUPS: { key: IsoRequestItem["group"]; label: string }
   { key: "business", label: "Business & compliance" },
   { key: "ongoing", label: "Ongoing competence" },
   { key: "profile", label: "Profile declarations (no file needed)" },
+  { key: "competence_quiz", label: "Competence quizzes (auto-graded MCQ)" },
 ];
 
 /**

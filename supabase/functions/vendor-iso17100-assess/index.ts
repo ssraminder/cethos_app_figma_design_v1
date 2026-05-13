@@ -57,6 +57,8 @@ You MUST output ONLY valid JSON, no commentary, matching exactly:
   }
 }
 
+When the snapshot includes "competence_quizzes_passed", each entry is a vendor-completed MCQ quiz that scored at or above the threshold (default 80%) for the named competence. Treat a passed quiz as STRONG primary evidence for that competence: at least "partial", lean "pass" without contradicting signal. Cite the score in evidence, e.g. "competence quiz: cultural_competence passed at 87.5%".
+
 When the snapshot includes a "reference_competence_aggregate", it is anchored-MCQ data from professional references — primary evidence. Use the aggregation:
  - 2+ references at level (a) or (b) on a competence → strong evidence; verdict should be at least "partial", lean "pass" when no contradicting signal.
  - Any reference at (d) → negative signal; verdict at most "partial", "fail" if multiple refs are at (d).
@@ -123,6 +125,31 @@ serve(async (req: Request) => {
       referenceRows = [...referenceRows, ...vendorRefRows];
     }
 
+    // Phase 5b Slice 1 — pull the most-recent PASSED quiz submission per
+    // competence so the assessment can use the score as primary evidence.
+    // Failed attempts are visible in the table but not surfaced here
+    // (they'd be noise in the snapshot).
+    const { data: quizRows } = await sb
+      .from("iso_competence_quiz_submissions")
+      .select("competence_slug, domain, score_pct, threshold_pct, submitted_at, attempt_number")
+      .eq("vendor_id", vendorId)
+      .eq("passed", true)
+      .order("submitted_at", { ascending: false });
+    const latestPassedQuizzes: Record<string, Record<string, unknown>> = {};
+    for (const r of quizRows ?? []) {
+      const key = r.domain ? `${r.competence_slug}::${r.domain}` : r.competence_slug;
+      if (!latestPassedQuizzes[key]) {
+        latestPassedQuizzes[key] = {
+          competence_slug: r.competence_slug,
+          domain: r.domain,
+          score_pct: r.score_pct,
+          threshold_pct: r.threshold_pct,
+          submitted_at: r.submitted_at,
+          attempt_number: r.attempt_number,
+        };
+      }
+    }
+
     const { data: pairs } = await sb
       .from("vendor_language_pairs")
       .select("source_language, target_language, is_active")
@@ -178,6 +205,10 @@ serve(async (req: Request) => {
       // (and the audit trail shows the exact aggregation). a/b = pass
       // signal, c = partial, d = fail signal, e = no signal.
       reference_competence_aggregate: aggregateReferenceCompetence(referenceRows),
+      // Phase 5b Slice 1 — passed competence quiz scores per slug.
+      // Treat as primary evidence: a quiz passed at the threshold is
+      // a strong pass signal for that §6.1.2 competence.
+      competence_quizzes_passed: Object.values(latestPassedQuizzes),
       language_pairs: (pairs ?? []).map((p) => ({
         source: p.source_language,
         target: p.target_language,

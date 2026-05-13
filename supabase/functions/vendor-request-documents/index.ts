@@ -55,9 +55,11 @@ function escapeHtml(s: string): string {
 interface RequestedItem {
   slug: string;
   label: string;
-  kind: "file" | "profile_field";
+  kind: "file" | "profile_field" | "quiz";
   profile_column?: string;
   rationale?: string;
+  quiz_competence?: string;
+  quiz_domain?: string | null;
 }
 
 function defaultEmailBody(args: {
@@ -140,8 +142,11 @@ serve(async (req: Request) => {
   const items = Array.isArray(body.requested_items) ? body.requested_items : [];
   if (items.length === 0) return json({ success: false, error: "requested_items_required" }, 400);
   for (const it of items) {
-    if (!it.slug || !it.label || (it.kind !== "file" && it.kind !== "profile_field")) {
+    if (!it.slug || !it.label || !["file", "profile_field", "quiz"].includes(it.kind)) {
       return json({ success: false, error: "invalid_requested_item", detail: it }, 400);
+    }
+    if (it.kind === "quiz" && !it.quiz_competence) {
+      return json({ success: false, error: "quiz_competence_required", detail: it }, 400);
     }
   }
 
@@ -165,7 +170,8 @@ serve(async (req: Request) => {
   const firstName = (vendor.full_name || "").split(" ")[0] || "";
 
   // Stamp each item with completed_at:null so the vendor portal can flip it
-  // to a timestamp as each one is satisfied.
+  // to a timestamp as each one is satisfied. Quiz items also carry their
+  // competence/domain so the vendor portal can route to the right pool.
   const itemsForStorage = items.map((it) => ({
     slug: it.slug,
     label: it.label,
@@ -173,6 +179,12 @@ serve(async (req: Request) => {
     profile_column: it.profile_column ?? null,
     rationale: it.rationale ?? null,
     completed_at: null as string | null,
+    ...(it.kind === "quiz"
+      ? {
+          quiz_competence: it.quiz_competence,
+          quiz_domain: it.quiz_domain ?? null,
+        }
+      : {}),
   }));
 
   if (body.dry_run) {
