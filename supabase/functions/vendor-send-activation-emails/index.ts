@@ -47,36 +47,85 @@ function escapeHtml(s: string): string {
 }
 
 function buildEmail(args: { firstName: string; vendorPortalUrl: string }): { subject: string; html: string } {
+  const portal = escapeHtml(args.vendorPortalUrl);
   const html = `<!doctype html><html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;"><tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+<table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
 <tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
   <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
   <div style="font-size:13px;opacity:0.85;margin-top:2px;">Activate your vendor profile</div>
 </td></tr>
-<tr><td style="padding:24px;color:#111827;font-size:14px;line-height:1.55;">
-  <p>Hi ${escapeHtml(args.firstName) || "there"},</p>
-  <p>
-    We've updated the Cethos vendor portal with two new requirements to keep our network aligned with ISO 17100:2015 (the translator-services standard our clients audit us against). To continue receiving job offers and using the portal, please complete two short steps:
+<tr><td style="padding:24px;color:#111827;font-size:14px;line-height:1.6;">
+  <p style="margin:0 0 12px;">Hi ${escapeHtml(args.firstName) || "there"},</p>
+  <p style="margin:0 0 12px;">
+    We've upgraded the Cethos vendor portal to align with <strong>ISO 17100:2015</strong>, the translator-services standard our clients audit us against. To keep receiving job offers, please finish a short setup. Most vendors complete it in 15–20 minutes.
   </p>
-  <ul style="padding-left:18px;">
-    <li><strong>Upload your CV</strong> — PDF up to 10 MB</li>
-    <li><strong>Sign the NDA</strong> — two-factor verification via email or phone OTP</li>
+
+  <h2 style="font-size:15px;color:#0f766e;margin:24px 0 6px;">How sign-in works (no password)</h2>
+  <p style="margin:0 0 8px;">
+    The portal uses <strong>passwordless login</strong> — you don't set a password and never need to remember one.
+  </p>
+  <ol style="margin:0 0 12px;padding-left:18px;">
+    <li>Go to <a href="${portal}/login" style="color:#0891B2;">${portal}/login</a> and enter the email address this message was sent to.</li>
+    <li>We email you a <strong>6-digit code</strong> (valid 10 minutes).</li>
+    <li>Type the code in the portal — you're signed in. Sessions stay active for ~14 days per device.</li>
+  </ol>
+  <p style="margin:0 0 16px;color:#6b7280;font-size:13px;">
+    If a code doesn't arrive: check spam, then click "Resend code". If you've changed email addresses, reply to this message and we'll update your record.
+  </p>
+
+  <h2 style="font-size:15px;color:#0f766e;margin:24px 0 6px;">Step 1 of 2 — Two activation gates</h2>
+  <p style="margin:0 0 8px;">Until both of these are done your profile is locked from receiving jobs:</p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;">
+    <tr><td style="padding:10px 12px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;">
+      <strong>① Upload your CV</strong> &nbsp;<span style="color:#6b7280;">— PDF, up to 10 MB</span><br/>
+      <span style="color:#6b7280;font-size:13px;">From the Documents page, or directly on the onboarding page.</span>
+    </td></tr>
+    <tr><td style="height:8px;"></td></tr>
+    <tr><td style="padding:10px 12px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;">
+      <strong>② Sign the NDA</strong> &nbsp;<span style="color:#6b7280;">— in-portal e-signature with email OTP</span><br/>
+      <span style="color:#6b7280;font-size:13px;">From the NDA page in the sidebar. Takes about a minute.</span>
+    </td></tr>
+  </table>
+  <p style="margin:0 0 0;text-align:center;">
+    <a href="${portal}/onboarding" style="display:inline-block;padding:11px 22px;background:#0891B2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Complete the 2 gates</a>
+  </p>
+
+  <h2 style="font-size:15px;color:#0f766e;margin:28px 0 6px;">Step 2 of 2 — Finish your working profile</h2>
+  <p style="margin:0 0 8px;">
+    Once the two gates are cleared, work through the rest of the sidebar so we can match you to the right jobs and pay you on time:
+  </p>
+  <ul style="padding-left:18px;margin:0 0 12px;">
+    <li><strong><a href="${portal}/profile" style="color:#0891B2;">Profile</a></strong> — full name, country, native language, specializations, ISO §3.1.4 qualifying route.</li>
+    <li><strong><a href="${portal}/languages" style="color:#0891B2;">Languages</a></strong> — the language pairs you translate, with direction and proficiency.</li>
+    <li><strong><a href="${portal}/rates" style="color:#0891B2;">Services &amp; Rates</a></strong> — your per-page translation rate and certification fee (so we can quote your jobs automatically).</li>
+    <li><strong><a href="${portal}/payment" style="color:#0891B2;">Payment</a></strong> — bank / PayPal / Wise details so invoices clear without delay.</li>
+    <li><strong><a href="${portal}/documents" style="color:#0891B2;">Documents</a></strong> — degree, certifications, professional-membership proof (these support your ISO qualifying route).</li>
+    <li><strong><a href="${portal}/request-test" style="color:#0891B2;">Competence tests</a></strong> — short MCQ quizzes covering the six ISO competences. Most vendors finish in 20–30 minutes; you can save and resume.</li>
   </ul>
-  <p>Both can be done in under five minutes from the onboarding page below.</p>
-  <p style="margin:24px 0 0;text-align:center;">
-    <a href="${escapeHtml(args.vendorPortalUrl)}/onboarding" style="display:inline-block;padding:11px 22px;background:#0891B2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Activate my profile</a>
+  <p style="margin:0 0 16px;color:#6b7280;font-size:13px;">
+    The portal also collects 2–3 brief references in your profile. We email each one a short questionnaire — nothing for you to do beyond entering their contact info.
   </p>
+
+  <h2 style="font-size:15px;color:#0f766e;margin:24px 0 6px;">Heads-up: what we do with this</h2>
+  <p style="margin:0 0 12px;">
+    Every item above feeds the ISO 17100 evidence pack we maintain for each vendor. Your CV, NDA, references, documents, and competence-test results are stored privately in our portal; only Cethos staff with vendor-management access can see them.
+  </p>
+
+  <p style="margin:24px 0 0;text-align:center;">
+    <a href="${portal}/login" style="display:inline-block;padding:11px 22px;background:#0891B2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Sign in to ${portal.replace("https://", "").replace("http://", "")}</a>
+  </p>
+
   <p style="color:#6B7280;font-size:13px;margin-top:24px;">
-    If you've already completed both steps, you can ignore this email — your profile is already active. Questions? Reply to this email or contact vendor@cethos.com.
+    Already finished? Great — you can ignore this email. Questions? Reply here or write to <a href="mailto:vendor@cethos.com" style="color:#0891B2;">vendor@cethos.com</a>.
   </p>
   <p style="margin-top:24px;">Thanks,<br/>Cethos Vendor Management</p>
 </td></tr>
 <tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-  You're receiving this because you're a registered Cethos vendor. Reply to this email if you have questions.
+  You're receiving this because you're a registered Cethos vendor. Reply if you have questions or no longer wish to receive job offers.
 </td></tr>
 </table></td></tr></table></body></html>`;
-  return { subject: "Action needed — activate your Cethos vendor profile", html };
+  return { subject: "Activate your Cethos vendor profile — 2 gates + sign-in instructions", html };
 }
 
 serve(async (req: Request) => {
