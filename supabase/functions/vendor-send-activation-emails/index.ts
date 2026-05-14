@@ -204,7 +204,7 @@ serve(async (req: Request) => {
   // to specific IDs.
   let vendorQ = sb
     .from("vendors")
-    .select("id, full_name, email, status")
+    .select("id, full_name, email, status, vendor_type")
     .not("status", "in", "(suspended,inactive)")
     .not("email", "is", null);
   if (body.vendor_ids && body.vendor_ids.length > 0) {
@@ -243,12 +243,17 @@ serve(async (req: Request) => {
     recentlyEmailedIds = new Set((recent ?? []).map((r) => r.recipient_id as string));
   }
 
-  // Filter to vendors actually missing at least one gate AND not recently emailed.
-  const needsActivation = (vendors ?? []).filter(
-    (v) =>
-      (!cvVendorIds.has(v.id) || !ndaVendorIds.has(v.id))
-      && !recentlyEmailedIds.has(v.id),
-  );
+  // Filter to vendors actually missing at least one *required* gate AND
+  // not recently emailed. Agencies are exempt from the CV requirement —
+  // only NDA gates them. Freelancers / in-house / unknown types still
+  // need both.
+  const needsActivation = (vendors ?? []).filter((v) => {
+    const isAgency = ((v as { vendor_type?: string | null }).vendor_type ?? "").toLowerCase() === "agency";
+    const cvOk = isAgency || cvVendorIds.has(v.id);
+    const ndaOk = ndaVendorIds.has(v.id);
+    const hasOutstandingGate = !(cvOk && ndaOk);
+    return hasOutstandingGate && !recentlyEmailedIds.has(v.id);
+  });
 
   if (body.dry_run) {
     return json({
@@ -258,12 +263,18 @@ serve(async (req: Request) => {
         total_vendors: vendors!.length,
         candidates: needsActivation.length,
         skipped_recently_emailed: recentlyEmailedIds.size,
-        sample: needsActivation.slice(0, 10).map((v) => ({
-          id: v.id,
-          email: v.email,
-          missing_cv: !cvVendorIds.has(v.id),
-          missing_nda: !ndaVendorIds.has(v.id),
-        })),
+        sample: needsActivation.slice(0, 10).map((v) => {
+          const isAgency = ((v as { vendor_type?: string | null }).vendor_type ?? "").toLowerCase() === "agency";
+          return {
+            id: v.id,
+            email: v.email,
+            vendor_type: (v as { vendor_type?: string | null }).vendor_type ?? null,
+            // Agencies are CV-exempt — report missing_cv=false even if no
+            // CV is on file, because we don't require one.
+            missing_cv: !isAgency && !cvVendorIds.has(v.id),
+            missing_nda: !ndaVendorIds.has(v.id),
+          };
+        }),
       },
     });
   }
@@ -344,7 +355,11 @@ serve(async (req: Request) => {
         status: emailSent ? "sent" : "failed",
         error_message: emailError,
         metadata: {
-          missing_cv: !cvVendorIds.has(v.id),
+          vendor_type: (v as { vendor_type?: string | null }).vendor_type ?? null,
+          // Agencies don't need a CV — record false to keep the metric
+          // honest for "vendors with outstanding CV requirements".
+          missing_cv: ((v as { vendor_type?: string | null }).vendor_type ?? "").toLowerCase() !== "agency"
+            && !cvVendorIds.has(v.id),
           missing_nda: !ndaVendorIds.has(v.id),
           brevo_message_id: brevoMessageId,
         },
