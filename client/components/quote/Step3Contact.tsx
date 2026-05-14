@@ -1,6 +1,10 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { supabase } from "@/lib/supabase";
+import {
+  attachCustomerToQuote,
+  getCustomerQuoteData,
+} from "@/lib/customer-quote-api";
 import StartOverLink from "@/components/quote/StartOverLink";
 import { ChevronRight, ChevronLeft, Loader2, Lock } from "lucide-react";
 import { trackQuoteStep } from "@/lib/tracking";
@@ -11,14 +15,13 @@ export default function Step3Contact() {
   // Fetch quote_number into context if not already available
   useEffect(() => {
     const fetchQuoteNumber = async () => {
-      if (state.quoteNumber || !state.quoteId || !supabase) return;
-      const { data } = await supabase
-        .from("quotes")
-        .select("quote_number")
-        .eq("id", state.quoteId)
-        .single();
-      if (data?.quote_number) {
-        updateState({ quoteNumber: data.quote_number });
+      if (state.quoteNumber || !state.quoteId) return;
+      try {
+        const snapshot = await getCustomerQuoteData(state.quoteId);
+        const qn = (snapshot.quote as any)?.quote_number;
+        if (qn) updateState({ quoteNumber: qn });
+      } catch (err) {
+        console.warn("Could not fetch quote number:", err);
       }
     };
     fetchQuoteNumber();
@@ -86,36 +89,22 @@ export default function Step3Contact() {
       // Update context
       updateState({ fullName });
 
-      // 1. Create or update customer (upsert by email)
-      const { data: customer, error: customerError } = await supabase
-        .from("customers")
-        .upsert(
-          {
-            email,
-            full_name: fullName,
-            phone,
-            customer_type: customerType,
-            company_name: companyName,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "email" },
-        )
-        .select("id")
-        .single();
+      // 1+2. Upsert customer & link to quote via edge function. The edge
+      // function performs the customer upsert by email and transitions the
+      // quote to 'lead' atomically, using the service role.
+      if (state.quoteId) {
+        const attached = await attachCustomerToQuote(state.quoteId, {
+          email,
+          full_name: fullName,
+          phone,
+          customer_type: customerType,
+          company_name: companyName,
+        });
 
-      if (customerError) throw customerError;
-
-      // 2. Link customer to quote and set status to "lead"
-      if (state.quoteId && customer) {
-        const { error: linkError } = await supabase
-          .from("quotes")
-          .update({
-            customer_id: customer.id,
-            status: "lead",
-          })
-          .eq("id", state.quoteId);
-
-        if (linkError) throw linkError;
+        // Persist quote_number that may have been generated server-side
+        if (attached.quote_number) {
+          updateState({ quoteNumber: attached.quote_number });
+        }
 
         // Notify staff of new lead — fire and forget, do NOT await
         fetch(
@@ -129,14 +118,14 @@ export default function Step3Contact() {
             body: JSON.stringify({
               quote_id: state.quoteId,
               trigger_type: 'new_lead',
-              quote_number: state.quoteNumber,
+              quote_number: attached.quote_number || state.quoteNumber,
             }),
           }
         ).catch((err) => console.warn('Staff notification failed (non-blocking):', err));
 
         // Fire-and-forget: Send welcome email with magic link
         try {
-          const quoteNumber = state.quoteNumber || '';
+          const quoteNumber = attached.quote_number || state.quoteNumber || '';
           const submDate = new Date().toLocaleDateString('en-US', {
             year: 'numeric',
             month: 'long',

@@ -1,0 +1,29 @@
+name: Lint migrations
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "server/scripts/lint-migrations-rls.ts"
+      - ".github/workflows/lint-migrations.yml"
+      - "package.json"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "server/scripts/lint-migrations-rls.ts"
+
+jobs:
+  rls-required:
+    name: Every new public table must have RLS enabled
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run migration linter
+        run: npx --yes tsx server/scripts/lint-migrations-rls.ts

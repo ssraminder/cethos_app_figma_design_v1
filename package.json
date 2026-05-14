@@ -18,7 +18,9 @@
     "start": "node dist/server/node-build.mjs",
     "test": "vitest --run",
     "format.fix": "prettier --write .",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "rls:audit": "npx tsx server/scripts/rls-audit.ts",
+    "lint:migrations": "npx tsx server/scripts/lint-migrations-rls.ts"
   },
   "dependencies": {
     "@sentry/node": "^10.51.0",

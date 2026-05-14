@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import {
+  getCustomerQuoteData,
+  updateCustomerQuote,
+  finalizeCustomerQuoteFiles,
+} from "@/lib/customer-quote-api";
 import { useDropzone } from "react-dropzone";
 import {
   AlertTriangle,
@@ -50,34 +55,33 @@ export default function QuoteRevisionPage() {
       if (!quoteId) return;
 
       try {
-        // Fetch quote
-        const { data: quoteData, error: quoteError } = await supabase
-          .from("quotes")
-          .select("id, quote_number, status, customer_id")
-          .eq("id", quoteId)
-          .single();
-
-        if (quoteError) throw quoteError;
+        // Single round-trip fetch via the customer-quote-get edge function.
+        const snapshot = await getCustomerQuoteData(quoteId);
+        const q = snapshot.quote as any;
+        if (!q) throw new Error("Quote not found");
 
         // Verify status is revision_needed
-        if (quoteData.status !== "revision_needed") {
+        if (q.status !== "revision_needed") {
           setError("This quote does not require revision.");
           setLoading(false);
           return;
         }
 
-        setQuote(quoteData);
+        setQuote({
+          id: q.id,
+          quote_number: q.quote_number,
+          status: q.status,
+          customer_id: q.customer_id,
+        });
 
-        // Fetch files that need replacement
-        const { data: filesData, error: filesError } = await supabase
-          .from("quote_files")
-          .select(
-            "id, original_filename, needs_replacement, replacement_reason",
-          )
-          .eq("quote_id", quoteId);
-
-        if (filesError) throw filesError;
-        setFiles(filesData || []);
+        // Files come from the same snapshot — filter to fields we need.
+        const filesData: QuoteFile[] = (snapshot.files || []).map((f: any) => ({
+          id: f.id,
+          original_filename: f.original_filename,
+          needs_replacement: !!f.needs_replacement,
+          replacement_reason: f.replacement_reason ?? null,
+        }));
+        setFiles(filesData);
 
         // DEPRECATED: HITL removed — replaced by review_required tag
         // Fetch rejection reason from HITL review
@@ -133,45 +137,57 @@ export default function QuoteRevisionPage() {
     setUploadProgress(0);
 
     try {
+      if (!quoteId) throw new Error("Missing quote id");
+      if (!supabase) throw new Error("Supabase not configured");
+
       const totalFiles = newFiles.length;
       let uploadedCount = 0;
+      const finalizeInputs: {
+        temp_path: string;
+        original_filename: string;
+        file_size: number;
+        mime_type: string;
+        is_replacement: boolean;
+      }[] = [];
 
+      // Step 1: anon upload to `uploads/<temp>` (the lockdown migration only
+      // permits anon writes under the uploads/ prefix).
       for (const file of newFiles) {
-        // Generate unique filename
         const fileExt = file.name.split(".").pop();
-        const fileName = `${quoteId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const tempPath = `uploads/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
-        // Upload to storage
         const { error: uploadError } = await supabase.storage
           .from("quote-files")
-          .upload(fileName, file);
+          .upload(tempPath, file);
 
         if (uploadError) throw uploadError;
 
-        // Create file record
-        const { error: insertError } = await supabase
-          .from("quote_files")
-          .insert({
-            quote_id: quoteId,
-            original_filename: file.name,
-            storage_path: fileName,
-            file_size: file.size,
-            mime_type: file.type,
-            upload_status: "uploaded",
-            is_replacement: true,
-          });
-
-        if (insertError) throw insertError;
+        finalizeInputs.push({
+          temp_path: tempPath,
+          original_filename: file.name,
+          file_size: file.size,
+          mime_type: file.type,
+          is_replacement: true,
+        });
 
         uploadedCount++;
         setUploadProgress(Math.round((uploadedCount / totalFiles) * 100));
       }
 
-      // Update quote status back to processing
-      await supabase
-        .from("quotes")
-        .update({ status: "processing" })
-        .eq("id", quoteId);
+      // Step 2: edge function moves objects to `<quoteId>/<file>` and
+      // inserts the quote_files rows (is_replacement: true) under service role.
+      if (finalizeInputs.length > 0) {
+        const res = await finalizeCustomerQuoteFiles(quoteId, finalizeInputs);
+        if (res.errors.length > 0) {
+          console.error("Some replacement files failed to finalize:", res.errors);
+          throw new Error(
+            res.errors[0]?.error || "Failed to finalize replacement files",
+          );
+        }
+      }
+
+      // Step 3: transition revision_needed -> processing via edge function.
+      await updateCustomerQuote(quoteId, { status: "processing" });
 
       // Trigger reprocessing
       await fetch(

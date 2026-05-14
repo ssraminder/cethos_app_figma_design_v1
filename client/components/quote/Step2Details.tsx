@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
-import { supabase } from "@/lib/supabase";
+import { updateCustomerQuote } from "@/lib/customer-quote-api";
 import StartOverLink from "@/components/quote/StartOverLink";
 import { ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
 import SearchableSelectUI from "@/components/ui/SearchableSelect";
@@ -77,20 +77,13 @@ export default function Step2Details() {
     setSubmitError(null);
 
     try {
-      if (!supabase) throw new Error("Supabase not configured");
-
       if (state.quoteId) {
-        const { error: updateError } = await supabase
-          .from("quotes")
-          .update({
-            intended_use_id: state.intendedUseId,
-            country_of_issue: state.countryOfIssue || null,
-            special_instructions: state.specialInstructions || null,
-            status: "details_pending",
-          })
-          .eq("id", state.quoteId);
-
-        if (updateError) throw updateError;
+        await updateCustomerQuote(state.quoteId, {
+          intended_use_id: state.intendedUseId,
+          country_of_issue: state.countryOfIssue || null,
+          special_instructions: state.specialInstructions || null,
+          status: "details_pending",
+        });
       }
 
       goToNextStep();

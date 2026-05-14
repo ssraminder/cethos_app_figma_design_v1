@@ -2,6 +2,10 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import {
+  getCustomerQuoteData,
+  updateCustomerQuote,
+} from "@/lib/customer-quote-api";
 import { format, isWeekend, isSameDay } from "date-fns";
 import {
   FileText,
@@ -702,17 +706,11 @@ export default function Step4ReviewCheckout() {
     if (!state.quoteId) return;
 
     try {
-      const { error } = await supabase
-        .from("quotes")
-        .update({
-          status: "in_review",
-          hitl_required: true,
-          customer_note: `Auto-flagged: ${reason}`,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", state.quoteId);
-
-      if (error) throw error;
+      await updateCustomerQuote(state.quoteId, {
+        status: "in_review",
+        hitl_required: true,
+        customer_note: `Auto-flagged: ${reason}`,
+      });
 
       setHitlRequired(true);
       setHitlReason(reason);
@@ -737,21 +735,15 @@ export default function Step4ReviewCheckout() {
         return;
       }
 
-      // First, check quote status for HITL or errors
-      const { data: quote, error: quoteError } = await supabase
-        .from("quotes")
-        .select("hitl_required, hitl_reasons, processing_status, status")
-        .eq("id", quoteId)
-        .single();
-
-      if (quoteError) {
-        console.error("Error fetching quote:", quoteError);
-      }
+      // Single round-trip fetch via the customer-quote-get edge function.
+      // Returns quote (with relations), analysis[], files[], adjustments[].
+      const snapshot = await getCustomerQuoteData(quoteId);
+      const quote = snapshot.quote as any;
 
       // If HITL triggered by AI (low confidence, high value, etc.)
       if (quote?.hitl_required && quote?.status === "in_review") {
         console.log("🚨 HITL required by AI. Reasons:", quote.hitl_reasons);
-        const reason = quote.hitl_reasons?.[0] || "quality_check";
+        const reason = (quote.hitl_reasons && quote.hitl_reasons[0]) || "quality_check";
         handleAutoHITLFallback(reason);
         return;
       }
@@ -766,41 +758,48 @@ export default function Step4ReviewCheckout() {
         return;
       }
 
-      // Query 1: Get analysis results (without join to avoid 400 error)
-      const { data: analysisResults, error: analysisError } = await supabase
-        .from("ai_analysis_results")
-        .select(
-          "id, quote_file_id, manual_filename, detected_language, language_name, detected_document_type, assessed_complexity, word_count, page_count, billable_pages, base_rate, line_total, certification_price, processing_status, ocr_confidence, language_confidence, document_type_confidence, complexity_confidence",
-        )
-        .eq("quote_id", quoteId)
-        .eq("processing_status", "completed")
-        .is("deleted_at", null);
+      // Filter analysis to completed rows only (the edge function returns all)
+      const analysisResults = (snapshot.analysis || []).filter(
+        (a: any) => a?.processing_status === "completed",
+      );
 
-      if (analysisError) throw analysisError;
+      // The snapshot.files array is already filtered to deleted_at IS NULL
+      // by the edge function. We restrict to uploaded/completed locally to
+      // preserve previous behavior.
+      const quoteFiles = (snapshot.files || []).filter((f: any) =>
+        ["uploaded", "completed"].includes(f?.upload_status ?? ""),
+      );
 
-      // Check if no results yet
-      if (!analysisResults || analysisResults.length === 0) {
-        // First check if the quote itself has pricing data (manual/staff-created quotes)
-        const { data: quoteWithPricing } = await supabase
-          .from("quotes")
-          .select(
-            `subtotal, certification_total, rush_fee, delivery_fee, tax_amount, tax_rate, total, calculated_totals,
-             base_rate_override, partner_id, partner_code,
-             intended_use:intended_uses(code),
-             target_language:languages!quotes_target_language_id_fkey(id, name, code),
-             source_language:languages!quotes_source_language_id_fkey(id, name, code, multiplier, tier)`,
-          )
-          .eq("id", quoteId)
-          .single();
+      // Helpers to push source/target/intended use into state from quote data
+      const applyQuoteFields = (q: any) => {
+        if (q?.source_language) {
+          const srcLang = q.source_language as any;
+          setSourceLanguage(srcLang?.code || "");
+          setSourceLanguageName(srcLang?.name || "");
+          setLanguageMultiplier(parseFloat(srcLang?.multiplier || "1.0"));
+          setLanguageTier(srcLang?.tier || 1);
+        }
+        if (q?.target_language) {
+          setTargetLanguage((q.target_language as any)?.code || "");
+          setTargetLanguageName((q.target_language as any)?.name || "");
+        }
+        if (q?.intended_use) {
+          setIntendedUse((q.intended_use as any)?.code || "");
+        }
+      };
 
-        const ct = quoteWithPricing?.calculated_totals as Record<string, number> | null;
-        const quoteTotal = ct?.total || quoteWithPricing?.total || 0;
+      // Check if no analysis results — try quote-level pricing path
+      if (analysisResults.length === 0) {
+        const ct = (quote?.calculated_totals as Record<string, number> | null) || null;
+        const quoteTotal = ct?.total || quote?.total || 0;
 
         if (quoteTotal > 0) {
           // Use quote-level pricing for manual/staff-created quotes
-          const subtotalValue = ct?.subtotal || quoteWithPricing?.subtotal || 0;
-          const certificationTotalValue = ct?.certification_total || quoteWithPricing?.certification_total || 0;
-          const translationSubtotalValue = ct?.translation_total || (subtotalValue - certificationTotalValue);
+          const subtotalValue = ct?.subtotal || quote?.subtotal || 0;
+          const certificationTotalValue =
+            ct?.certification_total || quote?.certification_total || 0;
+          const translationSubtotalValue =
+            ct?.translation_total || (subtotalValue - certificationTotalValue);
 
           setTotals({
             translationSubtotal: translationSubtotalValue,
@@ -808,31 +807,8 @@ export default function Step4ReviewCheckout() {
             subtotal: subtotalValue,
           });
 
-          // Set language info from quote
-          if (quoteWithPricing?.source_language) {
-            const srcLang = quoteWithPricing.source_language as any;
-            setSourceLanguage(srcLang?.code || "");
-            setSourceLanguageName(srcLang?.name || "");
-            setLanguageMultiplier(parseFloat(srcLang?.multiplier || "1.0"));
-            setLanguageTier(srcLang?.tier || 1);
-          }
-          if (quoteWithPricing?.target_language) {
-            setTargetLanguage((quoteWithPricing.target_language as any)?.code || "");
-            setTargetLanguageName((quoteWithPricing.target_language as any)?.name || "");
-          }
-          if (quoteWithPricing?.intended_use) {
-            setIntendedUse((quoteWithPricing.intended_use as any)?.code || "");
-          }
-
-          // Fetch any staff-applied discounts or surcharges
-          const { data: adjustmentsData } = await supabase
-            .from('quote_adjustments')
-            .select('*')
-            .eq('quote_id', quoteId)
-            .order('created_at', { ascending: true });
-
-          setQuoteAdjustments(adjustmentsData || []);
-
+          applyQuoteFields(quote);
+          setQuoteAdjustments(snapshot.adjustments || []);
           setDocuments([]);
           setProcessingState("complete");
 
@@ -848,14 +824,13 @@ export default function Step4ReviewCheckout() {
           return;
         }
 
-        // No quote-level pricing either - check if still processing
-        const { data: pendingFiles } = await supabase
-          .from("quote_files")
-          .select("processing_status, id")
-          .eq("quote_id", quoteId)
-          .neq("processing_status", "completed");
+        // No quote-level pricing either - check if any uploaded files
+        // are still processing.
+        const pendingFiles = (snapshot.files || []).filter(
+          (f: any) => f?.ai_processing_status && f.ai_processing_status !== "completed",
+        );
 
-        if (pendingFiles && pendingFiles.length > 0) {
+        if (pendingFiles.length > 0) {
           setProcessingState("processing");
         } else {
           setProcessingState("no_data");
@@ -864,29 +839,20 @@ export default function Step4ReviewCheckout() {
         return;
       }
 
-      // Query 2: Get file names separately by quote_id (covers all files including when quote_file_id is null)
-      const { data: quoteFiles, error: filesError } = await supabase
-        .from("quote_files")
-        .select("id, original_filename, storage_path")
-        .eq("quote_id", quoteId)
-        .in("upload_status", ["uploaded", "completed"])
-        .order("created_at", { ascending: true });
-      if (filesError) throw filesError;
-
       // Merge the data — use manual_filename first, then match by file ID, then by index
-      const filesMap = new Map((quoteFiles || []).map((f) => [f.id, f]));
-      const mergedData = analysisResults.map((analysis, index) => {
+      const filesMap = new Map(quoteFiles.map((f: any) => [f.id, f]));
+      const mergedData = analysisResults.map((analysis: any, index: number) => {
         // Priority: manual_filename > matched quote_file > index-matched file > fallback
         const matchedFile = analysis.quote_file_id
           ? filesMap.get(analysis.quote_file_id)
           : null;
-        const indexFile = quoteFiles?.[index] || null;
+        const indexFile = quoteFiles[index] || null;
         const resolvedFilename =
           analysis.manual_filename ||
-          matchedFile?.original_filename ||
-          (quoteFiles?.length === 1
-            ? quoteFiles[0].original_filename
-            : indexFile?.original_filename) ||
+          (matchedFile as any)?.original_filename ||
+          (quoteFiles.length === 1
+            ? (quoteFiles[0] as any).original_filename
+            : (indexFile as any)?.original_filename) ||
           null;
 
         return {
@@ -899,58 +865,27 @@ export default function Step4ReviewCheckout() {
         };
       });
 
-      // Get intended use from quote AND check HITL status AND get language info
-      const { data: quoteData } = await supabase
-        .from("quotes")
-        .select(
-          `intended_use:intended_uses(code),
-           status,
-           hitl_required,
-           hitl_reason,
-           target_language_id,
-           source_language_id,
-           base_rate_override,
-           partner_id,
-           partner_code,
-           target_language:languages!quotes_target_language_id_fkey(id, name, code),
-           source_language:languages!quotes_source_language_id_fkey(id, name, code, multiplier, tier)`,
-        )
-        .eq("id", quoteId)
-        .single();
-
-      // Set source language info from quote data (for display and same-day eligibility)
-      if (quoteData?.source_language) {
-        const srcLang = quoteData.source_language as any;
-        setSourceLanguage(srcLang?.code || "");
-        setSourceLanguageName(srcLang?.name || "");
-        setLanguageMultiplier(parseFloat(srcLang?.multiplier || "1.0"));
-        setLanguageTier(srcLang?.tier || 1);
-      }
-
-      // Set target language from quote data
-      if (quoteData?.target_language) {
-        setTargetLanguage((quoteData.target_language as any)?.code || "");
-        setTargetLanguageName((quoteData.target_language as any)?.name || "");
-      }
-
-      if (quoteData?.intended_use) {
-        setIntendedUse((quoteData.intended_use as any)?.code || "");
-      }
+      applyQuoteFields(quote);
 
       // Set quote status
-      if (quoteData?.status) {
-        setQuoteStatus(quoteData.status);
+      if (quote?.status) {
+        setQuoteStatus(quote.status);
       }
 
-      // Set HITL status
-      if (quoteData?.hitl_required) {
+      // Set HITL status (note: edge function returns hitl_reasons array; we
+      // map to single hitlReason string by taking the first entry)
+      if (quote?.hitl_required) {
         setHitlRequired(true);
-        setHitlReason(quoteData.hitl_reason || "");
+        const reasonStr =
+          (Array.isArray(quote.hitl_reasons) && quote.hitl_reasons[0]) ||
+          quote.hitl_reason ||
+          "";
+        setHitlReason(reasonStr);
       }
 
       // Set partner ID from quote data
-      if ((quoteData as any)?.partner_id) {
-        setQuotePartnerId((quoteData as any).partner_id);
+      if (quote?.partner_id) {
+        setQuotePartnerId(quote.partner_id);
       }
 
       // Extract document type from first document for same-day check
@@ -962,36 +897,30 @@ export default function Step4ReviewCheckout() {
       // Use stored pricing from DB — the backend is the source of truth
       // base_rate and line_total in ai_analysis_results already reflect the effective rate
       // Partner pricing override: use quote's base_rate_override if set, otherwise first doc rate or default
-      const displayRate = (quoteData as any)?.base_rate_override
-        ? parseFloat((quoteData as any).base_rate_override)
+      const displayRate = quote?.base_rate_override
+        ? parseFloat(quote.base_rate_override)
         : mergedData[0]?.base_rate || 65;
       setEffectiveRate(displayRate);
       setBaseRate(displayRate);
 
       // Read totals directly from stored values
       const translationSubtotal = mergedData.reduce(
-        (sum, doc) => sum + (parseFloat(doc.line_total) || 0),
+        (sum: number, doc: any) => sum + (parseFloat(doc.line_total) || 0),
         0,
       );
       const certificationTotal = mergedData.reduce(
-        (sum, doc) => sum + (parseFloat(doc.certification_price) || 0),
+        (sum: number, doc: any) => sum + (parseFloat(doc.certification_price) || 0),
         0,
       );
       const subtotal = translationSubtotal + certificationTotal;
 
       const totalBillablePages = mergedData.reduce(
-        (sum, doc) => sum + (doc.billable_pages || 0),
+        (sum: number, doc: any) => sum + (doc.billable_pages || 0),
         0,
       );
 
-      // Fetch any staff-applied discounts or surcharges
-      const { data: adjustmentsData } = await supabase
-        .from('quote_adjustments')
-        .select('*')
-        .eq('quote_id', quoteId)
-        .order('created_at', { ascending: true });
-
-      setQuoteAdjustments(adjustmentsData || []);
+      // Adjustments come from the snapshot — no separate read needed
+      setQuoteAdjustments(snapshot.adjustments || []);
 
       // Set documents and totals using stored values (no recalculation)
       setDocuments(mergedData);
@@ -1599,28 +1528,29 @@ export default function Step4ReviewCheckout() {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Fetch expiry data and entry point
+  // Fetch expiry data and entry point via edge function (anon RLS blocks direct reads).
   const fetchExpiryData = async () => {
     if (!state.quoteId) return;
-    const { data } = await supabase
-      .from("quotes")
-      .select("expires_at, entry_point, base_rate_override, partner_id, partner_code")
-      .eq("id", state.quoteId)
-      .single();
+    try {
+      const snapshot = await getCustomerQuoteData(state.quoteId);
+      const data = snapshot.quote as any;
 
-    if (data?.expires_at) {
-      const expiryDate = new Date(data.expires_at);
-      if (expiryDate < new Date()) {
-        navigate("/quote/expired", {
-          replace: true,
-          state: { quoteNumber: state.quoteNumber },
-        });
-        return;
+      if (data?.expires_at) {
+        const expiryDate = new Date(data.expires_at);
+        if (expiryDate < new Date()) {
+          navigate("/quote/expired", {
+            replace: true,
+            state: { quoteNumber: state.quoteNumber },
+          });
+          return;
+        }
+        setExpiresAt(data.expires_at);
       }
-      setExpiresAt(data.expires_at);
+      if (data?.entry_point) setEntryPoint(data.entry_point);
+      if (data?.partner_id) setQuotePartnerId(data.partner_id);
+    } catch (err) {
+      console.warn("fetchExpiryData failed (non-blocking):", err);
     }
-    if (data?.entry_point) setEntryPoint(data.entry_point);
-    if (data?.partner_id) setQuotePartnerId(data.partner_id);
   };
 
   // Single source of truth for all pricing
@@ -1711,82 +1641,79 @@ export default function Step4ReviewCheckout() {
 
       const shipAddr = sameAsBilling ? billingAddress : shippingAddress;
 
-      // 4. SINGLE DB WRITE — all data in one update
-      const { error: updateError } = await supabase
-        .from("quotes")
-        .update({
-          // Turnaround data
-          turnaround_type: turnaroundType,
-          rush_fee: pricing.turnaroundFee,
-          estimated_delivery_date:
-            turnaroundType === "same_day" ? new Date().toISOString()
-            : turnaroundType === "rush" ? rushDeliveryDate.toISOString()
-            : standardDeliveryDate.toISOString(),
+      // 4. SINGLE EDGE-FUNCTION WRITE — all whitelisted fields in one patch.
+      // The customer-quote-update function sets updated_at server-side and
+      // validates the draft|processing|analyzing|in_review|pending_payment
+      // -> pending_payment transition.
+      await updateCustomerQuote(quoteId, {
+        // Turnaround data
+        turnaround_type: turnaroundType,
+        rush_fee: pricing.turnaroundFee,
+        estimated_delivery_date:
+          turnaroundType === "same_day" ? new Date().toISOString()
+          : turnaroundType === "rush" ? rushDeliveryDate.toISOString()
+          : standardDeliveryDate.toISOString(),
 
-          // Delivery data
-          physical_delivery_option_id: selectedPhysicalObj?.id || null,
-          selected_pickup_location_id: selectedPhysicalOption === "pickup" ? selectedPickupLocation : null,
-          delivery_fee: pricing.deliveryFee,
+        // Delivery data
+        physical_delivery_option_id: selectedPhysicalObj?.id || null,
+        selected_pickup_location_id: selectedPhysicalOption === "pickup" ? selectedPickupLocation : null,
+        delivery_fee: pricing.deliveryFee,
 
-          // Billing address
-          billing_address: {
-            firstName: billingAddress.fullName.split(" ")[0] || billingAddress.fullName,
-            lastName: billingAddress.fullName.split(" ").slice(1).join(" ") || "",
-            company: state.companyName || "",
-            addressLine1: billingAddress.streetAddress,
-            addressLine2: "",
-            city: billingAddress.city,
-            state: billingAddress.province,
-            postalCode: billingAddress.postalCode,
-            country: billingAddress.country,
-            phone: state.phone || "",
-          },
+        // Billing address
+        billing_address: {
+          firstName: billingAddress.fullName.split(" ")[0] || billingAddress.fullName,
+          lastName: billingAddress.fullName.split(" ").slice(1).join(" ") || "",
+          company: state.companyName || "",
+          addressLine1: billingAddress.streetAddress,
+          addressLine2: "",
+          city: billingAddress.city,
+          state: billingAddress.province,
+          postalCode: billingAddress.postalCode,
+          country: billingAddress.country,
+          phone: state.phone || "",
+        },
 
-          // Shipping address
-          shipping_address: needsShipping ? {
-            firstName: shipAddr.fullName.split(" ")[0] || shipAddr.fullName,
-            lastName: shipAddr.fullName.split(" ").slice(1).join(" ") || "",
-            company: state.companyName || "",
-            addressLine1: shipAddr.streetAddress,
-            addressLine2: "",
-            city: shipAddr.city,
-            state: shipAddr.province,
-            postalCode: shipAddr.postalCode,
-            country: shipAddr.country,
-            phone: state.phone || "",
-          } : null,
+        // Shipping address
+        shipping_address: needsShipping ? {
+          firstName: shipAddr.fullName.split(" ")[0] || shipAddr.fullName,
+          lastName: shipAddr.fullName.split(" ").slice(1).join(" ") || "",
+          company: state.companyName || "",
+          addressLine1: shipAddr.streetAddress,
+          addressLine2: "",
+          city: shipAddr.city,
+          state: shipAddr.province,
+          postalCode: shipAddr.postalCode,
+          country: shipAddr.country,
+          phone: state.phone || "",
+        } : null,
 
-          // Calculated totals — single source of truth
-          calculated_totals: {
-            // 20260511_normalize_subtotal_convention: subtotal is
-            // translation-only. baseSubtotal (translation + cert) is now
-            // surfaced as pct_base — the base for % rush/adjustments.
-            translation_total: pricing.translationTotal,
-            certification_total: pricing.certificationTotal,
-            subtotal: pricing.translationTotal,
-            pct_base: pricing.baseSubtotal,
-            adjustments_total: pricing.adjustmentsTotal,
-            pre_tax: pricing.preTax,
-            rush_fee: pricing.turnaroundFee,
-            delivery_fee: pricing.deliveryFee,
-            tax_rate: pricing.taxRate,
-            tax_name: pricing.taxName,
-            tax_amount: pricing.taxAmount,
-            total: pricing.finalTotal,
-          },
-
-          subtotal: pricing.translationTotal,
+        // Calculated totals — single source of truth
+        calculated_totals: {
+          // 20260511_normalize_subtotal_convention: subtotal is
+          // translation-only. baseSubtotal (translation + cert) is now
+          // surfaced as pct_base — the base for % rush/adjustments.
+          translation_total: pricing.translationTotal,
           certification_total: pricing.certificationTotal,
+          subtotal: pricing.translationTotal,
+          pct_base: pricing.baseSubtotal,
+          adjustments_total: pricing.adjustmentsTotal,
+          pre_tax: pricing.preTax,
+          rush_fee: pricing.turnaroundFee,
+          delivery_fee: pricing.deliveryFee,
           tax_rate: pricing.taxRate,
+          tax_name: pricing.taxName,
           tax_amount: pricing.taxAmount,
           total: pricing.finalTotal,
+        },
 
-          status: "pending_payment",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", quoteId);
+        subtotal: pricing.translationTotal,
+        certification_total: pricing.certificationTotal,
+        tax_rate: pricing.taxRate,
+        tax_amount: pricing.taxAmount,
+        total: pricing.finalTotal,
 
-      if (updateError) throw updateError;
+        status: "pending_payment",
+      });
 
       // 5. Create Stripe checkout session
       const { data, error: fnError } = await supabase.functions.invoke(
@@ -1840,59 +1767,55 @@ export default function Step4ReviewCheckout() {
 
       const shipAddr = sameAsBilling ? billingAddress : shippingAddress;
 
-      await supabase
-        .from("quotes")
-        .update({
-          turnaround_type: turnaroundType,
+      await updateCustomerQuote(quoteId, {
+        turnaround_type: turnaroundType,
+        rush_fee: pricing.turnaroundFee,
+        physical_delivery_option_id: selectedPhysicalObj?.id || null,
+        billing_address: {
+          firstName: billingAddress.fullName.split(" ")[0] || billingAddress.fullName,
+          lastName: billingAddress.fullName.split(" ").slice(1).join(" ") || "",
+          company: state.companyName || "",
+          addressLine1: billingAddress.streetAddress,
+          addressLine2: "",
+          city: billingAddress.city,
+          state: billingAddress.province,
+          postalCode: billingAddress.postalCode,
+          country: billingAddress.country,
+          phone: state.phone || "",
+        },
+        shipping_address: needsShipping ? {
+          firstName: shipAddr.fullName.split(" ")[0] || shipAddr.fullName,
+          lastName: shipAddr.fullName.split(" ").slice(1).join(" ") || "",
+          company: state.companyName || "",
+          addressLine1: shipAddr.streetAddress,
+          addressLine2: "",
+          city: shipAddr.city,
+          state: shipAddr.province,
+          postalCode: shipAddr.postalCode,
+          country: shipAddr.country,
+          phone: state.phone || "",
+        } : null,
+        calculated_totals: {
+          // 20260511_normalize_subtotal_convention: subtotal is
+          // translation-only. baseSubtotal (translation + cert) is now
+          // surfaced as pct_base — the base for % rush/adjustments.
+          translation_total: pricing.translationTotal,
+          certification_total: pricing.certificationTotal,
+          subtotal: pricing.translationTotal,
+          pct_base: pricing.baseSubtotal,
+          adjustments_total: pricing.adjustmentsTotal,
+          pre_tax: pricing.preTax,
           rush_fee: pricing.turnaroundFee,
-          physical_delivery_option_id: selectedPhysicalObj?.id || null,
-          billing_address: {
-            firstName: billingAddress.fullName.split(" ")[0] || billingAddress.fullName,
-            lastName: billingAddress.fullName.split(" ").slice(1).join(" ") || "",
-            company: state.companyName || "",
-            addressLine1: billingAddress.streetAddress,
-            addressLine2: "",
-            city: billingAddress.city,
-            state: billingAddress.province,
-            postalCode: billingAddress.postalCode,
-            country: billingAddress.country,
-            phone: state.phone || "",
-          },
-          shipping_address: needsShipping ? {
-            firstName: shipAddr.fullName.split(" ")[0] || shipAddr.fullName,
-            lastName: shipAddr.fullName.split(" ").slice(1).join(" ") || "",
-            company: state.companyName || "",
-            addressLine1: shipAddr.streetAddress,
-            addressLine2: "",
-            city: shipAddr.city,
-            state: shipAddr.province,
-            postalCode: shipAddr.postalCode,
-            country: shipAddr.country,
-            phone: state.phone || "",
-          } : null,
-          calculated_totals: {
-            // 20260511_normalize_subtotal_convention: subtotal is
-            // translation-only. baseSubtotal (translation + cert) is now
-            // surfaced as pct_base — the base for % rush/adjustments.
-            translation_total: pricing.translationTotal,
-            certification_total: pricing.certificationTotal,
-            subtotal: pricing.translationTotal,
-            pct_base: pricing.baseSubtotal,
-            adjustments_total: pricing.adjustmentsTotal,
-            pre_tax: pricing.preTax,
-            rush_fee: pricing.turnaroundFee,
-            delivery_fee: pricing.deliveryFee,
-            tax_rate: pricing.taxRate,
-            tax_name: pricing.taxName,
-            tax_amount: pricing.taxAmount,
-            total: pricing.finalTotal,
-          },
+          delivery_fee: pricing.deliveryFee,
+          tax_rate: pricing.taxRate,
+          tax_name: pricing.taxName,
+          tax_amount: pricing.taxAmount,
           total: pricing.finalTotal,
-          status: "pending_payment",
-          saved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", quoteId);
+        },
+        total: pricing.finalTotal,
+        status: "pending_payment",
+        saved_at: new Date().toISOString(),
+      });
 
       await supabase.functions.invoke("send-quote-link-email", { body: { quoteId } });
 
@@ -1914,17 +1837,11 @@ export default function Step4ReviewCheckout() {
     setHitlSubmitting(true);
 
     try {
-      const { error } = await supabase
-        .from("quotes")
-        .update({
-          status: "in_review",
-          hitl_required: true,
-          customer_note: hitlNote || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", state.quoteId);
-
-      if (error) throw error;
+      await updateCustomerQuote(state.quoteId, {
+        status: "in_review",
+        hitl_required: true,
+        customer_note: hitlNote || null,
+      });
 
       // Notify staff of review request — fire and forget
       fetch(
