@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { Folder } from "lucide-react";
 import CustomerARSummary from "@/components/admin/CustomerARSummary";
 import CustomerFilesTab from "@/components/admin/CustomerFilesTab";
+import EmailLogAccordion from "@/components/admin/EmailLogAccordion";
 
 interface Customer {
   id: string;
@@ -1709,6 +1710,8 @@ export default function CustomerDetail() {
                   </button>
                 </div>
               )}
+
+              <EmailLogAccordion email={customer.email ?? null} />
             </div>
           )}
 
