@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuote } from "@/context/QuoteContext";
 import { supabase } from "@/lib/supabase";
+import {
+  createCustomerQuote,
+  updateCustomerQuote,
+  finalizeCustomerQuoteFiles,
+} from "@/lib/customer-quote-api";
 import StartOverLink from "@/components/quote/StartOverLink";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { ChevronRight, X, Loader2, CheckCircle, XCircle, Paperclip } from "lucide-react";
@@ -50,15 +55,6 @@ function formatFileSize(bytes: number): string {
 
 function fileIcon(mime: string): string {
   return mime.startsWith("image/") ? "\u{1F5BC}\uFE0F" : "\u{1F4C4}";
-}
-
-function sanitizeFilename(filename: string): string {
-  return filename
-    .replace(/[()[\]]/g, "_")
-    .replace(/\s+/g, "_")
-    .replace(/[^a-zA-Z0-9._-]/g, "_")
-    .replace(/_+/g, "_")
-    .toLowerCase();
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -523,134 +519,75 @@ export default function Step1Upload() {
       let quoteId = state.quoteId;
       let quoteNumber = state.quoteNumber;
 
-      // 1. Create or update quote
+      // 1. Create or update quote via edge function (anon RLS blocks direct writes)
       if (!quoteId) {
         // Read partner data from sessionStorage (set by ?ref= capture)
         const partnerId = sessionStorage.getItem("cethos_partner_id");
         const partnerCode = sessionStorage.getItem("cethos_partner_code");
         const partnerRate = sessionStorage.getItem("cethos_partner_rate");
 
-        const { data: quote, error: quoteError } = await supabase
-          .from("quotes")
-          .insert({
-            status: "draft",
-            source_language_id: sourceLanguageId,
-            target_language_id: targetLanguageId,
-            entry_point: "customer_web",
-            ...(partnerId ? {
-              partner_id: partnerId,
-              partner_code: partnerCode,
-              base_rate_override: parseFloat(partnerRate!),
-              referral_url: window.location.href,
-            } : {}),
-          })
-          .select("id, quote_number")
-          .single();
+        const created = await createCustomerQuote({
+          source_language_id: sourceLanguageId,
+          target_language_id: targetLanguageId,
+          ...(partnerId
+            ? {
+                partner_id: partnerId,
+                partner_code: partnerCode,
+                partner_rate: partnerRate ?? undefined,
+                referral_url: window.location.href,
+              }
+            : {}),
+        });
 
-        if (quoteError) throw quoteError;
-        if (!quote) throw new Error("Failed to create quote");
-
-        quoteId = quote.id;
-        quoteNumber = quote.quote_number;
+        quoteId = created.id;
+        quoteNumber = created.quote_number;
         updateState({ quoteId, quoteNumber });
       } else {
         // Update languages on existing quote
-        const { error: updateError } = await supabase
-          .from("quotes")
-          .update({
-            source_language_id: sourceLanguageId,
-            target_language_id: targetLanguageId,
-          })
-          .eq("id", quoteId);
-
-        if (updateError) throw updateError;
+        await updateCustomerQuote(quoteId, {
+          source_language_id: sourceLanguageId,
+          target_language_id: targetLanguageId,
+        });
       }
 
-      // 2. Upload files to final storage path and create quote_files records
-      for (const lf of successFiles) {
-        const sanitized = sanitizeFilename(lf.name);
-        const finalPath = `${quoteId}/${sanitized}`;
+      // 2. Finalize uploaded translation files via edge function.
+      // The client already uploaded each file to `uploads/<temp>` (anon
+      // INSERT is allowed only under the `uploads/` prefix by the lockdown
+      // migration). The edge function moves objects to `<quoteId>/<file>`
+      // and inserts the quote_files row using service role.
+      const translationFinalizeInput = successFiles
+        .filter((lf) => lf.storagePath)
+        .map((lf) => ({
+          temp_path: lf.storagePath!,
+          original_filename: lf.name,
+          file_size: lf.size,
+          mime_type: lf.mimeType,
+          is_reference: false,
+        }));
 
-        // Re-upload to the canonical {quoteId}/{filename} path
-        const { error: uploadError } = await supabase.storage
-          .from("quote-files")
-          .upload(finalPath, lf.file, {
-            cacheControl: "3600",
-            upsert: true,
-          });
-
-        if (uploadError) {
-          console.error(`Failed to upload ${lf.name}:`, uploadError);
-          continue;
-        }
-
-        // Create quote_files record
-        const { error: recordError } = await supabase
-          .from("quote_files")
-          .insert({
-            quote_id: quoteId,
-            original_filename: lf.name,
-            storage_path: finalPath,
-            file_size: lf.size,
-            mime_type: lf.mimeType,
-            upload_status: "uploaded",
-            file_category_id: "45cb02ba-fca5-423a-8cb9-6ad807ad3bbc", // "To Translate"
-          });
-
-        if (recordError) {
-          console.error(`Failed to create file record for ${lf.name}:`, recordError);
-        }
-
-        // Clean up temp upload if it exists at a different path
-        if (lf.storagePath && lf.storagePath !== finalPath) {
-          supabase.storage
-            .from("quote-files")
-            .remove([lf.storagePath])
-            .catch(() => {});
+      if (translationFinalizeInput.length > 0) {
+        const res = await finalizeCustomerQuoteFiles(quoteId!, translationFinalizeInput);
+        if (res.errors.length > 0) {
+          console.error("Some translation files failed to finalize:", res.errors);
         }
       }
 
-      // 2b. Upload reference files to final path and create quote_files records
+      // 2b. Finalize reference files via the same edge function.
       const successRefFiles = refFiles.filter((f) => f.status === "success");
+      const referenceFinalizeInput = successRefFiles
+        .filter((rf) => rf.storagePath)
+        .map((rf) => ({
+          temp_path: rf.storagePath!,
+          original_filename: rf.name,
+          file_size: rf.size,
+          mime_type: rf.mimeType,
+          is_reference: true,
+        }));
 
-      for (const rf of successRefFiles) {
-        const sanitized = sanitizeFilename(rf.name);
-        const finalPath = `${quoteId}/ref_${sanitized}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("quote-reference-files")
-          .upload(finalPath, rf.file, {
-            cacheControl: "3600",
-            upsert: true,
-          });
-
-        if (uploadError) {
-          console.error(`Failed to upload ref file ${rf.name}:`, uploadError);
-          continue;
-        }
-
-        const { error: recordError } = await supabase
-          .from("quote_files")
-          .insert({
-            quote_id: quoteId,
-            original_filename: rf.name,
-            storage_path: finalPath,
-            file_size: rf.size,
-            mime_type: rf.mimeType,
-            upload_status: "uploaded",
-            ai_processing_status: "skipped",
-            file_category_id: "f1aed462-a25f-4dd0-96c0-f952c3a72950", // "Reference"
-          });
-
-        if (recordError) {
-          console.error(`Failed to create ref file record for ${rf.name}:`, recordError);
-        }
-
-        if (rf.storagePath && rf.storagePath !== finalPath) {
-          supabase.storage
-            .from("quote-reference-files")
-            .remove([rf.storagePath])
-            .catch(() => {});
+      if (referenceFinalizeInput.length > 0) {
+        const res = await finalizeCustomerQuoteFiles(quoteId!, referenceFinalizeInput);
+        if (res.errors.length > 0) {
+          console.error("Some reference files failed to finalize:", res.errors);
         }
       }
 

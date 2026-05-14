@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { CheckCircle, Info } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { getCustomerQuoteData } from "@/lib/customer-quote-api";
 import { handleStartNewQuote } from "@/utils/navigationHelpers";
 import { trackQuoteSubmission, trackGoogleAdsConversion, getReferralSource } from "@/lib/tracking";
 import { useTrackingSettings } from "@/hooks/useTrackingSettings";
@@ -28,11 +28,8 @@ export default function QuoteConfirmationPage() {
       }
 
       try {
-        const { data: quote } = await supabase
-          .from("quotes")
-          .select("quote_number, customer:customers(full_name, email)")
-          .eq("id", quoteId)
-          .single();
+        const snapshot = await getCustomerQuoteData(quoteId);
+        const quote = snapshot.quote as any;
 
         if (quote) {
           setQuoteNumber(quote.quote_number || "");

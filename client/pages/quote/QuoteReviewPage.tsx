@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { getCustomerQuoteData } from "@/lib/customer-quote-api";
 import {
   Loader2,
   AlertCircle,
@@ -156,118 +157,53 @@ export default function QuoteReviewPage() {
     setError(null);
 
     try {
-      // Fetch quote with all related data
-      const { data: quoteData, error: quoteError } = await supabase
-        .from("quotes")
-        .select(
-          `
-          id,
-          quote_number,
-          status,
-          source_language_id,
-          target_language_id,
-          country_of_issue,
-          delivery_option_id,
-          intended_use_id,
-          subtotal,
-          certification_total,
-          rush_fee,
-          delivery_fee,
-          tax_rate,
-          tax_amount,
-          total,
-          is_rush,
-          turnaround_type,
-          estimated_delivery_date,
-          expires_at,
-          calculated_totals,
-          customer:customers (
-            full_name,
-            email
-          ),
-          source_language:languages!quotes_source_language_id_fkey (
-            name
-          ),
-          target_language:languages!quotes_target_language_id_fkey (
-            name
-          ),
-          service:services (
-            code,
-            name
-          )
-        `
-        )
-        .eq("id", quoteId)
-        .single();
+      if (!quoteId) throw new Error("Missing quote id");
 
-      // Fetch intended_use and delivery_option separately if IDs exist
-      let intendedUseName = null;
-      let deliveryOptionName = null;
+      // Single round-trip fetch via the customer-quote-get edge function.
+      const snapshot = await getCustomerQuoteData(quoteId);
+      const quoteData = snapshot.quote as any;
 
-      if (quoteError || !quoteData) {
-        const details = quoteError?.message || quoteError?.details;
-        throw new Error(details || "Quote not found");
+      if (!quoteData) {
+        throw new Error("Quote not found");
       }
 
-      if (quoteData.intended_use_id) {
-        const { data: intendedUse } = await supabase
-          .from("intended_uses")
-          .select("name")
-          .eq("id", quoteData.intended_use_id)
-          .single();
-        intendedUseName = intendedUse?.name;
-      }
+      // intended_use and delivery_option are returned as inline joins by the
+      // edge function (see customer-quote-get QUOTE_SELECT).
+      const intendedUseName =
+        (quoteData.intended_use as any)?.name ?? null;
+      const deliveryOptionName =
+        (quoteData.delivery_option as any)?.name ?? null;
 
-      if (quoteData.delivery_option_id) {
-        const { data: deliveryOption } = await supabase
-          .from("delivery_options")
-          .select("name")
-          .eq("id", quoteData.delivery_option_id)
-          .single();
-        deliveryOptionName = deliveryOption?.name;
-      }
-
-      // Fetch documents from ai_analysis_results (including manual entries)
-      const { data: analysisResults, error: analysisError } = await supabase
-        .from("ai_analysis_results")
-        .select(
-          `
-          *,
-          certification_types (
-            name
-          ),
-          quote_files (
-            original_filename
-          )
-        `
-        )
-        .eq("quote_id", quoteId)
-        .is("deleted_at", null);
-
-      if (analysisError) {
-        console.error("Error fetching documents:", analysisError);
-      }
+      // Build a filename map from snapshot.files to resolve original_filename
+      // for analysis rows that link to a quote_files row.
+      const filesById = new Map<string, { original_filename: string }>(
+        (snapshot.files || []).map((f) => [f.id, f]),
+      );
 
       // Transform documents (including manual entries where quote_file_id is NULL)
-      const documents: QuoteDocument[] = (analysisResults || []).map((doc) => ({
-        id: doc.id,
-        original_filename:
-          doc.manual_filename ||
-          doc.quote_files?.original_filename ||
-          "Document",
-        detected_language: doc.detected_language,
-        language_name: doc.language_name,
-        detected_document_type: doc.detected_document_type,
-        document_type_other: doc.document_type_other,
-        assessed_complexity: doc.assessed_complexity,
-        word_count: doc.word_count,
-        page_count: doc.page_count,
-        billable_pages: parseFloat(doc.billable_pages) || 0,
-        line_total: parseFloat(doc.line_total) || 0,
-        certification_price: parseFloat(doc.certification_price) || 0,
-        certification_name: doc.certification_types?.name || null,
-        isManual: !doc.quote_file_id,
-      }));
+      const documents: QuoteDocument[] = (snapshot.analysis || []).map(
+        (doc: any) => ({
+          id: doc.id,
+          original_filename:
+            doc.manual_filename ||
+            (doc.quote_file_id
+              ? filesById.get(doc.quote_file_id)?.original_filename
+              : undefined) ||
+            "Document",
+          detected_language: doc.detected_language,
+          language_name: doc.language_name,
+          detected_document_type: doc.detected_document_type,
+          document_type_other: doc.document_type_other,
+          assessed_complexity: doc.assessed_complexity,
+          word_count: doc.word_count,
+          page_count: doc.page_count,
+          billable_pages: parseFloat(doc.billable_pages) || 0,
+          line_total: parseFloat(doc.line_total) || 0,
+          certification_price: parseFloat(doc.certification_price) || 0,
+          certification_name: doc.certification_types?.name || null,
+          isManual: !doc.quote_file_id,
+        }),
+      );
 
       // Use calculated_totals if available, otherwise calculate
       let totals;

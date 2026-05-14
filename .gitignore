@@ -24,10 +24,11 @@ dist-ssr
 *.sw?
 
 .config/
-!.env
-.env.netlify
-.env.local
-.env.*.local
+
+# Never commit local env files. Use .env.example as the source of truth.
+.env
+.env.*
+!.env.example
 
 # Supabase CLI temp files
 supabase/.temp/
