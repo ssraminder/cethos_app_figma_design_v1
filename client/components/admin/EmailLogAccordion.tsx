@@ -1,17 +1,14 @@
 /**
- * VendorEmailLogAccordion
+ * EmailLogAccordion
  *
- * Inline Brevo email log on each vendor's profile. Same data source as the
- * existing "Brevo Email Log" modal (on the Auth/Invitation tab): it calls
- * the `get-brevo-email-events` edge function, which proxies Brevo's
- * /v3/smtp/statistics/events + /v3/smtp/emails APIs in real time.
- *
- * Live read, no caching. Works for past sends because Brevo retains its
- * own event history. No webhook setup needed.
+ * Inline Brevo email log for any entity addressable by email — vendor,
+ * customer, partner, etc. Calls the `get-brevo-email-events` edge
+ * function which proxies Brevo's /v3/smtp/statistics/events +
+ * /v3/smtp/emails APIs in real time. Live read, no caching. Brevo
+ * retains 90 days of event history; no webhook setup needed.
  */
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
 import {
   ChevronDown,
   ChevronRight,
@@ -52,8 +49,10 @@ interface BrevoEnvelope {
 }
 
 interface Props {
-  vendorId: string;
-  vendorEmail: string | null;
+  /** The recipient address to look up in Brevo. */
+  email: string | null;
+  /** Header label override (default: "Email log (Brevo)"). */
+  label?: string;
 }
 
 type DatePreset = "today" | "yesterday" | "last7" | "last30" | "last90" | "custom";
@@ -170,7 +169,7 @@ function eventMeta(event: string): { label: string; cls: string; Icon: React.Com
   return EVENT_META[event] ?? { label: event, cls: "bg-gray-50 text-gray-700 border-gray-200", Icon: Mail };
 }
 
-export default function VendorEmailLogAccordion({ vendorId: _vendorId, vendorEmail }: Props) {
+export default function EmailLogAccordion({ email, label }: Props) {
   const [open, setOpen] = useState(false);
   const [preset, setPreset] = useState<DatePreset>("last30");
   const [customFrom, setCustomFrom] = useState("");
@@ -191,7 +190,7 @@ export default function VendorEmailLogAccordion({ vendorId: _vendorId, vendorEma
   }, [preset, customFrom, customTo]);
 
   const fetchEvents = useCallback(async () => {
-    if (!open || !vendorEmail) return;
+    if (!open || !email) return;
     setLoading(true);
     setError(null);
     try {
@@ -212,7 +211,7 @@ export default function VendorEmailLogAccordion({ vendorId: _vendorId, vendorEma
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email: vendorEmail, days, limit: 200 }),
+        body: JSON.stringify({ email: email, days, limit: 200 }),
       });
       const json = await res.json();
       if (!res.ok || !json?.success) {
@@ -227,12 +226,7 @@ export default function VendorEmailLogAccordion({ vendorId: _vendorId, vendorEma
     } finally {
       setLoading(false);
     }
-  }, [open, vendorEmail, preset, customFrom]);
-
-  // Silence unused-var lint on vendorId — kept in the prop shape because the
-  // parent always knows the vendor id; we may use it later for an admin-side
-  // resolver that doesn't depend on email.
-  void _vendorId;
+  }, [open, email, preset, customFrom]);
 
   useEffect(() => { void fetchEvents(); }, [fetchEvents]);
 
@@ -293,7 +287,7 @@ export default function VendorEmailLogAccordion({ vendorId: _vendorId, vendorEma
       >
         <div className="flex items-center gap-2.5">
           <Mail className="w-4 h-4 text-teal-600" />
-          <span className="text-sm font-semibold text-gray-900">Email log (Brevo)</span>
+          <span className="text-sm font-semibold text-gray-900">{label ?? "Email log (Brevo)"}</span>
           {open && sendsByMsg.length > 0 && (
             <span className="text-xs text-gray-500">({sendsByMsg.length} {sendsByMsg.length === 1 ? "send" : "sends"})</span>
           )}
@@ -321,7 +315,7 @@ export default function VendorEmailLogAccordion({ vendorId: _vendorId, vendorEma
             <button
               type="button"
               onClick={() => void fetchEvents()}
-              disabled={loading || !vendorEmail}
+              disabled={loading || !email}
               className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full border border-gray-200 hover:border-gray-300 text-gray-700"
               title="Reload"
             >
@@ -344,7 +338,7 @@ export default function VendorEmailLogAccordion({ vendorId: _vendorId, vendorEma
             </div>
           )}
 
-          {!vendorEmail ? (
+          {!email ? (
             <div className="text-center py-8 text-sm text-gray-500">
               Vendor has no email on file — nothing to fetch from Brevo.
             </div>
@@ -360,7 +354,7 @@ export default function VendorEmailLogAccordion({ vendorId: _vendorId, vendorEma
             </div>
           ) : sendsByMsg.length === 0 ? (
             <div className="text-center py-8 text-sm text-gray-500">
-              Brevo has no events for <span className="font-mono">{vendorEmail}</span> in the selected window.
+              Brevo has no events for <span className="font-mono">{email}</span> in the selected window.
             </div>
           ) : (
             <div className="overflow-x-auto">

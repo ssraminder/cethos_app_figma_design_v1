@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import type { TabPropsWithCurrencies, Vendor } from "./types";
-import VendorEmailLogAccordion from "./VendorEmailLogAccordion";
+import EmailLogAccordion from "@/components/admin/EmailLogAccordion";
 import {
   VENDOR_TYPE_OPTIONS,
   AVAILABILITY_OPTIONS,
@@ -627,7 +627,7 @@ export default function VendorProfileTab({
         </div>
       </div>
 
-      <VendorEmailLogAccordion vendorId={vendor.id} vendorEmail={vendor.email ?? null} />
+      <EmailLogAccordion email={vendor.email ?? null} />
     </div>
   );
 }
