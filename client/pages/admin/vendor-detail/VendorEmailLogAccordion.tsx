@@ -1,20 +1,13 @@
 /**
  * VendorEmailLogAccordion
  *
- * Per-vendor email log. Each row is one send (notification_log) with an
- * expanded timeline of Brevo delivery events (brevo_email_events) joined
- * by brevo_message_id. Surfaces the full lifecycle:
+ * Inline Brevo email log on each vendor's profile. Same data source as the
+ * existing "Brevo Email Log" modal (on the Auth/Invitation tab): it calls
+ * the `get-brevo-email-events` edge function, which proxies Brevo's
+ * /v3/smtp/statistics/events + /v3/smtp/emails APIs in real time.
  *
- *   sent → delivered → opened → clicked → ...
- *   sent → soft_bounce → hard_bounce
- *   sent → spam / unsubscribed
- *
- * Brevo webhook events flow into brevo_email_events via the brevo-webhook
- * edge function — set BREVO_WEBHOOK_SECRET in edge secrets and point
- * Brevo at .../functions/v1/brevo-webhook?secret=<value>.
- *
- * Date filter: Today / Yesterday / Last 7 days / Last 30 days / All time /
- * Custom range.
+ * Live read, no caching. Works for past sends because Brevo retains its
+ * own event history. No webhook setup needed.
  */
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
@@ -36,29 +29,26 @@ import {
   Clock,
 } from "lucide-react";
 
-interface NotificationRow {
-  id: string;
-  event_type: string;
-  recipient_email: string | null;
-  recipient_name: string | null;
-  recipient_id: string | null;
-  subject: string | null;
-  status: string | null;
-  error_message: string | null;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
+const SB_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SB_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+interface BrevoEvent {
+  email: string;
+  date: string;
+  subject?: string;
+  messageId?: string;
+  event: string;          // delivered | opened | click | hardBounces | softBounces | blocked | spam | invalid | deferred | unsubscribed | requests | error
+  reason?: string;
+  tag?: string;
+  templateId?: number;
 }
 
-interface BrevoEventRow {
-  id: string;
-  brevo_message_id: string;
-  event: string;
-  recipient_email: string;
-  subject: string | null;
-  reason: string | null;
-  link: string | null;
-  event_ts: string;
-  raw_payload: Record<string, unknown>;
+interface BrevoEnvelope {
+  email: string;
+  subject: string;
+  date: string;
+  messageId: string;
+  templateId?: number | null;
 }
 
 interface Props {
@@ -66,14 +56,16 @@ interface Props {
   vendorEmail: string | null;
 }
 
-type DatePreset = "today" | "yesterday" | "last7" | "last30" | "all" | "custom";
+type DatePreset = "today" | "yesterday" | "last7" | "last30" | "last90" | "custom";
 
+// Brevo's /events endpoint pages by `days` (1..90). We always fetch the
+// widest reasonable window and filter client-side to the chosen preset.
 const PRESET_LABEL: Record<DatePreset, string> = {
   today: "Today",
   yesterday: "Yesterday",
   last7: "Last 7 days",
   last30: "Last 30 days",
-  all: "All time",
+  last90: "Last 90 days",
   custom: "Custom range",
 };
 
@@ -84,9 +76,9 @@ function presetWindow(preset: DatePreset): { from: Date | null; to: Date | null 
     case "today":
       return { from: startOfToday, to: now };
     case "yesterday": {
-      const startOfYesterday = new Date(startOfToday);
-      startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-      return { from: startOfYesterday, to: startOfToday };
+      const start = new Date(startOfToday);
+      start.setDate(start.getDate() - 1);
+      return { from: start, to: startOfToday };
     }
     case "last7": {
       const from = new Date(startOfToday);
@@ -98,10 +90,29 @@ function presetWindow(preset: DatePreset): { from: Date | null; to: Date | null 
       from.setDate(from.getDate() - 29);
       return { from, to: now };
     }
-    case "all":
+    case "last90": {
+      const from = new Date(startOfToday);
+      from.setDate(from.getDate() - 89);
+      return { from, to: now };
+    }
     case "custom":
       return { from: null, to: null };
   }
+}
+
+function daysForPreset(preset: DatePreset, customFrom: string): number {
+  if (preset === "today") return 1;
+  if (preset === "yesterday") return 2;
+  if (preset === "last7") return 7;
+  if (preset === "last30") return 30;
+  if (preset === "last90") return 90;
+  // custom — compute distance from `customFrom` to now, clamp to 1..90
+  if (customFrom) {
+    const start = new Date(customFrom + "T00:00:00");
+    const diff = Math.ceil((Date.now() - start.getTime()) / 86400000);
+    return Math.min(90, Math.max(1, diff + 1));
+  }
+  return 90;
 }
 
 function fmtDateTime(ts: string): string {
@@ -115,13 +126,13 @@ function fmtDateTime(ts: string): string {
   }
 }
 
-// Lifecycle status priority — higher number = "more recent / more terminal".
-// We use this to pick the lifecycle "summary" badge per email.
+// Lifecycle priority — higher = more terminal/recent. Used to pick the
+// summary badge per messageId.
 const EVENT_PRIORITY: Record<string, number> = {
+  requests: 1,
   request: 1,
-  sent: 1,
   deferred: 2,
-  queued: 2,
+  softBounces: 3,
   soft_bounce: 3,
   delivered: 4,
   opened: 5,
@@ -130,43 +141,45 @@ const EVENT_PRIORITY: Record<string, number> = {
   unsubscribed: 7,
   spam: 8,
   blocked: 9,
-  invalid_email: 9,
+  invalid: 9,
+  hardBounces: 10,
   hard_bounce: 10,
-  failed: 10,
+  error: 10,
 };
 
 const EVENT_META: Record<string, { label: string; cls: string; Icon: React.ComponentType<{ className?: string }> }> = {
-  sent:           { label: "Sent",          cls: "bg-sky-50 text-sky-700 border-sky-200",         Icon: Send },
-  request:        { label: "Queued",        cls: "bg-sky-50 text-sky-700 border-sky-200",         Icon: Send },
-  queued:         { label: "Queued",        cls: "bg-amber-50 text-amber-700 border-amber-200",   Icon: Clock },
-  deferred:       { label: "Deferred",      cls: "bg-amber-50 text-amber-700 border-amber-200",   Icon: Clock },
-  delivered:      { label: "Delivered",     cls: "bg-emerald-50 text-emerald-700 border-emerald-200", Icon: CheckCircle2 },
-  opened:         { label: "Opened",        cls: "bg-indigo-50 text-indigo-700 border-indigo-200", Icon: Eye },
-  unique_opened:  { label: "Opened",        cls: "bg-indigo-50 text-indigo-700 border-indigo-200", Icon: Eye },
-  click:          { label: "Clicked",       cls: "bg-violet-50 text-violet-700 border-violet-200", Icon: MousePointerClick },
-  unsubscribed:   { label: "Unsubscribed",  cls: "bg-gray-100 text-gray-700 border-gray-300",     Icon: MailX },
-  spam:           { label: "Spam",          cls: "bg-orange-50 text-orange-700 border-orange-200", Icon: ShieldAlert },
-  soft_bounce:    { label: "Soft bounce",   cls: "bg-amber-50 text-amber-700 border-amber-200",   Icon: AlertCircle },
-  hard_bounce:    { label: "Hard bounce",   cls: "bg-red-50 text-red-700 border-red-200",         Icon: Ban },
-  blocked:        { label: "Blocked",       cls: "bg-red-50 text-red-700 border-red-200",         Icon: Ban },
-  invalid_email:  { label: "Invalid email", cls: "bg-red-50 text-red-700 border-red-200",         Icon: Ban },
-  failed:         { label: "Failed",        cls: "bg-red-50 text-red-700 border-red-200",         Icon: AlertCircle },
+  requests:      { label: "Requested",   cls: "bg-sky-50 text-sky-700 border-sky-200",         Icon: Send },
+  request:       { label: "Requested",   cls: "bg-sky-50 text-sky-700 border-sky-200",         Icon: Send },
+  deferred:      { label: "Deferred",    cls: "bg-amber-50 text-amber-700 border-amber-200",   Icon: Clock },
+  delivered:     { label: "Delivered",   cls: "bg-emerald-50 text-emerald-700 border-emerald-200", Icon: CheckCircle2 },
+  opened:        { label: "Opened",      cls: "bg-indigo-50 text-indigo-700 border-indigo-200", Icon: Eye },
+  unique_opened: { label: "Opened",      cls: "bg-indigo-50 text-indigo-700 border-indigo-200", Icon: Eye },
+  click:         { label: "Clicked",     cls: "bg-violet-50 text-violet-700 border-violet-200", Icon: MousePointerClick },
+  unsubscribed:  { label: "Unsubscribed",cls: "bg-gray-100 text-gray-700 border-gray-300",     Icon: MailX },
+  spam:          { label: "Spam",        cls: "bg-orange-50 text-orange-700 border-orange-200", Icon: ShieldAlert },
+  softBounces:   { label: "Soft bounce", cls: "bg-amber-50 text-amber-700 border-amber-200",   Icon: AlertCircle },
+  soft_bounce:   { label: "Soft bounce", cls: "bg-amber-50 text-amber-700 border-amber-200",   Icon: AlertCircle },
+  hardBounces:   { label: "Hard bounce", cls: "bg-red-50 text-red-700 border-red-200",         Icon: Ban },
+  hard_bounce:   { label: "Hard bounce", cls: "bg-red-50 text-red-700 border-red-200",         Icon: Ban },
+  blocked:       { label: "Blocked",     cls: "bg-red-50 text-red-700 border-red-200",         Icon: Ban },
+  invalid:       { label: "Invalid",     cls: "bg-red-50 text-red-700 border-red-200",         Icon: Ban },
+  error:         { label: "Error",       cls: "bg-red-50 text-red-700 border-red-200",         Icon: AlertCircle },
 };
 
 function eventMeta(event: string): { label: string; cls: string; Icon: React.ComponentType<{ className?: string }> } {
   return EVENT_META[event] ?? { label: event, cls: "bg-gray-50 text-gray-700 border-gray-200", Icon: Mail };
 }
 
-export default function VendorEmailLogAccordion({ vendorId, vendorEmail }: Props) {
+export default function VendorEmailLogAccordion({ vendorId: _vendorId, vendorEmail }: Props) {
   const [open, setOpen] = useState(false);
   const [preset, setPreset] = useState<DatePreset>("last30");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const [sends, setSends] = useState<NotificationRow[]>([]);
-  const [events, setEvents] = useState<BrevoEventRow[]>([]);
+  const [events, setEvents] = useState<BrevoEvent[]>([]);
+  const [envelopes, setEnvelopes] = useState<BrevoEnvelope[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [expandedMsgId, setExpandedMsgId] = useState<string | null>(null);
 
   const dateWindow = useMemo(() => {
     if (preset === "custom") {
@@ -177,80 +190,97 @@ export default function VendorEmailLogAccordion({ vendorId, vendorEmail }: Props
     return presetWindow(preset);
   }, [preset, customFrom, customTo]);
 
-  const fetchAll = useCallback(async () => {
-    if (!open) return;
+  const fetchEvents = useCallback(async () => {
+    if (!open || !vendorEmail) return;
     setLoading(true);
     setError(null);
     try {
-      // ── Sends from notification_log ───────────────────────────────
-      let sendQ = supabase
-        .from("notification_log")
-        .select("id, event_type, recipient_email, recipient_name, recipient_id, subject, status, error_message, metadata, created_at")
-        .or(`recipient_id.eq.${vendorId}${vendorEmail ? `,recipient_email.eq.${vendorEmail}` : ""}`)
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (dateWindow.from) sendQ = sendQ.gte("created_at", dateWindow.from.toISOString());
-      if (dateWindow.to) sendQ = sendQ.lte("created_at", dateWindow.to.toISOString());
-      const sendsResp = await sendQ;
-      if (sendsResp.error) throw sendsResp.error;
-      const sendRows = (sendsResp.data ?? []) as NotificationRow[];
-      setSends(sendRows);
-
-      // ── Delivery events from brevo_email_events ───────────────────
-      // Match by recipient_email since brevo_email_events doesn't carry
-      // vendor_id. Pull a wider window so late events still join — we'll
-      // filter in the UI to only those whose parent send is in window.
-      if (vendorEmail) {
-        let evQ = supabase
-          .from("brevo_email_events")
-          .select("id, brevo_message_id, event, recipient_email, subject, reason, link, event_ts, raw_payload")
-          .eq("recipient_email", vendorEmail)
-          .order("event_ts", { ascending: true })
-          .limit(2000);
-        if (dateWindow.from) evQ = evQ.gte("event_ts", dateWindow.from.toISOString());
-        const evResp = await evQ;
-        if (evResp.error) throw evResp.error;
-        setEvents((evResp.data ?? []) as BrevoEventRow[]);
-      } else {
-        setEvents([]);
+      // Pull the user's Supabase access_token if present so the function
+      // can attribute the call. Falls back to anon JWT.
+      let token = SB_ANON;
+      try {
+        const s = localStorage.getItem("cethos-auth");
+        if (s) token = JSON.parse(s)?.access_token || SB_ANON;
+      } catch {
+        /* ignore */
       }
+      const days = daysForPreset(preset, customFrom);
+      const res = await fetch(`${SB_URL}/functions/v1/get-brevo-email-events`, {
+        method: "POST",
+        headers: {
+          apikey: SB_ANON,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: vendorEmail, days, limit: 200 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
+      setEvents(Array.isArray(json.events) ? json.events : []);
+      setEnvelopes(Array.isArray(json.emails) ? json.emails : []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load email log");
+      setError(e instanceof Error ? e.message : "Failed to load Brevo log");
+      setEvents([]);
+      setEnvelopes([]);
     } finally {
       setLoading(false);
     }
-  }, [open, vendorId, vendorEmail, dateWindow.from, dateWindow.to]);
+  }, [open, vendorEmail, preset, customFrom]);
 
-  useEffect(() => { void fetchAll(); }, [fetchAll]);
+  // Silence unused-var lint on vendorId — kept in the prop shape because the
+  // parent always knows the vendor id; we may use it later for an admin-side
+  // resolver that doesn't depend on email.
+  void _vendorId;
 
-  // Group brevo events by brevo_message_id for fast lookup per send row.
-  const eventsByMsgId = useMemo(() => {
-    const m = new Map<string, BrevoEventRow[]>();
-    for (const ev of events) {
-      const arr = m.get(ev.brevo_message_id) ?? [];
-      arr.push(ev);
-      m.set(ev.brevo_message_id, arr);
+  useEffect(() => { void fetchEvents(); }, [fetchEvents]);
+
+  // Filter to the chosen window client-side (Brevo returns up to `days`).
+  const inWindow = useCallback((ts: string): boolean => {
+    const t = new Date(ts);
+    if (dateWindow.from && t < dateWindow.from) return false;
+    if (dateWindow.to && t > dateWindow.to) return false;
+    return true;
+  }, [dateWindow.from, dateWindow.to]);
+
+  const filteredEvents = useMemo(() => events.filter((e) => inWindow(e.date)), [events, inWindow]);
+
+  // Group events by messageId so each send shows as one row with a lifecycle.
+  const sendsByMsg = useMemo(() => {
+    const map = new Map<string, { messageId: string; subject: string; firstTs: string; events: BrevoEvent[] }>();
+    const envSubj = new Map<string, string>();
+    for (const env of envelopes) {
+      if (env.messageId) envSubj.set(env.messageId, env.subject);
     }
-    return m;
-  }, [events]);
-
-  // Decide what status badge to show for a given send.
-  function summaryEventForSend(send: NotificationRow): string {
-    const mid = (send.metadata?.brevo_message_id as string | undefined) ?? "";
-    const evs = mid ? (eventsByMsgId.get(mid) ?? []) : [];
-    if (evs.length === 0) {
-      // No webhook data yet — fall back to our local status.
-      if ((send.status ?? "").toLowerCase() === "failed") return "failed";
-      return "sent";
+    for (const ev of filteredEvents) {
+      const mid = ev.messageId ?? `__nomid__${ev.date}`;
+      const slot = map.get(mid);
+      const subject = ev.subject || envSubj.get(mid) || "—";
+      if (!slot) {
+        map.set(mid, { messageId: mid, subject, firstTs: ev.date, events: [ev] });
+      } else {
+        slot.events.push(ev);
+        if (new Date(ev.date) < new Date(slot.firstTs)) slot.firstTs = ev.date;
+      }
     }
-    // Pick the highest-priority event seen.
-    let best: BrevoEventRow | null = null;
+    // Sort each lifecycle by event time ascending; sort sends by firstTs desc.
+    const out = Array.from(map.values()).map((s) => ({
+      ...s,
+      events: [...s.events].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    }));
+    out.sort((a, b) => new Date(b.firstTs).getTime() - new Date(a.firstTs).getTime());
+    return out;
+  }, [filteredEvents, envelopes]);
+
+  function summaryForSend(eventsForMsg: BrevoEvent[]): string {
+    let best = "delivered";
     let bestPri = -1;
-    for (const e of evs) {
+    for (const e of eventsForMsg) {
       const pri = EVENT_PRIORITY[e.event] ?? 0;
-      if (pri > bestPri) { bestPri = pri; best = e; }
+      if (pri > bestPri) { bestPri = pri; best = e.event; }
     }
-    return best ? best.event : "sent";
+    return best;
   }
 
   return (
@@ -263,9 +293,9 @@ export default function VendorEmailLogAccordion({ vendorId, vendorEmail }: Props
       >
         <div className="flex items-center gap-2.5">
           <Mail className="w-4 h-4 text-teal-600" />
-          <span className="text-sm font-semibold text-gray-900">Email log</span>
-          {open && sends.length > 0 && (
-            <span className="text-xs text-gray-500">({sends.length} {sends.length === 1 ? "send" : "sends"})</span>
+          <span className="text-sm font-semibold text-gray-900">Email log (Brevo)</span>
+          {open && sendsByMsg.length > 0 && (
+            <span className="text-xs text-gray-500">({sendsByMsg.length} {sendsByMsg.length === 1 ? "send" : "sends"})</span>
           )}
         </div>
         {open ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
@@ -290,8 +320,8 @@ export default function VendorEmailLogAccordion({ vendorId, vendorEmail }: Props
             ))}
             <button
               type="button"
-              onClick={() => void fetchAll()}
-              disabled={loading}
+              onClick={() => void fetchEvents()}
+              disabled={loading || !vendorEmail}
               className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full border border-gray-200 hover:border-gray-300 text-gray-700"
               title="Reload"
             >
@@ -304,26 +334,21 @@ export default function VendorEmailLogAccordion({ vendorId, vendorEmail }: Props
             <div className="flex flex-wrap items-end gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
-                <input
-                  type="date"
-                  value={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
+                <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
-                <input
-                  type="date"
-                  value={customTo}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
+                <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500" />
               </div>
+              <p className="text-xs text-gray-500">Brevo retains 90 days of events.</p>
             </div>
           )}
 
-          {error ? (
+          {!vendorEmail ? (
+            <div className="text-center py-8 text-sm text-gray-500">
+              Vendor has no email on file — nothing to fetch from Brevo.
+            </div>
+          ) : error ? (
             <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <span>{error}</span>
@@ -331,42 +356,38 @@ export default function VendorEmailLogAccordion({ vendorId, vendorEmail }: Props
           ) : loading ? (
             <div className="flex items-center justify-center py-8 text-gray-500 text-sm">
               <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              Loading email log…
+              Loading Brevo events…
             </div>
-          ) : sends.length === 0 ? (
+          ) : sendsByMsg.length === 0 ? (
             <div className="text-center py-8 text-sm text-gray-500">
-              No emails sent to this vendor in the selected window.
+              Brevo has no events for <span className="font-mono">{vendorEmail}</span> in the selected window.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left border-b border-gray-200">
-                    <th className="py-2 pr-3 font-medium text-gray-600">When</th>
-                    <th className="py-2 pr-3 font-medium text-gray-600">Event</th>
+                    <th className="py-2 pr-3 font-medium text-gray-600">First seen</th>
                     <th className="py-2 pr-3 font-medium text-gray-600">Subject</th>
                     <th className="py-2 pr-3 font-medium text-gray-600">Latest status</th>
-                    <th className="py-2 font-medium text-gray-600">To</th>
+                    <th className="py-2 font-medium text-gray-600">Events</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sends.map((r) => {
-                    const summary = summaryEventForSend(r);
+                  {sendsByMsg.map((send) => {
+                    const summary = summaryForSend(send.events);
                     const meta = eventMeta(summary);
                     const Icon = meta.Icon;
-                    const isExpanded = expandedRowId === r.id;
-                    const mid = (r.metadata?.brevo_message_id as string | undefined) ?? "";
-                    const lifecycle = mid ? (eventsByMsgId.get(mid) ?? []) : [];
+                    const isExpanded = expandedMsgId === send.messageId;
                     return (
-                      <React.Fragment key={r.id}>
+                      <React.Fragment key={send.messageId}>
                         <tr
                           className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                          onClick={() => setExpandedRowId(isExpanded ? null : r.id)}
+                          onClick={() => setExpandedMsgId(isExpanded ? null : send.messageId)}
                         >
-                          <td className="py-2 pr-3 text-gray-700 whitespace-nowrap">{fmtDateTime(r.created_at)}</td>
-                          <td className="py-2 pr-3 text-gray-700 font-mono text-xs">{r.event_type}</td>
-                          <td className="py-2 pr-3 text-gray-900 max-w-md truncate" title={r.subject ?? ""}>
-                            {r.subject || <span className="text-gray-400">—</span>}
+                          <td className="py-2 pr-3 text-gray-700 whitespace-nowrap">{fmtDateTime(send.firstTs)}</td>
+                          <td className="py-2 pr-3 text-gray-900 max-w-md truncate" title={send.subject}>
+                            {send.subject}
                           </td>
                           <td className="py-2 pr-3">
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ${meta.cls}`}>
@@ -374,64 +395,31 @@ export default function VendorEmailLogAccordion({ vendorId, vendorEmail }: Props
                               {meta.label}
                             </span>
                           </td>
-                          <td className="py-2 text-gray-600 text-xs">{r.recipient_email || "—"}</td>
+                          <td className="py-2 text-gray-600 text-xs">{send.events.length}</td>
                         </tr>
                         {isExpanded && (
                           <tr className="bg-gray-50 border-b border-gray-100">
-                            <td colSpan={5} className="py-3 px-3 text-xs text-gray-700">
-                              {/* Lifecycle timeline */}
-                              <div className="mb-3">
-                                <div className="font-semibold text-gray-700 mb-1.5">Lifecycle</div>
-                                <ol className="space-y-1.5">
-                                  {/* Always show the local "sent" row first */}
-                                  <li className="flex items-center gap-2">
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ${eventMeta((r.status ?? "").toLowerCase() === "failed" ? "failed" : "sent").cls}`}>
-                                      {(() => {
-                                        const m = eventMeta((r.status ?? "").toLowerCase() === "failed" ? "failed" : "sent");
-                                        const I = m.Icon;
-                                        return <I className="w-3 h-3" />;
-                                      })()}
-                                      {(r.status ?? "").toLowerCase() === "failed" ? "Failed to send" : "Sent"}
-                                    </span>
-                                    <span className="text-gray-500">{fmtDateTime(r.created_at)}</span>
-                                    {r.error_message && (
-                                      <span className="text-red-700 font-mono">{r.error_message}</span>
-                                    )}
-                                  </li>
-                                  {lifecycle.length === 0 && !r.error_message && (
-                                    <li className="text-gray-500 italic">
-                                      No delivery events from Brevo yet. (Configure the webhook in Brevo dashboard to receive delivered/opened/clicked/bounce events.)
+                            <td colSpan={4} className="py-3 px-3 text-xs text-gray-700">
+                              <div className="font-semibold text-gray-700 mb-1.5">Lifecycle</div>
+                              <ol className="space-y-1.5">
+                                {send.events.map((ev, idx) => {
+                                  const em = eventMeta(ev.event);
+                                  const EvIcon = em.Icon;
+                                  return (
+                                    <li key={idx} className="flex flex-wrap items-center gap-2">
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ${em.cls}`}>
+                                        <EvIcon className="w-3 h-3" />
+                                        {em.label}
+                                      </span>
+                                      <span className="text-gray-500">{fmtDateTime(ev.date)}</span>
+                                      {ev.reason && <span className="text-red-700">{ev.reason}</span>}
+                                      {ev.tag && <span className="text-gray-500 font-mono">tag: {ev.tag}</span>}
                                     </li>
-                                  )}
-                                  {lifecycle.map((ev) => {
-                                    const em = eventMeta(ev.event);
-                                    const EvIcon = em.Icon;
-                                    return (
-                                      <li key={ev.id} className="flex items-center gap-2">
-                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ${em.cls}`}>
-                                          <EvIcon className="w-3 h-3" />
-                                          {em.label}
-                                        </span>
-                                        <span className="text-gray-500">{fmtDateTime(ev.event_ts)}</span>
-                                        {ev.reason && <span className="text-red-700">{ev.reason}</span>}
-                                        {ev.link && (
-                                          <a href={ev.link} target="_blank" rel="noopener noreferrer" className="text-teal-700 underline truncate max-w-md">
-                                            {ev.link}
-                                          </a>
-                                        )}
-                                      </li>
-                                    );
-                                  })}
-                                </ol>
-                              </div>
-
-                              {r.metadata && Object.keys(r.metadata).length > 0 && (
-                                <details>
-                                  <summary className="cursor-pointer text-gray-600">Send metadata</summary>
-                                  <pre className="mt-1 p-2 bg-white border border-gray-200 rounded overflow-x-auto text-[11px] font-mono text-gray-800">
-                                    {JSON.stringify(r.metadata, null, 2)}
-                                  </pre>
-                                </details>
+                                  );
+                                })}
+                              </ol>
+                              {send.messageId && !send.messageId.startsWith("__nomid__") && (
+                                <p className="mt-2 text-[10px] text-gray-400 font-mono break-all">{send.messageId}</p>
                               )}
                             </td>
                           </tr>
@@ -445,7 +433,7 @@ export default function VendorEmailLogAccordion({ vendorId, vendorEmail }: Props
           )}
 
           <p className="text-[11px] text-gray-500">
-            Sends from <code>notification_log</code>. Delivery events (delivered / opened / clicked / bounce / spam) from <code>brevo_email_events</code>, populated by Brevo's webhook. Click any row to see the full lifecycle.
+            Source: Brevo <code>/v3/smtp/statistics/events</code> via <code>get-brevo-email-events</code>. Live read, no caching. Brevo retains the last 90 days.
           </p>
         </div>
       )}
