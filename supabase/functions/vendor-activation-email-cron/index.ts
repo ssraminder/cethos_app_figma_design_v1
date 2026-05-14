@@ -49,21 +49,44 @@ serve(async (req: Request) => {
 
   const batchSize: number = schedule.batch_size ?? 10;
 
-  // Find eligible vendors: missing CV or NDA, not suspended/inactive,
-  // not emailed in the last 7 days. Pick the `batch_size` oldest first
-  // so we drain the queue fairly.
-  const { data: vendors } = await sb
+  // 1) Pull the small recent-emails set FIRST so we can exclude already-
+  //    emailed vendors at PostgREST level. Previously we queried all 1469
+  //    vendors first, hit the 1000-row implicit cap, then used .in() with
+  //    a huge id list on notification_log — the URL got truncated and the
+  //    recentIds filter didn't catch all dedup'd rows, wasting batch slots.
+  const dedupSince = new Date(Date.now() - DEDUP_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { data: recentRows } = await sb
+    .from("notification_log")
+    .select("recipient_id")
+    .eq("event_type", "vendor_activation_email")
+    .gte("created_at", dedupSince)
+    .not("recipient_id", "is", null);
+  const recentVendorIds = Array.from(
+    new Set((recentRows ?? []).map((r) => r.recipient_id as string).filter(Boolean)),
+  );
+
+  // 2) Pull a candidate window of vendors that EXCLUDES recently-emailed
+  //    ones at SQL level. batchSize * 5 is plenty of headroom after CV/NDA
+  //    filtering, and keeps the URL short.
+  let vendorQ = sb
     .from("vendors")
-    .select("id, full_name, email, created_at")
+    .select("id, full_name, email, vendor_type, created_at")
     .not("status", "in", "(suspended,inactive)")
     .not("email", "is", null)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(Math.max(batchSize * 5, 50));
+  if (recentVendorIds.length > 0) {
+    vendorQ = vendorQ.not("id", "in", `(${recentVendorIds.join(",")})`);
+  }
+  const { data: vendors } = await vendorQ;
 
   if (!vendors || vendors.length === 0) {
-    await sb.from("vendor_activation_email_schedule").update({ last_run_at: new Date().toISOString(), last_run_sent: 0 }).eq("id", 1);
-    return json({ ok: true, sent: 0, candidates: 0 });
+    await sb.from("vendor_activation_email_schedule")
+      .update({ last_run_at: new Date().toISOString(), last_run_sent: 0 }).eq("id", 1);
+    return json({ ok: true, sent: 0, candidates: 0, recent_dedup_count: recentVendorIds.length });
   }
 
+  // 3) Check CV / NDA on the small candidate window.
   const ids = vendors.map((v) => v.id);
   const { data: cvRows } = await sb.from("vendor_cvs").select("vendor_id").in("vendor_id", ids);
   const cvIds = new Set((cvRows ?? []).map((r) => r.vendor_id as string));
@@ -72,22 +95,23 @@ serve(async (req: Request) => {
     .in("vendor_id", ids).eq("is_current", true);
   const ndaIds = new Set((ndaRows ?? []).map((r) => r.vendor_id as string));
 
-  const dedupSince = new Date(Date.now() - DEDUP_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const { data: recent } = await sb
-    .from("notification_log").select("recipient_id")
-    .eq("event_type", "vendor_activation_email")
-    .gte("created_at", dedupSince)
-    .in("recipient_id", ids);
-  const recentIds = new Set((recent ?? []).map((r) => r.recipient_id as string));
-
+  // 4) Pick the first batchSize that are missing at least one *required*
+  //    gate. Agencies are exempt from the CV requirement — only NDA gates
+  //    them. Freelancers / in-house / unknown types still need both.
   const eligible = vendors
-    .filter((v) => (!cvIds.has(v.id) || !ndaIds.has(v.id)) && !recentIds.has(v.id))
+    .filter((v) => {
+      const isAgency = (v.vendor_type ?? "").toLowerCase() === "agency";
+      const cvOk = isAgency || cvIds.has(v.id);
+      const ndaOk = ndaIds.has(v.id);
+      return !(cvOk && ndaOk);
+    })
     .slice(0, batchSize)
     .map((v) => v.id);
 
   if (eligible.length === 0) {
-    await sb.from("vendor_activation_email_schedule").update({ last_run_at: new Date().toISOString(), last_run_sent: 0 }).eq("id", 1);
-    return json({ ok: true, sent: 0, candidates: 0, total_eligible: 0 });
+    await sb.from("vendor_activation_email_schedule")
+      .update({ last_run_at: new Date().toISOString(), last_run_sent: 0 }).eq("id", 1);
+    return json({ ok: true, sent: 0, candidates: 0, total_eligible: 0, recent_dedup_count: recentVendorIds.length });
   }
 
   // Delegate the actual send to vendor-send-activation-emails. That
@@ -143,5 +167,12 @@ serve(async (req: Request) => {
     })
     .eq("id", 1);
 
-  return json({ ok: true, sent: sentCount, failed: failedCount, candidates: eligible.length, last_error: lastError });
+  return json({
+    ok: true,
+    sent: sentCount,
+    failed: failedCount,
+    candidates: eligible.length,
+    recent_dedup_count: recentVendorIds.length,
+    last_error: lastError,
+  });
 });
