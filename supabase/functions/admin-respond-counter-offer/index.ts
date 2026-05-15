@@ -130,6 +130,11 @@ serve(async (req: Request) => {
 
       if (finalRate && finalTotal) {
         const units = finalRate > 0 ? finalTotal / finalRate : 1;
+        // Counter-accept produces an `approved` payable, matching the
+        // direct-accept path in vendor-accept-step. Previously inserted as
+        // `pending`, which trapped counter-accepted payables in a state the
+        // `approved → invoiced → paid` transition table couldn't escape
+        // without manual intervention.
         await supabase.from("vendor_payables").insert({
           workflow_step_id: offer.step_id,
           offer_id: offer.id,
@@ -142,7 +147,8 @@ serve(async (req: Request) => {
           subtotal: finalTotal,
           total: finalTotal,
           currency: finalCurrency || "CAD",
-          status: "pending",
+          status: "approved",
+          approved_at: now,
           description: `Step ${step?.step_number}: ${step?.name}`,
         });
       }
