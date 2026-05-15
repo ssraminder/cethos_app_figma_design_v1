@@ -1,13 +1,16 @@
 /**
  * VendorActivationDripProgress
  *
- * Collapsible progress card on the admin Vendors list. Shows how the
- * activation-email drip is doing so VM can decide when to move to the
- * next phase. Reads `get_vendor_activation_drip_stats` — single round
- * trip, no client-side fan-out.
+ * Collapsible pipeline panel on the admin Vendors list. Two sections:
+ *  1) Activation-email drip stats (sent / activated / backlog).
+ *  2) Recruitment queue (new applications + tests pending review).
+ *
+ * Reads `get_vendor_activation_drip_stats` — single round trip, no
+ * client-side fan-out.
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import {
   ChevronDown,
@@ -18,6 +21,11 @@ import {
   RefreshCcw,
   Loader2,
   AlertCircle,
+  FileText,
+  ClipboardCheck,
+  UserPlus,
+  AlertTriangle,
+  ArrowRight,
 } from "lucide-react";
 
 interface DripStats {
@@ -35,6 +43,12 @@ interface DripStats {
   batch_size: number;
   cron_expression: string;
   enabled: boolean;
+  apps_pending_review: number;
+  apps_staff_review: number;
+  apps_info_requested: number;
+  apps_new_7d: number;
+  tests_pending_review: number;
+  tests_stale_sent: number;
 }
 
 const STORAGE_KEY = "vendors.drip_progress_open";
@@ -115,14 +129,33 @@ export function VendorActivationDripProgress({
           <Mail className="w-4 h-4 text-indigo-600" />
           <div>
             <div className="text-sm font-semibold text-gray-900">
-              Activation drip progress
+              Vendor pipeline overview
             </div>
             <div className="text-xs text-gray-500 mt-0.5">
-              {stats
-                ? `${stats.unique_emailed} emailed · ${stats.activated} activated${stats.activation_rate !== null ? ` (${stats.activation_rate}%)` : ""}`
-                : "Click to load"}
-              {stats && !stats.enabled && (
-                <span className="ml-2 text-amber-700">· drip paused</span>
+              {stats ? (
+                <>
+                  {stats.unique_emailed} emailed · {stats.activated} activated
+                  {stats.activation_rate !== null
+                    ? ` (${stats.activation_rate}%)`
+                    : ""}
+                  {stats.apps_pending_review > 0 && (
+                    <span className="ml-2 text-orange-700">
+                      · {stats.apps_pending_review} app
+                      {stats.apps_pending_review === 1 ? "" : "s"} to review
+                    </span>
+                  )}
+                  {stats.tests_pending_review > 0 && (
+                    <span className="ml-2 text-indigo-700">
+                      · {stats.tests_pending_review} test
+                      {stats.tests_pending_review === 1 ? "" : "s"} to review
+                    </span>
+                  )}
+                  {!stats.enabled && (
+                    <span className="ml-2 text-amber-700">· drip paused</span>
+                  )}
+                </>
+              ) : (
+                "Click to load"
               )}
             </div>
           </div>
@@ -208,6 +241,59 @@ export function VendorActivationDripProgress({
                 passing={stats.passing_gates_total}
               />
 
+              <div className="border-t border-gray-200 mt-5 pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-700">
+                    Recruitment queue
+                  </h3>
+                  <Link
+                    to="/admin/recruitment"
+                    className="text-xs font-medium text-indigo-700 hover:text-indigo-900 inline-flex items-center gap-1"
+                  >
+                    View all
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <LinkStat
+                    icon={FileText}
+                    label="Apps awaiting review"
+                    value={stats.apps_pending_review.toLocaleString()}
+                    hint={
+                      stats.apps_info_requested > 0
+                        ? `${stats.apps_staff_review} staff review · ${stats.apps_info_requested} info requested`
+                        : `${stats.apps_staff_review} in staff review`
+                    }
+                    color="orange"
+                    to="/admin/recruitment?tab=attention"
+                  />
+                  <LinkStat
+                    icon={ClipboardCheck}
+                    label="Tests pending review"
+                    value={stats.tests_pending_review.toLocaleString()}
+                    hint="submitted or AI-assessed"
+                    color="indigo"
+                    to="/admin/recruitment?tab=tests"
+                  />
+                  <LinkStat
+                    icon={UserPlus}
+                    label="New apps (7d)"
+                    value={stats.apps_new_7d.toLocaleString()}
+                    hint="created in last 7 days"
+                    color="green"
+                    to="/admin/recruitment?tab=all"
+                  />
+                  <LinkStat
+                    icon={AlertTriangle}
+                    label="Stale test invites"
+                    value={stats.tests_stale_sent.toLocaleString()}
+                    hint="sent > 14 days ago, no submission"
+                    color="amber"
+                    to="/admin/recruitment?tab=tests"
+                  />
+                </div>
+              </div>
+
               <div className="flex items-center gap-2 mt-4">
                 <button
                   type="button"
@@ -238,6 +324,16 @@ export function VendorActivationDripProgress({
   );
 }
 
+type StatColor = "indigo" | "green" | "amber" | "blue" | "orange";
+
+const STAT_COLOR_MAP: Record<StatColor, string> = {
+  indigo: "text-indigo-600 bg-indigo-50",
+  green: "text-green-600 bg-green-50",
+  amber: "text-amber-600 bg-amber-50",
+  blue: "text-blue-600 bg-blue-50",
+  orange: "text-orange-600 bg-orange-50",
+};
+
 function Stat({
   icon: Icon,
   label,
@@ -249,18 +345,12 @@ function Stat({
   label: string;
   value: string;
   hint?: string;
-  color: "indigo" | "green" | "amber" | "blue";
+  color: StatColor;
 }) {
-  const colorMap = {
-    indigo: "text-indigo-600 bg-indigo-50",
-    green: "text-green-600 bg-green-50",
-    amber: "text-amber-600 bg-amber-50",
-    blue: "text-blue-600 bg-blue-50",
-  };
   return (
     <div className="border border-gray-200 rounded-lg p-3">
       <div className="flex items-center gap-2 mb-1.5">
-        <div className={`p-1.5 rounded ${colorMap[color]}`}>
+        <div className={`p-1.5 rounded ${STAT_COLOR_MAP[color]}`}>
           <Icon className="w-3.5 h-3.5" />
         </div>
         <span className="text-xs font-medium text-gray-500 leading-tight">
@@ -272,6 +362,45 @@ function Stat({
         <div className="text-xs text-gray-500 mt-0.5 truncate">{hint}</div>
       )}
     </div>
+  );
+}
+
+function LinkStat({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  color,
+  to,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  hint?: string;
+  color: StatColor;
+  to: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="block border border-gray-200 rounded-lg p-3 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors group"
+    >
+      <div className="flex items-center gap-2 mb-1.5">
+        <div className={`p-1.5 rounded ${STAT_COLOR_MAP[color]}`}>
+          <Icon className="w-3.5 h-3.5" />
+        </div>
+        <span className="text-xs font-medium text-gray-500 leading-tight">
+          {label}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between">
+        <div className="text-xl font-semibold text-gray-900">{value}</div>
+        <ArrowRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-indigo-500 transition-colors" />
+      </div>
+      {hint && (
+        <div className="text-xs text-gray-500 mt-0.5 truncate">{hint}</div>
+      )}
+    </Link>
   );
 }
 
