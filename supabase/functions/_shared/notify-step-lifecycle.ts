@@ -1,10 +1,11 @@
 // ============================================================================
 // notify-step-lifecycle.ts (admin repo)
 // Shared Brevo helpers for the step-lifecycle email events fired BY the admin:
-//   - notifyVendorStepApproved      → update-workflow-step.approve
-//   - notifyVendorRevisionRequested → update-workflow-step.request_revision
-//   - notifyVendorPayableInvoiced   → manage-vendor-payables.update_status('invoiced')
-//   - notifyVendorPayablePaid       → manage-vendor-payables.update_status('paid')
+//   - notifyVendorStepApproved        → update-workflow-step.approve
+//   - notifyVendorRevisionRequested   → update-workflow-step.request_revision
+//   - notifyVendorPayableInvoiced     → manage-vendor-payables.update_status('invoiced')
+//   - notifyVendorPayablePaid         → manage-vendor-payables.update_status('paid')
+//   - notifyCustomerWorkflowCompleted → update-workflow-step.approve (final step)
 //
 // Each helper writes a row to notification_log (success or failure) so the
 // admin "Email log" modal can show staff what was sent — same pattern as
@@ -13,6 +14,8 @@
 
 const VENDOR_PORTAL_URL =
   Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com";
+const ADMIN_PORTAL_URL =
+  Deno.env.get("ADMIN_PORTAL_URL") || "https://portal.cethos.com";
 
 const escapeHtml = (s: string | null | undefined): string =>
   String(s ?? "").replace(/[&<>"']/g, (c) => {
@@ -57,6 +60,7 @@ interface SendArgs {
   recipientEmail: string;
   recipientName?: string | null;
   recipientId?: string | null;
+  recipientType?: "vendor" | "customer" | "admin";
   ccEmails?: string[];
   subject: string;
   htmlContent: string;
@@ -115,7 +119,7 @@ async function sendOne(args: SendArgs): Promise<void> {
   try {
     await args.supabase.from("notification_log").insert({
       event_type: args.eventType,
-      recipient_type: "vendor",
+      recipient_type: args.recipientType ?? "vendor",
       recipient_email: args.recipientEmail,
       recipient_name: args.recipientName ?? null,
       recipient_id: args.recipientId ?? null,
@@ -347,5 +351,52 @@ export async function notifyVendorPayablePaid(ctx: StepLifecycleContext): Promis
       payment_method: ctx.payable.payment_method ?? null,
       payment_reference: ctx.payable.payment_reference ?? null,
     },
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// 5. notifyCustomerWorkflowCompleted — fired when the last workflow step
+// flips to approved/skipped and the parent order_workflows row transitions
+// to status='completed'. Tells the customer their order is done.
+//
+// Uses a separate context shape (customer, no vendor) but the same Brevo
+// + notification_log audit pipeline via sendOne. recipient_type='customer'
+// so admin email-log filters can distinguish customer-facing emails.
+// ──────────────────────────────────────────────────────────────────────────
+export interface WorkflowCompletedContext {
+  supabase: any;
+  customer: { id: string; full_name: string | null; email: string };
+  order: { id: string; order_number: string };
+  workflowId: string;
+}
+
+export async function notifyCustomerWorkflowCompleted(ctx: WorkflowCompletedContext): Promise<void> {
+  const subject = `Order complete: ${ctx.order.order_number}`;
+  const greeting = ctx.customer.full_name
+    ? `Hi ${escapeHtml(ctx.customer.full_name.split(" ")[0])},`
+    : `Hi,`;
+  const lead = `${greeting} good news — every step of your order has been completed and approved. Your final deliverable is being prepared.`;
+  const html = emailShell(
+    "Your order is complete",
+    lead,
+    rows([
+      ["Order", ctx.order.order_number],
+      ["Status", "Completed"],
+    ]),
+    "",
+    "Open order",
+    `${ADMIN_PORTAL_URL}/orders/${ctx.order.id}`,
+  );
+  await sendOne({
+    supabase: ctx.supabase,
+    eventType: "workflow_completed",
+    recipientType: "customer",
+    recipientEmail: ctx.customer.email,
+    recipientName: ctx.customer.full_name,
+    recipientId: ctx.customer.id,
+    subject,
+    htmlContent: html,
+    orderId: ctx.order.id,
+    metadata: { workflow_id: ctx.workflowId },
   });
 }

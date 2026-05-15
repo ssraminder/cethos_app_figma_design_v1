@@ -25,11 +25,42 @@ import { notifyVendorAssignment } from "../_shared/notify-vendor-assignment.ts";
 import {
   notifyVendorStepApproved,
   notifyVendorRevisionRequested,
+  notifyCustomerWorkflowCompleted,
 } from "../_shared/notify-step-lifecycle.ts";
 
 const CORS_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 function json(data: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
+}
+
+// Loads the customer + order context for the workflow-completed email.
+// Returns null (and logs) if the order has no customer attached. Wrapped
+// in try/catch so a missing lookup never breaks the response.
+async function loadWorkflowCompletedContext(supabase: any, step: any): Promise<any | null> {
+  try {
+    if (!step?.order_id) return null;
+    const { data: orderRow } = await supabase
+      .from("orders")
+      .select("id, order_number, customer_id")
+      .eq("id", step.order_id)
+      .maybeSingle();
+    if (!orderRow?.customer_id) return null;
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("id, full_name, email")
+      .eq("id", orderRow.customer_id)
+      .maybeSingle();
+    if (!customer?.email) return null;
+    return {
+      supabase,
+      customer: { id: customer.id, full_name: customer.full_name, email: customer.email },
+      order: { id: orderRow.id, order_number: orderRow.order_number },
+      workflowId: step.workflow_id,
+    };
+  } catch (e: any) {
+    console.error("loadWorkflowCompletedContext failed:", e?.message || e);
+    return null;
+  }
 }
 
 // Loads the vendor + order + payable context needed by step-lifecycle emails
@@ -369,6 +400,17 @@ serve(async (req: Request) => {
           if (ctx) await notifyVendorStepApproved(ctx);
         } catch (e: any) {
           console.error("step_approved email fan-out failed:", e?.message || e);
+        }
+        // When this approve completes the whole workflow, fire the
+        // customer-facing "order complete" email. Independent try/catch
+        // so a customer-side hiccup never blocks the response.
+        if (allDone) {
+          try {
+            const customerCtx = await loadWorkflowCompletedContext(supabase, step);
+            if (customerCtx) await notifyCustomerWorkflowCompleted(customerCtx);
+          } catch (e: any) {
+            console.error("workflow_completed email fan-out failed:", e?.message || e);
+          }
         }
         return json({ success: true });
       }
