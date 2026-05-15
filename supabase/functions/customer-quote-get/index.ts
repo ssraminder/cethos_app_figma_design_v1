@@ -50,8 +50,7 @@ const ANALYSIS_SELECT = `
 
 const FILES_SELECT = `
   id, original_filename, storage_path, file_size, mime_type, upload_status,
-  ai_processing_status, file_category_id, needs_replacement, replacement_reason,
-  is_replacement, created_at
+  ai_processing_status, file_category_id, replacement_reason, created_at
 `;
 
 serve(async (req: Request) => {
