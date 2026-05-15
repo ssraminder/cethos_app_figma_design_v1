@@ -12,6 +12,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { requireCronSecret } from "../_shared/require-cron-secret.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -30,6 +31,9 @@ function json(body: Record<string, unknown>, status = 200): Response {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  const authed = await requireCronSecret(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
 
   const sb = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -122,11 +126,14 @@ serve(async (req: Request) => {
   // silently here (no body returned, sent/failed both 0). Anon JWT is
   // public anyway (it's in the vendor portal bundle).
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  // Use `||` not `??` so an empty-string env var falls back to the
-  // hardcoded key. Previously `??` was passing `""` through, producing
-  // `Bearer ` and a 401 UNAUTHORIZED_INVALID_JWT_FORMAT from the gateway.
-  const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") || "").trim()
-    || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
+  // Hardcoded — env-based lookup (via `??` and even `||`) keeps biting us:
+  // when SUPABASE_ANON_KEY in edge secrets is a stale/rotated value the
+  // fallback never triggers and the gateway 401s with
+  // UNAUTHORIZED_INVALID_JWT_FORMAT. The anon JWT is public anyway (it
+  // ships in the vendor portal bundle), so inlining it has zero security
+  // cost. v5 used this same pattern and worked; v6/v7 regressed by
+  // re-introducing env reads.
+  const anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
   let sentCount = 0;
   let failedCount = 0;
   let lastError: string | null = null;
