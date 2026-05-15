@@ -31,17 +31,27 @@ A second motivation: when no translation test exists in the library for a (lang_
 
 ## 2. Routing rule
 
-For each pending `cvp_test_combinations` row, the system picks one of three states:
+**Both instruments run by default** *(decided 2026-05-15, option (b)).* Every applicant takes:
 
-| Instrument | When chosen | Grader |
+1. The **translation test** for each (lang_pair × domain) combination — if a matching test exists in `cvp_test_library`. AI-graded by `cvp-assess-test`.
+2. **One combined ISO competence quiz** keyed to their target language — 40 questions covering the 5 competences (8 each). Deterministic MCQ grading.
+
+The quiz is scoped per **applicant + target_language**, not per combination. An applicant with three Spanish combinations (general, legal, medical) takes one Spanish quiz, not three. An applicant with combinations into two different target languages takes two quizzes.
+
+Fallback rules:
+
+| Library has matching test? | Quiz pool covers target_language? | What runs |
 |---|---|---|
-| **Translation test** (default) | Library has an active test at `(source_lang, target_lang, domain, service_type?)` matching the combo | AI-graded by `cvp-assess-test` |
-| **ISO competence quiz** | Library has no matching test, OR staff explicitly chose "quiz this one" | Deterministic — count `selected_option == correct_option` |
-| **Skip / manual review** | Neither instrument available (e.g. quiz pool not yet authored for the target language) | Staff manually grants or refuses competence |
+| ✅ | ✅ | **Test + Quiz** (full ISO evidence) |
+| ❌ | ✅ | **Quiz only** — unblocks today's `skip_manual_review` cases |
+| ✅ | ❌ | **Test only** — current state until quiz pool authored |
+| ❌ | ❌ | **`skip_manual_review`** — current behavior |
 
-The routing is computed **once per combination** at send time and recorded on `cvp_test_combinations` (a new column `instrument_kind` — see §4) so the applicant's experience and the admin queue both know what to render.
+Pass thresholds for the quiz: **≥80% pass (auto-approve), 70–79% staff review (borderline), <70% fail.** Stricter than the translation test bands because MCQ is easier than free-form translation; these can be re-calibrated after the first 50 quiz submissions.
 
-Staff can override the auto-routing from the admin recruitment-detail page (a "Use quiz instead" / "Use test instead" toggle per combination).
+`cvp_test_combinations.instrument_kind` records which instrument(s) ran for this combo. Possible values: `'test'`, `'quiz'`, `'test_and_quiz'`, `'skip'`.
+
+Staff can override per combination from the admin recruitment-detail page (a "Skip quiz for this combo" / "Skip test for this combo" toggle), used e.g. when a candidate has a recent ISO-conformant certification on file that already documents the competence.
 
 ---
 
@@ -55,14 +65,20 @@ Per the 2026-05-15 confidence assessment, we author quiz content in five Tier-A 
 
 **High-demand but lower confidence (Phase 3, needs native-speaker review):** Persian (Farsi), Dari, Pashto, Somali, Khmer.
 
-For each language in the pilot, we author **40 questions** (5 competences × 8 questions). The existing 40 cross-language questions remain as a `target_language_id IS NULL` baseline — they're used for `research_competence` and `technical_competence` where the target language doesn't materially change the answer.
+For each language in the pilot, we author **24 new questions** at the cross-domain baseline (`domain IS NULL`):
 
-Per-language content focuses on:
-- `linguistic_textual_competence` — grammar, register, idiomaticity in the target language
-- `cultural_competence` — locale-specific conventions, addressing forms, dates/numbers, formal-vs-informal
-- `domain_competence` — target-language terminology baseline (general; per-domain variants are Phase 2)
+- `linguistic_textual_competence` — 8 questions on grammar, register, idiomaticity in the target language
+- `cultural_competence` — 8 questions on locale-specific conventions, addressing forms, dates/numbers, formal-vs-informal
+- `domain_competence` — 8 questions on target-language general terminology and source-text comprehension
 
-`research_competence` and `technical_competence` continue to use the cross-language pool unless a Phase 2 author adds a language-specific row.
+The remaining 16 questions in the 40-question quiz come from the existing cross-language baseline (`target_language_id IS NULL`):
+
+- `research_competence` — 8 questions (existing); CAT tools, source-document research, terminology databases — language-agnostic
+- `technical_competence` — 8 questions (existing); file formats, encoding, project management — language-agnostic
+
+Total new authoring for the pilot: 24 questions × 5 languages = **120 new rows**. Plus the 16 reused cross-language rows = 40 questions per applicant quiz.
+
+Per-domain quiz variants (legal-Spanish, medical-French, etc.) are a Phase 2 expansion when the pilot proves the routing.
 
 ---
 
@@ -84,10 +100,10 @@ Migration file: `supabase/migrations/20260515_iso_quiz_target_language.sql`.
 ```sql
 ALTER TABLE cvp_test_combinations
   ADD COLUMN instrument_kind text NOT NULL DEFAULT 'test'
-    CHECK (instrument_kind IN ('test','quiz','skip'));
+    CHECK (instrument_kind IN ('test','quiz','test_and_quiz','skip'));
 ```
 
-Recorded at send time; never NULL once a combo leaves `pending`.
+Recorded at send time; never NULL once a combo leaves `pending`. Default `'test_and_quiz'` once the quiz pool covers the target language; falls back to `'test'` or `'quiz'` per the routing table in §2.
 
 ### 4.3 `cvp_quiz_submissions` *(planned, separate table)*
 
@@ -156,11 +172,11 @@ This satisfies ISO 17100 §6.1.2 evidence-of-competence requirements and is repr
 
 ---
 
-## 8. Open questions (resolve before Phase 1 launch)
+## 8. Resolved decisions (2026-05-15)
 
-1. **Pass threshold.** Translation test today uses 75 / 60 thresholds (auto-approve / staff-review / auto-reject). Quizzes should likely use a stricter pass bar (e.g. 80%) since MCQ is easier than free-form translation. Staff's call.
-2. **Required vs supplementary.** Does a quiz alone qualify a translator for ISO 17100 §6.1.2 evidence purposes, or must they pass both quiz AND translation test? Initial guidance: **quiz substitutes only when no translation test exists**; passing the quiz documents linguistic / cultural / domain competence but the §6.1.3 "two-year experience OR translation degree OR five-year non-degree" prerequisite is still checked separately at staff sign-off.
-3. **Re-take policy.** Translation tests today are one-shot (status check on submit). Quizzes inherit the same. Open question whether a failed quiz can be re-issued after staff review.
+1. **Both instruments by default** — every applicant takes the translation test AND the quiz when both are available (option b above). Substitution applies only when one of the two isn't available for the target_language × domain. This maximises ISO evidence coverage at audit time.
+2. **Pass threshold for quizzes:** ≥80% auto-approve, 70–79% staff review, <70% fail. Re-calibrate after the first 50 quiz submissions if the borderline band is empty or overfull.
+3. **Re-take policy:** Same as translation tests today — one-shot. Staff can issue a re-quiz after manual review if the failure looks like a question-quality issue rather than a competence gap; this is tracked as a separate `cvp_quiz_submissions` row.
 
 ---
 
