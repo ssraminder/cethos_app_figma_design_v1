@@ -18,6 +18,16 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-15 — Test-or-quiz routing for ISO 17100 §6.1.2 evidence (Phase 0 schema + design)
+- **Decision:** Recruitment will pick per `cvp_test_combinations` row between a translation test (AI-graded, applied skill) and an ISO competence quiz (deterministic MCQ, theoretical competence). Routing: translation test if library has match for `(source_lang, target_lang, domain, service_type?)`; otherwise quiz if pool has coverage for the target language; otherwise `skip_manual_review` as today.
+- **Rationale:** ISO 17100 §6.1.2 requires evidence across 6 competences; today's pipeline tests only competence #1 (translation). Quiz covers #2–#6 cheaply and reproducibly. Also unblocks the 65 combos currently in `skip_manual_review` because no library test exists for their (lang_pair × domain).
+- **Pilot batch (Option A) — Tier A languages by model confidence:** Spanish (Spain), French, German, Italian, Portuguese (Brazil). Demand-leader Persian (Farsi, 72 applicants) deliberately deferred to a later phase that requires native-speaker quiz review.
+- **Schema landed 2026-05-15:** `iso_competence_quizzes.target_language_id uuid NULL REFERENCES languages(id)`. NULL = cross-language baseline (research_competence, technical_competence). Non-NULL = scoped to target language (linguistic_textual, cultural, target-specific domain). Migration `20260515_iso_quiz_target_language.sql`. Existing 40 cross-language questions stay valid as fallback.
+- **Planned (Phase 1):** `cvp_test_combinations.instrument_kind` ('test'|'quiz'|'skip'), `cvp_quiz_submissions` table (separate from `cvp_test_submissions` — MCQ shape, deterministic grading), `cvp-get-quiz` + `cvp-submit-quiz` edge functions, V3 email handles quiz links, admin UI per-combo toggle.
+- **Alternatives considered:** (a) Single `cvp_test_submissions` table dual-purposing test + quiz — rejected, MCQ vs free-text shapes diverge enough that one table would carry a `kind` discriminator + many nullable columns. (b) Author quizzes per (target_language × domain × competence × difficulty) — combinatorial explosion (1200+ questions at minimum); deferred to Phase 2, baseline is target × competence only. (c) Demand-first language order (Persian first) — rejected; need to debug routing on high-confidence languages before risking the 72-applicant Persian backlog.
+- **Status:** active. Schema P0 landed. Design doc at `docs/qms/02-test-or-quiz-routing.md`. P1 (content + edge functions + wiring) is next.
+- **Affects:** `iso_competence_quizzes` (one new column), planned `cvp_test_combinations` + new `cvp_quiz_submissions` table, planned new edge functions (`cvp-get-quiz`, `cvp-submit-quiz`) + extensions to `cvp-send-tests` and `cvp-check-test-followups`. No frontend wired yet.
+
 ### 2026-05-15 — Vendor test submission flow: staff notification + queue widening + null file path
 - **Decision:** Three coordinated fixes after vendor complaints "submitted test but no notification / can't access":
   1. **cvp-submit-test now emails staff** — `sendMailgunOperationalEmail` to active `staff_users.role='recruitment_grader'` (fallback `CVP_RECRUITMENT_OPS_EMAIL` → `vm@cethos.com`). Tag `staff-test-submitted`. Subject "Test submitted: APP-XX — Name", link to `${ADMIN_PORTAL_URL}/admin/recruitment/{app_id}`.
