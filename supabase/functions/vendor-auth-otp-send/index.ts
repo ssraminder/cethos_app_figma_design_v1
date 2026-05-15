@@ -45,10 +45,34 @@ async function hashToken(token: string): Promise<string> {
 }
 
 function generateOtpCode(): string {
-  const bytes = new Uint8Array(4);
-  crypto.getRandomValues(bytes);
-  const num = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
-  return String(num % 1000000).padStart(6, "0");
+  // Crypto-strong 6-digit OTP, rejection-sampled to remove bias near the
+  // mod boundary.
+  const cap = 4_294_000_000;
+  const buf = new Uint8Array(4);
+  let n: number;
+  do {
+    crypto.getRandomValues(buf);
+    n = ((buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]) >>> 0;
+  } while (n >= cap);
+  return String(n % 1_000_000).padStart(6, "0");
+}
+
+// Hash-at-rest helpers (audit H-4). Inline because this admin-repo
+// function predates the _shared/otp-crypto.ts that the vendor repo
+// ships; kept byte-identical to that helper so hashes match across
+// repos.
+function generateSalt(): string {
+  const buf = new Uint8Array(16);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashOtp(code: string, salt: string): Promise<string> {
+  const data = new TextEncoder().encode(`${salt}:${code}`);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 // ── Email builders ──
@@ -179,18 +203,23 @@ async function sendLoginOtp(
       .eq("verified", false);
 
     const otpCode = generateOtpCode();
+    const salt = generateSalt();
+    const otpHash = await hashOtp(otpCode, salt);
     const expiresAt = new Date(
       Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
     ).toISOString();
 
-    // Insert OTP record
+    // Insert OTP record — hash+salt at rest (audit H-4 / M-6). The raw
+    // code only travels in the email body and stays in this scope.
     const { error: otpError } = await supabase
       .from("vendor_otp")
       .insert({
         vendor_id: vendor.id,
         email: vendor.email.toLowerCase().trim(),
         channel: "email",
-        otp_code: otpCode,
+        otp_hash: otpHash,
+        salt,
+        attempts: 0,
         expires_at: expiresAt,
         verified: false,
       });
