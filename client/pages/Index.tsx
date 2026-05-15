@@ -6,6 +6,7 @@ import Step1Upload from "@/components/quote/Step1Upload";
 import Step2Details from "@/components/quote/Step2Details";
 import Step3Contact from "@/components/quote/Step3Contact";
 import Step4ReviewCheckout from "@/components/quote/Step4ReviewCheckout";
+import { getCustomerQuoteData } from "@/lib/customer-quote-api";
 import { Loader2, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 
 async function validateQuoteToken(
@@ -163,81 +164,61 @@ export default function QuoteFlow() {
     }
 
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!supabaseUrl || !supabaseKey) throw new Error("Supabase not configured");
-
-      const headers = {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-
-      // 1. Fetch the quote — use select=* to avoid column mismatch errors
-      const quoteResponse = await fetch(
-        `${supabaseUrl}/rest/v1/quotes?select=*&id=eq.${quoteId}`,
-        { headers },
-      );
+      // Use customer-quote-get edge function — the May 14 RLS lockdown blocks
+      // anon SELECT on quotes/quote_files/customers, so direct PostgREST
+      // fetches from this page silently returned empty arrays ("Quote Not
+      // Found"). The edge function reads via service role using quote_id as
+      // the capability, matching the rest of the customer-quote-* surface.
+      let snapshot;
+      try {
+        snapshot = await getCustomerQuoteData(quoteId);
+      } catch (err: any) {
+        if (isCancelled()) return;
+        const msg = (err?.message || "").toLowerCase();
+        if (msg.includes("not found")) {
+          setHydrationError("quote_not_found");
+        } else {
+          console.error("Quote fetch failed:", err);
+          setHydrationError("quote_not_found");
+        }
+        setIsHydrating(false);
+        return;
+      }
 
       if (isCancelled()) return;
 
-      if (!quoteResponse.ok) {
-        console.error("Quote fetch failed:", quoteResponse.status);
+      const quote = snapshot.quote as any;
+      const quoteFiles = snapshot.files;
+      if (!quote) {
         setHydrationError("quote_not_found");
         setIsHydrating(false);
         return;
       }
 
-      const quotes = await quoteResponse.json();
-      if (!quotes || quotes.length === 0) {
-        console.error("Quote not found");
-        setHydrationError("quote_not_found");
-        setIsHydrating(false);
-        return;
-      }
-      const quote = quotes[0];
-
-      // 2. Check quote is still actionable
+      // Check quote is still actionable
       if (["paid", "cancelled"].includes(quote.status)) {
         setHydrationError("quote_already_completed");
         setIsHydrating(false);
         return;
       }
 
-      // 3. Check expiry
+      // Check expiry
       if (quote.expires_at && new Date(quote.expires_at) < new Date()) {
         setHydrationError("quote_expired");
         setIsHydrating(false);
         return;
       }
 
-      // 4. Fetch quote_files for this quote
-      const filesResponse = await fetch(
-        `${supabaseUrl}/rest/v1/quote_files?select=id,original_filename,file_size,mime_type,upload_status,ai_processing_status&quote_id=eq.${quoteId}&deleted_at=is.null&order=created_at`,
-        { headers },
-      );
-      const quoteFiles = filesResponse.ok ? await filesResponse.json() : [];
-
-      if (isCancelled()) return;
-
-      // 5. Check there are files
+      // Check there are files
       if (!quoteFiles || quoteFiles.length === 0) {
         // No files — something went wrong, let user start fresh at step 1
         setIsHydrating(false);
         return;
       }
 
-      // 6. For email links, also fetch customer data if customer_id exists
-      let customerData: any = null;
-      if (source === "email_link" && quote.customer_id) {
-        const custResponse = await fetch(
-          `${supabaseUrl}/rest/v1/customers?select=id,full_name,email,phone,company_name,customer_type&id=eq.${quote.customer_id}`,
-          { headers },
-        );
-        const customers = custResponse.ok ? await custResponse.json() : [];
-        customerData = customers.length > 0 ? customers[0] : null;
-      }
+      // For email links, surface embedded customer data if present
+      const customerData: any =
+        source === "email_link" ? (quote.customer ?? null) : null;
 
       if (isCancelled()) return;
 
