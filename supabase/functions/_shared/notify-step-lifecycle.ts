@@ -201,11 +201,12 @@ export interface StepLifecycleContext {
 
 // ──────────────────────────────────────────────────────────────────────────
 // 1. notifyVendorStepApproved — admin approved the vendor's delivery.
-// Final happy-path email for the vendor; payment is the next thing they'll see.
+// This makes the work invoiceable; payment happens later, only after admin
+// marks the payable paid. Copy must not imply auto-scheduling.
 // ──────────────────────────────────────────────────────────────────────────
 export async function notifyVendorStepApproved(ctx: StepLifecycleContext): Promise<void> {
   const subject = `Step approved: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
-  const lead = `Your delivery has been approved. Thanks for the work — your payable is now scheduled for payment.`;
+  const lead = `Your delivery has been approved. Thanks for the work — this step is now eligible for invoicing. You can submit your invoice from the vendor portal whenever you're ready.`;
   const items: Array<[string, string]> = [
     ["Order", ctx.order.order_number],
     ["Step", ctx.step.name || "—"],
