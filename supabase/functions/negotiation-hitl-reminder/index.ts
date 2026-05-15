@@ -12,6 +12,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireCronSecret } from "../_shared/require-cron-secret.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -23,6 +24,12 @@ const REREMIND_AFTER = 8 * ONE_HOUR;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  const authed = await requireCronSecret(req);
+  if (!authed.ok) return new Response(
+    JSON.stringify({ success: false, error: authed.error }),
+    { status: authed.status, headers: { ...CORS, "Content-Type": "application/json" } },
+  );
 
   try {
     const sb = createClient(
