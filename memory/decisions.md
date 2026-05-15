@@ -18,6 +18,16 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-15 — Vendor test submission flow: staff notification + queue widening + null file path
+- **Decision:** Three coordinated fixes after vendor complaints "submitted test but no notification / can't access":
+  1. **cvp-submit-test now emails staff** — `sendMailgunOperationalEmail` to active `staff_users.role='recruitment_grader'` (fallback `CVP_RECRUITMENT_OPS_EMAIL` → `vm@cethos.com`). Tag `staff-test-submitted`. Subject "Test submitted: APP-XX — Name", link to `${ADMIN_PORTAL_URL}/admin/recruitment/{app_id}`.
+  2. **"Tests to Review" tab widened** — old filter was `status IN ('test_submitted','assessed')`. New PostgREST `.or()`: also includes `status='approved' AND approved_by IS NULL` (AI auto-approved, no human confirmation). Auto-rejected combos still excluded (settled).
+  3. **submitted_file_path is now NULL for text-only submissions** — was previously a bogus path `vendor/tests/{app_id}/{token}` that pointed to no real storage object. Inline text was actually in `draft_content`. File uploads still set the real storage path.
+- **Rationale:** Pre-fix, in production 4 of last 7 test submissions auto-approved straight past the review queue. Staff had no email pinging them and the tab silently hid them. The file-path artifact muddled the audit trail (ISO 17100 reproducibility relies on accurate storage references).
+- **Alternatives considered:** (a) Adding a `staff_reviewed_at` column for explicit reviewed-flag — deferred; the `approved_by IS NULL` semantic carries the same info without a migration. (b) Including auto-rejected combos in the queue — deferred; would clutter the queue without clear staff-action value. Surface only if vendor complaints continue.
+- **Status:** active. Vendor-side PR open at `claude/notify-staff-test-submitted`; admin-side change in `claude/busy-kare-711f11`.
+- **Affects:** `D:\cethos-vendor/supabase/functions/cvp-submit-test/index.ts` (deployed to `lmzoyezvsjgsxveoakdr` 2026-05-15) + `client/pages/admin/RecruitmentList.tsx`. Adjacent context not addressed: 28 expired submission rows from the late-April batch (48h TTL → 240h now) — those applicants likely never finished. Worth a recovery sweep if more complaints surface.
+
 ### 2026-05-14 — Security audit v2 lockdown (anon-EXECUTE on SECURITY DEFINER mutators + RLS on leaky tables)
 - **Decision:** Sixth lockdown migration of the day. The emergency / v2 / v3 / v4 / v5 passes had closed the obvious customer-data leaks; the audit v2 re-run found two more tiers that none of them touched:
   1. **SECURITY DEFINER mutator functions still anon-callable** — `purge_storage_bucket`, `apply_customer_credit`, `create_invoice_from_order` (both overloads), `delete_document_group`, `refresh_daily_exchange_rate`, `recalculate_order_totals`, plus 21 other mutators. All revocable in one migration because each one is reached from the admin UI via authenticated session — revoking anon EXECUTE doesn't break admin.

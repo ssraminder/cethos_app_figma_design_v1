@@ -41,10 +41,15 @@ const TAB_LABELS: Record<string, string> = {
   waitlist: "Waitlist",
 };
 
-// "Tests to Review" — applicants with at least one combination that's just
-// landed (test_submitted) or graded but borderline / needing staff judgement
-// (assessed). Approved/rejected combos are excluded — those are settled.
-const TESTS_REVIEW_COMBO_STATUSES = ["test_submitted", "assessed"];
+// "Tests to Review" — applicants with at least one combination needing staff
+// eyes. Three cases:
+//   1. test_submitted — just landed, AI hasn't graded yet
+//   2. assessed — AI graded as borderline (60-74)
+//   3. approved + approved_by IS NULL — AI auto-approved (>=75), no human
+//      has confirmed it yet
+// Rejected combos are intentionally excluded — those are settled by AI.
+const TESTS_REVIEW_OR_FILTER =
+  "status.in.(test_submitted,assessed),and(status.eq.approved,approved_by.is.null)";
 
 const STATUS_LABELS: Record<string, string> = {
   submitted: "Submitted",
@@ -152,12 +157,12 @@ export default function RecruitmentList() {
       })
     );
     // "Tests to Review" — distinct applicants with at least one combo in
-    // test_submitted or assessed status.
+    // test_submitted, assessed, or AI auto-approved (approved + approved_by null).
     try {
       const { data } = await supabase
         .from("cvp_test_combinations")
         .select("application_id")
-        .in("status", TESTS_REVIEW_COMBO_STATUSES);
+        .or(TESTS_REVIEW_OR_FILTER);
       const ids = new Set((data ?? []).map((r) => (r as { application_id: string }).application_id));
       counts.tests = ids.size;
     } catch {
@@ -171,14 +176,15 @@ export default function RecruitmentList() {
     setLoading(true);
     try {
       // Build the base id list. The "tests" tab pulls applicant ids from
-      // cvp_test_combinations (any combo in test_submitted/assessed). Every
-      // other tab is a flat status filter on cvp_applications.
+      // cvp_test_combinations (any combo in test_submitted, assessed, or AI
+      // auto-approved). Every other tab is a flat status filter on
+      // cvp_applications.
       let appIds: string[] | null = null;
       if (activeTab === "tests") {
         const { data: comboRows, error: comboErr } = await supabase
           .from("cvp_test_combinations")
           .select("application_id")
-          .in("status", TESTS_REVIEW_COMBO_STATUSES);
+          .or(TESTS_REVIEW_OR_FILTER);
         if (comboErr) throw comboErr;
         appIds = Array.from(
           new Set((comboRows ?? []).map((r) => (r as { application_id: string }).application_id))
