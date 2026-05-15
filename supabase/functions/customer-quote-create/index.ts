@@ -26,20 +26,59 @@ serve(async (req: Request) => {
     const {
       source_language_id,
       target_language_id,
+      target_language_other,
       partner_id,
       partner_code,
       partner_rate,
       referral_url,
+      entry_point,
+      source_url,
+      source_location,
+      expires_at,
+      ad_tracking,
     } = body ?? {};
 
     const admin = await getAdminClient();
 
+    const allowedEntryPoints = new Set([
+      "customer_web",
+      "website_embed",
+    ]);
+    const resolvedEntryPoint =
+      typeof entry_point === "string" && allowedEntryPoints.has(entry_point)
+        ? entry_point
+        : "customer_web";
+
     const insertRow: Record<string, unknown> = {
       status: "draft",
-      entry_point: "customer_web",
+      entry_point: resolvedEntryPoint,
     };
     if (source_language_id) insertRow.source_language_id = source_language_id;
     if (target_language_id) insertRow.target_language_id = target_language_id;
+    if (typeof target_language_other === "string" && target_language_other.trim()) {
+      insertRow.target_language_other = target_language_other.trim();
+    }
+    if (typeof source_url === "string") insertRow.source_url = source_url;
+    if (typeof source_location === "string") insertRow.source_location = source_location;
+    if (typeof expires_at === "string") insertRow.expires_at = expires_at;
+
+    if (ad_tracking && typeof ad_tracking === "object") {
+      const adFields = [
+        "gclid",
+        "gbraid",
+        "wbraid",
+        "ad_click_time",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_content",
+        "utm_term",
+      ] as const;
+      for (const k of adFields) {
+        const v = (ad_tracking as Record<string, unknown>)[k];
+        if (typeof v === "string" && v.length > 0) insertRow[k] = v;
+      }
+    }
 
     if (partner_id) {
       insertRow.partner_id = partner_id;

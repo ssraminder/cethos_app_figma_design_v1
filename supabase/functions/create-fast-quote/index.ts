@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { calculateMultiPageBundleDiscount } from "../_shared/multi-page-discount.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -272,6 +271,7 @@ serve(async (req: Request) => {
       const baseRate = Number(documents?.[0]?.baseRate ?? documents?.[0]?.perPageRate ?? 65);
       const langMult = Number(pricing?.languageMultiplier ?? 1.0);
       const hasOverride = Boolean(pricing?.baseRateOverride);
+      const { calculateMultiPageBundleDiscount } = await import("../_shared/multi-page-discount.ts");
       const discount = calculateMultiPageBundleDiscount(totalBillable, baseRate, langMult, hasOverride);
       if (discount.applies) {
         // Remove any prior auto bundle adjustments for this quote
