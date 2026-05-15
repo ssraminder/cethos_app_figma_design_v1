@@ -18,6 +18,23 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-15 — Stranded-applicant recovery + relaxed grading thresholds (75/60 → 70/55)
+- **Decision:** Re-issued translation tests to all 23 stranded EN→Target applicants at `difficulty='beginner'` (their old 48h-TTL tokens had expired; 240h TTL now). Simultaneously relaxed `cvp-assess-test` thresholds globally: auto-approve ≥70 (was 75), staff review 55–69 (was 60–74), auto-reject <55 (was <60). The grading relaxation applies to every future submission, not just this batch.
+- **Rationale:** User asked for both changes together — beginner-level tests paired with intermediate-level grading would unfairly fail the recovery cohort. Lowering by 5 points keeps the relative bar in place. Phrase from the user: "Grading should be little relaxed as well." Persian (Farsi) dominates the recovery — 20 of 23 applicants; Dari × 2, Spanish (Spain) × 2.
+- **Scope:** EN→Target source filter + general-domain only (non-general combos stay staff-driven per existing auto-send-General policy). Used existing `cvp-send-tests` path directly (not the chooser flow) since these tokens are already issued.
+- **Status:** active. 24 tests in flight as of 2026-05-15 21:07 UTC, 240h TTL.
+- **Affects:** `cvp-assess-test/index.ts` thresholds (PR #175 vendor repo). 24 new `cvp_test_submissions` rows; 24 `cvp_test_combinations` flipped to `test_sent`. No schema change.
+
+### 2026-05-15 — Test-or-quiz routing: full P1 + P2 rollout end-to-end
+- **Decision:** Shipped the entire applicant-choice test-or-quiz routing in one session: schema (P0/P1), edge functions (P1), frontend pages (P1.5), followup cron extension (P1.6), admin UI Assessment Path panel (P2), AND Tier-A content (24 questions × 5 languages = 120 questions plus 16 cross-language baseline rows for research + technical competences).
+- **Pilot languages:** Spanish (Spain), French, German, Italian, Portuguese (Brazil) — picked for model confidence; quiz path now functional for any applicant targeting these. Persian (Farsi, 72 applicants), Dari, and others fall back to test-only — quiz routing hits the `insufficient_quiz_questions` gate.
+- **Files shipped this session (sequence of PRs):**
+  - Admin: #623 (P1 schema), #624 (Tier-A content), #625 (admin UI Assessment Path panel)
+  - Vendor: #173 (cvp-preview-quiz + staff-auth hardening), #174 (P1 edge functions + prescreen rewire), #175 (relax thresholds), #176 (frontend ChooseAssessment + QuizSubmission), #177 (cron extension)
+- **Pending follow-ups (not blockers):** Native-speaker review of the 5 quiz seeds (admin UI now has a per-language "Preview" button that fires cvp-preview-quiz to staff's inbox — legitimate channel). Phase 3 content (Persian / Dari / Pashto / Somali / Khmer) needs native review before authoring. Phase 2 (domain-specific quiz variants) deferred.
+- **Status:** active. Production end-to-end as of 2026-05-15 ~21:30 UTC.
+- **Affects:** large surface — `iso_competence_quizzes`, `cvp_applications`, `cvp_test_combinations`, new `cvp_quiz_submissions` table, 5 new edge functions, 1 modified edge function (cvp-prescreen-application + cvp-check-test-followups + cvp-assess-test), 2 new applicant-facing pages, 1 admin UI panel.
+
 ### 2026-05-15 — Test-or-quiz routing: applicant choice (revised same-day from "both by default")
 - **Decision:** The applicant picks ONE of two paths via a "Choose your assessment" landing page (`/choose/{token}`) reached from the V3 invitation: (a) translation test(s) — current 75/60 thresholds — or (b) ISO competence quiz — 80/70 thresholds. Choice applies to all pending combinations on the application. Staff can pre-select to bypass the chooser.
 - **Rationale:** The user iterated to this position after first agreeing to "both required" (option b in the original framing). Reason given: "the applicant should receive an option to either take a translation test, or the quiz." Applicant choice is cleaner UX, respects different applicant profiles (some prefer applied-skill demonstration, others prefer knowledge demonstration), and is still ISO-defensible — quiz path covers §6.1.2 competences #1–#6 theoretically with §6.1.3 (experience-or-degree prerequisite) backing the applied-skill claim.
