@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Mail, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { getCustomerQuoteData } from "@/lib/customer-quote-api";
 import { useQuote } from "@/context/QuoteContext";
 
 interface ProcessingStatusProps {
@@ -48,19 +49,18 @@ export default function ProcessingStatus({
   const [customerEmail, setCustomerEmail] = useState("");
   const [quoteNumber, setQuoteNumber] = useState("");
 
-  // Helper: fetch quote details and show the review-required confirmation screen
+  // Helper: fetch quote details and show the review-required confirmation screen.
+  // Reads via customer-quote-get edge function — direct PostgREST on `quotes`
+  // is blocked by the May 14 RLS lockdown for the anon role.
   const showReviewConfirmation = async () => {
-    if (!supabase) return;
-    const { data: quoteDetails } = await supabase
-      .from("quotes")
-      .select("quote_number, customers(email)")
-      .eq("id", quoteId)
-      .single();
-
-    setCustomerEmail(
-      (quoteDetails?.customers as any)?.email || ""
-    );
-    setQuoteNumber(quoteDetails?.quote_number || "");
+    try {
+      const snap = await getCustomerQuoteData(quoteId);
+      const q = snap.quote as any;
+      setCustomerEmail(q?.customer?.email || "");
+      setQuoteNumber(q?.quote_number || "");
+    } catch (err) {
+      console.warn("showReviewConfirmation: customer-quote-get failed:", err);
+    }
     setReviewRequired(true);
   };
 
@@ -95,109 +95,59 @@ export default function ProcessingStatus({
     }
   }, [hasTimedOut]);
 
-  // Fetch current status and subscribe to realtime updates
+  // Fetch current status via customer-quote-get edge function.
+  // The May 14 RLS lockdown blocks anon SELECT on `quotes` + `quote_files`,
+  // so direct PostgREST reads silently return empty and Supabase realtime
+  // never delivers events for filtered-out rows either. Polling the edge
+  // function (service-role-backed, capability-keyed on quote_id) replaces
+  // both the .from() read and the realtime subscription.
   useEffect(() => {
-    if (!quoteId || !supabase) return;
+    if (!quoteId) return;
+    let cancelled = false;
 
-    // Initial fetch
     const fetchStatus = async () => {
-      if (!supabase) return;
+      try {
+        const snap = await getCustomerQuoteData(quoteId);
+        if (cancelled) return;
 
-      const { data: quote } = await supabase
-        .from("quotes")
-        .select("processing_status, status")
-        .eq("id", quoteId)
-        .single();
+        const newStatus = (snap.quote as any)?.processing_status as QuoteStatus | undefined;
+        if (newStatus) setQuoteStatus(newStatus);
 
-      if (quote) {
-        setQuoteStatus(quote.processing_status);
-      }
+        const files = snap.files || [];
+        if (files.length > 0) {
+          const completed = files.filter(
+            (f: any) => f.ai_processing_status === "completed",
+          ).length;
+          const progressPercent = Math.round((completed / files.length) * 100);
+          setProgress(progressPercent);
 
-      // Fetch file progress
-      const { data: files } = await supabase
-        .from("quote_files")
-        .select("processing_status")
-        .eq("quote_id", quoteId);
-
-      if (files) {
-        const completed = files.filter(
-          (f) => f.processing_status === "complete"
-        ).length;
-        const total = files.length;
-        const progressPercent =
-          total > 0 ? Math.round((completed / total) * 100) : 0;
-        setProgress(progressPercent);
-
-        // Update steps based on progress
-        if (progressPercent >= 50 && progressPercent < 100) {
-          setSteps([
-            { label: "Files uploaded", status: "completed" },
-            { label: "Translation details saved", status: "completed" },
-            { label: "Analyzing documents...", status: "completed" },
-            { label: "Calculating pricing", status: "processing" },
-          ]);
-        } else if (progressPercent >= 100) {
-          setSteps([
-            { label: "Files uploaded", status: "completed" },
-            { label: "Translation details saved", status: "completed" },
-            { label: "Analyzing documents...", status: "completed" },
-            { label: "Calculating pricing", status: "completed" },
-          ]);
-        }
-      }
-    };
-
-    fetchStatus();
-
-    // Subscribe to realtime updates
-    if (!supabase) return;
-
-    const channel = supabase
-      .channel(`quote-${quoteId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "quotes",
-          filter: `id=eq.${quoteId}`,
-        },
-        (payload: any) => {
-          const newStatus = payload.new.processing_status as QuoteStatus;
-          setQuoteStatus(newStatus);
-
-          if (newStatus === "quote_ready" || newStatus === "completed") {
-            setProgress(100);
+          if (progressPercent >= 50 && progressPercent < 100) {
+            setSteps([
+              { label: "Files uploaded", status: "completed" },
+              { label: "Translation details saved", status: "completed" },
+              { label: "Analyzing documents...", status: "completed" },
+              { label: "Calculating pricing", status: "processing" },
+            ]);
+          } else if (progressPercent >= 100) {
             setSteps([
               { label: "Files uploaded", status: "completed" },
               { label: "Translation details saved", status: "completed" },
               { label: "Analyzing documents...", status: "completed" },
               { label: "Calculating pricing", status: "completed" },
             ]);
-          } else if (newStatus === "review_required") {
-            showReviewConfirmation();
           }
         }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "quote_files",
-          filter: `quote_id=eq.${quoteId}`,
-        },
-        () => {
-          // Refresh progress when file status changes
-          fetchStatus();
-        }
-      )
-      .subscribe();
+      } catch (err) {
+        if (!cancelled) console.warn("ProcessingStatus poll failed:", err);
+      }
+    };
+
+    fetchStatus();
+    const intervalId = setInterval(fetchStatus, 2000);
 
     return () => {
-      if (supabase) {
-        supabase.removeChannel(channel);
-      }
+      cancelled = true;
+      clearInterval(intervalId);
     };
   }, [quoteId]);
 
