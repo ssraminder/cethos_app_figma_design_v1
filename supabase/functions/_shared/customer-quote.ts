@@ -77,11 +77,12 @@ export const QUOTE_CUSTOMER_UPDATABLE_FIELDS = new Set<string>([
 export const ALLOWED_STATUS_TRANSITIONS: Record<string, Set<string>> = {
   draft: new Set(["details_pending", "lead", "pending_payment", "in_review"]),
   details_pending: new Set(["lead", "pending_payment", "in_review"]),
-  lead: new Set(["pending_payment", "in_review"]),
+  lead: new Set(["pending_payment", "in_review", "checkout_started"]),
   processing: new Set(["pending_payment", "in_review", "lead"]),
   analyzing: new Set(["pending_payment", "in_review", "lead"]),
   in_review: new Set(["pending_payment"]),
   pending_payment: new Set(["pending_payment", "in_review"]),
+  checkout_started: new Set(["pending_payment", "in_review", "lead"]),
   revision_needed: new Set(["processing"]),
 };
 
