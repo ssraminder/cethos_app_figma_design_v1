@@ -32,6 +32,8 @@ import {
   GraduationCap,
   FileType2,
   ShieldCheck,
+  Languages,
+  Stamp,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -152,6 +154,18 @@ const NAV_ITEMS: NavItem[] = [
     path: "/admin/iso-quizzes",
     icon: GraduationCap,
     section: "Vendors",
+  },
+  {
+    label: "Review Jobs",
+    path: "/admin/tr/jobs",
+    icon: Languages,
+    section: "Translation Review",
+  },
+  {
+    label: "QM Certified",
+    path: "/admin/tr/jobs?kind=qm_certified",
+    icon: Stamp,
+    section: "Translation Review",
   },
   {
     label: "Trainings",

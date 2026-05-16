@@ -66,6 +66,9 @@ import AdminOrdersList from "./pages/admin/AdminOrdersList";
 import AdminProjectDetail from "./pages/admin/AdminProjectDetail";
 import AdminProjectsList from "./pages/admin/AdminProjectsList";
 import AdminCreateOrder from "./pages/admin/AdminCreateOrder";
+import AdminReviewJobsList from "./pages/admin/tr/AdminReviewJobsList";
+import AdminReviewJobNew from "./pages/admin/tr/AdminReviewJobNew";
+import AdminReviewJobDetail from "./pages/admin/tr/AdminReviewJobDetail";
 import StaffTasks from "./pages/admin/StaffTasks";
 import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
 import AdminAIAnalytics from "./pages/admin/AdminAIAnalytics";
@@ -372,6 +375,9 @@ const App = () => (
                     <Route path="orders/:id" element={<AdminOrderDetail />} />
                     <Route path="projects" element={<AdminProjectsList />} />
                     <Route path="projects/:id" element={<AdminProjectDetail />} />
+                    <Route path="tr/jobs" element={<AdminReviewJobsList />} />
+                    <Route path="tr/jobs/new" element={<AdminReviewJobNew />} />
+                    <Route path="tr/jobs/:id" element={<AdminReviewJobDetail />} />
                     <Route path="partners" element={<AdminPartners />} />
                     <Route path="settings" element={<AdminSettings />} />
                     <Route
