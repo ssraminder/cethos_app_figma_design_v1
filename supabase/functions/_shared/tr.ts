@@ -42,7 +42,8 @@ export async function writeAudit(
     payload?: Record<string, unknown>;
   },
 ): Promise<void> {
-  const { error } = await sb.from("audit_log").insert({
+  // audit_log lives in the tr.* schema, not public.
+  const { error } = await tr(sb).from("audit_log").insert({
     job_id: args.job_id,
     action: args.action,
     actor_id: args.actor_id ?? null,
