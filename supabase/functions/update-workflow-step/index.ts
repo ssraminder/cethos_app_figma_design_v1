@@ -22,10 +22,96 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { notifyVendorAssignment } from "../_shared/notify-vendor-assignment.ts";
+import {
+  notifyVendorStepApproved,
+  notifyVendorRevisionRequested,
+  notifyCustomerWorkflowCompleted,
+} from "../_shared/notify-step-lifecycle.ts";
 
 const CORS_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 function json(data: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
+}
+
+// Loads the customer + order context for the workflow-completed email.
+// Returns null (and logs) if the order has no customer attached. Wrapped
+// in try/catch so a missing lookup never breaks the response.
+async function loadWorkflowCompletedContext(supabase: any, step: any): Promise<any | null> {
+  try {
+    if (!step?.order_id) return null;
+    const { data: orderRow } = await supabase
+      .from("orders")
+      .select("id, order_number, customer_id")
+      .eq("id", step.order_id)
+      .maybeSingle();
+    if (!orderRow?.customer_id) return null;
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("id, full_name, email")
+      .eq("id", orderRow.customer_id)
+      .maybeSingle();
+    if (!customer?.email) return null;
+    return {
+      supabase,
+      customer: { id: customer.id, full_name: customer.full_name, email: customer.email },
+      order: { id: orderRow.id, order_number: orderRow.order_number },
+      workflowId: step.workflow_id,
+    };
+  } catch (e: any) {
+    console.error("loadWorkflowCompletedContext failed:", e?.message || e);
+    return null;
+  }
+}
+
+// Loads the vendor + order + payable context needed by step-lifecycle emails
+// (approve, request_revision, mark invoiced, mark paid). Returns null if the
+// step has no vendor (e.g. internal_work step) — those steps don't generate
+// vendor-facing emails. Never throws; logs and returns null on lookup failure
+// so a missing related row can't break the parent state transition.
+async function loadStepLifecycleContext(supabase: any, step: any): Promise<any | null> {
+  try {
+    if (!step?.vendor_id) return null;
+    const [{ data: vendor }, { data: orderRow }, { data: payable }] = await Promise.all([
+      supabase.from("vendors").select("id, full_name, email, additional_emails").eq("id", step.vendor_id).maybeSingle(),
+      step.order_id
+        ? supabase.from("orders").select("id, order_number").eq("id", step.order_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase
+        .from("vendor_payables")
+        .select("id, total, currency, payment_method, payment_reference, vendor_invoice_number, vendor_invoice_date, status")
+        .eq("workflow_step_id", step.id)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    if (!vendor?.email || !orderRow) return null;
+    return {
+      supabase,
+      vendor: {
+        id: vendor.id,
+        full_name: vendor.full_name,
+        email: vendor.email,
+        additional_emails: Array.isArray(vendor.additional_emails) ? vendor.additional_emails : [],
+      },
+      order: { id: orderRow.id, order_number: orderRow.order_number },
+      step: { id: step.id, name: step.name ?? null, step_number: step.step_number ?? null },
+      payable: payable
+        ? {
+            id: payable.id,
+            total: payable.total == null ? null : Number(payable.total),
+            currency: payable.currency || "CAD",
+            payment_method: payable.payment_method ?? null,
+            payment_reference: payable.payment_reference ?? null,
+            vendor_invoice_number: payable.vendor_invoice_number ?? null,
+            vendor_invoice_date: payable.vendor_invoice_date ?? null,
+          }
+        : null,
+    };
+  } catch (e: any) {
+    console.error("loadStepLifecycleContext failed:", e?.message || e);
+    return null;
+  }
 }
 
 // Statuses an offer can sit at where it still represents "live work"
@@ -307,6 +393,25 @@ serve(async (req: Request) => {
         const { data: allSteps } = await supabase.from("order_workflow_steps").select("status").eq("workflow_id", step.workflow_id);
         const allDone = allSteps?.every((s: any) => s.status === "approved" || s.status === "skipped");
         if (allDone) await supabase.from("order_workflows").update({ status: "completed" }).eq("id", step.workflow_id);
+        // Fire-and-forget vendor email. Wrapped so a Brevo / DB hiccup
+        // never fails the approve write.
+        try {
+          const ctx = await loadStepLifecycleContext(supabase, step);
+          if (ctx) await notifyVendorStepApproved(ctx);
+        } catch (e: any) {
+          console.error("step_approved email fan-out failed:", e?.message || e);
+        }
+        // When this approve completes the whole workflow, fire the
+        // customer-facing "order complete" email. Independent try/catch
+        // so a customer-side hiccup never blocks the response.
+        if (allDone) {
+          try {
+            const customerCtx = await loadWorkflowCompletedContext(supabase, step);
+            if (customerCtx) await notifyCustomerWorkflowCompleted(customerCtx);
+          } catch (e: any) {
+            console.error("workflow_completed email fan-out failed:", e?.message || e);
+          }
+        }
         return json({ success: true });
       }
       case "request_revision": {
@@ -314,6 +419,12 @@ serve(async (req: Request) => {
         await supabase.from("order_workflow_steps").update({ status: "revision_requested", rejection_reason: revisionReason || null, revision_count: (step.revision_count ?? 0) + 1, delivered_at: null }).eq("id", step_id);
         const { data: latestDelivery } = await supabase.from("step_deliveries").select("id").eq("step_id", step_id).order("version", { ascending: false }).limit(1).maybeSingle();
         if (latestDelivery) await supabase.from("step_deliveries").update({ review_status: "revision_requested", reviewed_by: body.staff_id || null, reviewed_at: new Date().toISOString(), review_feedback: revisionReason || null }).eq("id", latestDelivery.id);
+        try {
+          const ctx = await loadStepLifecycleContext(supabase, step);
+          if (ctx) await notifyVendorRevisionRequested({ ...ctx, reason: revisionReason ?? null });
+        } catch (e: any) {
+          console.error("revision_requested email fan-out failed:", e?.message || e);
+        }
         return json({ success: true });
       }
       case "start": { await supabase.from("order_workflow_steps").update({ status: "in_progress", started_at: new Date().toISOString() }).eq("id", step_id); return json({ success: true }); }

@@ -20,6 +20,7 @@ import {
   nextStatusFromItems,
   type RequestedItem,
 } from "../_shared/iso-recheck.ts";
+import { requireCronSecret } from "../_shared/require-cron-secret.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -36,6 +37,9 @@ function json(body: Record<string, unknown>, status = 200) {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  const authed = await requireCronSecret(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
 
   const sb = createClient(
     Deno.env.get("SUPABASE_URL")!,

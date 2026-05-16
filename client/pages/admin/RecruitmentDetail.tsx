@@ -133,6 +133,12 @@ interface Application {
   waitlist_language_pair: string | null;
   waitlist_notes: string | null;
   cv_storage_path: string | null;
+  // Applicant-choice routing (2026-05-15 — docs/qms/02-test-or-quiz-routing.md)
+  instrument_choice: 'test' | 'quiz' | null;
+  instrument_choice_at: string | null;
+  instrument_choice_by: string | null;
+  instrument_choice_token: string | null;
+  instrument_choice_token_expires_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -149,6 +155,7 @@ interface TestCombination {
   ai_assessment_result: Record<string, unknown> | null;
   approved_at: string | null;
   approved_rate: number | null;
+  instrument_kind: 'test' | 'quiz' | 'skip' | null;
   created_at: string;
 }
 
@@ -1205,6 +1212,259 @@ function Section({ title, defaultOpen = true, children }: { title: string; defau
       </button>
       {open && <div className="px-4 pb-4 border-t border-gray-100">{children}</div>}
     </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// AssessmentPathPanel — admin UI for the applicant-choice test-or-quiz routing.
+// See docs/qms/02-test-or-quiz-routing.md §6.
+//   - Displays cvp_applications.instrument_choice (or "Awaiting choice" /
+//     "Not invited yet").
+//   - Lets staff pre-select test|quiz on the applicant's behalf
+//     (bypasses the chooser email).
+//   - Lets staff switch path after a choice has been made (resets
+//     instrument_choice + re-issues the invitation).
+//   - Lets staff fire a per-target-language quiz-preview email to themselves
+//     via cvp-preview-quiz (staff JWT auth).
+// ----------------------------------------------------------------------------
+interface AssessmentPathPanelProps {
+  app: Application;
+  combinations: TestCombination[];
+  languages: Record<string, string>;
+  callEdgeFunction: (fnSlug: string, body: Record<string, unknown>) => Promise<unknown>;
+  staffId?: string;
+  staffEmail?: string;
+  onAfterAction: () => void;
+}
+
+function AssessmentPathPanel({
+  app,
+  combinations,
+  languages,
+  callEdgeFunction,
+  staffId,
+  staffEmail,
+  onAfterAction,
+}: AssessmentPathPanelProps) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [preselectChoice, setPreselectChoice] = useState<"test" | "quiz" | "">("");
+
+  const choice = app.instrument_choice;
+  const chosenAt = app.instrument_choice_at;
+  const chosenByStaff = !!app.instrument_choice_by;
+  const tokenActive =
+    !!app.instrument_choice_token &&
+    !!app.instrument_choice_token_expires_at &&
+    new Date(app.instrument_choice_token_expires_at).getTime() > Date.now();
+
+  // Distinct EN→Target target_languages across active combos — used for
+  // per-language quiz preview buttons.
+  const distinctTargets = Array.from(
+    new Set(
+      combinations
+        .filter((c) =>
+          ["pending", "test_sent", "test_submitted", "assessed", "approved", "skip_manual_review"].includes(c.status),
+        )
+        .map((c) => c.target_language_id),
+    ),
+  );
+
+  const handlePreselect = async () => {
+    if (!preselectChoice || !staffId) return;
+    setBusy("preselect");
+    try {
+      await callEdgeFunction("cvp-record-instrument-choice", {
+        applicationId: app.id,
+        choice: preselectChoice,
+        staffId,
+      });
+      toast.success(`Pre-selected ${preselectChoice} path; instrument dispatched.`);
+      onAfterAction();
+    } catch (err) {
+      toast.error(`Pre-select failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleSendInvitation = async () => {
+    setBusy("invite");
+    try {
+      await callEdgeFunction("cvp-send-instrument-choice-invitation", {
+        applicationId: app.id,
+        staffId,
+      });
+      toast.success("Choose-your-assessment invitation sent.");
+      onAfterAction();
+    } catch (err) {
+      toast.error(`Invitation failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleSwitchPath = async () => {
+    if (!confirm(
+      `Reset the applicant's choice and re-issue the chooser invitation? They'll see "${choice === "test" ? "quiz" : "test"}" as an option this time. Existing test/quiz tokens are NOT invalidated automatically — clean those up if needed.`,
+    )) return;
+    setBusy("switch");
+    try {
+      // Null the choice + re-issue invitation (cvp-send-instrument-choice-invitation
+      // already overwrites any existing token).
+      const { error } = await supabase
+        .from("cvp_applications")
+        .update({
+          instrument_choice: null,
+          instrument_choice_at: null,
+          instrument_choice_by: null,
+        })
+        .eq("id", app.id);
+      if (error) throw new Error(error.message);
+      await callEdgeFunction("cvp-send-instrument-choice-invitation", {
+        applicationId: app.id,
+        staffId,
+      });
+      toast.success("Choice reset; new chooser invitation sent.");
+      onAfterAction();
+    } catch (err) {
+      toast.error(`Switch path failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handlePreviewQuiz = async (targetLanguageId: string, languageLabel: string) => {
+    if (!staffEmail) {
+      toast.error("Staff email missing from session — cannot send preview to you.");
+      return;
+    }
+    setBusy(`preview-${targetLanguageId}`);
+    try {
+      await callEdgeFunction("cvp-preview-quiz", {
+        targetLanguageId,
+        recipientEmail: staffEmail,
+        languageLabel,
+      });
+      toast.success(`Quiz preview for ${languageLabel} sent to ${staffEmail}.`);
+    } catch (err) {
+      toast.error(`Preview failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Section title="Assessment Path (test or quiz)" defaultOpen={!choice}>
+      {/* Current state */}
+      <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+        {choice ? (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-sm">
+              <CheckCircle className="w-4 h-4 text-green-600" />
+              <span className="font-medium text-gray-900">
+                {choice === "test" ? "Translation test path" : "ISO competence quiz path"}
+              </span>
+              <span className="text-xs text-gray-500">
+                · chosen by {chosenByStaff ? "staff pre-selection" : "applicant"}
+                {chosenAt ? ` on ${format(new Date(chosenAt), "yyyy-MM-dd HH:mm")}` : ""}
+              </span>
+            </div>
+          </div>
+        ) : tokenActive ? (
+          <div className="flex items-center gap-2 text-sm text-amber-700">
+            <Clock className="w-4 h-4" />
+            <span>Awaiting applicant choice. Invitation valid until {format(new Date(app.instrument_choice_token_expires_at!), "yyyy-MM-dd HH:mm")}.</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <AlertTriangle className="w-4 h-4 text-gray-400" />
+            <span>No chooser invitation sent yet (prescreen may not have fired auto-send).</span>
+          </div>
+        )}
+      </div>
+
+      {/* Actions row */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {!choice && (
+          <>
+            <button
+              type="button"
+              onClick={handleSendInvitation}
+              disabled={busy !== null}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-md disabled:opacity-50"
+            >
+              {busy === "invite" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+              {tokenActive ? "Re-send invitation" : "Send chooser invitation"}
+            </button>
+            <div className="inline-flex items-center gap-1.5 ml-2">
+              <span className="text-xs text-gray-600">or pre-select:</span>
+              <select
+                value={preselectChoice}
+                onChange={(e) => setPreselectChoice(e.target.value as "test" | "quiz" | "")}
+                disabled={busy !== null}
+                className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              >
+                <option value="">— pick —</option>
+                <option value="test">Translation test</option>
+                <option value="quiz">ISO quiz</option>
+              </select>
+              <button
+                type="button"
+                onClick={handlePreselect}
+                disabled={busy !== null || !preselectChoice}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-800 text-white text-xs font-medium rounded-md disabled:opacity-50"
+              >
+                {busy === "preselect" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                Pre-select &amp; dispatch
+              </button>
+            </div>
+          </>
+        )}
+        {choice && (
+          <button
+            type="button"
+            onClick={handleSwitchPath}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-md disabled:opacity-50"
+          >
+            {busy === "switch" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Switch to {choice === "test" ? "quiz" : "test"} path
+          </button>
+        )}
+      </div>
+
+      {/* Quiz preview per target language */}
+      {distinctTargets.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-gray-100">
+          <p className="text-xs font-semibold text-gray-700 mb-2">Quiz content preview (staff only)</p>
+          <p className="text-xs text-gray-500 mb-2">
+            Emails the rendered 40-question quiz + answer key for the target
+            language to <span className="font-mono">{staffEmail ?? "your staff address"}</span>. Useful for reviewing content before applicants see it.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {distinctTargets.map((langId) => {
+              const label = languages[langId] ?? langId;
+              return (
+                <button
+                  key={langId}
+                  type="button"
+                  onClick={() => handlePreviewQuiz(langId, label)}
+                  disabled={busy !== null || !staffEmail}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 hover:bg-gray-50 text-xs font-medium text-gray-700 rounded-md disabled:opacity-50"
+                >
+                  {busy === `preview-${langId}` ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileSearch className="w-3.5 h-3.5" />
+                  )}
+                  Preview {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -4805,6 +5065,17 @@ export default function RecruitmentDetail() {
               </div>
             )}
           </Section>
+
+          {/* Assessment Path (test or quiz) */}
+          <AssessmentPathPanel
+            app={app}
+            combinations={combinations}
+            languages={languages}
+            callEdgeFunction={callEdgeFunction}
+            staffId={session?.staffId}
+            staffEmail={session?.staffEmail}
+            onAfterAction={fetchData}
+          />
 
           {/* Test Combinations */}
           <Section title={`Test Combinations (${combinations.length})`} defaultOpen={combinations.length > 0}>

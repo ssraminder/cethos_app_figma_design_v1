@@ -31,7 +31,7 @@ const QUOTE_SELECT = `
   billing_address, shipping_address,
   base_rate_override, partner_id, partner_code,
   entry_point, expires_at, saved_at,
-  customer:customers(id, full_name, email),
+  customer:customers(id, full_name, email, phone, company_name, customer_type),
   service:services(code, name),
   intended_use:intended_uses(code, name),
   delivery_option:delivery_options!quotes_delivery_option_id_fkey(id, name),
@@ -50,8 +50,7 @@ const ANALYSIS_SELECT = `
 
 const FILES_SELECT = `
   id, original_filename, storage_path, file_size, mime_type, upload_status,
-  ai_processing_status, file_category_id, needs_replacement, replacement_reason,
-  is_replacement, created_at
+  ai_processing_status, file_category_id, replacement_reason, created_at
 `;
 
 serve(async (req: Request) => {

@@ -26,6 +26,7 @@ import {
   type RequestedItem,
 } from "../_shared/iso-recheck.ts";
 import { alternatePathFor } from "../_shared/iso-alternate-paths.ts";
+import { requireCronSecret } from "../_shared/require-cron-secret.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -146,6 +147,17 @@ serve(async (req: Request) => {
       const body = await req.json();
       manualVendorId = body?.vendor_id;
     } catch { /* empty body is fine */ }
+  }
+
+  // Manual admin trigger (single vendor_id in body) goes through staff auth
+  // on the admin UI side; cron trigger sends the shared secret. Either way
+  // we need at least one of the two to pass.
+  const authed = await requireCronSecret(req);
+  if (!authed.ok && !manualVendorId) {
+    return new Response(
+      JSON.stringify({ success: false, error: authed.error }),
+      { status: authed.status, headers: { ...CORS, "Content-Type": "application/json" } },
+    );
   }
 
   const sb = createClient(

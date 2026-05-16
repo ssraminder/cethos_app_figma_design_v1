@@ -12,6 +12,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { requireCronSecret } from "../_shared/require-cron-secret.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -31,6 +32,9 @@ function json(body: Record<string, unknown>, status = 200): Response {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
+  const authed = await requireCronSecret(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
+
   const sb = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -49,11 +53,12 @@ serve(async (req: Request) => {
 
   const batchSize: number = schedule.batch_size ?? 10;
 
-  // 1) Pull the small recent-emails set FIRST so we can exclude already-
-  //    emailed vendors at PostgREST level. Previously we queried all 1469
-  //    vendors first, hit the 1000-row implicit cap, then used .in() with
-  //    a huge id list on notification_log — the URL got truncated and the
-  //    recentIds filter didn't catch all dedup'd rows, wasting batch slots.
+  // 1) Pull the recent-emails set so we can dedup in-memory. URL-level
+  //    .not("id","in","(...)") exclusion blows past PostgREST's URL
+  //    length limit once recent_count > ~200 (UUIDs are 37 chars), so
+  //    the candidate query silently returned 0 rows and the cron sat
+  //    on candidates:0 / sent:0 even with 1000+ vendors backlogged.
+  //    See incident 2026-05-14 → 2026-05-15.
   const dedupSince = new Date(Date.now() - DEDUP_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data: recentRows } = await sb
     .from("notification_log")
@@ -61,29 +66,27 @@ serve(async (req: Request) => {
     .eq("event_type", "vendor_activation_email")
     .gte("created_at", dedupSince)
     .not("recipient_id", "is", null);
-  const recentVendorIds = Array.from(
-    new Set((recentRows ?? []).map((r) => r.recipient_id as string).filter(Boolean)),
+  const recentVendorIdSet = new Set(
+    (recentRows ?? []).map((r) => r.recipient_id as string).filter(Boolean),
   );
 
-  // 2) Pull a candidate window of vendors that EXCLUDES recently-emailed
-  //    ones at SQL level. batchSize * 5 is plenty of headroom after CV/NDA
-  //    filtering, and keeps the URL short.
-  let vendorQ = sb
+  // 2) Pull a wide candidate window ordered by created_at ASC, then
+  //    exclude recent in-memory. We need enough rows that after dedup
+  //    we still have batchSize headroom for CV/NDA filtering — fetch
+  //    1000 (PostgREST cap), which comfortably covers up to ~970 recents.
+  const { data: vendorsRaw } = await sb
     .from("vendors")
     .select("id, full_name, email, vendor_type, created_at")
     .not("status", "in", "(suspended,inactive)")
     .not("email", "is", null)
     .order("created_at", { ascending: true })
-    .limit(Math.max(batchSize * 5, 50));
-  if (recentVendorIds.length > 0) {
-    vendorQ = vendorQ.not("id", "in", `(${recentVendorIds.join(",")})`);
-  }
-  const { data: vendors } = await vendorQ;
+    .limit(1000);
+  const vendors = (vendorsRaw ?? []).filter((v) => !recentVendorIdSet.has(v.id));
 
   if (!vendors || vendors.length === 0) {
     await sb.from("vendor_activation_email_schedule")
       .update({ last_run_at: new Date().toISOString(), last_run_sent: 0 }).eq("id", 1);
-    return json({ ok: true, sent: 0, candidates: 0, recent_dedup_count: recentVendorIds.length });
+    return json({ ok: true, sent: 0, candidates: 0, recent_dedup_count: recentVendorIdSet.size });
   }
 
   // 3) Check CV / NDA on the small candidate window.
@@ -111,7 +114,7 @@ serve(async (req: Request) => {
   if (eligible.length === 0) {
     await sb.from("vendor_activation_email_schedule")
       .update({ last_run_at: new Date().toISOString(), last_run_sent: 0 }).eq("id", 1);
-    return json({ ok: true, sent: 0, candidates: 0, total_eligible: 0, recent_dedup_count: recentVendorIds.length });
+    return json({ ok: true, sent: 0, candidates: 0, total_eligible: 0, recent_dedup_count: recentVendorIdSet.size });
   }
 
   // Delegate the actual send to vendor-send-activation-emails. That
@@ -122,11 +125,14 @@ serve(async (req: Request) => {
   // silently here (no body returned, sent/failed both 0). Anon JWT is
   // public anyway (it's in the vendor portal bundle).
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  // Use `||` not `??` so an empty-string env var falls back to the
-  // hardcoded key. Previously `??` was passing `""` through, producing
-  // `Bearer ` and a 401 UNAUTHORIZED_INVALID_JWT_FORMAT from the gateway.
-  const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") || "").trim()
-    || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
+  // Hardcoded — env-based lookup (via `??` and even `||`) keeps biting us:
+  // when SUPABASE_ANON_KEY in edge secrets is a stale/rotated value the
+  // fallback never triggers and the gateway 401s with
+  // UNAUTHORIZED_INVALID_JWT_FORMAT. The anon JWT is public anyway (it
+  // ships in the vendor portal bundle), so inlining it has zero security
+  // cost. v5 used this same pattern and worked; v6/v7 regressed by
+  // re-introducing env reads.
+  const anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
   let sentCount = 0;
   let failedCount = 0;
   let lastError: string | null = null;
@@ -172,7 +178,7 @@ serve(async (req: Request) => {
     sent: sentCount,
     failed: failedCount,
     candidates: eligible.length,
-    recent_dedup_count: recentVendorIds.length,
+    recent_dedup_count: recentVendorIdSet.size,
     last_error: lastError,
   });
 });

@@ -6,6 +6,10 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  notifyVendorPayableInvoiced,
+  notifyVendorPayablePaid,
+} from "../_shared/notify-step-lifecycle.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -18,6 +22,59 @@ function json(data: Record<string, unknown>, status = 200) {
     status,
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
+}
+
+// Loads everything notify-step-lifecycle helpers need to render an email
+// from just the payable id. Returns null (and logs) on lookup failure so a
+// missing related row can never fail the underlying status write.
+async function loadPayableLifecycleContext(supabase: any, payable_id: string): Promise<any | null> {
+  try {
+    const { data: payable } = await supabase
+      .from("vendor_payables")
+      .select(
+        "id, workflow_step_id, vendor_id, order_id, total, currency, payment_method, payment_reference, vendor_invoice_number, vendor_invoice_date",
+      )
+      .eq("id", payable_id)
+      .maybeSingle();
+    if (!payable) return null;
+    const [{ data: vendor }, { data: orderRow }, { data: step }] = await Promise.all([
+      supabase.from("vendors").select("id, full_name, email, additional_emails").eq("id", payable.vendor_id).maybeSingle(),
+      payable.order_id
+        ? supabase.from("orders").select("id, order_number").eq("id", payable.order_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      payable.workflow_step_id
+        ? supabase.from("order_workflow_steps").select("id, name, step_number").eq("id", payable.workflow_step_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    if (!vendor?.email || !orderRow) return null;
+    return {
+      supabase,
+      vendor: {
+        id: vendor.id,
+        full_name: vendor.full_name,
+        email: vendor.email,
+        additional_emails: Array.isArray(vendor.additional_emails) ? vendor.additional_emails : [],
+      },
+      order: { id: orderRow.id, order_number: orderRow.order_number },
+      step: {
+        id: step?.id ?? payable.workflow_step_id ?? null,
+        name: step?.name ?? null,
+        step_number: step?.step_number ?? null,
+      },
+      payable: {
+        id: payable.id,
+        total: payable.total == null ? null : Number(payable.total),
+        currency: payable.currency || "CAD",
+        payment_method: payable.payment_method ?? null,
+        payment_reference: payable.payment_reference ?? null,
+        vendor_invoice_number: payable.vendor_invoice_number ?? null,
+        vendor_invoice_date: payable.vendor_invoice_date ?? null,
+      },
+    };
+  } catch (e: any) {
+    console.error("loadPayableLifecycleContext failed:", e?.message || e);
+    return null;
+  }
 }
 
 serve(async (req: Request) => {
@@ -124,6 +181,21 @@ serve(async (req: Request) => {
         }
 
         console.log(`Payable ${payable_id}: ${payable.status} → ${status}`);
+
+        // Fire vendor email on invoiced + paid transitions. Wrapped so
+        // a Brevo or DB hiccup never fails the status write.
+        if (status === "invoiced" || status === "paid") {
+          try {
+            const ctx = await loadPayableLifecycleContext(supabase, payable_id);
+            if (ctx) {
+              if (status === "invoiced") await notifyVendorPayableInvoiced(ctx);
+              if (status === "paid") await notifyVendorPayablePaid(ctx);
+            }
+          } catch (e: any) {
+            console.error(`${status} email fan-out failed:`, e?.message || e);
+          }
+        }
+
         return json({ success: true });
       }
 

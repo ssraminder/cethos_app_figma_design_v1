@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/admin/StatCard";
 import { VendorActivationEmailModal } from "@/components/admin/VendorActivationEmailModal";
+import { VendorActivationDripProgress } from "@/components/admin/VendorActivationDripProgress";
 
 interface Vendor {
   id: string;
@@ -479,6 +480,10 @@ export default function AdminVendorsList() {
         <StatCard label="With Portal Access" value={stats.withPortalAccess} icon={Globe} color="blue" />
         <StatCard label="With Jobs" value={stats.withJobs} icon={Briefcase} color="amber" />
       </div>
+
+      <VendorActivationDripProgress
+        onOpenScheduleModal={() => setActivationModalOpen(true)}
+      />
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
