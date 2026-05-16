@@ -121,8 +121,8 @@ serve(async (req) => {
 
     messages.push({ role: "user", content: manifestText });
 
-    // Build system prompt server-side
-    const { data: systemPrompt } = await sb.rpc("build_system_prompt" as never, { p_job_id: job_id });
+    // Build system prompt server-side (RPC lives in tr.* schema)
+    const { data: systemPrompt } = await (sb as unknown as { schema: (s: string) => { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown }> } }).schema("tr").rpc("build_system_prompt", { p_job_id: job_id });
     const sysText = typeof systemPrompt === "string" ? systemPrompt : "(system prompt unavailable)";
 
     const startedAt = Date.now();
@@ -208,7 +208,7 @@ serve(async (req) => {
 
     let findingsCount = 0;
     for (const f of toolInput.findings ?? []) {
-      const findingNumber = await sb.rpc("next_finding_number" as never, { p_job_id: job_id, p_round: job.review_round }) as unknown as { data: number | null };
+      const findingNumber = await (sb as unknown as { schema: (s: string) => { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: number | null }> } }).schema("tr").rpc("next_finding_number", { p_job_id: job_id, p_round: job.review_round });
       const n = (findingNumber.data ?? 1);
       const insertRes = await tr(sb).from("findings").insert({
         job_id,

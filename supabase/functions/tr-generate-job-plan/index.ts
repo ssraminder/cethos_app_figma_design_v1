@@ -80,7 +80,7 @@ serve(async (req) => {
     const { data: files } = await tr(sb).from("job_files").select("id, pair_id, role, original_filename, mime_type, verified, expected_marker, actual_marker, category, custom_label").eq("job_id", job_id);
 
     // Build system prompt server-side (with locked decisions injected)
-    const { data: systemPrompt } = await sb.rpc("build_system_prompt" as never, { p_job_id: job_id });
+    const { data: systemPrompt } = await (sb as unknown as { schema: (s: string) => { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown }> } }).schema("tr").rpc("build_system_prompt", { p_job_id: job_id });
 
     // Resolve project number for plan metadata
     let projectNumber: string | null = null;
