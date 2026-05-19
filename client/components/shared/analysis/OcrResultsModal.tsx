@@ -168,6 +168,7 @@ interface CertificationType {
   code: string;
   price: number;
   is_active: boolean;
+  is_default?: boolean;
 }
 
 interface PricingRow {
@@ -1309,7 +1310,7 @@ export default function OcrResultsModal({
 
         const { data: certTypes } = await supabase
           .from("certification_types")
-          .select("id, name, code, price, is_active")
+          .select("id, name, code, price, is_active, is_default")
           .eq("is_active", true)
           .order("sort_order");
 
@@ -1354,7 +1355,11 @@ export default function OcrResultsModal({
       return;
     }
 
-    const defaultCert = certificationTypes.find(c => c.code === "notarization") || certificationTypes[0];
+    // Pick the cert type flagged as default in the DB (currently
+    // "Oath Commissioner"). Falls back to the first row if no default is set
+    // — never hardcode a specific code here.
+    const defaultCert =
+      certificationTypes.find((c) => c.is_default) || certificationTypes[0];
 
     const rows: PricingRow[] = completedResults.map((r) => {
       const hasSaved = !!r.pricingSavedAt;
@@ -1772,8 +1777,7 @@ export default function OcrResultsModal({
 
     const nextIndex = pricingRows.length;
     const defaultCert =
-      certificationTypes.find((c) => c.code === "notarization") ||
-      certificationTypes[0];
+      certificationTypes.find((c) => c.is_default) || certificationTypes[0];
     // Use the effective rate from existing pricing rows if available,
     // otherwise fall back to the system base rate
     const existingRate = pricingRows.length > 0
