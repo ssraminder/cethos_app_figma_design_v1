@@ -99,6 +99,50 @@ const TIER_COLORS: Record<string, string> = {
   expert: "bg-purple-100 text-purple-700",
 };
 
+// Per-combination chip helpers for the "Tests to Review" tab. The Status
+// column on that tab shows one chip per combo (Domain — Outcome) instead of
+// the application-level status, so staff can see test results at a glance.
+type ChipOutcome = "pass" | "borderline" | "fail" | "pending";
+
+const CHIP_LABEL: Record<ChipOutcome, string> = {
+  pass: "Pass",
+  borderline: "Borderline",
+  fail: "Fail",
+  pending: "Pending",
+};
+
+const CHIP_COLOR: Record<ChipOutcome, string> = {
+  pass: "bg-green-100 text-green-700",
+  borderline: "bg-yellow-100 text-yellow-700",
+  fail: "bg-red-100 text-red-700",
+  pending: "bg-gray-100 text-gray-600",
+};
+
+const DOMAIN_LABEL: Record<string, string> = {
+  legal: "Legal",
+  medical: "Medical",
+  immigration: "Immigration",
+  financial: "Financial",
+  technical: "Technical",
+  general: "General",
+};
+
+// Combos in pending / test_assigned / test_sent / no_test_available / skipped
+// have nothing useful to render — drop them.
+const CHIP_VISIBLE_STATUSES = new Set([
+  "test_submitted",
+  "assessed",
+  "approved",
+  "rejected",
+]);
+
+function chipOutcome(c: ComboChip): ChipOutcome {
+  if (c.ai_score == null) return "pending";
+  if (c.ai_score >= 75) return "pass";
+  if (c.ai_score >= 60) return "borderline";
+  return "fail";
+}
+
 // ---------- Types ----------
 
 interface Application {
@@ -115,6 +159,14 @@ interface Application {
   updated_at: string;
 }
 
+interface ComboChip {
+  id: string;
+  application_id: string;
+  domain: string | null;
+  ai_score: number | null;
+  status: string;
+}
+
 type SortField = "full_name" | "ai_prescreening_score" | "created_at";
 
 const PAGE_SIZE = 25;
@@ -125,6 +177,7 @@ export default function RecruitmentList() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [applications, setApplications] = useState<Application[]>([]);
+  const [combosByApp, setCombosByApp] = useState<Record<string, ComboChip[]>>({});
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({
@@ -200,6 +253,7 @@ export default function RecruitmentList() {
         );
         if (appIds.length === 0) {
           setApplications([]);
+          setCombosByApp({});
           setTotalCount(0);
           setLoading(false);
           return;
@@ -235,11 +289,36 @@ export default function RecruitmentList() {
       const { data, count, error } = await query;
       if (error) throw error;
 
-      setApplications((data as Application[]) || []);
+      const rows = (data as Application[]) || [];
+      setApplications(rows);
       setTotalCount(count ?? 0);
+
+      // Tests tab: load all combos for the visible applicants so the Status
+      // column can render one chip per combo (Domain — Pass/Fail/Borderline/
+      // Pending). Other tabs keep the application-level badge — no fetch.
+      if (activeTab === "tests" && !isSearching && rows.length > 0) {
+        const ids = rows.map((r) => r.id);
+        const { data: comboData, error: comboErr } = await supabase
+          .from("cvp_test_combinations")
+          .select("id, application_id, domain, ai_score, status")
+          .in("application_id", ids);
+        if (comboErr) throw comboErr;
+        const grouped: Record<string, ComboChip[]> = {};
+        for (const c of (comboData ?? []) as ComboChip[]) {
+          if (!CHIP_VISIBLE_STATUSES.has(c.status)) continue;
+          (grouped[c.application_id] ||= []).push(c);
+        }
+        for (const id of Object.keys(grouped)) {
+          grouped[id].sort((a, b) => (a.domain ?? "").localeCompare(b.domain ?? ""));
+        }
+        setCombosByApp(grouped);
+      } else {
+        setCombosByApp({});
+      }
     } catch (err) {
       console.error("Failed to fetch applications:", err);
       setApplications([]);
+      setCombosByApp({});
       setTotalCount(0);
     } finally {
       setLoading(false);
@@ -521,14 +600,41 @@ export default function RecruitmentList() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          STATUS_COLORS[app.status] ||
-                          "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {STATUS_LABELS[app.status] || app.status}
-                      </span>
+                      {activeTab === "tests" && !search.trim() ? (
+                        (() => {
+                          const combos = combosByApp[app.id] ?? [];
+                          if (combos.length === 0) {
+                            return <span className="text-xs text-gray-400">—</span>;
+                          }
+                          return (
+                            <div className="flex flex-col gap-1 items-start">
+                              {combos.map((c) => {
+                                const outcome = chipOutcome(c);
+                                const domainLabel = c.domain
+                                  ? DOMAIN_LABEL[c.domain] ?? c.domain
+                                  : "—";
+                                return (
+                                  <span
+                                    key={c.id}
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${CHIP_COLOR[outcome]}`}
+                                  >
+                                    {domainLabel} — {CHIP_LABEL[outcome]}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            STATUS_COLORS[app.status] ||
+                            "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {STATUS_LABELS[app.status] || app.status}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                       {format(new Date(app.created_at), "MMM d, yyyy")}
