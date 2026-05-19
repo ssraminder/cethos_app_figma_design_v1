@@ -280,6 +280,55 @@ interface FeedbackRoundRow {
 
 interface Language { id: string; name: string }
 
+interface QuizResponse {
+  question_id: string;
+  selected_option: string;
+}
+
+interface QuizCompetenceBucket {
+  total: number;
+  correct: number;
+}
+
+interface QuizSubmission {
+  id: string;
+  application_id: string;
+  target_language_id: string;
+  token: string;
+  token_expires_at: string;
+  status: string;
+  responses: QuizResponse[] | null;
+  score_pct: number | string | null;
+  correct_count: number | null;
+  total_count: number | null;
+  competence_breakdown: Record<string, QuizCompetenceBucket> | null;
+  submitted_at: string | null;
+  created_at: string;
+}
+
+interface QuizQuestionOption {
+  label: string;
+  value: string;
+}
+
+interface QuizQuestion {
+  id: string;
+  competence_slug: string;
+  question: string;
+  options: QuizQuestionOption[];
+  correct_option: string;
+  explanation: string | null;
+  target_language_id: string | null;
+}
+
+const COMPETENCE_LABELS: Record<string, string> = {
+  linguistic_textual_competence: "Linguistic & textual",
+  cultural_competence: "Cultural",
+  domain_competence: "Domain",
+  research_competence: "Research",
+  technical_competence: "Technical",
+};
+
 // ---------- Helpers ----------
 
 function ScoreBadge({ label, value, type = "quality" }: { label: string; value: string; type?: "quality" | "recommendation" | "rate" }) {
@@ -3771,6 +3820,212 @@ function FlagWithFeedback({
   );
 }
 
+// ----------------------------------------------------------------------------
+// QuizSubmissionPanel — read-only review of a single applicant's ISO competence
+// quiz attempt. Visible regardless of pass/fail so staff can audit any
+// rejected, in-progress, or approved quiz. See docs/qms/02-test-or-quiz-routing.md.
+// ----------------------------------------------------------------------------
+function QuizSubmissionPanel({
+  submission,
+  questions,
+  languageLabel,
+}: {
+  submission: QuizSubmission;
+  questions: Record<string, QuizQuestion>;
+  languageLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const responses = submission.responses ?? [];
+  const responseByQuestionId = new Map(
+    responses.map((r) => [r.question_id, r.selected_option] as const),
+  );
+
+  const scorePct = submission.score_pct === null || submission.score_pct === undefined
+    ? null
+    : Number(submission.score_pct);
+  const scoreColor =
+    scorePct === null
+      ? "bg-gray-100 text-gray-600"
+      : scorePct >= 70
+        ? "bg-green-100 text-green-700"
+        : scorePct >= 60
+          ? "bg-yellow-100 text-yellow-700"
+          : "bg-red-100 text-red-700";
+
+  const breakdown = submission.competence_breakdown ?? {};
+  const breakdownEntries = Object.entries(breakdown);
+
+  // Group responses by competence using the looked-up question metadata so
+  // staff can scan errors per competence band.
+  type ResponseRow = {
+    question: QuizQuestion | null;
+    selected: string | null;
+    questionId: string;
+    competence: string;
+  };
+  const rows: ResponseRow[] = responses.map((r) => {
+    const q = questions[r.question_id] ?? null;
+    return {
+      question: q,
+      selected: r.selected_option,
+      questionId: r.question_id,
+      competence: q?.competence_slug ?? "unknown",
+    };
+  });
+  // Stable competence ordering matches the email/UI elsewhere.
+  const competenceOrder = [
+    "linguistic_textual_competence",
+    "cultural_competence",
+    "domain_competence",
+    "research_competence",
+    "technical_competence",
+  ];
+  rows.sort((a, b) => {
+    const ai = competenceOrder.indexOf(a.competence);
+    const bi = competenceOrder.indexOf(b.competence);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-100">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+            ISO competence quiz · {languageLabel}
+          </span>
+          <span className={`text-xs px-2 py-0.5 rounded font-medium ${scoreColor}`}>
+            {scorePct === null ? "Not submitted" : `${scorePct.toFixed(0)}%`}
+            {submission.correct_count !== null && submission.total_count !== null && (
+              <span className="ml-1 font-normal opacity-80">
+                ({submission.correct_count}/{submission.total_count})
+              </span>
+            )}
+          </span>
+          <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+            Status: {submission.status}
+          </span>
+        </div>
+        <div className="text-xs text-gray-500">
+          {submission.submitted_at
+            ? `Submitted ${format(new Date(submission.submitted_at), "MMM d, yyyy h:mm a")}`
+            : `Issued ${format(new Date(submission.created_at), "MMM d, yyyy h:mm a")}`}
+        </div>
+      </div>
+
+      {breakdownEntries.length > 0 && (
+        <div className="mt-2 grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {competenceOrder
+            .map((slug) => [slug, breakdown[slug]] as const)
+            .filter(([, b]) => !!b)
+            .map(([slug, b]) => {
+              const pct = b!.total > 0 ? (b!.correct / b!.total) * 100 : 0;
+              const cellColor =
+                pct >= 70 ? "text-green-700" : pct >= 60 ? "text-yellow-700" : "text-red-700";
+              return (
+                <div key={slug} className="rounded border border-gray-200 px-2 py-1.5">
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500">
+                    {COMPETENCE_LABELS[slug] ?? slug}
+                  </div>
+                  <div className={`text-sm font-semibold ${cellColor}`}>
+                    {b!.correct}/{b!.total}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      )}
+
+      {responses.length > 0 && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            className="text-xs font-medium text-cyan-700 hover:text-cyan-900"
+          >
+            {open ? "Hide" : "Show"} all {responses.length} responses
+          </button>
+          {open && (
+            <ol className="mt-2 space-y-2 list-decimal list-inside">
+              {rows.map((row, idx) => {
+                const q = row.question;
+                if (!q) {
+                  return (
+                    <li key={row.questionId} className="text-xs text-gray-500">
+                      <span className="font-mono">{row.questionId}</span> — applicant chose{" "}
+                      <span className="font-mono">{row.selected ?? "—"}</span> (question content
+                      not available)
+                    </li>
+                  );
+                }
+                const correct = q.correct_option === row.selected;
+                return (
+                  <li
+                    key={row.questionId}
+                    className={`rounded border px-3 py-2 text-xs ${
+                      correct ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                        {COMPETENCE_LABELS[q.competence_slug] ?? q.competence_slug}
+                      </span>
+                      <span
+                        className={`text-[10px] font-semibold ${
+                          correct ? "text-green-700" : "text-red-700"
+                        }`}
+                      >
+                        {correct ? "Correct" : "Incorrect"}
+                      </span>
+                    </div>
+                    <div className="text-gray-900 mb-1.5">{q.question}</div>
+                    <ul className="space-y-0.5">
+                      {q.options.map((opt) => {
+                        const isSelected = opt.value === row.selected;
+                        const isCorrect = opt.value === q.correct_option;
+                        return (
+                          <li
+                            key={opt.value}
+                            className={`flex items-center gap-2 ${
+                              isCorrect
+                                ? "text-green-800 font-semibold"
+                                : isSelected
+                                  ? "text-red-800"
+                                  : "text-gray-700"
+                            }`}
+                          >
+                            <span className="font-mono w-4">{opt.value}.</span>
+                            <span>{opt.label}</span>
+                            {isSelected && (
+                              <span className="text-[10px] uppercase tracking-wide">
+                                · chose
+                              </span>
+                            )}
+                            {isCorrect && !isSelected && (
+                              <span className="text-[10px] uppercase tracking-wide">
+                                · correct
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {!correct && q.explanation && (
+                      <div className="mt-1.5 text-gray-700 italic">
+                        Why: {q.explanation}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------- Component ----------
 
 export default function RecruitmentDetail() {
@@ -3780,6 +4035,8 @@ export default function RecruitmentDetail() {
   const [app, setApp] = useState<Application | null>(null);
   const [combinations, setCombinations] = useState<TestCombination[]>([]);
   const [submissions, setSubmissions] = useState<TestSubmission[]>([]);
+  const [quizSubmissions, setQuizSubmissions] = useState<QuizSubmission[]>([]);
+  const [quizQuestions, setQuizQuestions] = useState<Record<string, QuizQuestion>>({});
   const [testLibrary, setTestLibrary] = useState<Record<string, TestLibraryRow>>({});
   const [errorFeedback, setErrorFeedback] = useState<Record<string, ErrorFeedbackRow[]>>({});
   const [feedbackRounds, setFeedbackRounds] = useState<Record<string, FeedbackRoundRow>>({});
@@ -3852,6 +4109,41 @@ export default function RecruitmentDetail() {
         .order("created_at", { ascending: true });
       const subsList = (subs as TestSubmission[]) || [];
       setSubmissions(subsList);
+
+      // Fetch quiz submissions for this applicant (one per target language).
+      // Quiz path is parallel to translation tests; visible for all statuses
+      // so staff can audit rejected attempts too.
+      const { data: quizSubs } = await supabase
+        .from("cvp_quiz_submissions")
+        .select("*")
+        .eq("application_id", id)
+        .order("created_at", { ascending: true });
+      const quizList = (quizSubs as QuizSubmission[]) || [];
+      setQuizSubmissions(quizList);
+
+      // Pull the iso_competence_quizzes rows referenced by every response so
+      // we can show question text + options + correct answer alongside the
+      // applicant's pick.
+      const questionIds = Array.from(
+        new Set(
+          quizList.flatMap((qs) =>
+            (qs.responses ?? []).map((r) => r.question_id),
+          ),
+        ),
+      );
+      if (questionIds.length > 0) {
+        const { data: questionRows } = await supabase
+          .from("iso_competence_quizzes")
+          .select(
+            "id, competence_slug, question, options, correct_option, explanation, target_language_id",
+          )
+          .in("id", questionIds);
+        const qMap: Record<string, QuizQuestion> = {};
+        for (const row of (questionRows as QuizQuestion[]) || []) qMap[row.id] = row;
+        setQuizQuestions(qMap);
+      } else {
+        setQuizQuestions({});
+      }
 
       // Fetch the test-library rows referenced by these submissions so the
       // review panel can show source + reference translation side-by-side
@@ -5183,6 +5475,25 @@ export default function RecruitmentDetail() {
                           feedbackRound={feedbackRounds[combo.id] ?? null}
                         />
                       )}
+                      {combo.instrument_kind === "quiz" && (() => {
+                        const quizSub = quizSubmissions.find(
+                          (qs) => qs.target_language_id === combo.target_language_id,
+                        );
+                        if (!quizSub) {
+                          return (
+                            <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 italic">
+                              Quiz routed for this language but no submission row found.
+                            </div>
+                          );
+                        }
+                        return (
+                          <QuizSubmissionPanel
+                            submission={quizSub}
+                            questions={quizQuestions}
+                            languageLabel={languages[combo.target_language_id] || "?"}
+                          />
+                        );
+                      })()}
                     </div>
                   );
                 })}
