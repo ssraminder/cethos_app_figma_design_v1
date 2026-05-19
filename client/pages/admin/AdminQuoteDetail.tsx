@@ -875,7 +875,8 @@ export default function AdminQuoteDetail() {
     pickup_location:pickup_locations!selected_pickup_location_id(id, name, address_line1, city, state, postal_code, phone, hours),
     intended_use:intended_uses!intended_use_id(id, name),
     payment_method:payment_methods!payment_method_id(id, name, code),
-    payment_confirmed_by:staff_users!payment_confirmed_by_staff_id(id, full_name)
+    payment_confirmed_by:staff_users!payment_confirmed_by_staff_id(id, full_name),
+    created_by:staff_users!created_by_staff_id(id, full_name)
   `;
 
   const refetchQuote = async () => {
@@ -3208,6 +3209,9 @@ export default function AdminQuoteDetail() {
           <p className="text-sm text-gray-500">
             Created{" "}
             {format(new Date(quote.created_at), "MMM d, yyyy 'at' h:mm a")}
+            {(quote as any).created_by?.full_name && (
+              <> by {(quote as any).created_by.full_name}</>
+            )}
           </p>
         </div>
 

@@ -8,6 +8,7 @@ import {
   Link as LinkIcon,
   MessageSquare,
   Send,
+  Sparkles,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -15,6 +16,7 @@ interface ActivityEvent {
   id: string;
   type:
     | "quote_created"
+    | "quote_created_from_analysis"
     | "quote_link_sent"
     | "message_sent"
     | "manual_payment"
@@ -119,6 +121,29 @@ export default function QuoteActivityFeed({
             timestamp: quote.created_at,
           },
         ];
+
+        // create-quote-from-analysis stamps manual_quote_notes with
+        // "Created from AI Analysis Job <uuid>". Surface that as a distinct
+        // timeline event so the analysis job is visible at a glance instead
+        // of buried in the Notes panel. Same created_at as the quote — a
+        // 1-second offset keeps the sort stable below the parent "created"
+        // event.
+        const analysisJobMatch = (quote.manual_quote_notes as string | undefined)?.match(
+          /Created from AI Analysis Job ([0-9a-f-]{36})/i,
+        );
+        if (analysisJobMatch) {
+          const jobId = analysisJobMatch[1];
+          const offsetTs = new Date(
+            new Date(quote.created_at).getTime() + 1000,
+          ).toISOString();
+          derivedEvents.push({
+            id: `analysis-${jobId}`,
+            type: "quote_created_from_analysis",
+            label: "Created from AI analysis",
+            sublabel: `Job ${jobId.slice(0, 8)}`,
+            timestamp: offsetTs,
+          });
+        }
 
         if (quote.expires_at) {
           const expiresDate = new Date(quote.expires_at);
@@ -256,6 +281,8 @@ export default function QuoteActivityFeed({
     switch (event.type) {
       case "quote_created":
         return <FileText className="w-4 h-4" />;
+      case "quote_created_from_analysis":
+        return <Sparkles className="w-4 h-4" />;
       case "quote_link_sent":
         return <Send className="w-4 h-4" />;
       case "message_sent":
@@ -277,6 +304,8 @@ export default function QuoteActivityFeed({
     switch (event.type) {
       case "quote_created":
         return "bg-gray-100 text-gray-500";
+      case "quote_created_from_analysis":
+        return "bg-violet-100 text-violet-600";
       case "quote_link_sent":
         return "bg-blue-100 text-blue-600";
       case "message_sent":
