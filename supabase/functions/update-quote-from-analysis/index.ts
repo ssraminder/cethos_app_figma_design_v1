@@ -311,32 +311,101 @@ serve(async (req: Request) => {
       throw new Error(`Failed to update quote: ${updateErr.message}`);
     }
 
-    // ── Resync quote_document_groups to the new analysis ──────────────────
-    // Groups are the canonical billing source for the quote/order sidebar
-    // (AdminQuoteDetail.tsx prefers groups over analysis when both exist).
-    // Without this step, groups carry stale line totals from the prior
-    // analysis run and the OCR Pricing tab + order sidebar diverge silently.
-    // recalculate_document_group reads ai_analysis_results.translatable_word_count
-    // joined by quote_file_id — which works now that we link analysis rows
-    // to their file above.
+    // ── Sync quote_document_groups directly from the user-set values ──────
+    // Groups are the canonical billing source for the sidebar / order total
+    // (AdminQuoteDetail prefers groups over analysis). We can NOT call
+    // recalculate_document_group here — that RPC ignores the staff-set
+    // billable_pages and certification on the analysis row and recomputes
+    // billable as CEIL(word_count / 225 * complexity * 10) / 10 plus pulls
+    // cert from qdg.certification_type_id (often null), which silently
+    // discards the staff edits. Caused QT26-10485 to display $77/$0 while
+    // the modal showed $55/$50 (incident 2026-05-19).
+    //
+    // Instead: aggregate the per-document values back onto the matching
+    // group via quote_page_group_assignments and write those values directly.
     try {
-      const { data: groupIds, error: groupListErr } = await sb
-        .from("quote_document_groups")
-        .select("id")
-        .eq("quote_id", quoteId);
-      if (!groupListErr && groupIds) {
-        for (const g of groupIds) {
-          await sb.rpc("recalculate_document_group", { p_group_id: g.id });
-        }
-        if (groupIds.length > 0) {
-          await sb.rpc("recalculate_quote_from_groups", {
-            p_quote_id: quoteId,
-          });
+      const fileIds = Array.from(
+        new Set(
+          insertRows
+            .map((r) => r.quote_file_id)
+            .filter((v): v is string => typeof v === "string" && v.length > 0),
+        ),
+      );
+
+      const fileToGroup = new Map<string, string>();
+      if (fileIds.length > 0) {
+        const { data: assignments } = await sb
+          .from("quote_page_group_assignments")
+          .select("file_id, group_id")
+          .in("file_id", fileIds);
+        for (const a of assignments ?? []) {
+          if (!fileToGroup.has(a.file_id)) {
+            fileToGroup.set(a.file_id, a.group_id);
+          }
         }
       }
+
+      type GroupAgg = {
+        billable: number;
+        lineTotal: number;
+        certTypeId: string | null;
+        certPrice: number;
+        baseRate: number;
+        complexity: number;
+      };
+      const groupAggs = new Map<string, GroupAgg>();
+      for (const row of insertRows) {
+        const fileId = row.quote_file_id;
+        if (!fileId) continue;
+        const groupId = fileToGroup.get(fileId);
+        if (!groupId) continue;
+        const agg = groupAggs.get(groupId) ?? {
+          billable: 0,
+          lineTotal: 0,
+          certTypeId: null,
+          certPrice: 0,
+          baseRate: Number(row.base_rate) || 0,
+          complexity: Number(row.complexity_multiplier) || 1,
+        };
+        agg.billable += Number(row.billable_pages) || 0;
+        agg.lineTotal += Number(row.line_total) || 0;
+        agg.certPrice += Number(row.certification_price) || 0;
+        // First non-null cert wins. Mixed cert types in one group would lose
+        // detail here, but the UI surfaces cert at the group level anyway.
+        if (!agg.certTypeId && row.certification_type_id) {
+          agg.certTypeId = row.certification_type_id;
+        }
+        groupAggs.set(groupId, agg);
+      }
+
+      for (const [groupId, agg] of groupAggs) {
+        const { error: groupUpdateErr } = await sb
+          .from("quote_document_groups")
+          .update({
+            billable_pages: round2(agg.billable),
+            line_total: round2(agg.lineTotal),
+            base_rate: agg.baseRate,
+            complexity_multiplier: agg.complexity,
+            certification_type_id: agg.certTypeId,
+            certification_price: round2(agg.certPrice),
+            updated_at: nowIso,
+          })
+          .eq("id", groupId);
+        if (groupUpdateErr) {
+          console.warn(
+            `Non-fatal: failed to update group ${groupId}: ${groupUpdateErr.message}`,
+          );
+        }
+      }
+
+      // DO NOT call recalculate_quote_from_groups here — that RPC internally
+      // calls recalculate_document_group for every group, which would
+      // overwrite the billable_pages/line_total we just wrote with the
+      // CEIL(word_count / 225 * complexity) recompute. The inline quote
+      // update above already wrote the authoritative totals for this flow.
     } catch (groupErr) {
       console.warn(
-        "Non-fatal: failed to resync quote_document_groups",
+        "Non-fatal: failed to sync quote_document_groups",
         groupErr,
       );
     }
