@@ -18,6 +18,10 @@ import { format, formatDistanceToNow } from "date-fns";
 
 const TAB_STATUSES: Record<string, string[]> = {
   attention: ["staff_review", "info_requested"],
+  // "In Progress" = waiting on applicant or system. Post-submission states
+  // (test_submitted, test_assessed) live under "Tests to Review" — the
+  // staff-action queue — and are intentionally excluded here to avoid the
+  // same applicant showing up on both tabs.
   in_progress: [
     "submitted",
     "prescreening",
@@ -25,8 +29,6 @@ const TAB_STATUSES: Record<string, string[]> = {
     "test_pending",
     "test_sent",
     "test_in_progress",
-    "test_submitted",
-    "test_assessed",
     "negotiation",
   ],
   decided: ["approved", "rejected", "archived"],
