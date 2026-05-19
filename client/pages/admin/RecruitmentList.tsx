@@ -225,9 +225,41 @@ export default function RecruitmentList() {
 
   // Fetch tab counts
   const fetchTabCounts = useCallback(async () => {
-    const counts: Record<string, number> = {};
+    // Compute Tests-to-Review applicant set first. Any applicant with a
+    // reviewable combo "wins" that tab and is excluded from In Progress, so
+    // an applicant never appears on both — even though their application
+    // status (e.g. test_in_progress) would otherwise place them in both.
+    let testsAppIds = new Set<string>();
+    try {
+      const { data } = await supabase
+        .from("cvp_test_combinations")
+        .select("application_id")
+        .or(TESTS_REVIEW_OR_FILTER);
+      testsAppIds = new Set(
+        (data ?? []).map((r) => (r as { application_id: string }).application_id)
+      );
+    } catch {
+      testsAppIds = new Set();
+    }
+
+    const counts: Record<string, number> = { tests: testsAppIds.size };
     await Promise.all(
       Object.entries(TAB_STATUSES).map(async ([tab, statuses]) => {
+        if (tab === "in_progress" && testsAppIds.size > 0) {
+          // Status-filter then subtract Tests-to-Review winners locally.
+          const { data, error } = await supabase
+            .from("cvp_applications")
+            .select("id")
+            .in("status", statuses);
+          if (error) {
+            counts[tab] = 0;
+            return;
+          }
+          counts[tab] = (data ?? []).filter(
+            (r) => !testsAppIds.has((r as { id: string }).id)
+          ).length;
+          return;
+        }
         const { count, error } = await supabase
           .from("cvp_applications")
           .select("*", { count: "exact", head: true })
@@ -235,18 +267,6 @@ export default function RecruitmentList() {
         counts[tab] = error ? 0 : (count ?? 0);
       })
     );
-    // "Tests to Review" — distinct applicants with at least one combo in
-    // test_submitted, assessed, or AI auto-approved (approved + approved_by null).
-    try {
-      const { data } = await supabase
-        .from("cvp_test_combinations")
-        .select("application_id")
-        .or(TESTS_REVIEW_OR_FILTER);
-      const ids = new Set((data ?? []).map((r) => (r as { application_id: string }).application_id));
-      counts.tests = ids.size;
-    } catch {
-      counts.tests = 0;
-    }
     setTabCounts(counts);
   }, []);
 
@@ -286,6 +306,24 @@ export default function RecruitmentList() {
         }
       }
 
+      // In Progress excludes anyone already on Tests to Review, so a single
+      // applicant never appears on both tabs (e.g. app.status='test_in_progress'
+      // with one cascade-auto-approved combo would otherwise hit both queues).
+      let excludeIds: string[] = [];
+      if (activeTab === "in_progress" && !isSearching) {
+        const { data: comboRows } = await supabase
+          .from("cvp_test_combinations")
+          .select("application_id")
+          .or(TESTS_REVIEW_OR_FILTER);
+        excludeIds = Array.from(
+          new Set(
+            (comboRows ?? []).map(
+              (r) => (r as { application_id: string }).application_id
+            )
+          )
+        );
+      }
+
       let query = supabase
         .from("cvp_applications")
         .select(
@@ -298,6 +336,9 @@ export default function RecruitmentList() {
       } else if (!isSearching) {
         const statuses = TAB_STATUSES[activeTab] || [];
         query = query.in("status", statuses);
+        if (excludeIds.length > 0) {
+          query = query.not("id", "in", `(${excludeIds.join(",")})`);
+        }
       }
 
       if (isSearching) {
