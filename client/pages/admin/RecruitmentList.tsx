@@ -175,12 +175,21 @@ export default function RecruitmentList() {
   const fetchApplications = useCallback(async () => {
     setLoading(true);
     try {
+      // When the user is searching, treat the lookup as global — tabs are
+      // for browsing, search is for finding. Otherwise a row whose status
+      // doesn't match the active tab is invisible (e.g. searching
+      // "APP-26-9900" from Needs Attention used to return nothing because
+      // that app's status='test_in_progress' lives under In Progress). The
+      // row still renders a status badge so the user can see which tab
+      // each match belongs to.
+      const isSearching = search.trim().length > 0;
+
       // Build the base id list. The "tests" tab pulls applicant ids from
       // cvp_test_combinations (any combo in test_submitted, assessed, or AI
       // auto-approved). Every other tab is a flat status filter on
-      // cvp_applications.
+      // cvp_applications. Both are skipped when searching.
       let appIds: string[] | null = null;
-      if (activeTab === "tests") {
+      if (activeTab === "tests" && !isSearching) {
         const { data: comboRows, error: comboErr } = await supabase
           .from("cvp_test_combinations")
           .select("application_id")
@@ -206,14 +215,15 @@ export default function RecruitmentList() {
 
       if (appIds) {
         query = query.in("id", appIds);
-      } else {
+      } else if (!isSearching) {
         const statuses = TAB_STATUSES[activeTab] || [];
         query = query.in("status", statuses);
       }
 
-      if (search) {
+      if (isSearching) {
+        const term = search.trim();
         query = query.or(
-          `full_name.ilike.%${search}%,email.ilike.%${search}%,application_number.ilike.%${search}%`
+          `full_name.ilike.%${term}%,email.ilike.%${term}%,application_number.ilike.%${term}%`
         );
       }
 
