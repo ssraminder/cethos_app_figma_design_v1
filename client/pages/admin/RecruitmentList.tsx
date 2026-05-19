@@ -120,11 +120,27 @@ const CHIP_COLOR: Record<ChipOutcome, string> = {
 
 const DOMAIN_LABEL: Record<string, string> = {
   legal: "Legal",
-  medical: "Medical",
+  certified_official: "Certified / Official",
   immigration: "Immigration",
+  medical: "Medical",
+  life_sciences: "Life Sciences",
+  pharmaceutical: "Pharmaceutical",
   financial: "Financial",
+  insurance: "Insurance",
   technical: "Technical",
+  it_software: "IT & Software",
+  automotive_engineering: "Automotive & Engineering",
+  energy: "Energy",
+  marketing_advertising: "Marketing & Advertising",
+  literary_publishing: "Literary & Publishing",
+  academic_scientific: "Academic & Scientific",
+  government_public: "Government & Public",
+  business_corporate: "Business & Corporate",
+  gaming_entertainment: "Gaming & Entertainment",
+  media_journalism: "Media & Journalism",
+  tourism_hospitality: "Tourism & Hospitality",
   general: "General",
+  other: "Other",
 };
 
 // Combos in pending / test_assigned / test_sent / no_test_available / skipped
@@ -135,6 +151,14 @@ const CHIP_VISIBLE_STATUSES = new Set([
   "approved",
   "rejected",
 ]);
+
+// certified_official is a staff-only flow — no test is ever sent, no AI
+// score recorded. Combos in this domain get cascade-approved when the
+// applicant's General test passes (approved + ai_score=null), which my
+// first cut of the chip logic mis-rendered as "Pending". Rendering them in
+// a test-outcomes column is misleading either way; hide them from the chip
+// stack and let the application-level approval reflect the actual decision.
+const CHIP_HIDDEN_DOMAINS = new Set(["certified_official"]);
 
 function chipOutcome(c: ComboChip): ChipOutcome {
   if (c.ai_score == null) return "pending";
@@ -306,6 +330,7 @@ export default function RecruitmentList() {
         const grouped: Record<string, ComboChip[]> = {};
         for (const c of (comboData ?? []) as ComboChip[]) {
           if (!CHIP_VISIBLE_STATUSES.has(c.status)) continue;
+          if (c.domain && CHIP_HIDDEN_DOMAINS.has(c.domain)) continue;
           (grouped[c.application_id] ||= []).push(c);
         }
         for (const id of Object.keys(grouped)) {
