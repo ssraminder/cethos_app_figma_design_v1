@@ -4130,6 +4130,9 @@ function WorkflowPipeline({
                 value={uploadModalNotes}
                 onChange={(e) => setUploadModalNotes(e.target.value)}
               />
+              <div className="text-[10px] text-gray-300 text-right">
+                upload v2 · raw-fetch
+              </div>
             </div>
             <div className="p-4 border-t flex justify-end gap-2">
               <button
