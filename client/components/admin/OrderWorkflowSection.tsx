@@ -4065,13 +4065,17 @@ function WorkflowPipeline({
                   multiple
                   className="hidden"
                   onChange={(e) => {
-                    if (e.target.files) {
-                      setUploadModalFiles((prev) => [
-                        ...prev,
-                        ...Array.from(e.target.files!),
-                      ]);
-                    }
+                    // Snapshot the FileList synchronously. If we let the
+                    // setState updater read e.target.files lazily, the
+                    // `e.target.value = ""` below clears the FileList before
+                    // React runs the updater — the files arrive as [].
+                    const picked = e.target.files
+                      ? Array.from(e.target.files)
+                      : [];
                     e.target.value = "";
+                    if (picked.length > 0) {
+                      setUploadModalFiles((prev) => [...prev, ...picked]);
+                    }
                   }}
                 />
               </label>
