@@ -2344,23 +2344,10 @@ function WorkflowPipeline({
   const [uploadModalNotes, setUploadModalNotes] = useState("");
   const [uploadModalLoading, setUploadModalLoading] = useState(false);
 
-  // Send-draft-to-customer modal state.
-  const [draftStep, setDraftStep] = useState<WorkflowStep | null>(null);
-  const [draftGenerating, setDraftGenerating] = useState(false);
-  const [draftSending, setDraftSending] = useState(false);
-  const [draftPdf, setDraftPdf] = useState<{
-    storage_path: string;
-    signed_url: string;
-    source_filename: string;
-    was_converted_from_word: boolean;
-    bytes: number;
-  } | null>(null);
-  const [draftRecipientEmail, setDraftRecipientEmail] = useState("");
-  const [draftRecipientName, setDraftRecipientName] = useState("");
-  const [draftCcEmails, setDraftCcEmails] = useState("");
-  const [draftSubject, setDraftSubject] = useState("");
-  const [draftBodyText, setDraftBodyText] = useState("");
-  const [draftError, setDraftError] = useState<string | null>(null);
+  // Tracks which step is being promoted to a customer draft file so the
+  // button can spin while the watermarked PDF is generated server-side
+  // and inserted into quote_files.
+  const [promotingStepId, setPromotingStepId] = useState<string | null>(null);
 
   const handleAdminUpload = async () => {
     if (!uploadModalStep) return;
@@ -2407,119 +2394,30 @@ function WorkflowPipeline({
   };
   const [reviseFeedback, setReviseFeedback] = useState('');
 
-  // When the draft modal opens, fetch the order's customer for prefill
-  // (email/name + default subject). Reset draftPdf on each open so admin
-  // is forced to regenerate after closing — keeps the watermark fresh.
-  // The orderId prop is the source of truth for the order; WorkflowStep
-  // doesn't expose order_id.
-  useEffect(() => {
-    if (!draftStep) {
-      setDraftPdf(null);
-      setDraftError(null);
-      return;
-    }
-    setDraftPdf(null);
-    setDraftError(null);
-    (async () => {
-      const { data: order } = await supabase
-        .from("orders")
-        .select("order_number, customer_id, customers(full_name, email, ar_contact_email)")
-        .eq("id", orderId)
-        .maybeSingle();
-      const customer: any = (order as any)?.customers ?? null;
-      setDraftRecipientEmail(customer?.email ?? "");
-      setDraftRecipientName(customer?.full_name ?? "");
-      // Auto-populate CCs with the customer's AR contact email when set
-      // and different from the primary — multi-contact customer accounts
-      // expect both billing + primary in the loop on drafts.
-      const cc =
-        customer?.ar_contact_email && customer.ar_contact_email !== customer.email
-          ? customer.ar_contact_email
-          : "";
-      setDraftCcEmails(cc);
-      setDraftSubject(
-        `Draft translation for review — ${order?.order_number ?? "your order"} · ${draftStep.name}`,
-      );
-      // Default body — admin can edit or clear. Mentions the order + step
-      // so the customer has context before opening the attachment.
-      const customerFirstName = customer?.full_name
-        ? String(customer.full_name).split(/\s+/)[0]
-        : "";
-      setDraftBodyText(
-        [
-          customerFirstName ? `Hi ${customerFirstName},` : "Hi,",
-          "",
-          `Please find attached the draft translation for ${order?.order_number ?? "your order"} (${draftStep.name}). Each page carries a "DRAFT" watermark while it is pending your review.`,
-          "",
-          "Let us know if you need any changes; once you confirm, we'll finalize and remove the watermark.",
-        ].join("\n"),
-      );
-    })();
-  }, [draftStep, orderId]);
-
-  async function generateDraftPdf() {
-    if (!draftStep) return;
-    setDraftGenerating(true);
-    setDraftError(null);
+  // Generates a watermarked DRAFT PDF on the server and inserts it as a
+  // staff-created draft_translation file on the order's quote. From there
+  // admin uses the existing 'Send Selected to Customer' flow in the
+  // Documents & Files section (backed by review-draft-file). One pipeline,
+  // not two.
+  async function promoteStepDeliveryToDraft(step: WorkflowStep) {
+    setPromotingStepId(step.id);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-step-draft-pdf", {
-        body: { step_id: draftStep.id },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        "promote-step-delivery-to-draft",
+        { body: { step_id: step.id } },
+      );
       if (error || !data || (data as any).error) {
-        throw new Error((data as any)?.error || error?.message || "Failed to generate draft PDF");
+        throw new Error((data as any)?.error || error?.message || "Promote failed");
       }
-      const r = data as {
-        pdf_storage_path: string;
-        signed_url: string;
-        source_filename: string;
-        was_converted_from_word: boolean;
-        bytes: number;
-      };
-      setDraftPdf({
-        storage_path: r.pdf_storage_path,
-        signed_url: r.signed_url,
-        source_filename: r.source_filename,
-        was_converted_from_word: r.was_converted_from_word,
-        bytes: r.bytes,
-      });
+      const r = data as { review_version: number; was_converted_from_word: boolean };
+      toast.success(
+        `Draft v${r.review_version} added to Documents & Files${r.was_converted_from_word ? " (Word → PDF + watermark)" : " (watermark applied)"}. Select it and click "Send Selected to Customer".`,
+      );
+      if (onRefresh) await onRefresh();
     } catch (err: any) {
-      setDraftError(err?.message || "Failed to generate draft PDF");
+      toast.error(err?.message || "Failed to promote to draft");
     } finally {
-      setDraftGenerating(false);
-    }
-  }
-
-  async function sendDraftToCustomer() {
-    if (!draftStep || !draftPdf || !draftRecipientEmail.trim() || !draftSubject.trim()) return;
-    setDraftSending(true);
-    setDraftError(null);
-    try {
-      const ccs = draftCcEmails
-        .split(/[,;\s]+/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-      const { data, error } = await supabase.functions.invoke("send-step-draft-to-customer", {
-        body: {
-          step_id: draftStep.id,
-          pdf_storage_path: draftPdf.storage_path,
-          subject: draftSubject.trim(),
-          body_text: draftBodyText.trim() || undefined,
-          recipient_email: draftRecipientEmail.trim(),
-          recipient_name: draftRecipientName.trim() || undefined,
-          cc_emails: ccs.length > 0 ? ccs : undefined,
-          attachment_filename: `${(draftStep.name || "draft").replace(/[^a-zA-Z0-9._-]/g, "_")}-DRAFT.pdf`,
-        },
-      });
-      const result = data as { email_status?: string; error?: string };
-      if (error || !result || result.email_status !== "sent") {
-        throw new Error(result?.error || error?.message || "Email send failed");
-      }
-      toast.success(`Draft sent to ${draftRecipientEmail.trim()}`);
-      setDraftStep(null);
-    } catch (err: any) {
-      setDraftError(err?.message || "Failed to send draft");
-    } finally {
-      setDraftSending(false);
+      setPromotingStepId(null);
     }
   }
 
@@ -3852,22 +3750,24 @@ function WorkflowPipeline({
                     );
                   })()}
 
-                  {/* Send the final version to the customer as a watermarked
-                      DRAFT PDF. Visible whenever the step has at least one
-                      delivery — not gated by status, since an admin might
-                      unassign the vendor (resetting status to pending) but
-                      still want to share the prior draft with the customer. */}
+                  {/* Promote the workflow delivery into the order's
+                      "Draft Translation" staff files so admin can send it
+                      via the existing Documents & Files → Send Selected to
+                      Customer pipeline. We do NOT send the email from here
+                      — the existing flow handles that with its preview
+                      modal + multi-file selection. */}
                   {(step.deliveries?.length ?? 0) > 0 && (
                     <button
                       type="button"
-                      className="text-xs px-3 py-1 border border-teal-600 bg-teal-50 text-teal-800 rounded hover:bg-teal-100"
+                      className="text-xs px-3 py-1 border border-teal-600 bg-teal-50 text-teal-800 rounded hover:bg-teal-100 disabled:opacity-50"
+                      disabled={promotingStepId === step.id}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setDraftStep(step);
+                        void promoteStepDeliveryToDraft(step);
                       }}
-                      title={step.final_delivery_id ? "Send the marked final as a watermarked DRAFT PDF" : "Send the latest delivery as a watermarked DRAFT PDF"}
+                      title={step.final_delivery_id ? "Promote the marked final as a watermarked DRAFT in the order's draft files" : "Promote the latest delivery as a watermarked DRAFT in the order's draft files"}
                     >
-                      ✉ Send draft to customer
+                      {promotingStepId === step.id ? "Promoting..." : "📄 Promote to customer draft"}
                     </button>
                   )}
 
@@ -4282,164 +4182,6 @@ function WorkflowPipeline({
           );
         })}
       </div>
-
-      {/* Send-draft-to-customer modal */}
-      {draftStep && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={() => !draftSending && setDraftStep(null)}
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-800">
-                Send draft to customer — Step {draftStep.step_number}: {draftStep.name}
-              </h3>
-              <button
-                type="button"
-                className="text-gray-400 hover:text-gray-600"
-                onClick={() => !draftSending && setDraftStep(null)}
-                aria-label="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4">
-              {draftError && (
-                <div className="bg-red-50 border border-red-200 text-red-800 p-2 rounded text-sm">
-                  {draftError}
-                </div>
-              )}
-
-              {/* Step 1: generate the watermarked PDF */}
-              <div className="border rounded p-3 bg-gray-50">
-                <div className="font-medium text-sm mb-1">Step 1 · Watermarked DRAFT PDF</div>
-                <p className="text-xs text-gray-500 mb-2">
-                  We'll take the {draftStep.final_delivery_id ? "marked final delivery" : "latest delivery"} file.
-                  If it's .docx we convert it to PDF first, then overlay a diagonal "DRAFT" watermark on every page.
-                </p>
-                {!draftPdf && (
-                  <button
-                    type="button"
-                    className="px-3 py-1.5 text-sm bg-teal-700 hover:bg-teal-800 text-white rounded disabled:opacity-50"
-                    onClick={generateDraftPdf}
-                    disabled={draftGenerating}
-                  >
-                    {draftGenerating ? "Generating (this can take ~30s for .docx)..." : "Generate watermarked PDF"}
-                  </button>
-                )}
-                {draftPdf && (
-                  <div className="text-sm space-y-1">
-                    <div className="text-gray-800">
-                      ✓ Generated from <span className="font-medium">{draftPdf.source_filename}</span>
-                      {draftPdf.was_converted_from_word && <span className="text-gray-500"> (Word → PDF)</span>}
-                    </div>
-                    <div className="text-xs text-gray-500">{(draftPdf.bytes / 1024).toFixed(0)} KB</div>
-                    <a
-                      href={draftPdf.signed_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-teal-700 hover:text-teal-900 underline text-sm"
-                    >
-                      Preview PDF →
-                    </a>
-                    <button
-                      type="button"
-                      className="ml-3 text-xs text-gray-500 hover:text-gray-800 underline"
-                      onClick={() => setDraftPdf(null)}
-                    >
-                      Regenerate
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Step 2: compose the email */}
-              <div className={`border rounded p-3 ${draftPdf ? "bg-white" : "bg-gray-50 opacity-60"}`}>
-                <div className="font-medium text-sm mb-2">Step 2 · Compose email</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium mb-1">To *</label>
-                    <input
-                      type="email"
-                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-                      value={draftRecipientEmail}
-                      onChange={(e) => setDraftRecipientEmail(e.target.value)}
-                      placeholder="customer@example.com"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1">Recipient name</label>
-                    <input
-                      type="text"
-                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-                      value={draftRecipientName}
-                      onChange={(e) => setDraftRecipientName(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <label className="block text-xs font-medium mb-1">CC (comma-separated)</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-                    value={draftCcEmails}
-                    onChange={(e) => setDraftCcEmails(e.target.value)}
-                  />
-                </div>
-                <div className="mt-3">
-                  <label className="block text-xs font-medium mb-1">Subject *</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-                    value={draftSubject}
-                    onChange={(e) => setDraftSubject(e.target.value)}
-                  />
-                </div>
-                <div className="mt-3">
-                  <label className="block text-xs font-medium mb-1">
-                    Note in email body <span className="text-gray-500">(optional, appears under the standard message)</span>
-                  </label>
-                  <textarea
-                    className="w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    rows={3}
-                    value={draftBodyText}
-                    onChange={(e) => setDraftBodyText(e.target.value)}
-                    placeholder="Any context you want the customer to see alongside the draft."
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 border-t flex justify-end gap-2">
-              <button
-                type="button"
-                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900"
-                onClick={() => setDraftStep(null)}
-                disabled={draftSending}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="px-3 py-1.5 text-sm bg-teal-700 hover:bg-teal-800 text-white rounded disabled:opacity-50"
-                onClick={sendDraftToCustomer}
-                disabled={
-                  draftSending ||
-                  !draftPdf ||
-                  !draftRecipientEmail.trim() ||
-                  !draftSubject.trim()
-                }
-              >
-                {draftSending ? "Sending..." : "Send draft to customer"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Admin file-upload modal (available on any step that requires files) */}
       {uploadModalStep && (
