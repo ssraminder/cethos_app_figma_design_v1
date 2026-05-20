@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabase";
 // ── Types ──────────────────────────────────────────────────────────
 
 interface TaskSummary {
+  my_assignments: number;
   pending_counters: number;
   overdue_steps: number;
   unreviewed_deliveries: number;
@@ -16,6 +17,7 @@ interface TaskSummary {
 
 interface Task {
   task_type:
+    | "my_assignment"
     | "pending_counter"
     | "overdue_step"
     | "unreviewed_delivery"
@@ -45,8 +47,14 @@ interface Task {
   // unreviewed_delivery
   delivered_at?: string;
   file_count?: number;
-  // unassigned_step
+  // unassigned_step + my_assignment
   step_number?: number;
+  // my_assignment
+  actor_type?: string;
+  step_status?: string;
+  requires_file_upload?: boolean;
+  instructions?: string | null;
+  hours_to_deadline?: number | null;
   // expiring_offer
   expires_at?: string;
   hours_remaining?: number;
@@ -54,6 +62,7 @@ interface Task {
 
 type FilterType =
   | "all"
+  | "my_assignment"
   | "pending_counter"
   | "overdue_step"
   | "unreviewed_delivery"
@@ -111,6 +120,14 @@ const CARD_CONFIG: {
   activeBorder: string;
 }[] = [
   {
+    key: "my_assignment",
+    label: "My Tasks",
+    taskType: "my_assignment",
+    activeColor: "text-purple-700",
+    activeBg: "bg-purple-50",
+    activeBorder: "border-purple-300",
+  },
+  {
     key: "pending_counter",
     label: "Counters",
     taskType: "pending_counter",
@@ -153,6 +170,7 @@ const CARD_CONFIG: {
 ];
 
 const SUMMARY_KEYS: Record<string, keyof TaskSummary> = {
+  my_assignment: "my_assignments",
   pending_counter: "pending_counters",
   overdue_step: "overdue_steps",
   unreviewed_delivery: "unreviewed_deliveries",
@@ -432,8 +450,90 @@ function ExpiringOfferCard({ task }: { task: Task }) {
   );
 }
 
+function MyAssignmentCard({ task }: { task: Task }) {
+  const pair = langPair(task.source_language, task.target_language);
+  const actorLabel =
+    task.actor_type === "internal_review" ? "Internal review" : "Internal work";
+  const statusLabel =
+    task.step_status === "revision_requested"
+      ? "Revision requested"
+      : task.step_status === "in_progress"
+        ? "In progress"
+        : task.step_status === "accepted"
+          ? "Accepted — ready to start"
+          : task.step_status || "Assigned";
+  const deadlineHint =
+    task.hours_to_deadline != null && task.deadline
+      ? task.hours_to_deadline < 0
+        ? `${Math.abs(task.hours_to_deadline)}h overdue (${formatDeadline(task.deadline)})`
+        : `Due in ${task.hours_to_deadline}h (${formatDeadline(task.deadline)})`
+      : task.deadline
+        ? `Due ${formatDeadline(task.deadline)}`
+        : "No deadline";
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4 mb-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-base">📝</span>
+            <span className="font-medium text-gray-900 text-sm">{actorLabel}</span>
+            <span className="text-gray-500 text-sm">·</span>
+            <span className="text-sm text-gray-700">
+              {task.order_number || task.order_id.slice(0, 8)}
+            </span>
+            {pair && (
+              <>
+                <span className="text-gray-500 text-sm">·</span>
+                <span className="text-sm text-gray-600">
+                  {task.step_name} ({pair})
+                </span>
+              </>
+            )}
+            {!pair && (
+              <>
+                <span className="text-gray-500 text-sm">·</span>
+                <span className="text-sm text-gray-600">{task.step_name}</span>
+              </>
+            )}
+          </div>
+          <p className="text-sm text-gray-700 mt-1">
+            {statusLabel}
+            {task.requires_file_upload && (
+              <span className="text-gray-500"> · file upload required</span>
+            )}
+            {task.file_count != null && task.file_count > 0 && (
+              <span className="text-gray-500">
+                {" "}
+                · {task.file_count} file
+                {task.file_count !== 1 ? "s" : ""} delivered
+              </span>
+            )}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">{deadlineHint}</p>
+          {task.instructions && (
+            <p className="text-xs text-gray-500 italic mt-1 line-clamp-2">
+              "{task.instructions}"
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <UrgencyBadge urgency={task.urgency} />
+          <Link
+            to={`/admin/orders/${task.order_id}`}
+            className="text-purple-600 hover:text-purple-800 text-sm font-medium whitespace-nowrap"
+          >
+            Open step →
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TaskCard({ task }: { task: Task }) {
   switch (task.task_type) {
+    case "my_assignment":
+      return <MyAssignmentCard task={task} />;
     case "pending_counter":
       return <PendingCounterCard task={task} />;
     case "overdue_step":
@@ -460,6 +560,7 @@ export default function StaffTasks() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const initialFocusAppliedRef = useRef(false);
 
   const fetchTasks = useCallback(
     async (silent = false) => {
@@ -478,6 +579,12 @@ export default function StaffTasks() {
         setSummary(data.summary);
         setTasks(data.tasks || []);
         setLastUpdated(new Date());
+        if (!initialFocusAppliedRef.current) {
+          initialFocusAppliedRef.current = true;
+          if ((data.summary?.my_assignments ?? 0) > 0) {
+            setFilter("my_assignment");
+          }
+        }
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Failed to load tasks";
@@ -561,7 +668,7 @@ export default function StaffTasks() {
 
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           {CARD_CONFIG.map((card) => {
             const count = summary[SUMMARY_KEYS[card.key]] ?? 0;
             const isActive = filter === card.key;

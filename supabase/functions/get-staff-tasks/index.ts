@@ -1,15 +1,17 @@
 // ============================================================================
-// get-staff-tasks v1.0
-// Aggregates 5 categories of work-items staff need to action, feeding the
+// get-staff-tasks v1.1
+// Aggregates 6 categories of work-items staff need to action, feeding the
 // /admin/tasks dashboard.
 //
-// Output: { success, summary, tasks }
-//   summary: { pending_counters, overdue_steps, unreviewed_deliveries,
-//              unassigned_steps, expiring_offers, total }
+// Output: { success, summary, tasks, current_staff_id }
+//   summary: { my_assignments, pending_counters, overdue_steps,
+//              unreviewed_deliveries, unassigned_steps, expiring_offers, total }
 //   tasks:   Task[] (see StaffTasks.tsx for the exact shape)
 //
-// Read-only. No auth check at function level — admin UI hits this with
-// the staff JWT, which the SDK attaches automatically.
+// v1.1 — adds `my_assignment` personal queue: `order_workflow_steps` where
+// `assigned_staff_id = <current staff>` and status in ('accepted',
+// 'in_progress', 'revision_requested'). Current staff is resolved from the
+// Authorization bearer (Supabase JWT → auth.users.id → staff_users.auth_user_id).
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
@@ -61,6 +63,84 @@ serve(async (req) => {
     };
 
     const tasks: any[] = [];
+
+    // Resolve current staff from the Authorization bearer so we can build
+    // the personal "assigned to me" queue. Failures here only disable the
+    // my_assignment category — the rest of the ops queue still works.
+    let currentStaffId: string | null = null;
+    let currentStaffName: string | null = null;
+    try {
+      const authHeader = req.headers.get("Authorization") || "";
+      const userToken = authHeader.replace(/^Bearer\s+/i, "");
+      if (userToken) {
+        const { data: userData } = await sb.auth.getUser(userToken);
+        const authUserId = userData?.user?.id;
+        if (authUserId) {
+          const { data: staff } = await sb
+            .from("staff_users")
+            .select("id, full_name, is_active")
+            .eq("auth_user_id", authUserId)
+            .maybeSingle();
+          if (staff && staff.is_active !== false) {
+            currentStaffId = staff.id;
+            currentStaffName = staff.full_name ?? null;
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("get-staff-tasks: staff resolution failed:", e?.message || e);
+    }
+
+    // ── 0. my_assignment — internal_work / internal_review steps assigned
+    //      to the current staff member, still actionable.
+    if (currentStaffId) {
+      const { data: myRows } = await sb
+        .from("order_workflow_steps")
+        .select(
+          "id, name, step_number, order_id, source_language, target_language, status, deadline, actor_type, requires_file_upload, instructions, delivered_file_paths",
+        )
+        .eq("assigned_staff_id", currentStaffId)
+        .in("status", ["accepted", "in_progress", "revision_requested"])
+        .order("deadline", { ascending: true, nullsFirst: false });
+
+      if (myRows && myRows.length > 0) {
+        const orderMap = await orderNumberFor(
+          Array.from(new Set(myRows.map((s: any) => s.order_id))),
+        );
+        for (const s of myRows) {
+          const deadlineMs = s.deadline ? new Date(s.deadline).getTime() : null;
+          const hoursToDeadline =
+            deadlineMs != null
+              ? Math.floor((deadlineMs - now.getTime()) / 3600000)
+              : null;
+          let urgency: "critical" | "high" | "medium" = "medium";
+          if (s.status === "revision_requested") urgency = "high";
+          if (hoursToDeadline != null && hoursToDeadline < 0) urgency = "critical";
+          else if (hoursToDeadline != null && hoursToDeadline < 24) urgency = "high";
+
+          tasks.push({
+            task_type: "my_assignment",
+            urgency,
+            step_id: s.id,
+            order_id: s.order_id,
+            order_number: orderMap.get(s.order_id) || null,
+            step_name: s.name,
+            step_number: s.step_number,
+            source_language: s.source_language,
+            target_language: s.target_language,
+            actor_type: s.actor_type,
+            step_status: s.status,
+            requires_file_upload: !!s.requires_file_upload,
+            instructions: s.instructions ?? null,
+            deadline: s.deadline ?? null,
+            hours_to_deadline: hoursToDeadline,
+            file_count: Array.isArray(s.delivered_file_paths)
+              ? s.delivered_file_paths.length
+              : 0,
+          });
+        }
+      }
+    }
 
     // ── 1. pending_counter — vendor counter-offers awaiting staff response
     const { data: counterOffers } = await sb
@@ -277,6 +357,7 @@ serve(async (req) => {
 
     // ── Build summary
     const summary = {
+      my_assignments: tasks.filter((t) => t.task_type === "my_assignment").length,
       pending_counters: tasks.filter((t) => t.task_type === "pending_counter").length,
       overdue_steps: tasks.filter((t) => t.task_type === "overdue_step").length,
       unreviewed_deliveries: tasks.filter((t) => t.task_type === "unreviewed_delivery").length,
@@ -285,7 +366,13 @@ serve(async (req) => {
       total: tasks.length,
     };
 
-    return json({ success: true, summary, tasks });
+    return json({
+      success: true,
+      summary,
+      tasks,
+      current_staff_id: currentStaffId,
+      current_staff_name: currentStaffName,
+    });
   } catch (err: any) {
     console.error("get-staff-tasks error:", err);
     return json({ success: false, error: err.message || "Internal server error" }, 500);
