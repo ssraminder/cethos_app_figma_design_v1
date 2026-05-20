@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ExternalLink,
   Paperclip,
+  Smartphone,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useStaffNotifications } from "@/context/StaffNotificationContext";
@@ -48,6 +49,8 @@ export default function AdminMessages() {
   const [selectedConv, setSelectedConv] = useState<ConversationSummary | null>(
     null,
   );
+  // Per-customer SMS activity: { customer_id -> { sms_count, sms_unread } }
+  const [smsActivity, setSmsActivity] = useState<Record<string, { count: number; unread: number }>>({});
   const { resetUnread } = useStaffNotifications();
 
   const fetchConversations = useCallback(async () => {
@@ -83,6 +86,21 @@ export default function AdminMessages() {
         }));
 
       setConversations(summaries);
+
+      // Fetch SMS activity for these customers in one batch
+      const customerIds = summaries.map((s) => s.customer_id).filter(Boolean);
+      if (customerIds.length > 0) {
+        const { data: smsRows } = await supabase.rpc("comms_customers_sms_activity", {
+          p_customer_ids: customerIds,
+        });
+        const map: Record<string, { count: number; unread: number }> = {};
+        for (const r of (smsRows || []) as Array<{ customer_id: string; sms_count: number; sms_unread: number }>) {
+          map[r.customer_id] = { count: Number(r.sms_count), unread: Number(r.sms_unread) };
+        }
+        setSmsActivity(map);
+      } else {
+        setSmsActivity({});
+      }
     } catch (err) {
       console.error("Failed to fetch conversations:", err);
     }
@@ -93,7 +111,7 @@ export default function AdminMessages() {
     fetchConversations().finally(() => setIsLoading(false));
   }, [fetchConversations]);
 
-  // Realtime: refresh on new customer messages
+  // Realtime: refresh on new customer messages OR new inbound SMS
   useEffect(() => {
     const channel = supabase
       .channel("admin-messages-page")
@@ -105,6 +123,13 @@ export default function AdminMessages() {
           table: "conversation_messages",
           filter: "sender_type=eq.customer",
         },
+        () => {
+          fetchConversations();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "comms", table: "sms_messages" },
         () => {
           fetchConversations();
         },
@@ -130,6 +155,11 @@ export default function AdminMessages() {
     0,
   );
 
+  const totalSmsUnread = Object.values(smsActivity).reduce(
+    (sum, v) => sum + (v.unread || 0),
+    0,
+  );
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* Header */}
@@ -137,8 +167,11 @@ export default function AdminMessages() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Messages</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {totalUnread > 0
-              ? `${totalUnread} unread message${totalUnread !== 1 ? "s" : ""}`
+            {totalUnread > 0 || totalSmsUnread > 0
+              ? [
+                  totalUnread > 0 && `${totalUnread} unread message${totalUnread !== 1 ? "s" : ""}`,
+                  totalSmsUnread > 0 && `${totalSmsUnread} unread SMS`,
+                ].filter(Boolean).join(" · ")
               : "All caught up"}
           </p>
         </div>
@@ -199,6 +232,7 @@ export default function AdminMessages() {
               <ConversationRow
                 key={conv.conversation_id}
                 conversation={conv}
+                smsActivity={smsActivity[conv.customer_id]}
                 onSelect={() => setSelectedConv(conv)}
               />
             ))}
@@ -247,9 +281,11 @@ export default function AdminMessages() {
 
 function ConversationRow({
   conversation: conv,
+  smsActivity,
   onSelect,
 }: {
   conversation: ConversationSummary;
+  smsActivity?: { count: number; unread: number };
   onSelect: () => void;
 }) {
   const projectLink = conv.order_id
@@ -288,6 +324,19 @@ function ConversationRow({
               }`}
             >
               {conv.customer_name}
+              {smsActivity && smsActivity.count > 0 && (
+                <span
+                  title={`${smsActivity.count} SMS${smsActivity.unread > 0 ? ` · ${smsActivity.unread} unread` : ""}`}
+                  className={`ml-2 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded ${
+                    smsActivity.unread > 0
+                      ? "bg-blue-600 text-white font-semibold"
+                      : "bg-blue-50 text-blue-700"
+                  }`}
+                >
+                  <Smartphone className="w-2.5 h-2.5" />
+                  {smsActivity.unread > 0 ? smsActivity.unread : smsActivity.count}
+                </span>
+              )}
             </span>
             <span className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0">
               {conv.last_sender_type === "staff" && (

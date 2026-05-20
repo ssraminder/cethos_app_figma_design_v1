@@ -288,7 +288,7 @@ function AdminLayoutInner() {
   const location = useLocation();
   const branding = useBranding();
   const { session, signOut } = useAdminAuthContext();
-  const { unreadCount, newOrderCount, resetNewOrders, newQuoteCount, resetNewQuotes } = useStaffNotifications();
+  const { unreadCount, newOrderCount, resetNewOrders, newQuoteCount, resetNewQuotes, smsUnreadCount } = useStaffNotifications();
 
   useEffect(() => {
     if (!session) return;
@@ -447,6 +447,13 @@ function AdminLayoutInner() {
                 sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
               }`}>
                 {(sidebarOpen || isMobile) ? (unreadCount > 99 ? "99+" : unreadCount) : ""}
+              </span>
+            )}
+            {item.path === "/admin/sms" && smsUnreadCount > 0 && (
+              <span className={`flex-shrink-0 bg-blue-600 text-white text-xs font-bold rounded-full ${
+                sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
+              }`}>
+                {(sidebarOpen || isMobile) ? (smsUnreadCount > 99 ? "99+" : smsUnreadCount) : ""}
               </span>
             )}
             {item.path === "/admin/orders" && newOrderCount > 0 && (

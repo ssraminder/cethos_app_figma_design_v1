@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useStaffAuth } from "@/context/StaffAuthContext";
+import { useStaffNotifications } from "@/context/StaffNotificationContext";
 import { formatDistanceToNow, format } from "date-fns";
 
 interface Thread {
@@ -60,6 +61,7 @@ interface SmsTemplate {
 
 export default function AdminSmsInbox() {
   const { staff } = useStaffAuth();
+  const { resetSmsUnread } = useStaffNotifications();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -85,6 +87,9 @@ export default function AdminSmsInbox() {
   }, [search, unreadOnly]);
 
   useEffect(() => { fetchThreads(); }, [fetchThreads]);
+
+  // Reset the sidebar SMS badge when the inbox is opened
+  useEffect(() => { resetSmsUnread(); }, [resetSmsUnread]);
 
   // Realtime: refresh on new inbound
   useEffect(() => {
