@@ -55,8 +55,11 @@ export default function AdminMessages() {
 
   const fetchConversations = useCallback(async () => {
     try {
+      // Unified list: pulls both conversation_messages threads AND SMS-only
+      // customer threads via v_unified_messages. SMS-only customers (no
+      // email/in-app history) used to be invisible here.
       const { data, error } = await supabase.rpc(
-        "get_admin_conversation_summaries",
+        "comms_list_admin_threads",
         { p_limit: PAGE_SIZE + 1, p_offset: page * PAGE_SIZE },
       );
 
@@ -71,7 +74,7 @@ export default function AdminMessages() {
       const summaries: ConversationSummary[] = rows
         .slice(0, PAGE_SIZE)
         .map((row: any) => ({
-          conversation_id: row.conversation_id,
+          conversation_id: row.conversation_id || row.customer_id, // fall back to customer_id for SMS-only rows that have no conversation thread
           customer_id: row.customer_id,
           customer_name: row.customer_name || "Unknown Customer",
           customer_email: row.customer_email || "",
@@ -87,20 +90,27 @@ export default function AdminMessages() {
 
       setConversations(summaries);
 
-      // Fetch SMS activity for these customers in one batch
+      // SMS activity per row — used to render the SMS badge. The unified
+      // RPC already tells us has_sms + unread_sms; map into the same shape
+      // the existing UI expects.
+      const map: Record<string, { count: number; unread: number }> = {};
+      for (const r of rows.slice(0, PAGE_SIZE) as Array<{ customer_id: string; has_sms: boolean; unread_sms: number }>) {
+        if (r.has_sms) {
+          map[r.customer_id] = { count: 1, unread: Number(r.unread_sms || 0) };
+        }
+      }
+      // Hydrate full SMS counts in a single follow-up call so the badges
+      // still show "N" instead of just "1".
       const customerIds = summaries.map((s) => s.customer_id).filter(Boolean);
       if (customerIds.length > 0) {
         const { data: smsRows } = await supabase.rpc("comms_customers_sms_activity", {
           p_customer_ids: customerIds,
         });
-        const map: Record<string, { count: number; unread: number }> = {};
         for (const r of (smsRows || []) as Array<{ customer_id: string; sms_count: number; sms_unread: number }>) {
           map[r.customer_id] = { count: Number(r.sms_count), unread: Number(r.sms_unread) };
         }
-        setSmsActivity(map);
-      } else {
-        setSmsActivity({});
       }
+      setSmsActivity(map);
     } catch (err) {
       console.error("Failed to fetch conversations:", err);
     }
