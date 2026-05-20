@@ -18,7 +18,7 @@ import { formatDistanceToNow, format } from "date-fns";
 // customer) — but from the composer's perspective there's just ONE
 // non-SMS send path because send-staff-message handles both. So we collapse
 // the picker to two options.
-type Channel = "message" | "sms";
+type Channel = "message" | "sms" | "both";
 type ChannelLabel = "sms" | "email" | "inapp" | "app" | string;
 
 interface UnifiedMessage {
@@ -57,8 +57,15 @@ function channelLabel(ch: string) {
   if (ch === "sms") return "SMS";
   if (ch === "email") return "Email";
   if (ch === "message") return "Message";
+  if (ch === "both") return "Both";
   if (ch === "inapp" || ch === "app") return "Message";
   return ch;
+}
+
+function channelIconLarge(ch: string) {
+  if (ch === "sms") return <Smartphone className="w-3.5 h-3.5" />;
+  if (ch === "email") return <Mail className="w-3.5 h-3.5" />;
+  return <MessageSquare className="w-3.5 h-3.5" />;
 }
 
 function channelColor(ch: string, direction: string) {
@@ -148,6 +155,7 @@ export default function CustomerConversationTab({
   const availableChannels: Channel[] = useMemo(() => {
     const out: Channel[] = ["message"]; // always available — auto-emails if customer has email
     if (channelState?.has_phone) out.push("sms");
+    if (channelState?.has_phone) out.push("both"); // fan out to both
     return out;
   }, [channelState]);
 
@@ -156,36 +164,49 @@ export default function CustomerConversationTab({
     setSending(true);
     setError(null);
     try {
-      if (composeChannel === "sms") {
-        const { data, error: e } = await supabase.functions.invoke("rc-send-sms", {
-          body: {
-            custom_body: reply.trim(),
-            to_number: channelState?.customer_phone,
-            staff_user_id: staffUser.id,
-            customer_id: customerId,
-          },
-        });
-        if (e || !data?.ok) {
-          setError(data?.error || e?.message || "SMS send failed");
-          setSending(false);
-          return;
-        }
-      } else {
-        // message channel: send-staff-message handles persistence in
-        // conversation_messages AND auto-emails the customer via Brevo if they
-        // have an email on file. Customer portal shows it as an in-app message.
-        const { data, error: e } = await supabase.functions.invoke("send-staff-message", {
-          body: {
-            customer_id: customerId,
-            staff_id: staffUser.id,
-            message_text: reply.trim(),
-          },
-        });
-        if (e || (data && data.success === false)) {
-          setError(data?.error || e?.message || "Send failed");
-          setSending(false);
-          return;
-        }
+      const sendSms = composeChannel === "sms" || composeChannel === "both";
+      const sendMsg = composeChannel === "message" || composeChannel === "both";
+
+      // Fan-out for "both": fire in parallel so the customer gets the SMS and
+      // the in-app/email near-simultaneously.
+      const tasks: Array<Promise<{ kind: "sms" | "msg"; ok: boolean; err: string | null }>> = [];
+      if (sendSms) {
+        tasks.push((async () => {
+          const { data, error: e } = await supabase.functions.invoke("rc-send-sms", {
+            body: {
+              custom_body: reply.trim(),
+              to_number: channelState?.customer_phone,
+              staff_user_id: staffUser.id,
+              customer_id: customerId,
+            },
+          });
+          return { kind: "sms" as const, ok: !e && !!data?.ok, err: e?.message || (data as { error?: string })?.error || null };
+        })());
+      }
+      if (sendMsg) {
+        tasks.push((async () => {
+          const { data, error: e } = await supabase.functions.invoke("send-staff-message", {
+            body: {
+              customer_id: customerId,
+              staff_id: staffUser.id,
+              message_text: reply.trim(),
+            },
+          });
+          const ok = !e && (!data || (data as { success?: boolean }).success !== false);
+          return { kind: "msg" as const, ok, err: e?.message || (data as { error?: string })?.error || null };
+        })());
+      }
+      const results = await Promise.all(tasks);
+      const failures = results.filter((r) => !r.ok);
+      if (failures.length === results.length) {
+        // All failed
+        setError(failures.map((f) => `${f.kind === "sms" ? "SMS" : "Message"}: ${f.err || "failed"}`).join(" · "));
+        setSending(false);
+        return;
+      }
+      if (failures.length > 0) {
+        // Partial failure on "both"
+        setError(`Partial: ${failures.map((f) => `${f.kind === "sms" ? "SMS" : "Message"} failed (${f.err || "unknown"})`).join(", ")}`);
       }
       setReply("");
       await load();
@@ -267,12 +288,32 @@ export default function CustomerConversationTab({
                   className={`flex ${m.direction === "outbound" ? "justify-end" : "justify-start"}`}
                 >
                   <div className="max-w-lg">
-                    <div className={`rounded-lg px-3 py-2 ${channelColor(m.channel, m.direction)}`}>
+                    <div className={`relative rounded-lg px-3 py-2 ${channelColor(m.channel, m.direction)}`}>
+                      {/* Prominent channel marker in the bubble itself, so SMS
+                          stands apart from email/in-app at a glance. */}
+                      <div
+                        className={`absolute -top-2 ${m.direction === "outbound" ? "-right-2" : "-left-2"} rounded-full p-1 shadow-sm ${
+                          m.channel === "sms"
+                            ? "bg-blue-600 text-white"
+                            : m.channel === "email"
+                            ? "bg-purple-600 text-white"
+                            : "bg-teal-600 text-white"
+                        }`}
+                        title={`Channel: ${channelLabel(m.channel)}`}
+                      >
+                        {channelIconLarge(m.channel)}
+                      </div>
                       <div className="whitespace-pre-wrap text-sm">{m.body}</div>
                     </div>
                     <div className={`flex items-center gap-1 mt-1 text-[10px] ${m.direction === "outbound" ? "justify-end text-gray-500" : "text-gray-500"}`}>
                       <span
-                        className="inline-flex items-center gap-0.5 px-1 rounded bg-gray-100"
+                        className={`inline-flex items-center gap-0.5 px-1 rounded font-medium ${
+                          m.channel === "sms"
+                            ? "bg-blue-100 text-blue-700"
+                            : m.channel === "email"
+                            ? "bg-purple-100 text-purple-700"
+                            : "bg-teal-100 text-teal-700"
+                        }`}
                         title={`Channel: ${channelLabel(m.channel)}`}
                       >
                         {channelIcon(m.channel)} {channelLabel(m.channel)}
@@ -371,11 +412,14 @@ export default function CustomerConversationTab({
           {composeChannel === "sms" && channelState?.customer_phone && (
             <>To {channelState.customer_phone} · </>
           )}
-          {composeChannel === "message" && channelState?.customer_email && (
-            <>To {channelState.customer_email} (email + in-app) · </>
+          {composeChannel === "message" && (
+            <>To {channelState?.customer_email || "in-app only"} (email + in-app) · </>
+          )}
+          {composeChannel === "both" && (
+            <>To {channelState?.customer_phone} (SMS) + {channelState?.customer_email || "in-app only"} (email + in-app) · </>
           )}
           {reply.length} chars
-          {composeChannel === "sms" && reply.length > 160 && (
+          {(composeChannel === "sms" || composeChannel === "both") && reply.length > 160 && (
             <span className="text-orange-500"> · over 160 chars, may be multiple SMS segments</span>
           )}
         </div>
