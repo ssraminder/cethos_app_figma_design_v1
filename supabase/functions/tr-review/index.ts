@@ -37,7 +37,16 @@ const FINDINGS_TOOL = {
         type: "array",
         items: {
           type: "object",
-          required: ["pair_id", "file_id", "severity", "category", "confidence", "location", "rationale", "application_mode"],
+          // `source_text` + `current_translation` are required so reviewers
+          // can see what the deliverable says today without re-opening the
+          // file. Use null only when there is genuinely no corresponding
+          // text (e.g. missing field in the target) — call that out
+          // explicitly in `rationale` when null.
+          required: [
+            "pair_id", "file_id", "severity", "category", "confidence",
+            "location", "source_text", "current_translation", "rationale",
+            "application_mode",
+          ],
           properties: {
             pair_id: { type: "string" },
             file_id: { type: "string" },
@@ -115,6 +124,13 @@ serve(async (req) => {
       ...(pairs ?? []).map((p) => `  - Pair ${p.label} (id=${p.id})`),
       "Files:",
       ...(files ?? []).map((f) => `  - [${f.role}] ${f.original_filename} (id=${f.id}, pair=${f.pair_id ?? "-"}, verified=${f.verified})`),
+      "",
+      "Finding format requirements (ENFORCED — required fields will cause schema rejection if omitted):",
+      "- `source_text`: the verbatim text from the SOURCE that the finding concerns. Use null only when the source has no corresponding text (e.g. an added/extraneous fragment in the target).",
+      "- `current_translation`: the verbatim text from the TARGET file as it currently appears. Use null ONLY when the target is missing the field entirely — and say so in `rationale`.",
+      "- `proposed_change`: the exact replacement string when you are suggesting one. Omit (or null) only for pure verification questions where you cannot propose a specific fix.",
+      "- `rationale`: 1–3 sentences explaining the issue. If you set source_text or current_translation to null, the rationale must call out *why* (missing field, ambiguous handwriting with no readable source, etc.).",
+      "Verification questions (handwriting_uncertain etc.) must still show what the target currently says in `current_translation` so the reviewer can answer without re-opening the .docx.",
       "",
       user_message ?? "Produce findings on every target file against its paired source per the locked methodology.",
     ].join("\n");
