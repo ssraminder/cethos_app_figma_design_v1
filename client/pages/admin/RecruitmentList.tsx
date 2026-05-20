@@ -427,8 +427,22 @@ export default function RecruitmentList() {
   };
 
   const handleSearch = () => {
-    setParam("search", searchInput);
-    setParam("page", "");
+    // setSearchParams from react-router-dom v6 is `navigate(?...)` with
+    // the URL computed from searchParamsRef.current at call time — it is
+    // NOT a React setState and consecutive calls do NOT chain. Two
+    // setParam invocations would each read the pre-search URL; the
+    // second navigate then overwrites the first, silently dropping the
+    // search param. Always update multiple keys in a single call.
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (searchInput) {
+        next.set("search", searchInput);
+      } else {
+        next.delete("search");
+      }
+      next.delete("page");
+      return next;
+    });
   };
 
   const handleSort = (field: SortField) => {
