@@ -28,17 +28,30 @@ export async function applyDiagonalWatermark(
   for (const page of pdf.getPages()) {
     const { width, height } = page.getSize();
     // Size the text so it spans roughly the full diagonal of the page.
-    // pdf-lib measures text in font units; pick a size proportional to
-    // the smaller page dimension so portrait + landscape both look right.
     const diagonal = Math.sqrt(width * width + height * height);
     const fontSize = Math.min(diagonal / (text.length * 0.45), Math.min(width, height) * 0.6);
 
     const textWidth = font.widthOfTextAtSize(text, fontSize);
     const textHeight = font.heightAtSize(fontSize);
 
-    // Center the text on the page, then rotate around that center.
-    const x = (width - textWidth) / 2;
-    const y = (height - textHeight) / 2;
+    // pdf-lib rotates the text around its baseline-left ANCHOR (x, y), not
+    // around its visual center. To make the rotated text appear visually
+    // centered on the page, we solve for the anchor that maps the un-rotated
+    // text center to the page center after rotation:
+    //
+    //   anchor = pageCenter - R(rotation) · centerOffset
+    //
+    // where centerOffset is the vector from the text's baseline-left to its
+    // visual center: (textWidth/2, textHeight/2).
+    const theta = (rotation * Math.PI) / 180;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    const cx = width / 2;
+    const cy = height / 2;
+    const offsetX = textWidth / 2;
+    const offsetY = textHeight / 2;
+    const x = cx - (offsetX * cos - offsetY * sin);
+    const y = cy - (offsetX * sin + offsetY * cos);
 
     page.drawText(text, {
       x,
