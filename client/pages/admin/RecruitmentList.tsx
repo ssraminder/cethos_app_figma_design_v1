@@ -17,11 +17,14 @@ import { format, formatDistanceToNow } from "date-fns";
 // ---------- Constants ----------
 
 const TAB_STATUSES: Record<string, string[]> = {
-  attention: ["staff_review", "info_requested"],
+  attention: ["staff_review", "info_requested", "references_received"],
   // "In Progress" = waiting on applicant or system. Post-submission states
   // (test_submitted, test_assessed) live under "Tests to Review" — the
   // staff-action queue — and are intentionally excluded here to avoid the
-  // same applicant showing up on both tabs.
+  // same applicant showing up on both tabs. references_requested and
+  // references_in_progress are also waiting-on-applicant states.
+  // references_received goes under Needs Attention — all evidence is in
+  // and the next move is staff approval (or reassessment).
   in_progress: [
     "submitted",
     "prescreening",
@@ -29,6 +32,8 @@ const TAB_STATUSES: Record<string, string[]> = {
     "test_pending",
     "test_sent",
     "test_in_progress",
+    "references_requested",
+    "references_in_progress",
     "negotiation",
   ],
   decided: ["approved", "rejected", "archived"],
@@ -62,6 +67,9 @@ const STATUS_LABELS: Record<string, string> = {
   test_in_progress: "Test In Progress",
   test_submitted: "Test Submitted",
   test_assessed: "Test Assessed",
+  references_requested: "References Requested",
+  references_in_progress: "References In Progress",
+  references_received: "References Received",
   negotiation: "Negotiation",
   staff_review: "Staff Review",
   approved: "Approved",
