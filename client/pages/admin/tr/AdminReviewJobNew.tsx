@@ -145,6 +145,9 @@ export default function AdminReviewJobNew() {
         if (order_number) setTitle(`QM · ${order_number} · ${step.name}`);
 
         // Pre-stage the delivered file as the target slot of pair 1.
+        // tr-link-existing-file expects link_ref.deliverable_id (id of the
+        // step_deliveries row) and link_ref.storage_path (which file from
+        // that delivery's file_paths array to link).
         const deliveredPath: string | undefined = (step.delivered_file_paths ?? [])[0];
         if (deliveredPath) {
           const { data: deliveryRow } = await supabase
@@ -164,8 +167,8 @@ export default function AdminReviewJobNew() {
                       kind: "link",
                       source_kind: "linked_order_deliverable",
                       link_ref: {
+                        deliverable_id: deliveryRow?.id ?? null,
                         step_id: fromStepId,
-                        delivery_id: deliveryRow?.id ?? null,
                         storage_path: deliveredPath,
                       },
                       label: deliveredPath.split("/").pop() ?? deliveredPath,

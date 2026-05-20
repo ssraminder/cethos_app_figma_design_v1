@@ -44,18 +44,21 @@ serve(async (req) => {
 
     switch (body.source_kind) {
       case "linked_quote_file": {
+        // quote_files actually has: original_filename, mime_type, file_size,
+        // storage_path. No `filename` or `storage_bucket` columns. Quote-file
+        // assets all live in the public "quote-files" bucket.
         const qfId = body.link_ref.quote_file_id;
         if (!qfId) return json({ error: "link_ref.quote_file_id required" }, 400);
         const { data: qf } = await sb
           .from("quote_files")
-          .select("id, filename, mime_type, file_size, storage_path, storage_bucket")
+          .select("id, original_filename, mime_type, file_size, storage_path")
           .eq("id", qfId)
           .maybeSingle();
         if (!qf) return json({ error: "quote_file not found" }, 404);
         insert.linked_quote_file_id = qfId;
-        storage_bucket = qf.storage_bucket ?? "quote-files";
+        storage_bucket = "quote-files";
         storage_path = qf.storage_path;
-        original_filename = qf.filename;
+        original_filename = qf.original_filename;
         mime_type = qf.mime_type ?? null;
         bytes = qf.file_size ?? null;
         break;
@@ -85,23 +88,103 @@ serve(async (req) => {
         break;
       }
       case "linked_order_deliverable": {
-        const { order_id, step_id, deliverable_id } = body.link_ref;
-        if (!order_id || !deliverable_id) {
-          return json({ error: "link_ref.order_id and deliverable_id required" }, 400);
+        // step_deliveries actually has: file_paths (TEXT[]) only — no per-row
+        // filename/storage_path/mime_type/storage_bucket. Workflow deliverables
+        // live in the "quote-files" bucket (see staff-deliver-step which
+        // uploads to that bucket under "workflows/<order_id>/<step_id>/v..."
+        // paths).
+        //
+        // Caller MUST specify which path to link (a delivery can contain
+        // multiple files). We accept:
+        //   link_ref.storage_path  — preferred, exact match
+        //   link_ref.file_index    — fallback, index into file_paths array
+        const { step_id, deliverable_id } = body.link_ref;
+        const requestedPath: string | null = body.link_ref.storage_path ?? null;
+        const fileIndex: number | null =
+          typeof body.link_ref.file_index === "number"
+            ? body.link_ref.file_index
+            : null;
+
+        // Look up by deliverable_id when provided; otherwise fall back to
+        // the latest delivery for step_id.
+        let del: { id: string; step_id: string; file_paths: string[] | null } | null = null;
+        if (deliverable_id) {
+          const { data } = await sb
+            .from("step_deliveries")
+            .select("id, step_id, file_paths")
+            .eq("id", deliverable_id)
+            .maybeSingle();
+          del = data as typeof del;
+        } else if (step_id) {
+          const { data } = await sb
+            .from("step_deliveries")
+            .select("id, step_id, file_paths")
+            .eq("step_id", step_id)
+            .order("version", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          del = data as typeof del;
+        } else if (requestedPath) {
+          // Caller has no delivery id but did supply the storage path —
+          // try to find the delivery row that contains it for audit linkage.
+          const { data } = await sb
+            .from("step_deliveries")
+            .select("id, step_id, file_paths")
+            .contains("file_paths", [requestedPath])
+            .order("version", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          del = data as typeof del;
         }
-        const { data: del } = await sb
-          .from("step_deliveries")
-          .select("id, step_id, filename, storage_path, mime_type, storage_bucket")
-          .eq("id", deliverable_id)
-          .maybeSingle();
+
         if (!del) return json({ error: "deliverable not found" }, 404);
+
+        const paths = Array.isArray(del.file_paths) ? del.file_paths : [];
+        let chosen: string | null = null;
+        if (requestedPath && paths.includes(requestedPath)) {
+          chosen = requestedPath;
+        } else if (fileIndex != null && paths[fileIndex]) {
+          chosen = paths[fileIndex];
+        } else if (paths.length === 1) {
+          chosen = paths[0];
+        } else if (requestedPath) {
+          // Caller gave an exact path but it isn't in this delivery row's
+          // array. Trust the caller — TR is referencing by storage_path,
+          // and we already verified the delivery row exists. This lets us
+          // recover when delivery_id was passed but the row predates a
+          // file_paths update.
+          chosen = requestedPath;
+        }
+
+        if (!chosen) {
+          return json({
+            error:
+              "Deliverable has multiple files; pass link_ref.storage_path or link_ref.file_index to pick one.",
+            available: paths,
+          }, 400);
+        }
+
+        // Lookup order_id from the step so callers don't have to pass it.
+        let order_id: string | null = body.link_ref.order_id ?? null;
+        if (!order_id) {
+          const { data: stepRow } = await sb
+            .from("order_workflow_steps")
+            .select("order_id, workflow_id, order_workflows!workflow_id(order_id)")
+            .eq("id", del.step_id)
+            .maybeSingle();
+          order_id =
+            (stepRow as any)?.order_id ??
+            (stepRow as any)?.order_workflows?.order_id ??
+            null;
+        }
+
         insert.linked_order_id = order_id;
-        insert.linked_step_id = step_id ?? del.step_id;
-        insert.linked_deliverable_id = deliverable_id;
-        storage_bucket = del.storage_bucket ?? "step-deliveries";
-        storage_path = del.storage_path;
-        original_filename = del.filename;
-        mime_type = del.mime_type ?? null;
+        insert.linked_step_id = del.step_id;
+        insert.linked_deliverable_id = del.id;
+        storage_bucket = "quote-files";
+        storage_path = chosen;
+        original_filename = chosen.split("/").pop() ?? "deliverable";
+        mime_type = null;
         break;
       }
       default:
