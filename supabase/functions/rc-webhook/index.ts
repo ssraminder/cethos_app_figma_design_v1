@@ -86,16 +86,62 @@ serve(async (req: Request) => {
   }
 
   const eventPath = String(body.event ?? "");
-  // Examples:
-  //   /restapi/v1.0/account/.../extension/.../message-store/instant?type=SMS
-  //   /restapi/v1.0/account/.../extension/.../telephony/sessions
-  //   /restapi/v1.0/account/.../extension/.../message-store
   const isSms = eventPath.includes("/message-store");
-  const isCall = eventPath.includes("/telephony/") || eventPath.includes("/presence");
+  const isTelephony = eventPath.includes("/telephony/");
+  const isPresence = eventPath.includes("/presence");
+  const isCall = isTelephony || isPresence;
 
-  console.log("rc-webhook event", { event: eventPath, isSms, isCall, uuid: body.uuid });
+  console.log("rc-webhook event", { event: eventPath, isSms, isTelephony, isPresence, uuid: body.uuid });
 
-  // Dispatch — fire-and-forget so we can ack RC fast.
+  // ── Telephony sessions: write a ring-state row immediately so the call
+  // shows up on /admin/calls before the call-log API has anything to say.
+  // Payload shape: { event, body: { id, parties: [{ direction, from, to, status, ... }], creationTime } }
+  if (isTelephony) {
+    try {
+      const admin = getAdminClient();
+      const session = (body.body || body) as Record<string, unknown>;
+      const tsid = String(session.id ?? "");
+      const parties = (session.parties as Array<Record<string, unknown>> | undefined) ?? [];
+      const creationTime = (session.creationTime as string | undefined) ?? new Date().toISOString();
+      const master = parties.find((p) => p.master === true) || parties[0];
+      if (master && tsid) {
+        const from = (master.from as Record<string, unknown> | undefined) || {};
+        const to = (master.to as Record<string, unknown> | undefined) || {};
+        const statusObj = (master.status as Record<string, unknown> | undefined) || {};
+        const code = String(statusObj.code ?? "Unknown");
+        const direction = String(master.direction ?? "Inbound");
+        const missed = Boolean(master.missedCall);
+        let result = code;
+        if (code === "Disconnected") result = missed ? "Missed" : "Call connected";
+        else if (code === "Answered") result = "Call connected";
+        else if (code === "Proceeding" || code === "Setup") result = "Ringing";
+
+        const ext = (master.extension as Record<string, unknown> | undefined);
+        const extId = ext?.id != null ? String(ext.id) : null;
+
+        await admin.rpc("comms_upsert_call_ring_state", {
+          p_telephony_session_id: tsid,
+          p_party_id: master.id != null ? String(master.id) : null,
+          p_direction: direction,
+          p_from_number: (from.phoneNumber as string | undefined) ?? null,
+          p_from_name: (from.name as string | undefined) ?? null,
+          p_to_number: (to.phoneNumber as string | undefined) ?? null,
+          p_to_name: (to.name as string | undefined) ?? null,
+          p_extension_id: extId,
+          p_status: result,
+          p_started_at: creationTime,
+          p_ended_at: code === "Disconnected" ? ((session.lastModifiedTime as string | undefined) ?? new Date().toISOString()) : null,
+          p_raw: session,
+        });
+      }
+    } catch (e) {
+      console.error("rc-webhook telephony parse failed", e);
+    }
+  }
+
+  // Backstop: kick the matching sync function to fill in any details the
+  // realtime payload doesn't carry (recording url, final duration on call
+  // end, full SMS body, etc.).
   if (isSms) invokeSync("rc-sync-sms");
   if (isCall) invokeSync("rc-sync-calls");
 
