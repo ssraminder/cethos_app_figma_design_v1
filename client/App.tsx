@@ -75,6 +75,7 @@ import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
 import AdminAIAnalytics from "./pages/admin/AdminAIAnalytics";
 import AdminReports from "./pages/admin/AdminReports";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminSmsTemplates from "./pages/admin/AdminSmsTemplates";
 import Patterns from "./pages/admin/Patterns";
 import Learning from "./pages/admin/Learning";
 import Thresholds from "./pages/admin/Thresholds";
@@ -385,6 +386,10 @@ const App = () => (
                     <Route
                       path="settings/purge-quotes"
                       element={<PurgeDraftQuotes />}
+                    />
+                    <Route
+                      path="settings/sms-templates"
+                      element={<AdminSmsTemplates />}
                     />
                     <Route path="analytics" element={<AdminAIAnalytics />} />
                     <Route path="ai/analytics" element={<AdminAIAnalytics />} />

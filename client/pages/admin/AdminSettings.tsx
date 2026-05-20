@@ -218,6 +218,18 @@ export default function AdminSettings() {
             </button>
 
             <button
+              onClick={() => navigate("/admin/settings/sms-templates")}
+              className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                SMS Templates
+              </h3>
+              <p className="text-sm text-gray-600">
+                Manage preset SMS messages used in the Calls composer
+              </p>
+            </button>
+
+            <button
               onClick={() => navigate("/admin/settings/complexity")}
               className="text-left p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
             >
