@@ -59,16 +59,39 @@ serve(async (req: Request) => {
   //    the candidate query silently returned 0 rows and the cron sat
   //    on candidates:0 / sent:0 even with 1000+ vendors backlogged.
   //    See incident 2026-05-14 → 2026-05-15.
+  //
+  //    notification_log itself ALSO hits PostgREST's 1000-row cap once
+  //    weekly sends exceed 1000 (1016 on 2026-05-19). A single .select()
+  //    silently truncates and the missed dedup entries get re-picked by
+  //    the candidate scan — the inner sender then re-dedups via .in()
+  //    (uncapped because it's filtered to ≤ batchSize IDs) and drops
+  //    everything, so the cron returns sent:0 even though candidates
+  //    exist. Paginate this fetch too.
   const dedupSince = new Date(Date.now() - DEDUP_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const { data: recentRows } = await sb
-    .from("notification_log")
-    .select("recipient_id")
-    .eq("event_type", "vendor_activation_email")
-    .gte("created_at", dedupSince)
-    .not("recipient_id", "is", null);
-  const recentVendorIdSet = new Set(
-    (recentRows ?? []).map((r) => r.recipient_id as string).filter(Boolean),
-  );
+  const LOG_PAGE_SIZE = 1000;
+  const LOG_MAX_PAGES = 10;
+  const recentVendorIdSet = new Set<string>();
+  for (let page = 0; page < LOG_MAX_PAGES; page++) {
+    const from = page * LOG_PAGE_SIZE;
+    const { data: logRows, error: logErr } = await sb
+      .from("notification_log")
+      .select("recipient_id")
+      .eq("event_type", "vendor_activation_email")
+      .gte("created_at", dedupSince)
+      .not("recipient_id", "is", null)
+      .order("created_at", { ascending: true })
+      .range(from, from + LOG_PAGE_SIZE - 1);
+    if (logErr) {
+      console.error("vendor-activation-email-cron: notification_log page fetch failed", logErr);
+      break;
+    }
+    if (!logRows || logRows.length === 0) break;
+    for (const r of logRows) {
+      const id = (r as { recipient_id: string | null }).recipient_id;
+      if (id) recentVendorIdSet.add(id);
+    }
+    if (logRows.length < LOG_PAGE_SIZE) break;
+  }
 
   // 2) Pull vendors ordered by created_at ASC and exclude recent in-memory.
   //    PostgREST caps a single response at 1000 rows; once the dedup set
