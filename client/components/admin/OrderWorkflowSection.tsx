@@ -53,6 +53,7 @@ interface WorkflowStep {
   vendor_id: string | null;
   vendor_name: string | null;
   assigned_staff_id: string | null;
+  assigned_staff_name?: string | null;
   assigned_by: string | null;
   preferred_vendor_id: string | null;
   offered_at: string | null;
@@ -2018,9 +2019,25 @@ function TemplateSelector({
 
 // ── StaffPickerDropdown ──
 
-function StaffPickerDropdown({ onSelect }: { onSelect: (staffId: string) => void }) {
+// Confirm-gated staff picker. Two-step UX:
+//   1) admin picks a staff member from the dropdown — nothing fires yet
+//   2) admin can optionally set a deadline + instructions, then clicks
+//      "Confirm assignment" to commit (or "Cancel" to back out).
+// Prevents the prior accidental assign-on-pick footgun and gives parity
+// with the vendor assignment flow which has its own modal.
+function StaffPickerDropdown({
+  onConfirm,
+  disabled = false,
+}: {
+  onConfirm: (args: { staff_id: string; deadline?: string; instructions?: string }) => Promise<void> | void;
+  disabled?: boolean;
+}) {
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [deadline, setDeadline] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const fetchRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -2044,7 +2061,6 @@ function StaffPickerDropdown({ onSelect }: { onSelect: (staffId: string) => void
     fetchRef.current = fetchStaff;
     fetchStaff();
 
-    // Unique channel name so multiple dropdown instances don't collide.
     const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
       .channel(`staff_users_picker_${uniqueId}`)
@@ -2063,28 +2079,108 @@ function StaffPickerDropdown({ onSelect }: { onSelect: (staffId: string) => void
     };
   }, []);
 
+  const selectedStaff = staff.find((s) => s.id === selectedId) || null;
+
+  const handleConfirm = async () => {
+    if (!selectedId) return;
+    setSubmitting(true);
+    try {
+      await onConfirm({
+        staff_id: selectedId,
+        deadline: deadline || undefined,
+        instructions: instructions.trim() || undefined,
+      });
+      setSelectedId("");
+      setDeadline("");
+      setInstructions("");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setSelectedId("");
+    setDeadline("");
+    setInstructions("");
+  };
+
   return (
-    <select
-      className="text-sm border border-gray-300 rounded px-2 py-1"
-      defaultValue=""
-      onFocus={() => fetchRef.current()}
-      onMouseDown={() => fetchRef.current()}
-      onChange={(e) => e.target.value && onSelect(e.target.value)}
-      disabled={loading && staff.length === 0}
-    >
-      <option value="" disabled>
-        {loading && staff.length === 0
-          ? "Loading..."
-          : staff.length === 0
-          ? "No active staff"
-          : "Select staff member..."}
-      </option>
-      {staff.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.full_name || s.email}
+    <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+      <select
+        className="text-sm border border-gray-300 rounded px-2 py-1"
+        value={selectedId}
+        onFocus={() => fetchRef.current()}
+        onMouseDown={() => fetchRef.current()}
+        onChange={(e) => setSelectedId(e.target.value)}
+        disabled={disabled || submitting || (loading && staff.length === 0)}
+      >
+        <option value="">
+          {loading && staff.length === 0
+            ? "Loading..."
+            : staff.length === 0
+            ? "No active staff"
+            : "Select staff member..."}
         </option>
-      ))}
-    </select>
+        {staff.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.full_name || s.email}
+          </option>
+        ))}
+      </select>
+
+      {selectedStaff && (
+        <div className="border border-purple-200 bg-purple-50 rounded p-2 space-y-2 text-xs">
+          <div className="text-purple-800">
+            Assigning to <strong>{selectedStaff.full_name || selectedStaff.email}</strong>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] text-gray-600">Deadline (optional)</label>
+            <input
+              type="datetime-local"
+              className="border border-gray-300 rounded px-2 py-1 text-xs bg-white"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              disabled={submitting}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] text-gray-600">Instructions (optional)</label>
+            <textarea
+              className="border border-gray-300 rounded px-2 py-1 text-xs bg-white"
+              rows={2}
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="What does this person need to know?"
+              disabled={submitting}
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              className="px-3 py-1 border border-gray-300 text-gray-600 rounded hover:bg-gray-50 disabled:opacity-50"
+              onClick={handleCancel}
+              disabled={submitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1"
+              onClick={handleConfirm}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" /> Assigning...
+                </>
+              ) : (
+                "Confirm assignment"
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2594,6 +2690,34 @@ function WorkflowPipeline({
                         <span className="hidden sm:inline">Resend email</span>
                       </button>
                     </>
+                  )}
+                  {!step.vendor_id && step.assigned_staff_id && (
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (resendingStepId) return;
+                        setResendingStepId(step.id);
+                        try {
+                          await handleStepAction(step.id, "resend_staff_notification", {});
+                          toast.success(`Re-sent assignment email to ${step.assigned_staff_name || "staff"}`);
+                        } catch (err: any) {
+                          toast.error(err?.message || "Failed to resend email");
+                        } finally {
+                          setResendingStepId(null);
+                        }
+                      }}
+                      disabled={resendingStepId === step.id}
+                      className="text-xs text-gray-400 hover:text-purple-700 inline-flex items-center gap-1 disabled:opacity-50"
+                      title="Resend assignment email to staff via Brevo"
+                    >
+                      {resendingStepId === step.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      )}
+                      <span className="hidden sm:inline">Resend email</span>
+                    </button>
                   )}
                 </div>
 
@@ -3304,9 +3428,12 @@ function WorkflowPipeline({
                         )}
                         {(canStaff || isFallback) && (
                           <StaffPickerDropdown
-                            onSelect={(staffId) =>
+                            disabled={actionLoading === step.id}
+                            onConfirm={async ({ staff_id, deadline, instructions }) =>
                               handleStepAction(step.id, "assign_staff", {
-                                staff_id: staffId,
+                                staff_id,
+                                deadline,
+                                instructions,
                               })
                             }
                           />
@@ -3353,6 +3480,30 @@ function WorkflowPipeline({
                       title="Unassign vendor from this step"
                     >
                       Unassign
+                    </button>
+                  )}
+
+                  {/* Unassign Staff: internal_work / internal_review with a staff
+                      member assigned, not approved/skipped. Simpler than
+                      vendor unassign (no payables / offers to clean up). */}
+                  {!step.vendor_id && step.assigned_staff_id && !['approved', 'skipped'].includes(step.status) && (
+                    <button
+                      className="text-xs px-2 py-1 border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
+                      disabled={actionLoading === step.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const name = step.assigned_staff_name || "this staff member";
+                        const hasFiles = (step.delivered_file_paths?.length ?? 0) > 0;
+                        const msg = hasFiles
+                          ? `Unassign ${name} from this step? Already-delivered files will be cleared. The step will reset to Pending.`
+                          : `Unassign ${name} from this step? The step will reset to Pending.`;
+                        if (confirm(msg)) {
+                          handleStepAction(step.id, "unassign_staff", { reason: "reassigning" });
+                        }
+                      }}
+                      title="Unassign staff from this step"
+                    >
+                      {actionLoading === step.id ? "..." : "Unassign"}
                     </button>
                   )}
 
@@ -3688,8 +3839,8 @@ function WorkflowPipeline({
                       )}
                     </div>
 
-                    {/* Staff Delivery Upload (internal_work steps) */}
-                    {step.actor_type === 'internal_work' && ['in_progress', 'revision_requested'].includes(step.status) && (
+                    {/* Staff Delivery Upload (internal_work + internal_review steps) */}
+                    {(step.actor_type === 'internal_work' || step.actor_type === 'internal_review') && ['in_progress', 'revision_requested'].includes(step.status) && (
                       <div className="border border-purple-200 rounded p-3 bg-purple-50">
                         {staffDeliveryStepId === step.id ? (
                           <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
