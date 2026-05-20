@@ -2410,6 +2410,8 @@ function WorkflowPipeline({
   // When the draft modal opens, fetch the order's customer for prefill
   // (email/name + default subject). Reset draftPdf on each open so admin
   // is forced to regenerate after closing — keeps the watermark fresh.
+  // The orderId prop is the source of truth for the order; WorkflowStep
+  // doesn't expose order_id.
   useEffect(() => {
     if (!draftStep) {
       setDraftPdf(null);
@@ -2421,19 +2423,39 @@ function WorkflowPipeline({
     (async () => {
       const { data: order } = await supabase
         .from("orders")
-        .select("order_number, customer_id, customers(full_name, email)")
-        .eq("id", (draftStep as any).order_id || "")
+        .select("order_number, customer_id, customers(full_name, email, ar_contact_email)")
+        .eq("id", orderId)
         .maybeSingle();
       const customer: any = (order as any)?.customers ?? null;
       setDraftRecipientEmail(customer?.email ?? "");
       setDraftRecipientName(customer?.full_name ?? "");
-      setDraftCcEmails("");
+      // Auto-populate CCs with the customer's AR contact email when set
+      // and different from the primary — multi-contact customer accounts
+      // expect both billing + primary in the loop on drafts.
+      const cc =
+        customer?.ar_contact_email && customer.ar_contact_email !== customer.email
+          ? customer.ar_contact_email
+          : "";
+      setDraftCcEmails(cc);
       setDraftSubject(
         `Draft translation for review — ${order?.order_number ?? "your order"} · ${draftStep.name}`,
       );
-      setDraftBodyText("");
+      // Default body — admin can edit or clear. Mentions the order + step
+      // so the customer has context before opening the attachment.
+      const customerFirstName = customer?.full_name
+        ? String(customer.full_name).split(/\s+/)[0]
+        : "";
+      setDraftBodyText(
+        [
+          customerFirstName ? `Hi ${customerFirstName},` : "Hi,",
+          "",
+          `Please find attached the draft translation for ${order?.order_number ?? "your order"} (${draftStep.name}). Each page carries a "DRAFT" watermark while it is pending your review.`,
+          "",
+          "Let us know if you need any changes; once you confirm, we'll finalize and remove the watermark.",
+        ].join("\n"),
+      );
     })();
-  }, [draftStep]);
+  }, [draftStep, orderId]);
 
   async function generateDraftPdf() {
     if (!draftStep) return;
