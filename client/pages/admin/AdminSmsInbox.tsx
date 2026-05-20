@@ -60,7 +60,7 @@ interface SmsTemplate {
 }
 
 export default function AdminSmsInbox() {
-  const { staff } = useStaffAuth();
+  const { staffUser } = useStaffAuth();
   const { resetSmsUnread } = useStaffNotifications();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
@@ -213,7 +213,7 @@ export default function AdminSmsInbox() {
         {selectedPeer && selectedThread ? (
           <ThreadView
             thread={selectedThread}
-            staffUserId={staff?.id ?? null}
+            staffUserId={staffUser?.id ?? null}
             onBack={() => setSelectedPeer(null)}
             onRefresh={fetchThreads}
           />
