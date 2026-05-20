@@ -578,7 +578,7 @@ async function notifyCustomerDraftReady(
             : `${(f.size / 1024).toFixed(0)} KB`
           : "";
         const downloadBtn = f.url
-          ? `<a href="${f.url}" style="display:inline-block;padding:6px 14px;background-color:#1e40af;color:#ffffff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500;">Download</a>`
+          ? `<a href="${f.url}" style="display:inline-block;padding:6px 14px;background-color:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500;">Download</a>`
           : "";
         return `<tr>
           <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">
@@ -606,8 +606,8 @@ async function notifyCustomerDraftReady(
     let staffNotesHtml = "";
     if (staffNotes) {
       staffNotesHtml = `
-        <div style="margin:20px 0;padding:16px;background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;">
-          <p style="margin:0 0 6px;color:#1e40af;font-size:13px;font-weight:600;">Note from our team:</p>
+        <div style="margin:20px 0;padding:16px;background-color:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;">
+          <p style="margin:0 0 6px;color:#0f766e;font-size:13px;font-weight:600;">Note from our team:</p>
           <p style="margin:0;color:#374151;font-size:14px;line-height:1.5;">${staffNotes}</p>
         </div>`;
     }
@@ -641,7 +641,7 @@ async function notifyCustomerDraftReady(
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:40px 20px;">
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <tr><td style="background-color:#1e40af;padding:24px 32px;">
+        <tr><td style="background-color:#0f766e;padding:24px 32px;">
           <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">CETHOS Translation Services</h1>
         </td></tr>
         <tr><td style="padding:32px;">
@@ -654,7 +654,7 @@ async function notifyCustomerDraftReady(
           ${fileListHtml}
           ${staffNotesHtml}
           <table cellpadding="0" cellspacing="0" style="margin:24px 0;">
-            <tr><td style="background-color:#1e40af;border-radius:8px;">
+            <tr><td style="background-color:#0f766e;border-radius:8px;">
               <a href="${reviewUrl}" style="display:inline-block;padding:14px 28px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;">
                 Review Draft${fileCount > 1 ? "s" : ""}
               </a>
@@ -773,7 +773,7 @@ async function notifyStaffChangesRequested(
             email: "donotreply@cethos.com",
           },
           subject: `Changes requested by ${customer?.full_name || "customer"}`,
-          htmlContent: `<p>${customer?.full_name || "A customer"} has requested changes on the draft translation.</p>${feedback ? `<blockquote style="border-left:4px solid #3b82f6;padding:12px;margin:16px 0;background:#eff6ff;">${feedback}</blockquote>` : ""}<p><a href="${orderUrl}">View Order</a></p>`,
+          htmlContent: `<p>${customer?.full_name || "A customer"} has requested changes on the draft translation.</p>${feedback ? `<blockquote style="border-left:4px solid #14b8a6;padding:12px;margin:16px 0;background:#f0fdfa;">${feedback}</blockquote>` : ""}<p><a href="${orderUrl}">View Order</a></p>`,
         }),
       });
     }
@@ -813,7 +813,7 @@ async function notifyCustomerDelivery(
             : `${(f.size / 1024).toFixed(0)} KB`
           : "";
         const downloadBtn = f.url
-          ? `<a href="${f.url}" style="display:inline-block;padding:6px 14px;background-color:#1e40af;color:#ffffff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500;">Download</a>`
+          ? `<a href="${f.url}" style="display:inline-block;padding:6px 14px;background-color:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500;">Download</a>`
           : "";
         return `<tr>
           <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">
@@ -859,7 +859,7 @@ async function notifyCustomerDelivery(
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:40px 20px;">
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <tr><td style="background-color:#1e40af;padding:24px 32px;">
+        <tr><td style="background-color:#0f766e;padding:24px 32px;">
           <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">CETHOS Translation Services</h1>
         </td></tr>
         <tr><td style="padding:32px;">
@@ -872,7 +872,7 @@ async function notifyCustomerDelivery(
           ${fileListHtml}
           ${invoiceNumber ? `<p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">Invoice <strong>${invoiceNumber}</strong> has been generated and is available in your dashboard.</p>` : ""}
           <table cellpadding="0" cellspacing="0" style="margin:24px 0;">
-            <tr><td style="background-color:#1e40af;border-radius:8px;">
+            <tr><td style="background-color:#0f766e;border-radius:8px;">
               <a href="${orderUrl}" style="display:inline-block;padding:14px 28px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;">
                 View Order & Download Files
               </a>

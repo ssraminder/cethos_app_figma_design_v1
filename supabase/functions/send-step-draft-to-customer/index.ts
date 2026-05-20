@@ -37,6 +37,13 @@ const esc = (s: string | null | undefined): string =>
     c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
   );
 
+// DEPRECATED 2026-05-20: superseded by the existing draft_translation flow
+// in AdminOrderDetail (promote-step-delivery-to-draft → "Send Selected to
+// Customer" → review-draft-file). That path emails a branded notification
+// with a customer-dashboard review link instead of a raw PDF attachment,
+// and records customer responses in file_review_history. Left here in
+// case anything still calls it; new code should not.
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
