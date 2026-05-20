@@ -69,8 +69,16 @@ export default function AdminReviewJobDetail() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareEmail, setShareEmail] = useState("");
   const [shareName, setShareName] = useState("");
+  const [shareCcEmails, setShareCcEmails] = useState("");
   const [shareMessage, setShareMessage] = useState("");
   const [shareExpires, setShareExpires] = useState(30);
+  const [linkedVendor, setLinkedVendor] = useState<{
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    additional_emails: string[] | null;
+  } | null>(null);
+  const [currentStaff, setCurrentStaff] = useState<{ email: string | null; full_name: string | null } | null>(null);
   const [orderCustomer, setOrderCustomer] = useState<{
     order_number: string;
     customer_id: string;
@@ -117,6 +125,45 @@ export default function AdminReviewJobDetail() {
         }
       } else {
         setOrderCustomer(null);
+      }
+
+      // Resolve the linked workflow step's vendor — needed to prefill the
+      // Send-to-translator modal with the actual translator's email.
+      const linkedStepId = f.find((x) => x.linked_step_id)?.linked_step_id ?? null;
+      if (linkedStepId) {
+        const { data: stepRow } = await supabase
+          .from("order_workflow_steps")
+          .select("vendor_id, assigned_staff_id, vendors(id, full_name, email, additional_emails)")
+          .eq("id", linkedStepId)
+          .maybeSingle();
+        const v = (stepRow as any)?.vendors ?? null;
+        if (v) {
+          setLinkedVendor({
+            id: v.id,
+            full_name: v.full_name ?? null,
+            email: v.email ?? null,
+            additional_emails: v.additional_emails ?? null,
+          });
+        } else {
+          setLinkedVendor(null);
+        }
+      } else {
+        setLinkedVendor(null);
+      }
+
+      // Current staff for fallback prefill.
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData?.user?.id) {
+          const { data: st } = await supabase
+            .from("staff_users")
+            .select("email, full_name")
+            .eq("auth_user_id", userData.user.id)
+            .maybeSingle();
+          if (st) setCurrentStaff({ email: st.email ?? null, full_name: st.full_name ?? null });
+        }
+      } catch {
+        // best-effort
       }
     } catch (e) {
       setError(String(e));
@@ -316,6 +363,10 @@ export default function AdminReviewJobDetail() {
 
   async function doCreateShare() {
     if (!id || !shareEmail.trim()) return;
+    const cc_emails = shareCcEmails
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
     setBusy("share");
     try {
       const r = await trApi.vendorShareCreate({
@@ -324,13 +375,16 @@ export default function AdminReviewJobDetail() {
         recipient_name: shareName.trim() || undefined,
         message: shareMessage.trim() || undefined,
         expires_in_days: shareExpires,
+        cc_emails: cc_emails.length > 0 ? cc_emails : undefined,
       });
       setShareOpen(false);
       setShareEmail("");
       setShareName("");
+      setShareCcEmails("");
       setShareMessage("");
+      const ccNote = r.cc_emails.length > 0 ? ` + cc ${r.cc_emails.length}` : "";
       alert(
-        `Share link created and ${r.email_status === "sent" ? "emailed" : `not emailed (${r.email_status})`}.\n\n${r.share_url}`,
+        `Share link created and ${r.email_status === "sent" ? `emailed${ccNote}` : `not emailed (${r.email_status})`}.\n\n${r.share_url}`,
       );
       await refresh();
     } catch (e) {
@@ -385,7 +439,27 @@ export default function AdminReviewJobDetail() {
             <Button
               variant="outline"
               className="border-purple-400 text-purple-700 hover:bg-purple-50"
-              onClick={() => setShareOpen(true)}
+              onClick={() => {
+                // Prefill from the linked vendor (the translator who
+                // delivered the original file). Fall back to current staff
+                // when no vendor is linked — staff can still share with
+                // themselves to preview the page.
+                if (linkedVendor?.email) {
+                  setShareEmail(linkedVendor.email);
+                  setShareName(linkedVendor.full_name ?? "");
+                  // Pre-populate CCs with the vendor's additional_emails so
+                  // multi-contact vendors don't drop people from the loop.
+                  const cc = Array.isArray(linkedVendor.additional_emails)
+                    ? linkedVendor.additional_emails.filter((e) => e && e !== linkedVendor.email).join(", ")
+                    : "";
+                  setShareCcEmails(cc);
+                } else if (currentStaff?.email) {
+                  setShareEmail(currentStaff.email);
+                  setShareName(currentStaff.full_name ?? "");
+                  setShareCcEmails("");
+                }
+                setShareOpen(true);
+              }}
               disabled={isClosed}
               title={isClosed ? "Job is closed" : "Send a tokenized share link to the translator"}
             >
@@ -816,6 +890,23 @@ export default function AdminReviewJobDetail() {
                   value={shareName}
                   onChange={(e) => setShareName(e.target.value)}
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  CC (optional, comma-separated)
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                  value={shareCcEmails}
+                  onChange={(e) => setShareCcEmails(e.target.value)}
+                  placeholder="extra1@example.com, extra2@example.com"
+                />
+                {linkedVendor?.additional_emails && linkedVendor.additional_emails.length > 0 && (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Pre-filled from {linkedVendor.full_name ?? "vendor"}'s additional contacts.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Expires in (days)</label>

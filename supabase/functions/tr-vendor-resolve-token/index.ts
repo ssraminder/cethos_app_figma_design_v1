@@ -32,7 +32,7 @@ serve(async (req) => {
       .maybeSingle();
     if (!job) return json({ error: "job not found" }, 404);
 
-    const [{ data: comments }, { data: files }] = await Promise.all([
+    const [{ data: comments }, { data: files }, { data: findings }] = await Promise.all([
       tr(sb)
         .from("job_comments")
         .select("id, author_type, author_name, body, kind, files_jsonb, created_at")
@@ -43,6 +43,11 @@ serve(async (req) => {
         .select("id, role, original_filename, storage_bucket, storage_path, mime_type, bytes, pair_id, created_at")
         .eq("job_id", tok.data.job_id)
         .order("created_at", { ascending: true }),
+      tr(sb)
+        .from("findings")
+        .select("id, finding_number, severity, category, confidence, source_text, current_translation, proposed_change, english_back_translation, rationale, application_status, application_mode, created_at")
+        .eq("job_id", tok.data.job_id)
+        .order("finding_number", { ascending: true }),
     ]);
 
     const allFiles = (files ?? []) as Array<{ id: string; role: string; original_filename: string; storage_bucket: string; storage_path: string; mime_type: string | null; bytes: number | null; pair_id: string | null; created_at: string }>;
@@ -95,6 +100,21 @@ serve(async (req) => {
         : null,
       source_files: sources.map((s) => ({ id: s.id, original_filename: s.original_filename })),
       reference_files: references.map((r) => ({ id: r.id, original_filename: r.original_filename })),
+      findings: (findings ?? []).map((f: any) => ({
+        id: f.id,
+        finding_number: f.finding_number,
+        severity: f.severity,
+        category: f.category,
+        confidence: f.confidence,
+        source_text: f.source_text,
+        current_translation: f.current_translation,
+        proposed_change: f.proposed_change,
+        english_back_translation: f.english_back_translation,
+        rationale: f.rationale,
+        application_status: f.application_status,
+        application_mode: f.application_mode,
+        created_at: f.created_at,
+      })),
     });
   } catch (err) {
     console.error("[tr-vendor-resolve-token] fatal:", err);

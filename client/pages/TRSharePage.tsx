@@ -34,6 +34,28 @@ type Resolved = {
   target_file: { id: string; original_filename: string; mime_type: string | null; bytes: number | null } | null;
   source_files: Array<{ id: string; original_filename: string }>;
   reference_files: Array<{ id: string; original_filename: string }>;
+  findings: Array<{
+    id: string;
+    finding_number: number;
+    severity: "critical" | "major" | "minor" | "info";
+    category: string;
+    confidence: "high" | "medium" | "low";
+    source_text: string | null;
+    current_translation: string | null;
+    proposed_change: string | null;
+    english_back_translation: string | null;
+    rationale: string;
+    application_status: string;
+    application_mode: string;
+    created_at: string;
+  }>;
+};
+
+const SEVERITY_TONE: Record<string, string> = {
+  critical: "bg-red-200 text-red-900",
+  major: "bg-orange-200 text-orange-900",
+  minor: "bg-yellow-100 text-yellow-800",
+  info: "bg-blue-100 text-blue-800",
 };
 
 const FUNCTIONS_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
@@ -216,6 +238,65 @@ export default function TRSharePage() {
             ))}
           </ul>
         </div>
+
+        {/* Review findings — Claude's structured output. Read-only for the
+            translator; they reply via the Comments thread below. */}
+        {data.findings.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm border p-5 mb-4">
+            <h2 className="font-semibold text-sm mb-2">
+              Review findings ({data.findings.length})
+            </h2>
+            <p className="text-xs text-gray-500 mb-3">
+              The reviewer flagged the following items. Reply to any of them in the comments box at the bottom.
+            </p>
+            <div className="space-y-2">
+              {data.findings.map((f) => (
+                <div key={f.id} className="border rounded p-3 text-sm">
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <span className="font-mono">#{f.finding_number}</span>
+                    <span className={`uppercase text-[10px] px-1.5 py-0.5 rounded ${SEVERITY_TONE[f.severity] ?? "bg-gray-100"}`}>
+                      {f.severity}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                      {f.category}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                      {f.confidence}
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-1 text-xs">
+                    {f.source_text != null && (
+                      <div>
+                        <span className="font-semibold">Source:</span>{" "}
+                        {f.source_text || <span className="italic text-gray-500">(empty)</span>}
+                      </div>
+                    )}
+                    {f.current_translation != null && (
+                      <div>
+                        <span className="font-semibold">Currently in target:</span>{" "}
+                        {f.current_translation || <span className="italic text-gray-500">(empty / missing)</span>}
+                      </div>
+                    )}
+                    {f.proposed_change && (
+                      <div>
+                        <span className="font-semibold">Proposed:</span> {f.proposed_change}
+                      </div>
+                    )}
+                    {f.english_back_translation && (
+                      <div>
+                        <span className="font-semibold">EN back-translation:</span>{" "}
+                        {f.english_back_translation}
+                      </div>
+                    )}
+                  </div>
+                  {f.rationale && (
+                    <div className="mt-2 text-sm text-gray-800">{f.rationale}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Comments thread */}
         <div className="bg-white rounded-lg shadow-sm border p-5 mb-4">

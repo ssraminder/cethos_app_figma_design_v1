@@ -252,6 +252,7 @@ export const trApi = {
     recipient_kind?: "vendor" | "customer" | "other";
     expires_in_days?: number;
     message?: string;
+    cc_emails?: string[];
   }) =>
     invoke<{
       token_id: string;
@@ -259,6 +260,7 @@ export const trApi = {
       share_url: string;
       expires_at: string;
       email_status: "sent" | "failed" | "skipped";
+      cc_emails: string[];
     }>("tr-vendor-share-create", args),
 };
 
