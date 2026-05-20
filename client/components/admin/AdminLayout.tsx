@@ -34,6 +34,7 @@ import {
   ShieldCheck,
   Languages,
   Stamp,
+  Phone,
 } from "lucide-react";
 import { useBranding } from "../../context/BrandingContext";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -61,6 +62,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Messages",
     path: "/admin/messages",
     icon: MessageSquare,
+    section: "Main",
+  },
+  {
+    label: "Calls",
+    path: "/admin/calls",
+    icon: Phone,
     section: "Main",
   },
   {
