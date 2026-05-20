@@ -37,6 +37,20 @@ serve(async (req) => {
     const recipient_kind = (body.recipient_kind as string | undefined) || "vendor";
     const message = (body.message as string | undefined)?.trim() || null;
     const expires_in_days = Math.max(1, Math.min(90, Number(body.expires_in_days ?? 30)));
+    // Optional CCs — accept array of strings or comma-separated string.
+    const ccRaw = body.cc_emails;
+    const ccCandidates: string[] = Array.isArray(ccRaw)
+      ? ccRaw
+      : typeof ccRaw === "string"
+        ? ccRaw.split(/[,;\s]+/)
+        : [];
+    const cc_emails = Array.from(
+      new Set(
+        ccCandidates
+          .map((s) => String(s || "").trim().toLowerCase())
+          .filter((s) => s && s !== recipient_email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)),
+      ),
+    );
     if (!job_id || !recipient_email) return json({ error: "job_id and recipient_email required" }, 400);
 
     const sb = serviceClient();
@@ -125,6 +139,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             to: [{ email: recipient_email, name: recipient_name || recipient_email }],
+            ...(cc_emails.length > 0 ? { cc: cc_emails.map((e) => ({ email: e })) } : {}),
             sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
             replyTo: { email: staff.email ?? "ops@cethos.com", name: staff.full_name ?? "Cethos Ops" },
             subject,
@@ -163,6 +178,7 @@ serve(async (req) => {
           token_id: row.id,
           expires_at,
           brevo_message_id: brevoMsgId,
+          cc_emails,
           via: "tr-vendor-share-create",
         },
       });
@@ -179,12 +195,13 @@ serve(async (req) => {
         token_id: row.id,
         recipient_email,
         recipient_kind,
+        cc_emails,
         expires_at,
         email_status: emailStatus,
       },
     });
 
-    return json({ token_id: row.id, token, share_url, expires_at, email_status: emailStatus }, 201);
+    return json({ token_id: row.id, token, share_url, expires_at, email_status: emailStatus, cc_emails }, 201);
   } catch (err) {
     console.error("[tr-vendor-share-create] fatal:", err);
     return json({ error: String(err) }, 500);
