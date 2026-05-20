@@ -134,7 +134,7 @@ export async function notifyStaffAssignment(args: NotifyArgs): Promise<void> {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;">
     <tr><td align="center">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-        <tr><td style="padding:20px 24px;background:#6d28d9;color:#ffffff;">
+        <tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
           <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
           <div style="font-size:13px;opacity:0.9;margin-top:2px;">Internal step assigned to you</div>
         </td></tr>
@@ -144,7 +144,7 @@ export async function notifyStaffAssignment(args: NotifyArgs): Promise<void> {
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;">${detailsHtml}</table>
           ${instructionsBlock}
           <p style="margin:24px 0 0;text-align:center;">
-            <a href="${escapeHtml(adminLink)}" style="display:inline-block;padding:10px 20px;background:#6d28d9;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">Open in admin portal</a>
+            <a href="${escapeHtml(adminLink)}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">Open in admin portal</a>
           </p>
         </td></tr>
         <tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">

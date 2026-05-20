@@ -296,7 +296,7 @@ export default function TRSharePage() {
           <ul className="text-sm text-gray-700 space-y-1">
             {data.target_file && (
               <li>
-                <span className="text-purple-700 font-medium">Target:</span>{" "}
+                <span className="text-teal-700 font-medium">Target:</span>{" "}
                 {data.target_file.original_filename}
               </li>
             )}
@@ -519,7 +519,7 @@ export default function TRSharePage() {
                 c.author_type === "staff"
                   ? "border-l-blue-400 bg-blue-50"
                   : c.author_type === "vendor"
-                    ? "border-l-purple-400 bg-purple-50"
+                    ? "border-l-teal-400 bg-teal-50"
                     : "border-l-gray-400 bg-gray-50";
               return (
                 <div key={c.id} className={`border-l-4 ${tone} rounded p-3`}>
@@ -547,7 +547,7 @@ export default function TRSharePage() {
           {!isClosed && (
             <div className="mt-4 border-t pt-4">
               <textarea
-                className="w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 rows={3}
                 placeholder="Reply to the reviewer..."
                 value={reply}
@@ -558,7 +558,7 @@ export default function TRSharePage() {
                   type="button"
                   onClick={doReply}
                   disabled={posting || !reply.trim()}
-                  className="px-4 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50"
+                  className="px-4 py-2 bg-teal-700 text-white rounded text-sm hover:bg-teal-800 disabled:opacity-50"
                 >
                   {posting ? "Posting..." : "Post reply"}
                 </button>
@@ -590,7 +590,7 @@ export default function TRSharePage() {
               </div>
             )}
             <textarea
-              className="mt-2 w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="mt-2 w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               rows={2}
               placeholder="Note (optional) — what changed in this version?"
               value={uploadNote}
@@ -602,7 +602,7 @@ export default function TRSharePage() {
                 type="button"
                 onClick={doUpload}
                 disabled={!uploadFile || uploading}
-                className="px-4 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50"
+                className="px-4 py-2 bg-teal-700 text-white rounded text-sm hover:bg-teal-800 disabled:opacity-50"
               >
                 {uploading ? "Uploading..." : "Upload new version"}
               </button>
