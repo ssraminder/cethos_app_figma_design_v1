@@ -77,7 +77,7 @@ export default function CustomerConversationTab({
   customerId: string;
   customerEmail?: string | null;
 }) {
-  const { staff } = useStaffAuth();
+  const { staffUser } = useStaffAuth();
   const [messages, setMessages] = useState<UnifiedMessage[]>([]);
   const [channelState, setChannelState] = useState<ChannelState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,7 +152,7 @@ export default function CustomerConversationTab({
   }, [channelState]);
 
   const send = async () => {
-    if (!reply.trim() || !staff?.id) return;
+    if (!reply.trim() || !staffUser?.id) return;
     setSending(true);
     setError(null);
     try {
@@ -161,7 +161,7 @@ export default function CustomerConversationTab({
           body: {
             custom_body: reply.trim(),
             to_number: channelState?.customer_phone,
-            staff_user_id: staff.id,
+            staff_user_id: staffUser.id,
             customer_id: customerId,
           },
         });
@@ -177,7 +177,7 @@ export default function CustomerConversationTab({
         const { data, error: e } = await supabase.functions.invoke("send-staff-message", {
           body: {
             customer_id: customerId,
-            staff_id: staff.id,
+            staff_id: staffUser.id,
             message_text: reply.trim(),
           },
         });

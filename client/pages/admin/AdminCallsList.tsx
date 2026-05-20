@@ -108,7 +108,7 @@ function directionIcon(row: CallRow) {
 }
 
 export default function AdminCallsList() {
-  const { staff } = useStaffAuth();
+  const { staffUser } = useStaffAuth();
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -311,7 +311,7 @@ export default function AdminCallsList() {
       {selected && (
         <CallDetailDrawer
           callId={selected}
-          staffUserId={staff?.id ?? null}
+          staffUserId={staffUser?.id ?? null}
           onClose={() => setSelected(null)}
           onChanged={() => fetch()}
         />
