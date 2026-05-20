@@ -3625,6 +3625,19 @@ function WorkflowPipeline({
                         >
                           Request Revision
                         </button>
+                        {/* Begin QM: open a Translation Review QM job pre-linked
+                            to this step's delivery. Only useful when files were
+                            actually delivered. */}
+                        {(step.delivered_file_paths?.length ?? 0) > 0 && (
+                          <a
+                            href={`/admin/tr/jobs/new?kind=qm_certified&from_step=${step.id}`}
+                            className="text-xs px-3 py-1 border border-purple-400 text-purple-700 rounded hover:bg-purple-50 inline-block"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Open a QM (certified-translation review) job pre-linked to this delivery"
+                          >
+                            Begin QM
+                          </a>
+                        )}
                       </>
                     );
                   })()}
@@ -4065,17 +4078,15 @@ function WorkflowPipeline({
                   multiple
                   className="hidden"
                   onChange={(e) => {
-                    // Snapshot the FileList synchronously. If we let the
-                    // setState updater read e.target.files lazily, the
-                    // `e.target.value = ""` below clears the FileList before
-                    // React runs the updater — the files arrive as [].
+                    // Snapshot synchronously; React's updater may read files
+                    // lazily, so we capture into a local before any reset.
                     const picked = e.target.files
                       ? Array.from(e.target.files)
                       : [];
-                    e.target.value = "";
                     if (picked.length > 0) {
                       setUploadModalFiles((prev) => [...prev, ...picked]);
                     }
+                    try { e.target.value = ""; } catch {}
                   }}
                 />
               </label>
@@ -4134,10 +4145,6 @@ function WorkflowPipeline({
                 value={uploadModalNotes}
                 onChange={(e) => setUploadModalNotes(e.target.value)}
               />
-              <div className="text-[10px] text-gray-300 text-right">
-                upload v3 · snapshot-fix · {uploadModalFiles.length} file
-                {uploadModalFiles.length === 1 ? "" : "s"} staged
-              </div>
             </div>
             <div className="p-4 border-t flex justify-end gap-2">
               <button
