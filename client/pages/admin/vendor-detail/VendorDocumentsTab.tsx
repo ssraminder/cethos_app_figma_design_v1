@@ -102,19 +102,55 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
     async function load() {
       setLoading(true);
 
-      // Most recent application by email (a vendor may have applied more
-      // than once over time; the latest is what's relevant). Case-
-      // insensitive match so historical emails with stray capitalisation
-      // still resolve.
-      const { data: apps } = await supabase
-        .from("cvp_applications")
-        .select(
-          "id, application_number, email, full_name, cv_storage_path, certifications, education_level, years_experience, cat_tools, specializations, domains_offered, linkedin_url, status, created_at",
-        )
-        .ilike("email", vendor.email)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const app = (apps?.[0] ?? null) as CvpApplication | null;
+      // Prefer the FK link on vendors.cvp_translator_id when present —
+      // it survives email rotation and unambiguously points at the
+      // recruitment artifact this vendor came from. Fall back to the
+      // legacy ilike-email lookup for vendors that pre-date the
+      // recruitment flow OR whose link hasn't been backfilled.
+      //
+      // The vendor object loaded by AdminVendorDetail's edge fn doesn't
+      // currently include cvp_translator_id, so we read it from
+      // `vendors` ourselves rather than waiting on a backend redeploy.
+      let app: CvpApplication | null = null;
+      const { data: vendorLink } = await supabase
+        .from("vendors")
+        .select("cvp_translator_id")
+        .eq("id", vendor.id)
+        .maybeSingle();
+      const translatorId = (vendorLink as { cvp_translator_id: string | null } | null)?.cvp_translator_id ?? null;
+
+      if (translatorId) {
+        const { data: t } = await supabase
+          .from("cvp_translators")
+          .select("application_id")
+          .eq("id", translatorId)
+          .maybeSingle();
+        const linkedAppId = (t as { application_id: string | null } | null)?.application_id ?? null;
+        if (linkedAppId) {
+          const { data: linkedApp } = await supabase
+            .from("cvp_applications")
+            .select(
+              "id, application_number, email, full_name, cv_storage_path, certifications, education_level, years_experience, cat_tools, specializations, domains_offered, linkedin_url, status, created_at",
+            )
+            .eq("id", linkedAppId)
+            .maybeSingle();
+          app = (linkedApp as CvpApplication | null) ?? null;
+        }
+      }
+
+      if (!app) {
+        // Email fallback. Latest by created_at — vendors with multiple
+        // applications over time should see the most recent one.
+        const { data: apps } = await supabase
+          .from("cvp_applications")
+          .select(
+            "id, application_number, email, full_name, cv_storage_path, certifications, education_level, years_experience, cat_tools, specializations, domains_offered, linkedin_url, status, created_at",
+          )
+          .ilike("email", vendor.email)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        app = (apps?.[0] ?? null) as CvpApplication | null;
+      }
 
       // References tied to that application (or any application from
       // this vendor's email if they have multiple).
