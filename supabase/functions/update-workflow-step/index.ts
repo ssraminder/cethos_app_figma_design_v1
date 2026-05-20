@@ -22,6 +22,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { notifyVendorAssignment } from "../_shared/notify-vendor-assignment.ts";
+import { notifyStaffAssignment } from "../_shared/notify-staff-assignment.ts";
 import {
   notifyVendorStepApproved,
   notifyVendorRevisionRequested,
@@ -234,11 +235,42 @@ serve(async (req: Request) => {
       case "assign_staff": {
         const { staff_id, deadline, instructions } = body;
         if (!staff_id) return json({ success: false, error: "Missing staff_id" }, 400);
-        const { data: staffRow } = await supabase.from("staff_users").select("id, full_name, is_active").eq("id", staff_id).maybeSingle();
+        const { data: staffRow } = await supabase.from("staff_users").select("id, full_name, email, is_active").eq("id", staff_id).maybeSingle();
         if (!staffRow || staffRow.is_active === false) return json({ success: false, error: "Staff user not found or inactive" }, 404);
         await supabase.from("order_workflow_steps").update({ assigned_staff_id: staff_id, status: "accepted", deadline: deadline || null, instructions: instructions || null, accepted_at: new Date().toISOString(), assigned_by: body.staff_id_actor || body.acting_staff_id || null }).eq("id", step_id);
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
+        try {
+          await notifyStaffAssignment({ supabase, staff_id, step, workflow, deadline: deadline || null, instructions: instructions || null });
+        } catch (e: any) {
+          console.error("notify-staff-assignment failed:", e?.message || e);
+        }
         return json({ success: true });
+      }
+      case "unassign_staff": {
+        if (!step.assigned_staff_id) return json({ success: false, error: "Step has no staff assigned" }, 400);
+        const { reason, notes, preserve_files } = body;
+        await supabase
+          .from("order_workflow_steps")
+          .update({
+            unassigned_vendor_id: null,
+            unassign_reason: reason || null,
+            unassign_notes: notes || null,
+            unassigned_at: new Date().toISOString(),
+            assigned_staff_id: null,
+            status: "pending",
+            accepted_at: null,
+            started_at: null,
+            delivered_at: null,
+            delivered_file_paths: preserve_files ? step.delivered_file_paths : null,
+          })
+          .eq("id", step_id);
+        return json({ success: true });
+      }
+      case "resend_staff_notification": {
+        const targetStaffId = step.assigned_staff_id;
+        if (!targetStaffId) return json({ success: false, error: "Step has no staff assigned" }, 400);
+        await notifyStaffAssignment({ supabase, staff_id: targetStaffId, step, workflow, deadline: step.deadline ?? null, instructions: step.instructions ?? null });
+        return json({ success: true, resent: true });
       }
       case "direct_assign": {
         const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, pricing_mode } = body;
