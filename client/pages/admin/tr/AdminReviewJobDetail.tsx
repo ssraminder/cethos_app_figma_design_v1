@@ -62,6 +62,7 @@ export default function AdminReviewJobDetail() {
   const [comments, setComments] = useState<TRJobComment[]>([]);
   const [tokens, setTokens] = useState<TRJobShareToken[]>([]);
   const [commentDraft, setCommentDraft] = useState("");
+  const [postingFindingId, setPostingFindingId] = useState<string | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
   const [closeOutcome, setCloseOutcome] = useState<"complete" | "cancelled">("complete");
   const [closeReason, setCloseReason] = useState("");
@@ -266,6 +267,35 @@ export default function AdminReviewJobDetail() {
       setError(String(e));
     } finally {
       setBusy(null);
+    }
+  }
+
+  // Drop a finding into the Comments thread with structured context the
+  // translator can answer without re-opening the file.
+  async function postFindingAsComment(f: TRFinding) {
+    if (!id) return;
+    const lines: string[] = [];
+    lines.push(`Finding #${f.finding_number} (${f.severity} · ${f.category})`);
+    if (f.source_text) lines.push(`Source: ${f.source_text}`);
+    if (f.current_translation) {
+      lines.push(`Currently in target: ${f.current_translation}`);
+    } else if (f.current_translation === null) {
+      // Claude explicitly said "no text in target" — surface that.
+      lines.push(`Currently in target: (empty / missing)`);
+    }
+    if (f.proposed_change) lines.push(`Proposed: ${f.proposed_change}`);
+    if (f.english_back_translation) lines.push(`EN back-translation: ${f.english_back_translation}`);
+    if (f.rationale) lines.push("", f.rationale);
+    const body = lines.join("\n");
+    setPostingFindingId(f.id);
+    try {
+      await trApi.addComment({ job_id: id, body });
+      await refresh();
+      setTab("comments");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setPostingFindingId(null);
     }
   }
 
@@ -518,16 +548,27 @@ export default function AdminReviewJobDetail() {
             {findings.length === 0 && <div className="p-4 text-gray-500 italic text-center">No findings yet — click "Run review" to produce them.</div>}
             {findings.map((f) => (
               <div key={f.id} className="border-b last:border-b-0 p-3">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className="font-mono text-xs">#{f.finding_number}</span>
                   <Badge className={`uppercase text-[10px] ${SEVERITY_TONE[f.severity] ?? ""}`}>{f.severity}</Badge>
                   <Badge variant="outline" className="text-[10px]">{f.category}</Badge>
                   <Badge variant="outline" className="text-[10px]">{f.confidence}</Badge>
                   <Badge variant="outline" className="text-[10px]">{f.application_mode}</Badge>
                   <Badge variant="outline" className={`text-[10px] ${f.application_status === "applied" ? "bg-green-100 text-green-800" : "bg-gray-100"}`}>{f.application_status}</Badge>
+                  <div className="ml-auto">
+                    <button
+                      type="button"
+                      className="text-[11px] text-purple-700 hover:text-purple-900 underline disabled:opacity-50"
+                      disabled={postingFindingId === f.id || isClosed}
+                      onClick={() => void postFindingAsComment(f)}
+                      title="Drop this finding into the Comments thread so the translator can respond"
+                    >
+                      {postingFindingId === f.id ? "Posting..." : "Post as comment"}
+                    </button>
+                  </div>
                 </div>
-                {f.source_text && <div className="text-xs"><span className="font-semibold">Source:</span> {f.source_text}</div>}
-                {f.current_translation && <div className="text-xs"><span className="font-semibold">Current:</span> {f.current_translation}</div>}
+                {f.source_text != null && <div className="text-xs"><span className="font-semibold">Source:</span> {f.source_text || <span className="italic text-gray-500">(empty)</span>}</div>}
+                {f.current_translation != null && <div className="text-xs"><span className="font-semibold">Currently in target:</span> {f.current_translation || <span className="italic text-gray-500">(empty / missing)</span>}</div>}
                 {f.proposed_change && <div className="text-xs"><span className="font-semibold">Proposed:</span> {f.proposed_change}</div>}
                 {f.english_back_translation && <div className="text-xs"><span className="font-semibold">EN back-translation:</span> {f.english_back_translation}</div>}
                 {f.rationale && <div className="text-xs text-gray-700 mt-1">{f.rationale}</div>}
