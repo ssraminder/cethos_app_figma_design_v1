@@ -47,7 +47,7 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const body = await req.json();
-    const { file_id, order_id, action, actor_type, actor_id, comment, actingAsStaff, staffId } = body;
+    const { file_id, order_id, action, actor_type, actor_id, comment, actingAsStaff, staffId, recipient_override } = body;
 
     console.log("review-draft-file v2 called:", {
       file_id,
@@ -71,7 +71,9 @@ serve(async (req: Request) => {
       // Get file details
       const { data: file, error: fileError } = await supabase
         .from("quote_files")
-        .select("id, quote_id, file_name, review_status, review_version")
+        // quote_files.original_filename (not file_name — the latter doesn't
+        // exist; the existing column has always been original_filename).
+        .select("id, quote_id, original_filename, review_status, review_version")
         .eq("id", file_id)
         .single();
 
@@ -161,9 +163,10 @@ serve(async (req: Request) => {
               SITE_URL,
               orderData.customer_id,
               orderData.id,
-              file.file_name,
+              file.original_filename,
               filesWithUrls,
               staffNotes,
+              recipient_override ?? null,
             );
           }
         }
@@ -556,6 +559,7 @@ async function notifyCustomerDraftReady(
   fileName: string,
   filesWithUrls?: { name: string; size: number; url: string; staffNotes: string | null }[],
   staffNotes?: string | null,
+  recipientOverride?: { email: string; name?: string } | null,
 ) {
   try {
     const { data: customer } = await supabase
@@ -564,7 +568,13 @@ async function notifyCustomerDraftReady(
       .eq("id", customerId)
       .single();
 
-    if (!customer?.email) return;
+    // When staff is running a smoke test, recipientOverride redirects the
+    // delivery without mutating the customer record. Body still says
+    // 'Hi <customer name>' so the template is identical to what the real
+    // recipient would see.
+    const toEmail = recipientOverride?.email ?? customer?.email;
+    const toName = recipientOverride?.name ?? customer?.full_name ?? null;
+    if (!toEmail) return;
 
     const reviewUrl = `${siteUrl}/dashboard/orders/${orderId}`;
 
@@ -625,7 +635,7 @@ async function notifyCustomerDraftReady(
         Accept: "application/json",
       },
       body: JSON.stringify({
-        to: [{ email: customer.email, name: customer.full_name || customer.email }],
+        to: [{ email: toEmail, name: toName || toEmail }],
         sender: {
           name: "CETHOS Translation Services",
           email: "donotreply@cethos.com",
@@ -674,7 +684,7 @@ async function notifyCustomerDraftReady(
       }),
     });
 
-    console.log("Draft review notification sent to:", customer.email);
+    console.log("Draft review notification sent to:", toEmail, recipientOverride ? "(override)" : "");
   } catch (err) {
     console.error("Email notification error:", err);
   }
