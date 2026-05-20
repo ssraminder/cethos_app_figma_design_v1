@@ -121,7 +121,6 @@ Required output: emit a single \`emit_job_plan\` tool call. Include any warnings
       tool_choice: { type: "tool", name: "emit_job_plan" },
       model: "claude-opus-4-7",
       max_tokens: 8192,
-      temperature: 0,
     });
     const latency_ms = Date.now() - startedAt;
 
