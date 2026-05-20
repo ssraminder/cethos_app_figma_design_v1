@@ -47,6 +47,10 @@ type Resolved = {
     rationale: string;
     application_status: string;
     application_mode: string;
+    vendor_decision: "accepted" | "rejected" | null;
+    vendor_decision_reason: string | null;
+    vendor_decision_at: string | null;
+    vendor_uploaded_file_id: string | null;
     created_at: string;
   }>;
 };
@@ -100,6 +104,14 @@ export default function TRSharePage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
+  // Per-finding arbitration state. Each finding can be in 'accept' or
+  // 'reject' draft mode; submitting clears it.
+  const [arbMode, setArbMode] = useState<Record<string, "accept" | "reject" | null>>({});
+  const [arbFile, setArbFile] = useState<Record<string, File | null>>({});
+  const [arbNote, setArbNote] = useState<Record<string, string>>({});
+  const [arbReason, setArbReason] = useState<Record<string, string>>({});
+  const [arbBusy, setArbBusy] = useState<string | null>(null);
+
   async function refresh() {
     if (!token) return;
     setLoading(true);
@@ -134,6 +146,68 @@ export default function TRSharePage() {
     }
     setReply("");
     await refresh();
+  }
+
+  async function doAcceptFinding(findingId: string) {
+    if (!token) return;
+    const file = arbFile[findingId];
+    if (!file) {
+      setError("Please attach the corrected file before accepting.");
+      return;
+    }
+    setArbBusy(findingId);
+    try {
+      const data_base64 = await fileToBase64(file);
+      const r = await postJson<{ finding_id: string; file_id: string }>(
+        "tr-vendor-finding-respond",
+        {
+          token,
+          finding_id: findingId,
+          decision: "accepted",
+          file: {
+            filename: file.name,
+            mime_type: file.type || "application/octet-stream",
+            data_base64,
+          },
+          note: (arbNote[findingId] ?? "").trim() || undefined,
+        },
+      );
+      if (!r.ok) {
+        setError(`Accept failed: ${r.error}`);
+        return;
+      }
+      setArbMode((m) => ({ ...m, [findingId]: null }));
+      setArbFile((f) => ({ ...f, [findingId]: null }));
+      setArbNote((n) => ({ ...n, [findingId]: "" }));
+      await refresh();
+    } finally {
+      setArbBusy(null);
+    }
+  }
+
+  async function doRejectFinding(findingId: string) {
+    if (!token) return;
+    const reason = (arbReason[findingId] ?? "").trim();
+    if (!reason) {
+      setError("Please add a reason for declining the finding.");
+      return;
+    }
+    setArbBusy(findingId);
+    try {
+      const r = await postJson<{ finding_id: string }>(
+        "tr-vendor-finding-respond",
+        { token, finding_id: findingId, decision: "rejected", reason },
+      );
+      if (!r.ok) {
+        setError(`Decline failed: ${r.error}`);
+        return;
+      }
+      setArbMode((m) => ({ ...m, [findingId]: null }));
+      setArbReason((n) => ({ ...n, [findingId]: "" }));
+      await refresh();
+    } finally {
+      setArbBusy(null);
+    }
   }
 
   async function doUpload() {
@@ -239,61 +313,196 @@ export default function TRSharePage() {
           </ul>
         </div>
 
-        {/* Review findings — Claude's structured output. Read-only for the
-            translator; they reply via the Comments thread below. */}
+        {/* Review findings — translator arbitrates each one. Accept (must
+            upload a corrected file) or Deny (must give a reason). Once
+            decided, the row goes read-only with the decision badge. */}
         {data.findings.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm border p-5 mb-4">
             <h2 className="font-semibold text-sm mb-2">
               Review findings ({data.findings.length})
             </h2>
             <p className="text-xs text-gray-500 mb-3">
-              The reviewer flagged the following items. Reply to any of them in the comments box at the bottom.
+              Accept each finding (upload the corrected file) or decline it with a reason. You can use the Comments box below for general remarks.
             </p>
-            <div className="space-y-2">
-              {data.findings.map((f) => (
-                <div key={f.id} className="border rounded p-3 text-sm">
-                  <div className="flex items-center gap-2 flex-wrap text-xs">
-                    <span className="font-mono">#{f.finding_number}</span>
-                    <span className={`uppercase text-[10px] px-1.5 py-0.5 rounded ${SEVERITY_TONE[f.severity] ?? "bg-gray-100"}`}>
-                      {f.severity}
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
-                      {f.category}
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
-                      {f.confidence}
-                    </span>
+            <div className="space-y-3">
+              {data.findings.map((f) => {
+                const decided = !!f.vendor_decision;
+                const mode = arbMode[f.id] ?? null;
+                const busy = arbBusy === f.id;
+                return (
+                  <div key={f.id} className="border rounded p-3 text-sm">
+                    <div className="flex items-center gap-2 flex-wrap text-xs">
+                      <span className="font-mono">#{f.finding_number}</span>
+                      <span className={`uppercase text-[10px] px-1.5 py-0.5 rounded ${SEVERITY_TONE[f.severity] ?? "bg-gray-100"}`}>
+                        {f.severity}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">{f.category}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">{f.confidence}</span>
+                      {f.vendor_decision === "accepted" && (
+                        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800">
+                          ✓ Accepted{f.vendor_decision_at ? ` · ${new Date(f.vendor_decision_at).toLocaleDateString()}` : ""}
+                        </span>
+                      )}
+                      {f.vendor_decision === "rejected" && (
+                        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-800">
+                          ✗ Declined{f.vendor_decision_at ? ` · ${new Date(f.vendor_decision_at).toLocaleDateString()}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 space-y-1 text-xs">
+                      {f.source_text != null && (
+                        <div>
+                          <span className="font-semibold">Source:</span>{" "}
+                          {f.source_text || <span className="italic text-gray-500">(empty)</span>}
+                        </div>
+                      )}
+                      {f.current_translation != null && (
+                        <div>
+                          <span className="font-semibold">Currently in target:</span>{" "}
+                          {f.current_translation || <span className="italic text-gray-500">(empty / missing)</span>}
+                        </div>
+                      )}
+                      {f.proposed_change && (
+                        <div>
+                          <span className="font-semibold">Proposed:</span> {f.proposed_change}
+                        </div>
+                      )}
+                      {f.english_back_translation && (
+                        <div>
+                          <span className="font-semibold">EN back-translation:</span> {f.english_back_translation}
+                        </div>
+                      )}
+                    </div>
+                    {f.rationale && <div className="mt-2 text-sm text-gray-800">{f.rationale}</div>}
+
+                    {/* Decided — show the locked outcome. */}
+                    {decided && (
+                      <div className="mt-2 border-t pt-2 text-xs">
+                        {f.vendor_decision === "accepted" ? (
+                          <div className="text-green-800">
+                            You accepted this finding and uploaded a corrected version.
+                            {f.vendor_decision_reason && (
+                              <div className="text-gray-700 mt-1">Note: {f.vendor_decision_reason}</div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-red-800">
+                            You declined this finding.
+                            {f.vendor_decision_reason && (
+                              <div className="text-gray-800 mt-1">Reason: {f.vendor_decision_reason}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Not yet decided — show actions, and inline form when chosen. */}
+                    {!decided && !isClosed && (
+                      <div className="mt-3 border-t pt-3">
+                        {mode === null && (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setArbMode((m) => ({ ...m, [f.id]: "accept" }))}
+                              className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                            >
+                              Accept (upload corrected file)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setArbMode((m) => ({ ...m, [f.id]: "reject" }))}
+                              className="px-3 py-1 text-xs border border-red-400 text-red-700 rounded hover:bg-red-50"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        )}
+
+                        {mode === "accept" && (
+                          <div className="space-y-2">
+                            <div className="text-xs text-gray-600">
+                              Upload the corrected file (this becomes a new target version on the job).
+                            </div>
+                            <input
+                              type="file"
+                              className="text-sm"
+                              onChange={(e) => {
+                                const picked = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+                                setArbFile((s) => ({ ...s, [f.id]: picked }));
+                                try { e.target.value = ""; } catch {}
+                              }}
+                            />
+                            {arbFile[f.id] && (
+                              <div className="text-xs text-gray-700">
+                                Selected: <span className="font-medium">{arbFile[f.id]!.name}</span>{" "}
+                                <span className="text-gray-500">({(arbFile[f.id]!.size / 1024).toFixed(1)} KB)</span>
+                              </div>
+                            )}
+                            <textarea
+                              className="w-full border border-gray-300 rounded p-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
+                              rows={2}
+                              placeholder="Optional note about the change you made."
+                              value={arbNote[f.id] ?? ""}
+                              onChange={(e) => setArbNote((s) => ({ ...s, [f.id]: e.target.value }))}
+                            />
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                type="button"
+                                className="px-3 py-1 text-xs text-gray-600 hover:text-gray-900"
+                                onClick={() => setArbMode((m) => ({ ...m, [f.id]: null }))}
+                                disabled={busy}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                                onClick={() => doAcceptFinding(f.id)}
+                                disabled={busy || !arbFile[f.id]}
+                              >
+                                {busy ? "Submitting..." : "Submit acceptance"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {mode === "reject" && (
+                          <div className="space-y-2">
+                            <div className="text-xs text-gray-600">
+                              Tell the reviewer why this finding doesn't apply.
+                            </div>
+                            <textarea
+                              className="w-full border border-gray-300 rounded p-2 text-xs focus:outline-none focus:ring-2 focus:ring-red-500"
+                              rows={3}
+                              placeholder="Reason for declining (required)..."
+                              value={arbReason[f.id] ?? ""}
+                              onChange={(e) => setArbReason((s) => ({ ...s, [f.id]: e.target.value }))}
+                            />
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                type="button"
+                                className="px-3 py-1 text-xs text-gray-600 hover:text-gray-900"
+                                onClick={() => setArbMode((m) => ({ ...m, [f.id]: null }))}
+                                disabled={busy}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                                onClick={() => doRejectFinding(f.id)}
+                                disabled={busy || !(arbReason[f.id] ?? "").trim()}
+                              >
+                                {busy ? "Submitting..." : "Submit decline"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-2 space-y-1 text-xs">
-                    {f.source_text != null && (
-                      <div>
-                        <span className="font-semibold">Source:</span>{" "}
-                        {f.source_text || <span className="italic text-gray-500">(empty)</span>}
-                      </div>
-                    )}
-                    {f.current_translation != null && (
-                      <div>
-                        <span className="font-semibold">Currently in target:</span>{" "}
-                        {f.current_translation || <span className="italic text-gray-500">(empty / missing)</span>}
-                      </div>
-                    )}
-                    {f.proposed_change && (
-                      <div>
-                        <span className="font-semibold">Proposed:</span> {f.proposed_change}
-                      </div>
-                    )}
-                    {f.english_back_translation && (
-                      <div>
-                        <span className="font-semibold">EN back-translation:</span>{" "}
-                        {f.english_back_translation}
-                      </div>
-                    )}
-                  </div>
-                  {f.rationale && (
-                    <div className="mt-2 text-sm text-gray-800">{f.rationale}</div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
