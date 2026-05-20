@@ -61,6 +61,43 @@ serve(async (req) => {
       })
       .eq("id", job_id);
 
+    // When the QM ends in 'complete', mark the linked workflow-step
+    // delivery as approved so the order detail surface reflects that QC
+    // signed off. We don't touch step.status here — staff still controls
+    // the workflow status separately (the QM might pass while the rest
+    // of the step is still in revision).
+    if (outcome === "complete") {
+      try {
+        const { data: linkedFiles } = await tr(sb)
+          .from("job_files")
+          .select("linked_deliverable_id")
+          .eq("job_id", job_id)
+          .not("linked_deliverable_id", "is", null);
+        const deliveryIds = Array.from(
+          new Set(
+            (linkedFiles ?? [])
+              .map((f: any) => f.linked_deliverable_id)
+              .filter((id: string | null) => !!id),
+          ),
+        );
+        if (deliveryIds.length > 0) {
+          await sb
+            .from("step_deliveries")
+            .update({
+              review_status: "approved",
+              reviewed_by: staff.id,
+              reviewed_at: closed_at,
+              review_feedback: reason
+                ? `Approved via QM close: ${reason}`
+                : "Approved via QM close",
+            })
+            .in("id", deliveryIds);
+        }
+      } catch (e: any) {
+        console.error("[tr-close-job] linked-delivery approve failed:", e?.message || e);
+      }
+    }
+
     // System comment so the thread shows the action.
     await tr(sb).from("job_comments").insert({
       job_id,

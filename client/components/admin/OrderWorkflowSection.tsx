@@ -3826,26 +3826,28 @@ function WorkflowPipeline({
                             Begin QM
                           </a>
                         )}
-                        {/* Send the final version to the customer as a
-                            watermarked DRAFT PDF. Only shown when a delivery
-                            exists; the modal lets admin preview the email,
-                            edit subject/body, and confirm before send. */}
-                        {(step.deliveries?.length ?? 0) > 0 && (
-                          <button
-                            type="button"
-                            className="text-xs px-3 py-1 border border-teal-600 bg-teal-50 text-teal-800 rounded hover:bg-teal-100"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDraftStep(step);
-                            }}
-                            title={step.final_delivery_id ? "Send the marked final as a watermarked DRAFT PDF" : "Send the latest delivery as a watermarked DRAFT PDF"}
-                          >
-                            ✉ Send draft to customer
-                          </button>
-                        )}
                       </>
                     );
                   })()}
+
+                  {/* Send the final version to the customer as a watermarked
+                      DRAFT PDF. Visible whenever the step has at least one
+                      delivery — not gated by status, since an admin might
+                      unassign the vendor (resetting status to pending) but
+                      still want to share the prior draft with the customer. */}
+                  {(step.deliveries?.length ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      className="text-xs px-3 py-1 border border-teal-600 bg-teal-50 text-teal-800 rounded hover:bg-teal-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDraftStep(step);
+                      }}
+                      title={step.final_delivery_id ? "Send the marked final as a watermarked DRAFT PDF" : "Send the latest delivery as a watermarked DRAFT PDF"}
+                    >
+                      ✉ Send draft to customer
+                    </button>
+                  )}
 
                   {/* Skip Step: optional + not terminal */}
                   {step.is_optional && !["approved", "skipped", "cancelled"].includes(step.status) && (
