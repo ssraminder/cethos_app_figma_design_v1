@@ -136,20 +136,10 @@ export default function AdminReviewJobNew() {
         const internal_project_id = orderRow?.internal_project_id ?? "";
         const quote_id = orderRow?.quote_id ?? null;
 
-        // Resolve source/target language ids by code (step stores lang codes).
-        const { data: langRows } = await supabase
-          .from("languages")
-          .select("id, code")
-          .in(
-            "code",
-            [step.source_language, step.target_language].filter(Boolean) as string[],
-          );
-        const codeToId = new Map((langRows ?? []).map((r: any) => [r.code, r.id]));
-        const srcId = step.source_language ? codeToId.get(step.source_language) : null;
-        const tgtId = step.target_language ? codeToId.get(step.target_language) : null;
-
-        if (srcId) setSourceLang(srcId);
-        if (tgtId) setTargetLang(tgtId);
+        // order_workflow_steps.source_language / target_language are already
+        // language UUIDs (FK to public.languages.id) — no lookup needed.
+        if (step.source_language) setSourceLang(step.source_language);
+        if (step.target_language) setTargetLang(step.target_language);
         if (internal_project_id) setProjectId(internal_project_id);
         if (customer_full_name) setClientName(customer_full_name);
         if (order_number) setTitle(`QM · ${order_number} · ${step.name}`);
@@ -157,7 +147,6 @@ export default function AdminReviewJobNew() {
         // Pre-stage the delivered file as the target slot of pair 1.
         const deliveredPath: string | undefined = (step.delivered_file_paths ?? [])[0];
         if (deliveredPath) {
-          // Try to find the corresponding step_deliveries row for cleaner link_ref.
           const { data: deliveryRow } = await supabase
             .from("step_deliveries")
             .select("id, file_paths")
@@ -187,15 +176,24 @@ export default function AdminReviewJobNew() {
           );
         }
 
-        // Look for a source file from the quote.
+        // Look for a source file from the quote. quote_files.file_category_id
+        // joins file_categories.slug — match by slug, but also fall back to
+        // ANY non-deleted file when categorization is missing (older quotes
+        // routinely have file_category_id IS NULL).
         if (quote_id) {
-          const { data: srcFiles } = await supabase
+          const { data: catSourceFiles } = await supabase
             .from("quote_files")
-            .select("id, original_filename, file_category")
+            .select("id, original_filename, file_category_id, created_at, file_categories!file_category_id(slug)")
             .eq("quote_id", quote_id)
-            .in("file_category", ["source", "source_document"])
-            .limit(1);
-          const src = (srcFiles ?? [])[0];
+            .is("deleted_at", null)
+            .order("created_at", { ascending: true });
+          const all = (catSourceFiles ?? []) as any[];
+          const matchedBySlug = all.find((r) => {
+            const slug = r.file_categories?.slug;
+            return slug === "source" || slug === "source_document";
+          });
+          const fallback = all[0];
+          const src = matchedBySlug ?? fallback;
           if (src) {
             setPairs((prev) =>
               prev.map((p, i) =>
