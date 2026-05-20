@@ -2788,6 +2788,25 @@ interface ReferenceRow {
   created_at: string;
 }
 
+interface ReassessmentOutput {
+  verdict?: "approve" | "waitlist" | "reject" | string;
+  verdict_confidence?: "high" | "medium" | "low" | string;
+  suggested_combination_ids?: string[];
+  domain_evidence?: Record<string, string>;
+  rationale?: string;
+  concerns?: string[];
+  follow_ups?: string[];
+}
+
+interface ReassessmentRow {
+  id: string;
+  model: string;
+  output_json: ReassessmentOutput | null;
+  ai_error: string | null;
+  created_at: string;
+  triggered_by: string | null;
+}
+
 function ReferencesSection({
   applicationId,
   callEdgeFunction,
@@ -2802,7 +2821,11 @@ function ReferencesSection({
 }) {
   const [requests, setRequests] = useState<ReferenceRequestRow[]>([]);
   const [refs, setRefs] = useState<ReferenceRow[]>([]);
+  const [reassessment, setReassessment] = useState<ReassessmentRow | null>(null);
+  const [combos, setCombos] = useState<Pick<TestCombination, "id" | "domain" | "source_language_id" | "target_language_id">[]>([]);
+  const [languages, setLanguagesState] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [reassessing, setReassessing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -2811,7 +2834,7 @@ function ReferencesSection({
     const load = async () => {
       setLoading(true);
       try {
-        const [{ data: reqs }, { data: rs }] = await Promise.all([
+        const [{ data: reqs }, { data: rs }, { data: reass }, { data: comboRows }] = await Promise.all([
           supabase
             .from("cvp_application_reference_requests")
             .select("id, request_token, request_token_expires_at, status, staff_message, contacts_submitted_at, created_at")
@@ -2822,10 +2845,40 @@ function ReferencesSection({
             .select("id, request_id, reference_name, reference_email, reference_company, reference_relationship, status, feedback_text, feedback_rating, feedback_received_at, declined_at, decline_reason, ai_analysis, ai_analysis_error, created_at")
             .eq("application_id", applicationId)
             .order("created_at", { ascending: false }),
+          supabase
+            .from("cvp_application_ai_reassessments")
+            .select("id, model, output_json, ai_error, created_at, triggered_by")
+            .eq("application_id", applicationId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from("cvp_test_combinations")
+            .select("id, domain, source_language_id, target_language_id")
+            .eq("application_id", applicationId),
         ]);
         if (cancelled) return;
         setRequests((reqs ?? []) as ReferenceRequestRow[]);
         setRefs((rs ?? []) as ReferenceRow[]);
+        setReassessment((reass as ReassessmentRow | null) ?? null);
+        const combosArr = (comboRows ?? []) as Pick<TestCombination, "id" | "domain" | "source_language_id" | "target_language_id">[];
+        setCombos(combosArr);
+        // Resolve language names for the pretty labels in the reassessment
+        // card. Cheap second query — N is tiny here (one applicant's combos).
+        const langIds = Array.from(new Set(combosArr.flatMap((c) => [c.source_language_id, c.target_language_id])));
+        if (langIds.length > 0) {
+          const { data: langs } = await supabase
+            .from("languages")
+            .select("id, code, name")
+            .in("id", langIds);
+          if (!cancelled) {
+            const m: Record<string, string> = {};
+            for (const l of (langs ?? []) as { id: string; code: string; name: string }[]) {
+              m[l.id] = l.name || l.code;
+            }
+            setLanguagesState(m);
+          }
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -2838,23 +2891,152 @@ function ReferencesSection({
 
   const refresh = () => setReloadKey((n) => n + 1);
 
+  const handleReassess = async () => {
+    setReassessing(true);
+    try {
+      const res = await callEdgeFunction("cvp-reassess-application", { applicationId });
+      const d = (res as { data?: Record<string, unknown> }).data ?? {};
+      if (d.aiError) {
+        toast.error(`Reassessment ran but AI returned an error: ${d.aiError}`);
+      } else {
+        toast.success("Reassessment complete");
+      }
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Reassessment failed");
+    } finally {
+      setReassessing(false);
+    }
+  };
+
+  const allRefsDone =
+    refs.length > 0 && refs.every((r) => r.status === "received" || r.status === "declined");
+  const combosById = new Map(combos.map((c) => [c.id, c] as const));
+  const formatComboLabel = (id: string) => {
+    const c = combosById.get(id);
+    if (!c) return id;
+    const domain = c.domain ? DOMAIN_LABELS[c.domain] ?? c.domain : "—";
+    const src = languages[c.source_language_id] || "?";
+    const tgt = languages[c.target_language_id] || "?";
+    return `${domain} — ${src} → ${tgt}`;
+  };
+
   return (
     <Section title={`References (${refs.length})`}>
-      <div className="mt-2 flex items-center justify-between mb-3">
+      <div className="mt-2 flex items-center justify-between mb-3 gap-2 flex-wrap">
         <p className="text-xs text-gray-600">
           {requests.length === 0
             ? "No reference requests sent yet."
             : `${requests.length} request${requests.length === 1 ? "" : "s"} sent · ${refs.length} reference${refs.length === 1 ? "" : "s"} captured`}
         </p>
-        <button
-          type="button"
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-md"
-        >
-          <Mail className="w-3.5 h-3.5" />
-          Request references
-        </button>
+        <div className="flex items-center gap-2">
+          {allRefsDone && (
+            <button
+              type="button"
+              onClick={handleReassess}
+              disabled={reassessing}
+              title="Ask Claude to weigh the test results and reference feedback together and suggest which domains to approve."
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-medium rounded-md"
+            >
+              {reassessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              {reassessment ? "Re-run AI reassessment" : "Reassess with Claude"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-md"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            Request references
+          </button>
+        </div>
       </div>
+
+      {/* Latest AI reassessment card */}
+      {reassessment && (
+        <div className={`mb-4 border rounded p-3 ${
+          reassessment.output_json?.verdict === "approve"
+            ? "border-emerald-200 bg-emerald-50/40"
+            : reassessment.output_json?.verdict === "reject"
+            ? "border-red-200 bg-red-50/40"
+            : reassessment.output_json?.verdict === "waitlist"
+            ? "border-amber-200 bg-amber-50/40"
+            : "border-gray-200 bg-gray-50"
+        }`}>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-semibold text-gray-700">AI reassessment</span>
+              {reassessment.output_json?.verdict && (
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                  reassessment.output_json.verdict === "approve"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : reassessment.output_json.verdict === "reject"
+                    ? "bg-red-100 text-red-800"
+                    : "bg-amber-100 text-amber-800"
+                }`}>
+                  {reassessment.output_json.verdict}
+                </span>
+              )}
+              {reassessment.output_json?.verdict_confidence && (
+                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px]">
+                  {reassessment.output_json.verdict_confidence} confidence
+                </span>
+              )}
+              <span className="text-[10px] text-gray-500">
+                {reassessment.model} · {format(new Date(reassessment.created_at), "MMM d, yyyy h:mm a")}
+              </span>
+            </div>
+          </div>
+          {reassessment.ai_error ? (
+            <p className="text-xs text-red-700">AI error: {reassessment.ai_error}</p>
+          ) : (
+            <>
+              {reassessment.output_json?.rationale && (
+                <p className="text-xs text-gray-800 mb-2">{reassessment.output_json.rationale}</p>
+              )}
+              {Array.isArray(reassessment.output_json?.suggested_combination_ids) &&
+                reassessment.output_json!.suggested_combination_ids!.length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-[11px] font-semibold text-gray-700 mb-1">Suggested approvals</div>
+                    <ul className="space-y-1">
+                      {reassessment.output_json!.suggested_combination_ids!.map((cid) => (
+                        <li key={cid} className="text-xs text-gray-800">
+                          <span className="font-medium">{formatComboLabel(cid)}</span>
+                          {reassessment.output_json?.domain_evidence?.[cid] && (
+                            <span className="text-gray-600"> — {reassessment.output_json.domain_evidence[cid]}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+              )}
+              {Array.isArray(reassessment.output_json?.concerns) &&
+                reassessment.output_json!.concerns!.length > 0 && (
+                  <div className="mb-2 text-xs text-red-800">
+                    <strong>Concerns:</strong>
+                    <ul className="list-disc list-inside">
+                      {reassessment.output_json!.concerns!.map((c, i) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+              )}
+              {Array.isArray(reassessment.output_json?.follow_ups) &&
+                reassessment.output_json!.follow_ups!.length > 0 && (
+                  <div className="text-xs text-gray-700">
+                    <strong>Follow-ups:</strong>
+                    <ul className="list-disc list-inside">
+                      {reassessment.output_json!.follow_ups!.map((c, i) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-xs text-gray-500">Loading…</p>
