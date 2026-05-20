@@ -4135,7 +4135,8 @@ function WorkflowPipeline({
                 onChange={(e) => setUploadModalNotes(e.target.value)}
               />
               <div className="text-[10px] text-gray-300 text-right">
-                upload v2 · raw-fetch
+                upload v3 · snapshot-fix · {uploadModalFiles.length} file
+                {uploadModalFiles.length === 1 ? "" : "s"} staged
               </div>
             </div>
             <div className="p-4 border-t flex justify-end gap-2">
