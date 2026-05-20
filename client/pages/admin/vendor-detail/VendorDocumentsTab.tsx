@@ -130,7 +130,7 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
           const { data: linkedApp } = await supabase
             .from("cvp_applications")
             .select(
-              "id, application_number, email, full_name, cv_storage_path, certifications, education_level, years_experience, cat_tools, specializations, domains_offered, linkedin_url, status, created_at",
+              "id, application_number, email, full_name, cv_storage_path, certifications, education_level, years_experience, cat_tools, domains_offered, linkedin_url, status, created_at",
             )
             .eq("id", linkedAppId)
             .maybeSingle();
@@ -144,7 +144,7 @@ export default function VendorDocumentsTab({ vendorData }: TabProps) {
         const { data: apps } = await supabase
           .from("cvp_applications")
           .select(
-            "id, application_number, email, full_name, cv_storage_path, certifications, education_level, years_experience, cat_tools, specializations, domains_offered, linkedin_url, status, created_at",
+            "id, application_number, email, full_name, cv_storage_path, certifications, education_level, years_experience, cat_tools, domains_offered, linkedin_url, status, created_at",
           )
           .ilike("email", vendor.email)
           .order("created_at", { ascending: false })
