@@ -45,7 +45,7 @@ serve(async (req) => {
         .order("created_at", { ascending: true }),
       tr(sb)
         .from("findings")
-        .select("id, finding_number, severity, category, confidence, source_text, current_translation, proposed_change, english_back_translation, rationale, application_status, application_mode, created_at")
+        .select("id, finding_number, severity, category, confidence, source_text, current_translation, proposed_change, english_back_translation, rationale, application_status, application_mode, vendor_decision, vendor_decision_reason, vendor_decision_at, vendor_uploaded_file_id, created_at")
         .eq("job_id", tok.data.job_id)
         .order("finding_number", { ascending: true }),
     ]);
@@ -113,6 +113,10 @@ serve(async (req) => {
         rationale: f.rationale,
         application_status: f.application_status,
         application_mode: f.application_mode,
+        vendor_decision: f.vendor_decision,
+        vendor_decision_reason: f.vendor_decision_reason,
+        vendor_decision_at: f.vendor_decision_at,
+        vendor_uploaded_file_id: f.vendor_uploaded_file_id,
         created_at: f.created_at,
       })),
     });
