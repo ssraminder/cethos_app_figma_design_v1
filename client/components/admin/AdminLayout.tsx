@@ -279,16 +279,40 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+interface RealtimeStatus {
+  healthy: boolean;
+  status: string;
+  expires_at: string | null;
+  hours_until_expiry: number | null;
+  last_sms_at: string | null;
+}
+
 function AdminLayoutInner() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [incompleteTrainings, setIncompleteTrainings] = useState(0);
   const [unackedInbound, setUnackedInbound] = useState(0);
   const [testsToReview, setTestsToReview] = useState(0);
+  const [rtStatus, setRtStatus] = useState<RealtimeStatus | null>(null);
   const location = useLocation();
   const branding = useBranding();
   const { session, signOut } = useAdminAuthContext();
   const { unreadCount, newOrderCount, resetNewOrders, newQuoteCount, resetNewQuotes, smsUnreadCount } = useStaffNotifications();
+
+  // Poll RC realtime subscription health every 5 min for the sidebar dot
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    const fetchStatus = async () => {
+      const { data } = await supabase.rpc("comms_get_realtime_status");
+      if (cancelled) return;
+      const row = Array.isArray(data) ? data[0] : data;
+      setRtStatus(row as RealtimeStatus | null);
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [session]);
 
   useEffect(() => {
     if (!session) return;
@@ -455,6 +479,24 @@ function AdminLayoutInner() {
               }`}>
                 {(sidebarOpen || isMobile) ? (smsUnreadCount > 99 ? "99+" : smsUnreadCount) : ""}
               </span>
+            )}
+            {item.path === "/admin/sms" && rtStatus && (
+              <span
+                className={`flex-shrink-0 w-2 h-2 rounded-full ${
+                  rtStatus.healthy
+                    ? "bg-emerald-500 shadow-emerald-300 shadow"
+                    : rtStatus.status === "missing"
+                    ? "bg-gray-300"
+                    : "bg-red-500 animate-pulse"
+                }`}
+                title={
+                  rtStatus.healthy
+                    ? `Realtime active${rtStatus.expires_at ? ` · webhook expires ${new Date(rtStatus.expires_at).toLocaleString()}` : ""}`
+                    : rtStatus.status === "missing"
+                    ? "Realtime offline — no webhook subscription registered. Polling-only (1-min lag)."
+                    : `Realtime degraded — webhook ${rtStatus.status}, expires ${rtStatus.expires_at ? new Date(rtStatus.expires_at).toLocaleString() : "unknown"}`
+                }
+              />
             )}
             {item.path === "/admin/orders" && newOrderCount > 0 && (
               <span className={`flex-shrink-0 bg-green-500 text-white text-xs font-bold rounded-full ${
