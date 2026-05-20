@@ -629,6 +629,16 @@ export default function AdminReviewJobDetail() {
                   <Badge variant="outline" className="text-[10px]">{f.confidence}</Badge>
                   <Badge variant="outline" className="text-[10px]">{f.application_mode}</Badge>
                   <Badge variant="outline" className={`text-[10px] ${f.application_status === "applied" ? "bg-green-100 text-green-800" : "bg-gray-100"}`}>{f.application_status}</Badge>
+                  {f.vendor_decision === "accepted" && (
+                    <Badge variant="outline" className="text-[10px] bg-green-100 text-green-800 border-green-300">
+                      ✓ Translator accepted
+                    </Badge>
+                  )}
+                  {f.vendor_decision === "rejected" && (
+                    <Badge variant="outline" className="text-[10px] bg-red-100 text-red-800 border-red-300" title={f.vendor_decision_reason ?? ""}>
+                      ✗ Translator declined
+                    </Badge>
+                  )}
                   <div className="ml-auto">
                     <button
                       type="button"
@@ -646,6 +656,29 @@ export default function AdminReviewJobDetail() {
                 {f.proposed_change && <div className="text-xs"><span className="font-semibold">Proposed:</span> {f.proposed_change}</div>}
                 {f.english_back_translation && <div className="text-xs"><span className="font-semibold">EN back-translation:</span> {f.english_back_translation}</div>}
                 {f.rationale && <div className="text-xs text-gray-700 mt-1">{f.rationale}</div>}
+                {f.vendor_decision && (
+                  <div className={`mt-2 text-xs border-t pt-2 ${f.vendor_decision === "accepted" ? "text-green-800" : "text-red-800"}`}>
+                    <div className="font-medium">
+                      Translator {f.vendor_decision === "accepted" ? "accepted" : "declined"}
+                      {f.vendor_decision_by_email ? ` (${f.vendor_decision_by_email})` : ""}
+                      {f.vendor_decision_at ? ` · ${new Date(f.vendor_decision_at).toLocaleString()}` : ""}
+                    </div>
+                    {f.vendor_decision_reason && (
+                      <div className="text-gray-700 mt-0.5">
+                        {f.vendor_decision === "accepted" ? "Note" : "Reason"}: {f.vendor_decision_reason}
+                      </div>
+                    )}
+                    {f.vendor_decision === "accepted" && f.vendor_uploaded_file_id && (
+                      <button
+                        type="button"
+                        onClick={() => void downloadFile(f.vendor_uploaded_file_id!)}
+                        className="mt-1 text-blue-700 hover:text-blue-900 underline"
+                      >
+                        Download corrected file →
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -101,6 +101,11 @@ export type TRFinding = {
   color_hex: string | null;
   application_status: TRFindingApplicationStatus;
   applied_at: string | null;
+  vendor_decision: "accepted" | "rejected" | null;
+  vendor_decision_reason: string | null;
+  vendor_decision_at: string | null;
+  vendor_decision_by_email: string | null;
+  vendor_uploaded_file_id: string | null;
   created_at: string;
 };
 
