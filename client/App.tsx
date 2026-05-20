@@ -71,6 +71,7 @@ import AdminCreateOrder from "./pages/admin/AdminCreateOrder";
 import AdminReviewJobsList from "./pages/admin/tr/AdminReviewJobsList";
 import AdminReviewJobNew from "./pages/admin/tr/AdminReviewJobNew";
 import AdminReviewJobDetail from "./pages/admin/tr/AdminReviewJobDetail";
+import TRSharePage from "./pages/TRSharePage";
 import StaffTasks from "./pages/admin/StaffTasks";
 import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
 import AdminAIAnalytics from "./pages/admin/AdminAIAnalytics";
@@ -254,6 +255,9 @@ const App = () => (
 
                   {/* Branded Partner Quote Flow */}
                   <Route path="/p/:code" element={<PartnerQuotePage />} />
+
+                  {/* TR translator share — tokenized, no auth */}
+                  <Route path="/tr/share/:token" element={<TRSharePage />} />
 
                   {/* Legal Pages */}
                   <Route path="/terms" element={<LegalPage type="terms" />} />

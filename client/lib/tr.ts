@@ -234,7 +234,83 @@ export const trApi = {
 
   getSignedUrl: (args: { file_id: string }) =>
     invoke<{ url: string; expires_at: string; filename: string }>("tr-get-signed-url", args),
+
+  addComment: (args: {
+    job_id: string;
+    body: string;
+    kind?: "comment" | "status_note" | "close_note" | "file_replacement";
+    files_jsonb?: Array<Record<string, unknown>>;
+  }) => invoke<{ comment_id: string }>("tr-add-comment", args),
+
+  closeJob: (args: { job_id: string; outcome: "complete" | "cancelled"; reason?: string | null }) =>
+    invoke<{ job_id: string; status: string; closed_at: string }>("tr-close-job", args),
+
+  vendorShareCreate: (args: {
+    job_id: string;
+    recipient_email: string;
+    recipient_name?: string;
+    recipient_kind?: "vendor" | "customer" | "other";
+    expires_in_days?: number;
+    message?: string;
+  }) =>
+    invoke<{
+      token_id: string;
+      token: string;
+      share_url: string;
+      expires_at: string;
+      email_status: "sent" | "failed" | "skipped";
+    }>("tr-vendor-share-create", args),
 };
+
+export type TRJobComment = {
+  id: string;
+  job_id: string;
+  author_type: "staff" | "vendor" | "system";
+  author_id: string | null;
+  author_name: string;
+  author_email: string | null;
+  body: string;
+  kind: "comment" | "status_note" | "file_replacement" | "close_note";
+  files_jsonb: unknown[];
+  via_token_id: string | null;
+  created_at: string;
+};
+
+export async function listJobComments(jobId: string): Promise<TRJobComment[]> {
+  const { data, error } = await supabase
+    .schema("tr" as never)
+    .from("job_comments")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as TRJobComment[];
+}
+
+export type TRJobShareToken = {
+  id: string;
+  job_id: string;
+  token: string;
+  recipient_email: string;
+  recipient_name: string | null;
+  recipient_kind: string;
+  expires_at: string;
+  last_used_at: string | null;
+  use_count: number;
+  revoked_at: string | null;
+  created_at: string;
+};
+
+export async function listJobShareTokens(jobId: string): Promise<TRJobShareToken[]> {
+  const { data, error } = await supabase
+    .schema("tr" as never)
+    .from("job_share_tokens")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as TRJobShareToken[];
+}
 
 // ── Direct table reads (RLS gates by tr.is_staff) ──────────────────────────
 
