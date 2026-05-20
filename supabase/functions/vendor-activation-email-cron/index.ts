@@ -70,18 +70,42 @@ serve(async (req: Request) => {
     (recentRows ?? []).map((r) => r.recipient_id as string).filter(Boolean),
   );
 
-  // 2) Pull a wide candidate window ordered by created_at ASC, then
-  //    exclude recent in-memory. We need enough rows that after dedup
-  //    we still have batchSize headroom for CV/NDA filtering — fetch
-  //    1000 (PostgREST cap), which comfortably covers up to ~970 recents.
-  const { data: vendorsRaw } = await sb
-    .from("vendors")
-    .select("id, full_name, email, vendor_type, created_at")
-    .not("status", "in", "(suspended,inactive)")
-    .not("email", "is", null)
-    .order("created_at", { ascending: true })
-    .limit(1000);
-  const vendors = (vendorsRaw ?? []).filter((v) => !recentVendorIdSet.has(v.id));
+  // 2) Pull vendors ordered by created_at ASC and exclude recent in-memory.
+  //    PostgREST caps a single response at 1000 rows; once the dedup set
+  //    grows past ~1000 the oldest-1000 page becomes entirely dedup'd and
+  //    the cron silently returns 0 even when hundreds of newer vendors
+  //    still need their first drip. Incident 2026-05-19: dedup set was
+  //    1016 → cron sat on sent:0 for 36h with 269 vendors stranded.
+  //    Paginate via .range() until we exhaust the table or hit MAX_PAGES.
+  const PAGE_SIZE = 1000;
+  const MAX_PAGES = 5;
+  type VendorRow = {
+    id: string;
+    full_name: string | null;
+    email: string;
+    vendor_type: string | null;
+    created_at: string;
+  };
+  const vendors: VendorRow[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const from = page * PAGE_SIZE;
+    const { data: pageRows, error: pageErr } = await sb
+      .from("vendors")
+      .select("id, full_name, email, vendor_type, created_at")
+      .not("status", "in", "(suspended,inactive)")
+      .not("email", "is", null)
+      .order("created_at", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (pageErr) {
+      console.error("vendor-activation-email-cron: vendors page fetch failed", pageErr);
+      break;
+    }
+    if (!pageRows || pageRows.length === 0) break;
+    for (const v of pageRows as VendorRow[]) {
+      if (!recentVendorIdSet.has(v.id)) vendors.push(v);
+    }
+    if (pageRows.length < PAGE_SIZE) break;
+  }
 
   if (!vendors || vendors.length === 0) {
     await sb.from("vendor_activation_email_schedule")
