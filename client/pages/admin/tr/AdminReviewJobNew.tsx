@@ -179,10 +179,18 @@ export default function AdminReviewJobNew() {
           );
         }
 
-        // Look for a source file from the quote. quote_files.file_category_id
-        // joins file_categories.slug — match by slug, but also fall back to
-        // ANY non-deleted file when categorization is missing (older quotes
-        // routinely have file_category_id IS NULL).
+        // Look for source files from the quote. quote_files.file_category_id
+        // joins file_categories.slug — match by slug ('source' /
+        // 'source_document'), but also fall back to ANY non-deleted file when
+        // categorization is missing (older quotes routinely have
+        // file_category_id IS NULL).
+        //
+        // For ID translations the customer often uploads front + back as
+        // separate files but the translator delivers one .docx covering
+        // both. Attach the first source file as pair 1's source slot AND
+        // every remaining source file as a reference so the QM has the full
+        // source context. Without this Claude only sees half the source and
+        // raises false-positive completeness findings.
         if (quote_id) {
           const { data: catSourceFiles } = await supabase
             .from("quote_files")
@@ -191,13 +199,14 @@ export default function AdminReviewJobNew() {
             .is("deleted_at", null)
             .order("created_at", { ascending: true });
           const all = (catSourceFiles ?? []) as any[];
-          const matchedBySlug = all.find((r) => {
-            const slug = r.file_categories?.slug;
-            return slug === "source" || slug === "source_document";
-          });
-          const fallback = all[0];
-          const src = matchedBySlug ?? fallback;
-          if (src) {
+          const isSourceSlug = (slug: string | null | undefined) =>
+            slug === "source" || slug === "source_document";
+          // Treat slug-matched files as source candidates; if none have a
+          // matching slug, treat all uncategorized files as candidates.
+          const tagged = all.filter((r) => isSourceSlug(r.file_categories?.slug));
+          const candidates = tagged.length > 0 ? tagged : all;
+          if (candidates.length > 0) {
+            const [primary, ...extras] = candidates;
             setPairs((prev) =>
               prev.map((p, i) =>
                 i === 0
@@ -206,13 +215,28 @@ export default function AdminReviewJobNew() {
                       source: {
                         kind: "link",
                         source_kind: "linked_quote_file",
-                        link_ref: { quote_file_id: src.id },
-                        label: src.original_filename ?? "source",
+                        link_ref: { quote_file_id: primary.id },
+                        label: primary.original_filename ?? "source",
                       },
                     }
                   : p,
               ),
             );
+            if (extras.length > 0) {
+              setRefs((prev) => [
+                ...prev,
+                ...extras.map((r) => ({
+                  uid: crypto.randomUUID(),
+                  file: {
+                    kind: "link" as const,
+                    source_kind: "linked_quote_file" as const,
+                    link_ref: { quote_file_id: r.id },
+                    label: r.original_filename ?? "source",
+                  },
+                  category: "source_document",
+                })),
+              ]);
+            }
           }
         }
 
