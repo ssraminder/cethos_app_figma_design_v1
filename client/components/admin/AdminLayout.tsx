@@ -71,6 +71,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Main",
   },
   {
+    label: "SMS",
+    path: "/admin/sms",
+    icon: MessageSquare,
+    section: "Main",
+  },
+  {
     label: "Tasks",
     path: "/admin/tasks",
     icon: ClipboardList,
