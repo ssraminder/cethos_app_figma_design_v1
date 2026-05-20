@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { Folder } from "lucide-react";
 import CustomerARSummary from "@/components/admin/CustomerARSummary";
 import CustomerFilesTab from "@/components/admin/CustomerFilesTab";
+import CustomerCallsTab from "@/components/admin/CustomerCallsTab";
 import EmailLogAccordion from "@/components/admin/EmailLogAccordion";
 
 interface Customer {
@@ -156,7 +157,7 @@ interface CustomerStats {
   lastOrderDate: string | null;
 }
 
-const TABS = ["profile", "quotes", "orders", "payments", "files", "stats"] as const;
+const TABS = ["profile", "quotes", "orders", "payments", "files", "calls", "stats"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function CustomerDetail() {
@@ -894,6 +895,17 @@ export default function CustomerDetail() {
             >
               <Folder className="w-4 h-4 inline mr-2" />
               Files
+            </button>
+            <button
+              onClick={() => setActiveTab("calls")}
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "calls"
+                  ? "border-teal-500 text-teal-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <Phone className="w-4 h-4 inline mr-2" />
+              Calls
             </button>
           </nav>
         </div>
@@ -1943,6 +1955,11 @@ export default function CustomerDetail() {
           {/* Files Tab */}
           {activeTab === "files" && customer?.id && (
             <CustomerFilesTab customerId={customer.id} />
+          )}
+
+          {/* Calls Tab */}
+          {activeTab === "calls" && customer?.id && (
+            <CustomerCallsTab customerId={customer.id} />
           )}
         </div>
       </div>
