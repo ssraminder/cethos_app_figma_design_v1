@@ -62,12 +62,13 @@ interface Task {
 
 type FilterType =
   | "all"
-  | "my_assignment"
   | "pending_counter"
   | "overdue_step"
   | "unreviewed_delivery"
   | "unassigned_step"
   | "expiring_offer";
+
+type TabKey = "mine" | "all";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -120,14 +121,6 @@ const CARD_CONFIG: {
   activeBorder: string;
 }[] = [
   {
-    key: "my_assignment",
-    label: "My Tasks",
-    taskType: "my_assignment",
-    activeColor: "text-purple-700",
-    activeBg: "bg-purple-50",
-    activeBorder: "border-purple-300",
-  },
-  {
     key: "pending_counter",
     label: "Counters",
     taskType: "pending_counter",
@@ -170,7 +163,6 @@ const CARD_CONFIG: {
 ];
 
 const SUMMARY_KEYS: Record<string, keyof TaskSummary> = {
-  my_assignment: "my_assignments",
   pending_counter: "pending_counters",
   overdue_step: "overdue_steps",
   unreviewed_delivery: "unreviewed_deliveries",
@@ -554,6 +546,7 @@ function TaskCard({ task }: { task: Task }) {
 export default function StaffTasks() {
   const [summary, setSummary] = useState<TaskSummary | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [tab, setTab] = useState<TabKey>("mine");
   const [filter, setFilter] = useState<FilterType>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -581,8 +574,10 @@ export default function StaffTasks() {
         setLastUpdated(new Date());
         if (!initialFocusAppliedRef.current) {
           initialFocusAppliedRef.current = true;
-          if ((data.summary?.my_assignments ?? 0) > 0) {
-            setFilter("my_assignment");
+          // Land on the user's own queue when they have items; otherwise
+          // jump straight to the ops queue so the page isn't empty.
+          if ((data.summary?.my_assignments ?? 0) === 0) {
+            setTab("all");
           }
         }
       } catch (err: unknown) {
@@ -620,8 +615,14 @@ export default function StaffTasks() {
     setFilter((prev) => (prev === type ? "all" : type));
   };
 
-  const filteredTasks =
-    filter === "all" ? tasks : tasks.filter((t) => t.task_type === filter);
+  const myTasks = tasks.filter((t) => t.task_type === "my_assignment");
+  const opsTasks = tasks.filter((t) => t.task_type !== "my_assignment");
+  const opsFiltered =
+    filter === "all" ? opsTasks : opsTasks.filter((t) => t.task_type === filter);
+  const myCount = summary?.my_assignments ?? 0;
+  const opsCount = summary
+    ? summary.total - (summary.my_assignments ?? 0)
+    : 0;
 
   const updatedLabel = lastUpdated
     ? `Updated ${relativeTime(lastUpdated.toISOString())}`
@@ -632,13 +633,13 @@ export default function StaffTasks() {
   return (
     <div className="p-6 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Staff Tasks</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
           {summary && summary.total > 0 && (
             <p className="text-sm text-gray-500 mt-0.5">
-              {summary.total} item{summary.total !== 1 ? "s" : ""} need
-              {summary.total === 1 ? "s" : ""} your attention
+              {summary.total} open task{summary.total !== 1 ? "s" : ""} across
+              the team
             </p>
           )}
         </div>
@@ -659,49 +660,56 @@ export default function StaffTasks() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="-mb-px flex gap-6" aria-label="Tasks tabs">
+          <button
+            type="button"
+            onClick={() => setTab("mine")}
+            className={`py-2 px-1 border-b-2 text-sm font-medium transition ${
+              tab === "mine"
+                ? "border-purple-600 text-purple-700"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            My Tasks
+            <span
+              className={`ml-2 inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 text-xs rounded-full ${
+                tab === "mine"
+                  ? "bg-purple-100 text-purple-700"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {myCount}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("all")}
+            className={`py-2 px-1 border-b-2 text-sm font-medium transition ${
+              tab === "all"
+                ? "border-blue-600 text-blue-700"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            All Tasks
+            <span
+              className={`ml-2 inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 text-xs rounded-full ${
+                tab === "all"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {opsCount}
+            </span>
+          </button>
+        </nav>
+      </div>
+
       {/* Error */}
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
           {error}
-        </div>
-      )}
-
-      {/* Summary Cards */}
-      {summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-          {CARD_CONFIG.map((card) => {
-            const count = summary[SUMMARY_KEYS[card.key]] ?? 0;
-            const isActive = filter === card.key;
-            const hasItems = count > 0;
-            return (
-              <button
-                key={card.key}
-                onClick={() => handleCardClick(card.key)}
-                className={`bg-white rounded-lg border p-4 text-center cursor-pointer transition hover:shadow-md ${
-                  isActive
-                    ? `ring-2 ring-blue-500 ${card.activeBg} ${card.activeBorder}`
-                    : hasItems
-                      ? `${card.activeBorder} ${card.activeBg}`
-                      : "border-gray-200"
-                }`}
-              >
-                <div
-                  className={`text-2xl font-bold ${
-                    hasItems ? card.activeColor : "text-gray-300"
-                  }`}
-                >
-                  {count}
-                </div>
-                <div
-                  className={`text-xs font-medium mt-1 ${
-                    hasItems ? card.activeColor : "text-gray-400"
-                  }`}
-                >
-                  {card.label}
-                </div>
-              </button>
-            );
-          })}
         </div>
       )}
 
@@ -720,43 +728,121 @@ export default function StaffTasks() {
         </div>
       )}
 
-      {/* Task List */}
-      {!loading && filteredTasks.length > 0 && (
-        <div>
-          {filteredTasks.map((task, idx) => (
-            <TaskCard key={`${task.task_type}-${task.step_id}-${idx}`} task={task} />
-          ))}
-        </div>
+      {/* My Tasks tab */}
+      {!loading && summary && tab === "mine" && (
+        <>
+          {myTasks.length > 0 ? (
+            <div>
+              {myTasks.map((task, idx) => (
+                <TaskCard
+                  key={`${task.task_type}-${task.step_id}-${idx}`}
+                  task={task}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16">
+              <div className="text-4xl mb-3">✅</div>
+              <p className="text-lg font-medium text-gray-700">
+                Nothing assigned to you right now.
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                When a workflow step is assigned to you, it'll show up here.
+              </p>
+              {opsCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTab("all")}
+                  className="text-sm text-blue-600 hover:text-blue-800 mt-3"
+                >
+                  See all team tasks ({opsCount}) →
+                </button>
+              )}
+            </div>
+          )}
+        </>
       )}
 
-      {/* Empty state */}
-      {!loading && summary && filteredTasks.length === 0 && (
-        <div className="text-center py-16">
-          {filter === "all" && summary.total === 0 ? (
-            <>
-              <div className="text-4xl mb-3">✅</div>
-              <p className="text-lg font-medium text-gray-700">All caught up!</p>
-              <p className="text-sm text-gray-500 mt-1">
-                No items need your attention right now.
-              </p>
-            </>
+      {/* All Tasks tab */}
+      {!loading && summary && tab === "all" && (
+        <>
+          {/* Ops summary cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+            {CARD_CONFIG.map((card) => {
+              const count = summary[SUMMARY_KEYS[card.key]] ?? 0;
+              const isActive = filter === card.key;
+              const hasItems = count > 0;
+              return (
+                <button
+                  key={card.key}
+                  onClick={() => handleCardClick(card.key)}
+                  className={`bg-white rounded-lg border p-4 text-center cursor-pointer transition hover:shadow-md ${
+                    isActive
+                      ? `ring-2 ring-blue-500 ${card.activeBg} ${card.activeBorder}`
+                      : hasItems
+                        ? `${card.activeBorder} ${card.activeBg}`
+                        : "border-gray-200"
+                  }`}
+                >
+                  <div
+                    className={`text-2xl font-bold ${
+                      hasItems ? card.activeColor : "text-gray-300"
+                    }`}
+                  >
+                    {count}
+                  </div>
+                  <div
+                    className={`text-xs font-medium mt-1 ${
+                      hasItems ? card.activeColor : "text-gray-400"
+                    }`}
+                  >
+                    {card.label}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {opsFiltered.length > 0 ? (
+            <div>
+              {opsFiltered.map((task, idx) => (
+                <TaskCard
+                  key={`${task.task_type}-${task.step_id}-${idx}`}
+                  task={task}
+                />
+              ))}
+            </div>
           ) : (
-            <>
-              <p className="text-sm text-gray-500">
-                No{" "}
-                {CARD_CONFIG.find((c) => c.key === filter)?.label.toLowerCase() ||
-                  ""}{" "}
-                tasks right now.
-              </p>
-              <button
-                onClick={() => setFilter("all")}
-                className="text-sm text-blue-600 hover:text-blue-800 mt-2"
-              >
-                Show all tasks
-              </button>
-            </>
+            <div className="text-center py-16">
+              {filter === "all" && opsCount === 0 ? (
+                <>
+                  <div className="text-4xl mb-3">✅</div>
+                  <p className="text-lg font-medium text-gray-700">
+                    All caught up!
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    No team tasks need attention right now.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-500">
+                    No{" "}
+                    {CARD_CONFIG.find((c) => c.key === filter)?.label.toLowerCase() ||
+                      ""}{" "}
+                    tasks right now.
+                  </p>
+                  <button
+                    onClick={() => setFilter("all")}
+                    className="text-sm text-blue-600 hover:text-blue-800 mt-2"
+                  >
+                    Show all team tasks
+                  </button>
+                </>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
