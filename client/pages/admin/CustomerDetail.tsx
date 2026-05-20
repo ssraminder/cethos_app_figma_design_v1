@@ -234,21 +234,16 @@ export default function CustomerDetail() {
     lastOrderDate: null,
   });
 
-  // Helper to call admin-manage-customer edge function
+  // Helper to call admin-manage-customer edge function.
+  // Use supabase.functions.invoke so the logged-in staff JWT is attached
+  // (raw fetch with only the anon key fails verify_jwt now).
   const callAdminManageCustomer = async (body: Record<string, unknown>) => {
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-manage-customer`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify(body),
-      }
+    const { data, error } = await supabase.functions.invoke(
+      "admin-manage-customer",
+      { body },
     );
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Edge function error");
+    if (error) throw new Error((data as { error?: string })?.error || error.message || "Edge function error");
+    if (data && (data as { error?: string }).error) throw new Error((data as { error: string }).error);
     return data;
   };
 
