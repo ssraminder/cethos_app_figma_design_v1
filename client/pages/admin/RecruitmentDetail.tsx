@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
@@ -3422,15 +3422,37 @@ interface DecisionPreview {
   aiError: string | null;
 }
 
+/**
+ * Domain-pick options. Only used for decision='approved'; the other
+ * decisions don't operate on specific combinations.
+ */
+interface ApprovalDomainContext {
+  combinations: TestCombination[];
+  languages: Record<string, string>;
+}
+
 interface DecisionModalProps {
   decision: DecisionType;
   onClose: () => void;
   /** Preview: runs AI + renders email without sending. */
-  onPreview: (notes: string) => Promise<DecisionPreview>;
+  onPreview: (
+    notes: string,
+    approvalOpts?: { combinationIds: string[]; combinationRationales: Record<string, string> },
+  ) => Promise<DecisionPreview>;
   /** Send: uses edited subject/body if provided, else AI output. */
-  onSend: (args: { notes: string; editedSubject: string; editedContent: string }) => Promise<void>;
+  onSend: (args: {
+    notes: string;
+    editedSubject: string;
+    editedContent: string;
+    combinationIds?: string[];
+    combinationRationales?: Record<string, string>;
+  }) => Promise<void>;
   busy: boolean;
   initialNotes?: string;
+  /** Required when decision='approved'. The modal opens at the domain-pick
+   *  step and only proceeds to notes/preview after the staff has selected
+   *  at least one combination and provided a per-domain rationale. */
+  approvalContext?: ApprovalDomainContext;
 }
 
 function DecisionModal({
@@ -3440,9 +3462,15 @@ function DecisionModal({
   onSend,
   busy,
   initialNotes,
+  approvalContext,
 }: DecisionModalProps) {
   const cfg = DECISION_CONFIGS[decision];
-  const [step, setStep] = useState<"notes" | "preview">("notes");
+  // For 'approved' the flow is domains → notes → preview. For everything
+  // else it stays at the original notes → preview.
+  const isApprove = decision === "approved";
+  const [step, setStep] = useState<"domains" | "notes" | "preview">(
+    isApprove ? "domains" : "notes",
+  );
   const [notes, setNotes] = useState(initialNotes ?? "");
   const [preview, setPreview] = useState<DecisionPreview | null>(null);
   const [editedSubject, setEditedSubject] = useState("");
@@ -3451,11 +3479,44 @@ function DecisionModal({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const tooShort = notes.trim().length < cfg.minLength;
 
+  // Combo selection (decision='approved' only). Pre-checked = combos
+  // already in a validated state (approved or skip_manual_review). Staff
+  // can override by selecting any other combo, but the rationale textarea
+  // becomes the audit trail for that override.
+  const VALIDATED_STATUSES = new Set(["approved", "skip_manual_review"]);
+  const initialSelected = useMemo<Set<string>>(() => {
+    if (!approvalContext) return new Set();
+    return new Set(
+      approvalContext.combinations
+        .filter((c) => VALIDATED_STATUSES.has(c.status))
+        .map((c) => c.id),
+    );
+  }, [approvalContext]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(initialSelected);
+  const [rationales, setRationales] = useState<Record<string, string>>({});
+
+  const RATIONALE_MIN_CHARS = 10;
+  const selectedArr = Array.from(selectedIds);
+  const allRationalesOk = selectedArr.every(
+    (id) => (rationales[id] ?? "").trim().length >= RATIONALE_MIN_CHARS,
+  );
+  const domainsStepValid = selectedArr.length > 0 && allRationalesOk;
+
+  // Helpers for the preview/send wiring — only meaningful when isApprove.
+  const approvalPayload = isApprove
+    ? {
+        combinationIds: selectedArr,
+        combinationRationales: Object.fromEntries(
+          selectedArr.map((id) => [id, (rationales[id] ?? "").trim()]),
+        ),
+      }
+    : undefined;
+
   const handleGoToPreview = async () => {
     setPreviewBusy(true);
     setPreviewError(null);
     try {
-      const p = await onPreview(notes.trim());
+      const p = await onPreview(notes.trim(), approvalPayload);
       setPreview(p);
       setEditedSubject(p.subject);
       setEditedContent(p.aiOutput ?? "");
@@ -3472,7 +3533,7 @@ function DecisionModal({
     setPreviewError(null);
     try {
       // Re-run dry-run so the iframe reflects current edits.
-      const p = await onPreview(notes.trim());
+      const p = await onPreview(notes.trim(), approvalPayload);
       // Keep staff's edits for subject + body; only update the rendered html.
       setPreview({ ...p, subject: editedSubject, aiOutput: editedContent || p.aiOutput });
     } catch (err) {
@@ -3518,9 +3579,124 @@ function DecisionModal({
           </button>
         </div>
 
+        {step === "domains" && approvalContext && (
+          <>
+            <p className="text-sm text-gray-600 mb-3">
+              Select the domains to approve this vendor for. Pre-checked rows passed a test or are a certified-only domain. You can override by selecting any other row, but every checked row needs a one-line reason (≥{RATIONALE_MIN_CHARS} chars) — it's stored on the decision audit log and never shown to the applicant.
+            </p>
+            <div className="max-h-[55vh] overflow-y-auto border border-gray-200 rounded-md divide-y divide-gray-100">
+              {approvalContext.combinations.length === 0 ? (
+                <p className="p-4 text-sm text-gray-500">No combinations on this application.</p>
+              ) : (
+                approvalContext.combinations.map((c) => {
+                  const checked = selectedIds.has(c.id);
+                  const validated = VALIDATED_STATUSES.has(c.status);
+                  const rationale = rationales[c.id] ?? "";
+                  const rationaleShort = checked && rationale.trim().length < RATIONALE_MIN_CHARS;
+                  const badge = validated
+                    ? { text: "Validated", cls: "bg-emerald-100 text-emerald-800 border-emerald-200" }
+                    : c.status === "assessed"
+                    ? { text: "Test assessed", cls: "bg-sky-100 text-sky-800 border-sky-200" }
+                    : { text: "Not validated", cls: "bg-amber-100 text-amber-800 border-amber-200" };
+                  return (
+                    <div key={c.id} className="p-3">
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(c.id);
+                              else next.delete(c.id);
+                              return next;
+                            });
+                          }}
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-gray-900">
+                              {DOMAIN_LABELS[c.domain ?? ""] || c.domain || "—"}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {approvalContext.languages[c.source_language_id] || "?"} → {approvalContext.languages[c.target_language_id] || "?"}
+                            </span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${badge.cls}`}>{badge.text}</span>
+                            {!validated && checked && (
+                              <span className="text-[10px] text-amber-700 font-medium">overriding gate</span>
+                            )}
+                          </div>
+                        </div>
+                      </label>
+                      {checked && (
+                        <div className="mt-2 ml-6">
+                          <textarea
+                            value={rationale}
+                            onChange={(e) =>
+                              setRationales((prev) => ({ ...prev, [c.id]: e.target.value }))
+                            }
+                            placeholder={validated
+                              ? "Reason / source (e.g. 'Test passed score 84')"
+                              : "Why approve without validation? (e.g. 'Reference confirmed games expertise — Pedro at Acme')"}
+                            rows={2}
+                            className={`w-full p-2 text-xs border rounded-md focus:outline-none focus:ring-1 ${
+                              rationaleShort
+                                ? "border-amber-400 focus:ring-amber-500"
+                                : "border-gray-300 focus:ring-teal-500"
+                            }`}
+                          />
+                          {rationaleShort && (
+                            <p className="text-[10px] text-amber-700 mt-0.5">
+                              Add at least {RATIONALE_MIN_CHARS} characters.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={previewBusy}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep("notes")}
+                disabled={!domainsStepValid}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-50 ${cfg.submitClassName}`}
+              >
+                Continue to notes →
+              </button>
+            </div>
+            {!domainsStepValid && selectedArr.length === 0 && (
+              <p className="mt-2 text-xs text-amber-700">Select at least one domain.</p>
+            )}
+          </>
+        )}
+
         {step === "notes" && (
           <>
             <p className="text-sm text-gray-600 mb-3">{cfg.intro}</p>
+            {isApprove && (
+              <div className="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded text-xs">
+                <strong className="text-emerald-900">Approving {selectedArr.length} domain{selectedArr.length === 1 ? "" : "s"}.</strong>{" "}
+                <button
+                  type="button"
+                  className="text-emerald-700 underline hover:text-emerald-900"
+                  onClick={() => setStep("domains")}
+                >
+                  ← change selection
+                </button>
+              </div>
+            )}
             <label className="block text-xs font-medium text-gray-700 mb-1">
               {cfg.minLength > 0 ? "Staff notes (required)" : "Staff notes (optional)"}
             </label>
@@ -3660,6 +3836,8 @@ function DecisionModal({
                     notes: notes.trim(),
                     editedSubject: editedSubject.trim(),
                     editedContent: editedContent.trim(),
+                    combinationIds: approvalPayload?.combinationIds,
+                    combinationRationales: approvalPayload?.combinationRationales,
                   })}
                   disabled={busy}
                   className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-50 ${cfg.submitClassName}`}
@@ -4628,14 +4806,20 @@ export default function RecruitmentDetail() {
   const previewDecision = async (
     decision: Decision,
     notes: string,
+    approvalOpts?: { combinationIds: string[]; combinationRationales: Record<string, string> },
   ): Promise<DecisionPreview> => {
     if (!id) throw new Error("No application ID");
-    const res = await callEdgeFunction(fnSlug[decision], {
+    const payload: Record<string, unknown> = {
       applicationId: id,
       staffId: session?.staffId,
       staffNotes: notes,
       dryRun: true,
-    });
+    };
+    if (decision === "approved" && approvalOpts) {
+      payload.combinationIds = approvalOpts.combinationIds;
+      payload.combinationRationales = approvalOpts.combinationRationales;
+    }
+    const res = await callEdgeFunction(fnSlug[decision], payload);
     const d = (res as { data?: Record<string, unknown> }).data ?? {};
     return {
       subject: String(d.subject ?? ""),
@@ -4647,7 +4831,13 @@ export default function RecruitmentDetail() {
 
   const sendDecision = async (
     decision: Decision,
-    args: { notes: string; editedSubject: string; editedContent: string },
+    args: {
+      notes: string;
+      editedSubject: string;
+      editedContent: string;
+      combinationIds?: string[];
+      combinationRationales?: Record<string, string>;
+    },
   ) => {
     if (!id) return;
     setActionLoading(decision);
@@ -4660,6 +4850,10 @@ export default function RecruitmentDetail() {
       };
       if (args.editedContent) {
         body[editedContentField[decision]] = args.editedContent;
+      }
+      if (decision === "approved" && args.combinationIds) {
+        body.combinationIds = args.combinationIds;
+        body.combinationRationales = args.combinationRationales ?? {};
       }
       await callEdgeFunction(fnSlug[decision], body);
       if (decision === "approved") toast.success("Application approved — welcome email sent");
@@ -5899,11 +6093,16 @@ export default function RecruitmentDetail() {
         <DecisionModal
           decision={decisionModal}
           onClose={() => setDecisionModal(null)}
-          onPreview={(notes) => previewDecision(decisionModal, notes)}
+          onPreview={(notes, approvalOpts) => previewDecision(decisionModal, notes, approvalOpts)}
           onSend={(args) => sendDecision(decisionModal, args)}
           busy={actionLoading === decisionModal}
           initialNotes={
             decisionModal === "info_requested" ? staffNotes : ""
+          }
+          approvalContext={
+            decisionModal === "approved"
+              ? { combinations, languages }
+              : undefined
           }
         />
       )}
