@@ -33,8 +33,25 @@ serve(async (req) => {
     if (!plan) return json({ error: "plan not found" }, 404);
     if (plan.approval_status === "approved") return json({ error: "plan already approved" }, 409);
 
-    const required = ((plan.plan_jsonb as { required_confirmation_checks?: Array<{ id: string }> } | null)
-      ?.required_confirmation_checks ?? []) as Array<{ id: string; label?: string }>;
+    // Claude's JOB_PLAN_TOOL schema doesn't constrain item shape, so
+    // required_confirmation_checks comes back as either bare strings or
+    // {id, label} objects depending on the call. Normalize to {id, label}
+    // using the same synthesized ids the client uses (see AdminReviewJobDetail
+    // — `check_<index>`), so a client-side tick maps to a server-side match.
+    const rawRequired = (plan.plan_jsonb as { required_confirmation_checks?: unknown } | null)
+      ?.required_confirmation_checks ?? [];
+    const required: Array<{ id: string; label: string }> = Array.isArray(rawRequired)
+      ? rawRequired.map((c, i) => {
+          if (typeof c === "string") return { id: `check_${i + 1}`, label: c };
+          if (c && typeof c === "object") {
+            const obj = c as { id?: string; label?: string; text?: string; description?: string };
+            const label = obj.label ?? obj.text ?? obj.description ?? obj.id ?? `Check ${i + 1}`;
+            const id = obj.id ?? `check_${i + 1}`;
+            return { id, label };
+          }
+          return { id: `check_${i + 1}`, label: String(c) };
+        })
+      : [];
     const missing = required.filter((c) => confirmation_checks[c.id] !== true).map((c) => c.id);
     if (missing.length) {
       return json({ error: "required confirmation checks not all ticked", missing }, 400);
