@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { MessageSquare, ShoppingCart, FileText, X } from "lucide-react";
+import { MessageSquare, ShoppingCart, FileText, Smartphone, X } from "lucide-react";
 import { useStaffNotifications } from "@/context/StaffNotificationContext";
 
 // Notification sound - using a free online notification sound
 const NOTIFICATION_SOUND_URL =
   "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3";
 
-type NotificationType = "message" | "order" | "quote";
+type NotificationType = "message" | "order" | "quote" | "sms";
 
 interface Notification {
   id: string;
@@ -29,7 +29,7 @@ export default function NotificationProvider({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const navigate = useNavigate();
-  const { incrementUnread, incrementNewOrders, incrementNewQuotes } = useStaffNotifications();
+  const { incrementUnread, incrementNewOrders, incrementNewQuotes, incrementSmsUnread } = useStaffNotifications();
 
   // Initialize audio
   useEffect(() => {
@@ -221,6 +221,42 @@ export default function NotificationProvider({
           });
         },
       )
+      // ── New inbound SMS ──
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "comms", table: "sms_messages" },
+        async (payload) => {
+          // Skip outbound — only notify on inbound
+          if ((payload.new as Record<string, unknown>).direction !== "inbound") return;
+          const fromNumber = (payload.new as Record<string, unknown>).from_number as string | undefined;
+          const body = (payload.new as Record<string, unknown>).body as string | undefined;
+          const customerId = (payload.new as Record<string, unknown>).customer_id as string | undefined;
+
+          let senderName = fromNumber || "Unknown";
+          if (customerId) {
+            const { data: c } = await supabase
+              .from("customers")
+              .select("full_name, email, company_name")
+              .eq("id", customerId)
+              .maybeSingle();
+            senderName = c?.company_name || c?.full_name || c?.email || fromNumber || "Customer";
+          }
+
+          playSound();
+          showBrowserNotification(`New SMS from ${senderName}`, body || "", "cethos-sms");
+          incrementSmsUnread();
+
+          addToast({
+            id: (payload.new as Record<string, unknown>).id as string,
+            type: "sms",
+            title: senderName,
+            message: body || "(empty)",
+            timestamp: new Date(),
+            orderId: null,
+            quoteId: null,
+          });
+        },
+      )
       .subscribe((status) => {
         console.log("🔔 Global notification subscription status:", status);
       });
@@ -229,7 +265,7 @@ export default function NotificationProvider({
       console.log("🔕 Unsubscribing from global notifications");
       supabase.removeChannel(channel);
     };
-  }, [incrementUnread, incrementNewOrders, incrementNewQuotes]);
+  }, [incrementUnread, incrementNewOrders, incrementNewQuotes, incrementSmsUnread]);
 
   // Dismiss notification
   const dismissNotification = (id: string) => {
@@ -239,7 +275,9 @@ export default function NotificationProvider({
   // Click on notification to navigate
   const handleNotificationClick = (notification: Notification) => {
     dismissNotification(notification.id);
-    if (notification.type === "order" && notification.orderId) {
+    if (notification.type === "sms") {
+      navigate("/admin/sms");
+    } else if (notification.type === "order" && notification.orderId) {
       navigate(`/admin/orders/${notification.orderId}`);
     } else if (notification.type === "quote" && notification.quoteId) {
       navigate(`/admin/quotes/${notification.quoteId}`);
@@ -258,6 +296,8 @@ export default function NotificationProvider({
         return <ShoppingCart className="w-5 h-5 text-green-600" />;
       case "quote":
         return <FileText className="w-5 h-5 text-blue-600" />;
+      case "sms":
+        return <Smartphone className="w-5 h-5 text-blue-600" />;
       default:
         return <MessageSquare className="w-5 h-5 text-blue-600" />;
     }
@@ -268,6 +308,8 @@ export default function NotificationProvider({
       case "order":
         return "bg-green-100";
       case "quote":
+        return "bg-blue-100";
+      case "sms":
         return "bg-blue-100";
       default:
         return "bg-blue-100";

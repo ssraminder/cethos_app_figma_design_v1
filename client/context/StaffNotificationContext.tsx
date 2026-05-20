@@ -11,6 +11,10 @@ interface StaffNotificationContextValue {
   newQuoteCount: number;
   incrementNewQuotes: () => void;
   resetNewQuotes: () => void;
+  smsUnreadCount: number;
+  setSmsUnreadCount: (count: number) => void;
+  incrementSmsUnread: () => void;
+  resetSmsUnread: () => void;
 }
 
 const StaffNotificationContext = createContext<StaffNotificationContextValue>({
@@ -24,6 +28,10 @@ const StaffNotificationContext = createContext<StaffNotificationContextValue>({
   newQuoteCount: 0,
   incrementNewQuotes: () => {},
   resetNewQuotes: () => {},
+  smsUnreadCount: 0,
+  setSmsUnreadCount: () => {},
+  incrementSmsUnread: () => {},
+  resetSmsUnread: () => {},
 });
 
 export function StaffNotificationProvider({
@@ -34,6 +42,7 @@ export function StaffNotificationProvider({
   const [unreadCount, setUnreadCount] = useState(0);
   const [newOrderCount, setNewOrderCount] = useState(0);
   const [newQuoteCount, setNewQuoteCount] = useState(0);
+  const [smsUnreadCount, setSmsUnreadCount] = useState(0);
 
   const incrementUnread = useCallback(() => {
     setUnreadCount((prev) => prev + 1);
@@ -59,12 +68,21 @@ export function StaffNotificationProvider({
     setNewQuoteCount(0);
   }, []);
 
+  const incrementSmsUnread = useCallback(() => {
+    setSmsUnreadCount((prev) => prev + 1);
+  }, []);
+
+  const resetSmsUnread = useCallback(() => {
+    setSmsUnreadCount(0);
+  }, []);
+
   return (
     <StaffNotificationContext.Provider
       value={{
         unreadCount, setUnreadCount, incrementUnread, resetUnread,
         newOrderCount, incrementNewOrders, resetNewOrders,
         newQuoteCount, incrementNewQuotes, resetNewQuotes,
+        smsUnreadCount, setSmsUnreadCount, incrementSmsUnread, resetSmsUnread,
       }}
     >
       {children}

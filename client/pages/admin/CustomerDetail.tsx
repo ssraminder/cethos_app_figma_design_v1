@@ -37,7 +37,7 @@ import { Folder, MessageSquare } from "lucide-react";
 import CustomerARSummary from "@/components/admin/CustomerARSummary";
 import CustomerFilesTab from "@/components/admin/CustomerFilesTab";
 import CustomerCallsTab from "@/components/admin/CustomerCallsTab";
-import CustomerSmsTab from "@/components/admin/CustomerSmsTab";
+import CustomerConversationTab from "@/components/admin/CustomerConversationTab";
 import EmailLogAccordion from "@/components/admin/EmailLogAccordion";
 
 interface Customer {
@@ -158,7 +158,7 @@ interface CustomerStats {
   lastOrderDate: string | null;
 }
 
-const TABS = ["profile", "quotes", "orders", "payments", "files", "calls", "sms", "stats"] as const;
+const TABS = ["profile", "quotes", "orders", "payments", "files", "calls", "messages", "stats"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function CustomerDetail() {
@@ -909,15 +909,15 @@ export default function CustomerDetail() {
               Calls
             </button>
             <button
-              onClick={() => setActiveTab("sms")}
+              onClick={() => setActiveTab("messages")}
               className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "sms"
+                activeTab === "messages"
                   ? "border-teal-500 text-teal-600"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
               }`}
             >
               <MessageSquare className="w-4 h-4 inline mr-2" />
-              SMS
+              Messages
             </button>
           </nav>
         </div>
@@ -1974,9 +1974,12 @@ export default function CustomerDetail() {
             <CustomerCallsTab customerId={customer.id} />
           )}
 
-          {/* SMS Tab */}
-          {activeTab === "sms" && customer?.id && (
-            <CustomerSmsTab customerId={customer.id} customerPhone={customer.phone} />
+          {/* Messages Tab (unified: email/in-app + SMS) */}
+          {activeTab === "messages" && customer?.id && (
+            <CustomerConversationTab
+              customerId={customer.id}
+              customerEmail={customer.email}
+            />
           )}
         </div>
       </div>
