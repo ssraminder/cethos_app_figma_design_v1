@@ -278,7 +278,18 @@ interface FeedbackRoundRow {
   manual_send_requested_at: string | null;
 }
 
-interface Language { id: string; name: string }
+interface Language { id: string; name: string; code?: string | null }
+
+const RTL_LANGUAGE_CODES = new Set<string>([
+  "ar", "ar-EG", "ar-SA", "ar-LB", "ar-MA",
+  "he", "fa", "prs", "ps", "ur", "ckb", "yi",
+]);
+
+function isRtlLanguageCode(code: string | null | undefined): boolean {
+  if (!code) return false;
+  if (RTL_LANGUAGE_CODES.has(code)) return true;
+  return code.startsWith("ar-");
+}
 
 interface QuizResponse {
   question_id: string;
@@ -451,6 +462,8 @@ function TestAssessmentPanel({
   combo,
   submission,
   test,
+  sourceLanguageCode,
+  targetLanguageCode,
   staffId,
   onAfterAction,
   callEdgeFunction,
@@ -461,12 +474,16 @@ function TestAssessmentPanel({
   combo: TestCombination;
   submission: TestSubmission | null;
   test: TestLibraryRow | null;
+  sourceLanguageCode?: string | null;
+  targetLanguageCode?: string | null;
   staffId?: string;
   onAfterAction: () => Promise<void> | void;
   callEdgeFunction: (fnSlug: string, body: Record<string, unknown>) => Promise<unknown>;
   errorFeedback: ErrorFeedbackRow[];
   feedbackRound: FeedbackRoundRow | null;
 }) {
+  const sourceRtl = isRtlLanguageCode(sourceLanguageCode);
+  const targetRtl = isRtlLanguageCode(targetLanguageCode);
   const a = parseAssessment(assessment);
   const [showTranslation, setShowTranslation] = useState(false);
   const [showErrors, setShowErrors] = useState(true);
@@ -828,9 +845,9 @@ function TestAssessmentPanel({
           </button>
           {showTranslation && (
             <div className="mt-2 grid grid-cols-1 lg:grid-cols-3 gap-2">
-              <TextPanel title="Source" body={test?.source_text} />
-              <TextPanel title="Applicant translation" body={submission?.draft_content} highlight />
-              <TextPanel title="Reference translation" body={test?.reference_translation} />
+              <TextPanel title="Source" body={test?.source_text} rtl={sourceRtl} lang={sourceLanguageCode ?? undefined} />
+              <TextPanel title="Applicant translation" body={submission?.draft_content} highlight rtl={targetRtl} lang={targetLanguageCode ?? undefined} />
+              <TextPanel title="Reference translation" body={test?.reference_translation} rtl={targetRtl} lang={targetLanguageCode ?? undefined} />
             </div>
           )}
         </div>
@@ -1176,11 +1193,27 @@ function TestAssessmentPanel({
   );
 }
 
-function TextPanel({ title, body, highlight = false }: { title: string; body: string | null | undefined; highlight?: boolean }) {
+function TextPanel({
+  title,
+  body,
+  highlight = false,
+  rtl = false,
+  lang,
+}: {
+  title: string;
+  body: string | null | undefined;
+  highlight?: boolean;
+  rtl?: boolean;
+  lang?: string;
+}) {
   return (
     <div className={`flex flex-col rounded border ${highlight ? "border-teal-200 bg-teal-50/50" : "border-gray-200 bg-white"}`}>
       <div className="text-[11px] font-semibold text-gray-700 px-2 py-1 border-b border-gray-200">{title}</div>
-      <div className="text-xs text-gray-800 whitespace-pre-wrap leading-relaxed px-2 py-2 max-h-72 overflow-y-auto">
+      <div
+        dir={rtl ? "rtl" : "ltr"}
+        lang={lang}
+        className={`text-xs text-gray-800 whitespace-pre-wrap leading-relaxed px-2 py-2 max-h-72 overflow-y-auto ${rtl ? "text-right" : ""}`}
+      >
         {body && body.trim().length > 0 ? body : <span className="text-gray-400 italic">Not available</span>}
       </div>
     </div>
@@ -4041,6 +4074,7 @@ export default function RecruitmentDetail() {
   const [errorFeedback, setErrorFeedback] = useState<Record<string, ErrorFeedbackRow[]>>({});
   const [feedbackRounds, setFeedbackRounds] = useState<Record<string, FeedbackRoundRow>>({});
   const [languages, setLanguages] = useState<Record<string, string>>({});
+  const [languageCodes, setLanguageCodes] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
 
   // Staff action state
@@ -4321,11 +4355,16 @@ export default function RecruitmentDetail() {
       if (langIds.size > 0) {
         const { data: langs } = await supabase
           .from("languages")
-          .select("id, name")
+          .select("id, name, code")
           .in("id", Array.from(langIds));
         const map: Record<string, string> = {};
-        (langs || []).forEach((l: Language) => { map[l.id] = l.name; });
+        const codeMap: Record<string, string | null> = {};
+        (langs || []).forEach((l: Language) => {
+          map[l.id] = l.name;
+          codeMap[l.id] = l.code ?? null;
+        });
         setLanguages(map);
+        setLanguageCodes(codeMap);
       }
     } catch (err) {
       console.error("Failed to fetch application:", err);
@@ -5468,6 +5507,8 @@ export default function RecruitmentDetail() {
                           combo={combo}
                           submission={sub ?? null}
                           test={sub?.test_id ? testLibrary[sub.test_id] ?? null : null}
+                          sourceLanguageCode={languageCodes[combo.source_language_id] ?? null}
+                          targetLanguageCode={languageCodes[combo.target_language_id] ?? null}
                           staffId={session?.staffId}
                           onAfterAction={fetchData}
                           callEdgeFunction={callEdgeFunction}
