@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -32,6 +32,45 @@ export default function VendorDetailHeader({
   const { vendor, summary } = vendorData;
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  // Recruitment application linked via vendors.cvp_translator_id. The
+  // get-vendor-detail edge function doesn't expose this field today, so we
+  // read it directly. Two extra single-row queries — cheap and keeps the
+  // backend untouched.
+  const [linkedApp, setLinkedApp] = useState<{ id: string; number: string | null } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: vRow } = await supabase
+        .from("vendors")
+        .select("cvp_translator_id")
+        .eq("id", vendor.id)
+        .maybeSingle();
+      const tId = (vRow as { cvp_translator_id: string | null } | null)?.cvp_translator_id ?? null;
+      if (!tId) return;
+      const { data: tRow } = await supabase
+        .from("cvp_translators")
+        .select("application_id")
+        .eq("id", tId)
+        .maybeSingle();
+      const appId = (tRow as { application_id: string | null } | null)?.application_id ?? null;
+      if (!appId) return;
+      const { data: aRow } = await supabase
+        .from("cvp_applications")
+        .select("id, application_number")
+        .eq("id", appId)
+        .maybeSingle();
+      if (!cancelled && aRow) {
+        setLinkedApp({
+          id: (aRow as { id: string }).id,
+          number: ((aRow as { application_number: string | null }).application_number) ?? null,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vendor.id]);
 
   const handleToggleStatus = async () => {
     setActionLoading(true);
@@ -154,7 +193,7 @@ export default function VendorDetailHeader({
           </div>
 
           {/* Contact line */}
-          <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+          <div className="flex items-center gap-4 mt-1 text-sm text-gray-500 flex-wrap">
             <span className="flex items-center gap-1">
               <Mail className="w-3.5 h-3.5" />
               {vendor.email}
@@ -164,6 +203,18 @@ export default function VendorDetailHeader({
                 <Phone className="w-3.5 h-3.5" />
                 {vendor.phone}
               </span>
+            )}
+            {linkedApp && (
+              <a
+                href={`/admin/recruitment/${linkedApp.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-800"
+                title="Open the original recruitment application in a new tab"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                {linkedApp.number ? `View application ${linkedApp.number}` : "View application"}
+              </a>
             )}
           </div>
 
