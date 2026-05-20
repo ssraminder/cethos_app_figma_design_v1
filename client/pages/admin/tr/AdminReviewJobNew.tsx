@@ -8,7 +8,7 @@
 // are attached, navigates to the job detail (Pre-flight tab).
 
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,7 @@ import {
   type TRJobKind,
   type TRFileRole,
 } from "@/lib/tr";
+import { supabase } from "@/lib/supabase";
 import ProjectFilePicker from "@/components/admin/tr/ProjectFilePicker";
 
 type PendingFile =
@@ -56,13 +57,18 @@ function fileLabel(p: PendingFile | null): string {
 
 export default function AdminReviewJobNew() {
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialKind = searchParams.get("kind") as TRJobKind | null;
+  const fromStepId = searchParams.get("from_step");
 
   const [langs, setLangs] = useState<LanguageRow[]>([]);
   const [templates, setTemplates] = useState<TRMethodologyTemplate[]>([]);
   const [roundColors, setRoundColors] = useState<TRRoundColor[]>([]);
   const [projects, setProjects] = useState<ProjectPickRow[]>([]);
 
-  const [jobKind, setJobKind] = useState<TRJobKind>("translation_review");
+  const [jobKind, setJobKind] = useState<TRJobKind>(
+    initialKind === "qm_certified" ? "qm_certified" : "translation_review",
+  );
   const [projectId, setProjectId] = useState<string>("");
   const [clientName, setClientName] = useState("");
   const [pmContact, setPmContact] = useState("");
@@ -73,6 +79,7 @@ export default function AdminReviewJobNew() {
   const [round, setRound] = useState(1);
   const [notes, setNotes] = useState("");
   const [clientEmailText, setClientEmailText] = useState("");
+  const [prefillBanner, setPrefillBanner] = useState<string | null>(null);
 
   const [pairs, setPairs] = useState<PairDraft[]>([
     { uid: crypto.randomUUID(), label: "Pair 1", source: null, target: null, expected_source_marker: "", expected_target_marker: "" },
@@ -107,6 +114,115 @@ export default function AdminReviewJobNew() {
   useEffect(() => {
     setMethodology(jobKind === "qm_certified" ? "qm_certified_v1" : "translation_quality_v1");
   }, [jobKind]);
+
+  // Prefill from a delivered workflow step. Pulls the step + its order +
+  // delivered files + source files so the QM job starts with the right
+  // language pair, project, and a pre-staged source/target file pair.
+  useEffect(() => {
+    if (!fromStepId) return;
+    void (async () => {
+      try {
+        const { data: step, error: stepErr } = await supabase
+          .from("order_workflow_steps")
+          .select(
+            "id, name, workflow_id, source_language, target_language, delivered_file_paths, order_workflows!workflow_id(order_id, orders(id, order_number, customer_id, internal_project_id, quote_id, customers(full_name)))",
+          )
+          .eq("id", fromStepId)
+          .maybeSingle();
+        if (stepErr || !step) return;
+        const orderRow: any = (step as any).order_workflows?.orders;
+        const order_number = orderRow?.order_number ?? "";
+        const customer_full_name = orderRow?.customers?.full_name ?? "";
+        const internal_project_id = orderRow?.internal_project_id ?? "";
+        const quote_id = orderRow?.quote_id ?? null;
+
+        // Resolve source/target language ids by code (step stores lang codes).
+        const { data: langRows } = await supabase
+          .from("languages")
+          .select("id, code")
+          .in(
+            "code",
+            [step.source_language, step.target_language].filter(Boolean) as string[],
+          );
+        const codeToId = new Map((langRows ?? []).map((r: any) => [r.code, r.id]));
+        const srcId = step.source_language ? codeToId.get(step.source_language) : null;
+        const tgtId = step.target_language ? codeToId.get(step.target_language) : null;
+
+        if (srcId) setSourceLang(srcId);
+        if (tgtId) setTargetLang(tgtId);
+        if (internal_project_id) setProjectId(internal_project_id);
+        if (customer_full_name) setClientName(customer_full_name);
+        if (order_number) setTitle(`QM · ${order_number} · ${step.name}`);
+
+        // Pre-stage the delivered file as the target slot of pair 1.
+        const deliveredPath: string | undefined = (step.delivered_file_paths ?? [])[0];
+        if (deliveredPath) {
+          // Try to find the corresponding step_deliveries row for cleaner link_ref.
+          const { data: deliveryRow } = await supabase
+            .from("step_deliveries")
+            .select("id, file_paths")
+            .eq("step_id", fromStepId)
+            .order("version", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          setPairs((prev) =>
+            prev.map((p, i) =>
+              i === 0
+                ? {
+                    ...p,
+                    label: `${step.name}`,
+                    target: {
+                      kind: "link",
+                      source_kind: "linked_order_deliverable",
+                      link_ref: {
+                        step_id: fromStepId,
+                        delivery_id: deliveryRow?.id ?? null,
+                        storage_path: deliveredPath,
+                      },
+                      label: deliveredPath.split("/").pop() ?? deliveredPath,
+                    },
+                  }
+                : p,
+            ),
+          );
+        }
+
+        // Look for a source file from the quote.
+        if (quote_id) {
+          const { data: srcFiles } = await supabase
+            .from("quote_files")
+            .select("id, original_filename, file_category")
+            .eq("quote_id", quote_id)
+            .in("file_category", ["source", "source_document"])
+            .limit(1);
+          const src = (srcFiles ?? [])[0];
+          if (src) {
+            setPairs((prev) =>
+              prev.map((p, i) =>
+                i === 0
+                  ? {
+                      ...p,
+                      source: {
+                        kind: "link",
+                        source_kind: "linked_quote_file",
+                        link_ref: { quote_file_id: src.id },
+                        label: src.original_filename ?? "source",
+                      },
+                    }
+                  : p,
+              ),
+            );
+          }
+        }
+
+        setPrefillBanner(
+          `Prefilled from ${order_number || "order"} · step "${step.name}". Review the file pair below before creating the job.`,
+        );
+      } catch (e) {
+        console.error("Prefill from_step failed:", e);
+      }
+    })();
+  }, [fromStepId]);
 
   const roundColor = useMemo(
     () => roundColors.find((rc) => rc.round === round)?.color_hex ?? "#000000",
@@ -240,7 +356,15 @@ export default function AdminReviewJobNew() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-4">New Translation Review Job</h1>
+      <h1 className="text-2xl font-semibold mb-4">
+        {jobKind === "qm_certified" ? "New QM (Certified) Job" : "New Translation Review Job"}
+      </h1>
+
+      {prefillBanner && (
+        <div className="bg-purple-50 border border-purple-200 text-purple-800 p-3 rounded mb-3 text-sm">
+          {prefillBanner}
+        </div>
+      )}
 
       {error && <div className="bg-red-50 border border-red-200 text-red-800 p-3 rounded mb-3">{error}</div>}
 
