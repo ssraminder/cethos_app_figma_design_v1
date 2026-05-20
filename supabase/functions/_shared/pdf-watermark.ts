@@ -27,9 +27,11 @@ export async function applyDiagonalWatermark(
 
   for (const page of pdf.getPages()) {
     const { width, height } = page.getSize();
-    // Size the text so it spans roughly the full diagonal of the page.
+    // Size the text so it spans roughly half the page (was full diagonal —
+    // too dominant per user feedback 2026-05-20). Half-size keeps the DRAFT
+    // signal obvious without obscuring the underlying content.
     const diagonal = Math.sqrt(width * width + height * height);
-    const fontSize = Math.min(diagonal / (text.length * 0.45), Math.min(width, height) * 0.6);
+    const fontSize = Math.min(diagonal / (text.length * 0.9), Math.min(width, height) * 0.3);
 
     const textWidth = font.widthOfTextAtSize(text, fontSize);
     const textHeight = font.heightAtSize(fontSize);
