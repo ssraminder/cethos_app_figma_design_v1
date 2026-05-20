@@ -272,6 +272,23 @@ serve(async (req: Request) => {
         await notifyStaffAssignment({ supabase, staff_id: targetStaffId, step, workflow, deadline: step.deadline ?? null, instructions: step.instructions ?? null });
         return json({ success: true, resent: true });
       }
+      case "mark_final": {
+        // Mark one of the step_deliveries rows as THE final version.
+        // The customer draft flow pulls from this row. Passing
+        // delivery_id=null clears the choice (UI revert).
+        const { delivery_id } = body;
+        if (delivery_id) {
+          const { data: d } = await supabase
+            .from("step_deliveries").select("id").eq("id", delivery_id).eq("step_id", step_id).maybeSingle();
+          if (!d) return json({ success: false, error: "delivery not found on this step" }, 404);
+        }
+        await supabase.from("order_workflow_steps").update({
+          final_delivery_id: delivery_id ?? null,
+          final_marked_at: delivery_id ? new Date().toISOString() : null,
+          final_marked_by: delivery_id ? (body.staff_id_actor || body.staff_id || null) : null,
+        }).eq("id", step_id);
+        return json({ success: true, final_delivery_id: delivery_id ?? null });
+      }
       case "direct_assign": {
         const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, pricing_mode } = body;
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
