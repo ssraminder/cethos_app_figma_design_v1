@@ -109,7 +109,7 @@ serve(async (req) => {
 <html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;"><tr><td align="center">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-      <tr><td style="padding:20px 24px;background:#6d28d9;color:#ffffff;">
+      <tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
         <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
         <div style="font-size:13px;opacity:0.9;margin-top:2px;">Translation review available for your input</div>
       </td></tr>
@@ -118,7 +118,7 @@ serve(async (req) => {
         <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">${esc(staff.full_name ?? "Cethos")} has shared a translation review with you for <strong>${esc(jobLabel)}</strong>. You can read the reviewer's comments, reply, and upload a new version of the file using the link below.</p>
         ${messageBlock}
         <p style="margin:24px 0 0;text-align:center;">
-          <a href="${esc(share_url)}" style="display:inline-block;padding:10px 20px;background:#6d28d9;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">Open review</a>
+          <a href="${esc(share_url)}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">Open review</a>
         </p>
         <p style="margin:16px 0 0;font-size:11px;color:#6b7280;text-align:center;">Link expires in ${expires_in_days} day${expires_in_days === 1 ? "" : "s"}.</p>
       </td></tr>
