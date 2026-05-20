@@ -2215,6 +2215,15 @@ interface WorkflowPipelineProps {
   onAdjustPayable?: (step: WorkflowStep, newRate: number | undefined, newSubtotal: number | undefined, reason: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
   minMarginPercent?: number;
+  qmByStep?: Record<string, {
+    job_id: string;
+    job_kind: "translation_review" | "qm_certified";
+    status: string;
+    findings_total: number;
+    findings_accepted: number;
+    findings_rejected: number;
+    findings_pending: number;
+  }>;
 }
 
 function WorkflowPipeline({
@@ -2246,6 +2255,7 @@ function WorkflowPipeline({
   onAdjustPayable,
   onRefresh,
   minMarginPercent = 30,
+  qmByStep = {},
 }: WorkflowPipelineProps) {
   const [editDeadlineStepId, setEditDeadlineStepId] = useState<string | null>(null);
 
@@ -3236,6 +3246,70 @@ function WorkflowPipeline({
                       {step.target_language_name || step.target_language}
                     </div>
                   )}
+
+                {/* Line 5b: Activity chips — file versions + linked QM job.
+                    Visible without expanding so admin can see at a glance
+                    how active the step is. Each chip is clickable: file
+                    chip expands the step (revealing the inline version
+                    table), QM chip jumps to the QM job detail. */}
+                {((step.delivery_count ?? 0) > 0 || qmByStep[step.id]) && (
+                  <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
+                    {(step.delivery_count ?? 0) > 0 && step.latest_delivery && (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+                        title="View delivery history"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isExpanded) onToggleExpand(step.id);
+                          // After expanding, also open the version history table.
+                          setTimeout(() => {
+                            if (!deliveryHistoryExpandedSteps.has(step.id)) {
+                              toggleDeliveryHistory(step.id);
+                            }
+                          }, 0);
+                        }}
+                      >
+                        <FileText className="w-3 h-3" />
+                        Latest v{step.latest_delivery.version}
+                        {(step.delivery_count ?? 0) > 1 && (
+                          <span className="text-blue-500">· {step.delivery_count} versions</span>
+                        )}
+                      </button>
+                    )}
+                    {qmByStep[step.id] && (() => {
+                      const qm = qmByStep[step.id];
+                      const tone =
+                        qm.status === "complete"
+                          ? "border-green-200 bg-green-50 text-green-800 hover:bg-green-100"
+                          : qm.status === "cancelled"
+                            ? "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"
+                            : qm.findings_pending > 0
+                              ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                              : "border-purple-200 bg-purple-50 text-purple-800 hover:bg-purple-100";
+                      const label =
+                        qm.job_kind === "qm_certified" ? "QM" : "Review";
+                      const findingsLabel =
+                        qm.findings_total === 0
+                          ? "no findings yet"
+                          : qm.findings_pending > 0
+                            ? `${qm.findings_pending}/${qm.findings_total} pending translator response`
+                            : `${qm.findings_accepted} accepted · ${qm.findings_rejected} declined`;
+                      return (
+                        <a
+                          href={`/admin/tr/jobs/${qm.job_id}`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border ${tone}`}
+                          title="Open QM job"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className="font-medium">{label}</span>
+                          <span>· {qm.status.replace(/_/g, " ")}</span>
+                          <span className="opacity-75">· {findingsLabel}</span>
+                        </a>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {/* Line 5: Key dates */}
                 {(step.deadline || step.delivered_at || step.approved_at) && (
@@ -4631,6 +4705,18 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
   // lands at/after the client one.
   const [clientDeadlineAt, setClientDeadlineAt] = useState<string | null>(null);
   const [clientDeadlineDate, setClientDeadlineDateState] = useState<string | null>(null);
+  // Linked Translation Review (QM) jobs per workflow step — populated after
+  // the workflow loads so each step card can show a "QM" chip surfacing
+  // the linked job's status + arbitration counts without leaving the page.
+  const [qmByStep, setQmByStep] = useState<Record<string, {
+    job_id: string;
+    job_kind: "translation_review" | "qm_certified";
+    status: string;
+    findings_total: number;
+    findings_accepted: number;
+    findings_rejected: number;
+    findings_pending: number;
+  }>>({});
   const { session: currentStaff } = useAdminAuthContext();
 
   useEffect(() => {
@@ -4673,6 +4759,77 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
       setVendorFinancials(wfData.vendor_financials || null);
       setMarginData(wfData.margin || null);
       onWorkflowLoaded?.(wfData);
+
+      // Resolve linked TR (QM) jobs per step in one round-trip. Each
+      // tr.job_files row with a linked_step_id points back into this
+      // workflow; we summarize the job + finding arbitration counts so
+      // the step card can show a chip without expanding.
+      try {
+        const stepIds = (wfData.steps ?? []).map((s) => s.id);
+        if (stepIds.length > 0) {
+          const { data: jobFiles } = await supabase
+            .schema("tr" as never)
+            .from("job_files")
+            .select("job_id, linked_step_id")
+            .in("linked_step_id", stepIds);
+          const jobToStep = new Map<string, string>();
+          for (const jf of (jobFiles ?? []) as Array<{ job_id: string; linked_step_id: string }>) {
+            if (jf.linked_step_id && !jobToStep.has(jf.job_id)) {
+              jobToStep.set(jf.job_id, jf.linked_step_id);
+            }
+          }
+          const jobIds = Array.from(jobToStep.keys());
+          if (jobIds.length > 0) {
+            const [{ data: jobs }, { data: findings }] = await Promise.all([
+              supabase
+                .schema("tr" as never)
+                .from("review_jobs")
+                .select("id, job_kind, status")
+                .in("id", jobIds),
+              supabase
+                .schema("tr" as never)
+                .from("findings")
+                .select("job_id, vendor_decision")
+                .in("job_id", jobIds),
+            ]);
+            const stepMap: typeof qmByStep = {};
+            const findingsByJob = new Map<string, { total: number; accepted: number; rejected: number; pending: number }>();
+            for (const f of (findings ?? []) as Array<{ job_id: string; vendor_decision: string | null }>) {
+              const e = findingsByJob.get(f.job_id) ?? { total: 0, accepted: 0, rejected: 0, pending: 0 };
+              e.total += 1;
+              if (f.vendor_decision === "accepted") e.accepted += 1;
+              else if (f.vendor_decision === "rejected") e.rejected += 1;
+              else e.pending += 1;
+              findingsByJob.set(f.job_id, e);
+            }
+            for (const job of (jobs ?? []) as Array<{ id: string; job_kind: "translation_review" | "qm_certified"; status: string }>) {
+              const stepId = jobToStep.get(job.id);
+              if (!stepId) continue;
+              const counts = findingsByJob.get(job.id) ?? { total: 0, accepted: 0, rejected: 0, pending: 0 };
+              // If multiple QM jobs exist for the same step, keep the
+              // first; staff can drill into the TR list for the rest.
+              if (!stepMap[stepId]) {
+                stepMap[stepId] = {
+                  job_id: job.id,
+                  job_kind: job.job_kind,
+                  status: job.status,
+                  findings_total: counts.total,
+                  findings_accepted: counts.accepted,
+                  findings_rejected: counts.rejected,
+                  findings_pending: counts.pending,
+                };
+              }
+            }
+            setQmByStep(stepMap);
+          } else {
+            setQmByStep({});
+          }
+        } else {
+          setQmByStep({});
+        }
+      } catch (e) {
+        console.error("Failed to resolve linked QM jobs:", e);
+      }
     } catch (err: unknown) {
       console.error("Failed to load workflow:", err);
       setData({ success: true, has_workflow: false, workflow: null, steps: [], available_templates: [] });
@@ -4942,6 +5099,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
               payable: s.payable || null,
             }))}
             minMarginPercent={minMarginPercent}
+            qmByStep={qmByStep}
             onRefresh={fetchWorkflow}
           />
         </>
