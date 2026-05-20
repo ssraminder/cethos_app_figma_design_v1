@@ -2346,12 +2346,22 @@ function WorkflowPipeline({
       uploadModalFiles.forEach((f) => formData.append("files", f));
       if (currentStaff?.staffId) formData.append("staff_id", currentStaff.staffId);
 
-      const { data, error } = await supabase.functions.invoke(
-        "staff-deliver-step",
-        { body: formData },
+      // Raw fetch (not supabase.functions.invoke) — the SDK mangles multipart
+      // FormData and the server sees files.length === 0, silently running the
+      // no-files "Mark Delivered" path. Bypass the SDK for uploads.
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/staff-deliver-step`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: formData,
+        },
       );
-      if (error || !data?.success) {
-        toast.error(data?.error || "Failed to upload files");
+      const data = await res.json().catch(() => null as any);
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || `Failed to upload files (HTTP ${res.status})`);
         return;
       }
       toast.success(`Uploaded v${data.delivery_version}`);
@@ -2390,14 +2400,24 @@ function WorkflowPipeline({
         formData.append("step_id", stepId);
         if (staffDeliveryNotes) formData.append("notes", staffDeliveryNotes);
         staffDeliveryFiles.forEach((f) => formData.append("files", f));
-        if (currentStaff?.id) formData.append("staff_id", currentStaff.id);
+        if (currentStaff?.staffId) formData.append("staff_id", currentStaff.staffId);
 
-        const { data, error } = await supabase.functions.invoke(
-          "staff-deliver-step",
-          { body: formData },
+        // Raw fetch (not supabase.functions.invoke) — the SDK mangles
+        // multipart FormData; the server sees files.length === 0 and silently
+        // runs the no-files path, so the step is "delivered" with no files.
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/staff-deliver-step`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: formData,
+          },
         );
-        if (error || !data?.success) {
-          toast.error(data?.error || "Failed to deliver files");
+        const data = await res.json().catch(() => null as any);
+        if (!res.ok || !data?.success) {
+          toast.error(data?.error || `Failed to deliver files (HTTP ${res.status})`);
           return;
         }
         toast.success(`Delivered v${data.delivery_version}`);
