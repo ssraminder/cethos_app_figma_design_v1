@@ -156,7 +156,11 @@ serve(async (req) => {
         storage_path: pdfStoragePath,
         file_size: watermarked.byteLength,
         mime_type: "application/pdf",
-        upload_status: "completed",
+        // upload_status allowed values:
+        //   pending|uploading|uploaded|processing|processed|error|replaced
+        // ai_processing_status allowed values:
+        //   pending|processing|completed|failed|skipped|review_required
+        upload_status: "uploaded",
         processing_status: "completed",
         ai_processing_status: "skipped",
         is_staff_created: true,
