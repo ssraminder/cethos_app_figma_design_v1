@@ -112,8 +112,8 @@ export default function AdminReviewJobDetail() {
 
   async function doApprovePlan() {
     if (!id || !latestPlan) return;
-    const required = (latestPlan.plan_jsonb as { required_confirmation_checks?: Array<{ id: string }> } | null)?.required_confirmation_checks ?? [];
-    const missing = required.filter((c) => !confirmationChecks[c.id]);
+    const checks = normalizedChecks;
+    const missing = checks.filter((c) => !confirmationChecks[c.id]);
     if (missing.length) {
       alert(`Tick all confirmation checkboxes (${missing.length} remaining).`);
       return;
@@ -171,7 +171,27 @@ export default function AdminReviewJobDetail() {
 
   const emailRows: DiffRow[] = (latestPlan?.email_alignment_jsonb as { rows?: DiffRow[] } | null)?.rows ?? [];
   const emailSummary = (latestPlan?.email_alignment_jsonb as { summary?: string } | null)?.summary ?? null;
-  const requiredChecks = ((latestPlan?.plan_jsonb as { required_confirmation_checks?: Array<{ id: string; label?: string }> } | null)?.required_confirmation_checks ?? []) as Array<{ id: string; label?: string }>;
+  // Claude may emit required_confirmation_checks as bare strings OR as
+  // {id, label} objects. Normalize both into {id, label} so the renderer
+  // and the doApprovePlan validator can rely on a single shape.
+  const rawChecks =
+    (latestPlan?.plan_jsonb as { required_confirmation_checks?: unknown } | null)
+      ?.required_confirmation_checks ?? [];
+  const normalizedChecks: Array<{ id: string; label: string }> = Array.isArray(rawChecks)
+    ? rawChecks.map((c, i) => {
+        if (typeof c === "string") {
+          return { id: `check_${i + 1}`, label: c };
+        }
+        if (c && typeof c === "object") {
+          const obj = c as { id?: string; label?: string; text?: string; description?: string };
+          const label = obj.label ?? obj.text ?? obj.description ?? obj.id ?? `Check ${i + 1}`;
+          const id = obj.id ?? `check_${i + 1}`;
+          return { id, label };
+        }
+        return { id: `check_${i + 1}`, label: String(c) };
+      })
+    : [];
+  const requiredChecks = normalizedChecks;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
