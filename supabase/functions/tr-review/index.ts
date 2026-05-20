@@ -133,7 +133,6 @@ serve(async (req) => {
       tool_choice: { type: "tool", name: "emit_findings" },
       model: "claude-opus-4-7",
       max_tokens: 8192,
-      temperature: 0,
     });
     let latency_ms = Date.now() - startedAt;
     let outcome = result.ok ? "success" : "fatal_error";

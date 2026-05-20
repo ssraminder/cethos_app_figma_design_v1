@@ -51,14 +51,18 @@ export async function callClaude(args: ClaudeCallArgs): Promise<ClaudeResult> {
 
   const model = args.model ?? "claude-opus-4-7";
   const max_tokens = args.max_tokens ?? 8192;
-  const temperature = args.temperature ?? 0;
 
   const body: Record<string, unknown> = {
     model,
     max_tokens,
-    temperature,
     messages: args.messages,
   };
+  // Only include temperature when the caller explicitly opts in. Opus 4.7
+  // rejects `temperature` as deprecated, so the previous default of 0 made
+  // every call fail with `\"temperature\" is deprecated for this model.`
+  if (typeof args.temperature === "number") {
+    body.temperature = args.temperature;
+  }
   if (args.enable_prompt_cache !== false) {
     body.system = [
       { type: "text", text: args.system, cache_control: { type: "ephemeral" } },
