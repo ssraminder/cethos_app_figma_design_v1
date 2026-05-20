@@ -2490,8 +2490,12 @@ function WorkflowPipeline({
 
   const handleDownloadFile = async (filePath: string) => {
     try {
+      // Workflow step deliveries are uploaded by staff-deliver-step into the
+      // 'quote-files' bucket under workflows/<order>/<step>/v<N>/... paths.
+      // There is no 'vendor-deliveries' bucket — the original code here
+      // 400'd on every download.
       const { data, error } = await supabase.storage
-        .from('vendor-deliveries')
+        .from('quote-files')
         .createSignedUrl(filePath, 3600);
       if (error || !data?.signedUrl) {
         toast.error('Failed to generate download link');
