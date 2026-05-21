@@ -10,6 +10,7 @@ import { callPaymentApi, formatCurrency, formatDate } from "@/lib/payment-api";
 import RecordPaymentModal from "./RecordPaymentModal";
 
 interface BalanceData {
+  currency?: string;
   outstanding_balance: number;
   unallocated_credits: number;
   overdue_amount: number;
@@ -17,6 +18,7 @@ interface BalanceData {
     id: string;
     payment_date: string;
     amount: number;
+    currency: string | null;
     payment_method_name: string | null;
   }[];
 }
@@ -92,7 +94,7 @@ export default function CustomerARSummary({
               Outstanding
             </p>
             <p className="text-lg font-bold text-gray-900">
-              {formatCurrency(data.outstanding_balance || 0)}
+              {formatCurrency(data.outstanding_balance || 0, data.currency || "CAD")}
             </p>
           </div>
           <div className="text-center">
@@ -100,7 +102,7 @@ export default function CustomerARSummary({
               Unallocated
             </p>
             <p className="text-lg font-bold text-gray-900">
-              {formatCurrency(data.unallocated_credits || 0)}
+              {formatCurrency(data.unallocated_credits || 0, data.currency || "CAD")}
             </p>
             {(data.unallocated_credits || 0) > 0 && (
               <span className="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
@@ -113,7 +115,7 @@ export default function CustomerARSummary({
               Overdue
             </p>
             <p className="text-lg font-bold text-gray-900">
-              {formatCurrency(data.overdue_amount || 0)}
+              {formatCurrency(data.overdue_amount || 0, data.currency || "CAD")}
             </p>
             {(data.overdue_amount || 0) > 0 && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
@@ -146,7 +148,7 @@ export default function CustomerARSummary({
                     to={`/admin/payments/${p.id}`}
                     className="font-medium text-gray-900 hover:text-teal-600"
                   >
-                    {formatCurrency(p.amount)}
+                    {formatCurrency(p.amount, p.currency || data.currency || "CAD")}
                   </Link>
                 </div>
               ))}
