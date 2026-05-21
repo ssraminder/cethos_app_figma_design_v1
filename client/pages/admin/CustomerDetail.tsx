@@ -427,7 +427,7 @@ export default function CustomerDetail() {
     }
   };
 
-  // Fetch orders
+  // Fetch orders (for the Orders tab list — stats now sourced from invoices below)
   const fetchOrders = async () => {
     if (!id) return;
 
@@ -441,24 +441,51 @@ export default function CustomerDetail() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-
       setOrders(data || []);
-
-      // Calculate stats
-      if (data && data.length > 0) {
-        const totalSpent = data.reduce((sum, o) => sum + (o.total_amount || 0), 0);
-        const dates = data.map((o) => o.created_at).sort();
-
-        setStats({
-          totalOrders: data.length,
-          totalSpent,
-          avgOrderValue: totalSpent / data.length,
-          firstOrderDate: dates[0],
-          lastOrderDate: dates[dates.length - 1],
-        });
-      }
     } catch (error) {
       console.error("Error fetching orders:", error);
+    }
+  };
+
+  // Lifetime stats sourced from customer_invoices (includes XTRF imports), not orders.
+  // Paginates to ensure we count all rows even for high-volume customers (>1000).
+  const fetchInvoiceStats = async () => {
+    if (!id) return;
+    try {
+      const all: { total_amount: number | null; amount_paid: number | null; invoice_date: string | null }[] = [];
+      const PAGE = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("customer_invoices")
+          .select("total_amount, amount_paid, invoice_date, status, voided_at")
+          .eq("customer_id", id)
+          .is("voided_at", null)
+          .neq("status", "draft")
+          .neq("status", "void")
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      if (all.length === 0) {
+        setStats({ totalOrders: 0, totalSpent: 0, avgOrderValue: 0, firstOrderDate: null, lastOrderDate: null });
+        return;
+      }
+      const totalSpent = all.reduce((s, r) => s + Number(r.amount_paid || 0), 0);
+      const billed = all.reduce((s, r) => s + Number(r.total_amount || 0), 0);
+      const dates = all.map(r => r.invoice_date).filter(Boolean).sort() as string[];
+      setStats({
+        totalOrders: all.length,
+        totalSpent,
+        avgOrderValue: billed / all.length,
+        firstOrderDate: dates[0] ?? null,
+        lastOrderDate: dates[dates.length - 1] ?? null,
+      });
+    } catch (error) {
+      console.error("Error fetching invoice stats:", error);
     }
   };
 
@@ -619,6 +646,7 @@ export default function CustomerDetail() {
       fetchCustomer(),
       fetchQuotes(),
       fetchOrders(),
+      fetchInvoiceStats(),
       fetchPayments(),
       fetchBranches(),
       fetchPaymentMethods(),
@@ -791,19 +819,19 @@ export default function CustomerDetail() {
         </div>
       </div>
 
-      {/* Quick Stats */}
+      {/* Quick Stats — sourced from customer_invoices (incl. XTRF imports) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 text-gray-500 mb-1">
             <ShoppingCart className="w-4 h-4" />
-            <span className="text-sm">Total Orders</span>
+            <span className="text-sm">Total Invoices</span>
           </div>
-          <p className="text-2xl font-semibold text-gray-900">{stats.totalOrders}</p>
+          <p className="text-2xl font-semibold text-gray-900">{stats.totalOrders.toLocaleString()}</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 text-green-600 mb-1">
             <DollarSign className="w-4 h-4" />
-            <span className="text-sm">Total Spent</span>
+            <span className="text-sm">Total Paid</span>
           </div>
           <p className="text-2xl font-semibold text-green-600">
             ${stats.totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -812,7 +840,7 @@ export default function CustomerDetail() {
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 text-blue-600 mb-1">
             <TrendingUp className="w-4 h-4" />
-            <span className="text-sm">Avg Order Value</span>
+            <span className="text-sm">Avg Invoice Value</span>
           </div>
           <p className="text-2xl font-semibold text-blue-600">
             ${stats.avgOrderValue.toFixed(2)}
@@ -824,7 +852,9 @@ export default function CustomerDetail() {
             <span className="text-sm">Customer Since</span>
           </div>
           <p className="text-2xl font-semibold text-gray-900">
-            {format(parseISO(customer.created_at), "MMM yyyy")}
+            {stats.firstOrderDate
+              ? format(parseISO(stats.firstOrderDate), "MMM yyyy")
+              : format(parseISO(customer.created_at), "MMM yyyy")}
           </p>
         </div>
       </div>
