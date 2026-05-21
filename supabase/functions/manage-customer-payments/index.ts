@@ -102,9 +102,18 @@ serve(async (req: Request) => {
       case "get_customer_balance": {
         const customerId = body.customer_id as string;
         if (!customerId) return jr({ error: "customer_id required" }, 400);
+        // Pull customer's preferred currency so the UI can render numbers
+        // in the right unit (USD / GBP / CAD).
+        const { data: cust } = await sb
+          .from("customers")
+          .select("preferred_currency")
+          .eq("id", customerId)
+          .maybeSingle();
+        const ccy = (cust?.preferred_currency || "CAD") as string;
+
         const { data: invs } = await sb
           .from("customer_invoices")
-          .select("balance_due, status, due_date")
+          .select("balance_due, status, due_date, currency")
           .eq("customer_id", customerId)
           .is("voided_at", null)
           .in("status", UNPAID_STATUSES);
@@ -120,7 +129,6 @@ serve(async (req: Request) => {
             overdueCount += 1;
           }
         }
-        // Unallocated credits
         const { data: creds } = await sb
           .from("customer_payments")
           .select("unallocated_amount")
@@ -130,12 +138,22 @@ serve(async (req: Request) => {
           (s: number, r: any) => s + Number(r.unallocated_amount || 0),
           0,
         );
+        const { data: recent } = await sb
+          .from("customer_payments")
+          .select("id, payment_date, amount, currency, payment_method, payment_method_name")
+          .eq("customer_id", customerId)
+          .order("payment_date", { ascending: false, nullsFirst: false })
+          .limit(5);
         return jr({
+          currency: ccy,
           outstanding,
+          outstanding_balance: outstanding,
           outstanding_count: outstandingCount,
           overdue,
+          overdue_amount: overdue,
           overdue_count: overdueCount,
           unallocated_credits: unallocatedCredits,
+          recent_payments: recent ?? [],
         });
       }
 
