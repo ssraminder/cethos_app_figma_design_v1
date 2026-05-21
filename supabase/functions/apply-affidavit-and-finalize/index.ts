@@ -3,8 +3,13 @@
 //
 // Triggered after a customer approves a draft translation (Flow A) or staff
 // applies an override approval (Flow C). Produces the affidavit page as a
-// standalone .docx, stores it in the quote-files bucket, attaches it to the
-// step-3 (PM Review & Certification) delivery, and auto-advances step 3.
+// standalone .docx, stores it in the quote-files bucket, attaches it to step 3
+// as a working delivery, and moves step 3 to `in_progress`.
+//
+// The affidavit is NOT the final deliverable. PM still needs to print it +
+// the translation, get them signed/stamped by the commissioner of oaths,
+// scan the signed copy back in, and upload that as the actual final delivery.
+// Only that PM action completes step 3.
 //
 // Phase A scope: English-target only. Non-English target fails LOUD with
 // AFFIDAVIT_TEMPLATE_MISSING — do not silently fall back to English.
@@ -342,6 +347,10 @@ serve(async (req: Request) => {
         .maybeSingle();
       const nextVersion = ((lastDelivery as any)?.version ?? 0) + 1;
 
+      // Affidavit is a working artifact for step 3, not the final deliverable.
+      // PM still needs to print, get it signed by the commissioner of oaths,
+      // scan it back, and upload the signed/scanned PDF as the actual final
+      // delivery — which is what marks step 3 done.
       const { data: deliveryRow, error: deliveryErr } = await sb
         .from("step_deliveries")
         .insert({
@@ -351,31 +360,23 @@ serve(async (req: Request) => {
           delivered_by_name: "apply-affidavit-and-finalize",
           delivered_at: new Date().toISOString(),
           file_paths: [storagePath],
-          notes: `Auto-generated affidavit. triggered_by=${triggered_by}. cert=${cert.code}.`,
-          review_status: "approved",
+          notes: `Auto-generated affidavit (working artifact — print, certify, scan + upload signed PDF to finalize). triggered_by=${triggered_by}. cert=${cert.code}.`,
+          review_status: "pending_review",
         })
         .select("id")
         .single();
       step3DeliveryId = deliveryRow?.id ?? null;
       if (deliveryErr) console.error("[apply-affidavit] step_deliveries insert error:", deliveryErr);
 
-      // Advance step 3 → approved (the terminal state per
-      // order_workflow_steps_status_check). Earlier draft used "completed"
-      // which the CHECK constraint rejects — caught during the 2026-05-21
-      // e2e smoke test.
-      const updatePayload: Record<string, unknown> = {
-        status: "approved",
-        delivered_at: new Date().toISOString(),
-        approved_at: new Date().toISOString(),
-        delivered_file_paths: [storagePath],
-      };
-      if (step3DeliveryId) {
-        updatePayload.final_delivery_id = step3DeliveryId;
-        updatePayload.final_marked_at = new Date().toISOString();
-      }
+      // Start step 3 → in_progress. Do NOT set approved_at, final_delivery_id,
+      // or final_marked_at — those land when the PM marks the manually-signed
+      // and scanned PDF as the final delivery.
       const { error: stepUpdateErr } = await sb
         .from("order_workflow_steps")
-        .update(updatePayload)
+        .update({
+          status: "in_progress",
+          started_at: new Date().toISOString(),
+        })
         .eq("id", step3.id);
       if (stepUpdateErr) console.error("[apply-affidavit] step3 update error:", stepUpdateErr);
     }
@@ -395,7 +396,7 @@ serve(async (req: Request) => {
       success: true,
       affidavit_quote_file_id: certifiedRow.id,
       affidavit_storage_path: storagePath,
-      step3_status: step3 ? "completed" : "not_found",
+      step3_status: step3 ? "in_progress" : "not_found",
       step3_delivery_id: step3DeliveryId,
       template_id: template.id,
       language_mode: languageMode,
