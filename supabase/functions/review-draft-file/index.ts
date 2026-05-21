@@ -383,15 +383,24 @@ serve(async (req: Request) => {
         .eq("id", file_id);
       if (updateError) throw new Error("Failed to update file review status");
 
+      // file_review_history schema is: file_id, action, comment, actor_type,
+      // actor_id, metadata, created_at. The extra columns (review_version /
+      // previous_status / new_status) used by the existing v2 actions don't
+      // exist on the table and silently fail the insert — caught during the
+      // 2026-05-21 e2e smoke test. Use the working pattern (everything
+      // adjacent goes into metadata).
       await supabase.from("file_review_history").insert({
         file_id,
-        action: "override_approve",
+        action: "override_approved",
         actor_type: "staff",
         actor_id: staffId,
         comment: reason,
-        review_version: file.review_version,
-        previous_status: previousStatus,
-        new_status: "override_approved",
+        metadata: {
+          version: file.review_version,
+          previous_status: previousStatus,
+          new_status: "override_approved",
+          acting_on_behalf: false,
+        },
       });
 
       const { data: quote } = await supabase
@@ -417,9 +426,11 @@ serve(async (req: Request) => {
       }
 
       // Staff-attributed audit row — distinguishable from `draft_approved_on_behalf`.
+      // Column is `action_type` (not `activity_type`); the wrong-column bug
+      // was caught during the 2026-05-21 e2e smoke test.
       await supabase.from("staff_activity_log").insert({
         staff_id: staffId,
-        activity_type: "draft_override_approved",
+        action_type: "draft_override_approved",
         entity_type: "quote_file",
         entity_id: file_id,
         details: {
