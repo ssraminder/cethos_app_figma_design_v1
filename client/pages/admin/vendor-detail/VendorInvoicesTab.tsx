@@ -22,6 +22,7 @@ interface VendorInvoice {
   total_netto: number | null;
   gross_cad: number | null;
   netto_cad: number | null;
+  tax_cad: number | null;
   status: string | null;
   payment_status: string | null;
   draft_date: string | null;
@@ -170,7 +171,7 @@ export default function VendorInvoicesTab({ vendorData }: Props) {
       .from("xtrf_vendor_invoice_cache")
       .select(
         `id, internal_number, final_number, draft_number, provider_id, currency_id,
-         total_gross, total_netto, gross_cad, netto_cad, status, payment_status,
+         total_gross, total_netto, gross_cad, netto_cad, tax_cad, status, payment_status,
          draft_date, final_date, payment_due_date, last_payment_date, notes_from_provider`,
         { count: "exact" },
       )
@@ -306,17 +307,18 @@ export default function VendorInvoicesTab({ vendorData }: Props) {
                 <th className="px-4 py-2.5 text-left">Due</th>
                 <th className="px-4 py-2.5 text-right">Gross</th>
                 <th className="px-4 py-2.5 text-right">Gross (CAD)</th>
+                <th className="px-4 py-2.5 text-right">Tax (CAD)</th>
                 <th className="px-4 py-2.5 text-left">Payment</th>
                 <th className="px-4 py-2.5 text-left">Paid on</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                <tr><td colSpan={9} className="px-4 py-12 text-center text-gray-400">
                   <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading…
                 </td></tr>
               ) : invoices.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                <tr><td colSpan={9} className="px-4 py-12 text-center text-gray-400">
                   <FileText className="w-6 h-6 mx-auto mb-2 text-gray-300" />
                   {hasActiveFilters ? "No matches for current filters" : "No invoices for this vendor"}
                 </td></tr>
@@ -331,6 +333,7 @@ export default function VendorInvoicesTab({ vendorData }: Props) {
                       <td className="px-4 py-2.5 text-gray-600">{fmtDate(inv.payment_due_date)}</td>
                       <td className="px-4 py-2.5 text-right text-gray-900">{fmt(inv.total_gross, code)}</td>
                       <td className="px-4 py-2.5 text-right text-gray-900">{fmt(inv.gross_cad, "CAD")}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-600">{fmt(inv.tax_cad && inv.tax_cad > 0 ? inv.tax_cad : null, "CAD")}</td>
                       <td className="px-4 py-2.5">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[inv.payment_status || ""] || "bg-gray-100 text-gray-600"}`}>
                           {inv.payment_status === "FULLY_PAID" ? "Paid" : inv.payment_status === "PARTIALLY_PAID" ? "Partial" : "Unpaid"}

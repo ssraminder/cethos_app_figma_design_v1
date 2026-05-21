@@ -55,6 +55,7 @@ const UPDATABLE_FIELDS = new Set([
   "auto_invoice_reminders_enabled",
   "requires_po", "requires_po_mode", "requires_client_project_number",
   "default_tax_rate_id",
+  "is_tax_exempt",
 ]);
 
 function jsonResponse(data: Record<string, unknown>, status = 200) {

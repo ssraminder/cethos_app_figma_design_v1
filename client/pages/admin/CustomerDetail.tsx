@@ -71,6 +71,7 @@ interface Customer {
   preferred_currency: string | null;
   payment_terms: string | null;
   default_tax_rate_id: string | null;
+  is_tax_exempt: boolean;
   is_ar_customer: boolean;
   ar_contact_email: string | null;
   accounting_contact_name: string | null;
@@ -691,6 +692,7 @@ export default function CustomerDetail() {
         "auto_invoice_reminders_enabled",
         "requires_po", "requires_po_mode", "requires_client_project_number",
         "default_tax_rate_id",
+        "is_tax_exempt",
       ] as const;
 
       const changes: Record<string, unknown> = {};
@@ -1427,6 +1429,45 @@ export default function CustomerDetail() {
                       <p className="mt-1 text-xs text-gray-500">
                         Auto-fills the tax rate on each new direct-order receivable line.
                       </p>
+                    </div>
+
+                    <div>
+                      {editing ? (
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!formData.is_tax_exempt}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                is_tax_exempt: e.target.checked,
+                              }))
+                            }
+                            className="mt-0.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                          />
+                          <span>
+                            <span className="block text-sm font-medium text-gray-700">
+                              Tax exempt
+                            </span>
+                            <span className="block text-xs text-gray-500 mt-0.5">
+                              Non-Canadian or zero-rated. When ON, new invoices skip GST/HST and use 0% tax.
+                            </span>
+                          </span>
+                        </label>
+                      ) : (
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-600">Tax exempt:</span>
+                          {customer.is_tax_exempt ? (
+                            <span className="inline-flex px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
+                              Exempt (0% tax)
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+                              Taxable
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
