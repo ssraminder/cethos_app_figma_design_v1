@@ -90,6 +90,7 @@ serve(async (req: Request) => {
     const body = await req.json();
     const {
       file_id,
+      file_ids,
       order_id,
       action,
       actor_type,
@@ -99,6 +100,8 @@ serve(async (req: Request) => {
       staffId,
       recipient_override,
       override_reason,
+      staff_notes,
+      skip_notification,
     } = body;
 
     console.log("review-draft-file v2 called:", {
@@ -117,57 +120,74 @@ serve(async (req: Request) => {
     // Staff uploads a draft and submits it for customer review
     // ================================================================
     if (action === "submit_for_review") {
-      if (!file_id) throw new Error("Missing required field: file_id");
+      // Accept either file_ids (array — batch send from the modal) or
+      // legacy single file_id. Normalize to a non-empty list.
+      const idList: string[] = Array.isArray(file_ids) && file_ids.length > 0
+        ? file_ids.filter((v: any) => typeof v === "string" && v.length > 0)
+        : (typeof file_id === "string" && file_id.length > 0 ? [file_id] : []);
+      if (idList.length === 0) throw new Error("Missing required field: file_id");
       if (!actor_id) throw new Error("Missing required field: actor_id");
 
-      // Get file details
-      const { data: file, error: fileError } = await supabase
+      // Get all files in the batch
+      const { data: files, error: filesError } = await supabase
         .from("quote_files")
-        // quote_files.original_filename (not file_name — the latter doesn't
-        // exist; the existing column has always been original_filename).
         .select("id, quote_id, original_filename, review_status, review_version")
-        .eq("id", file_id)
-        .single();
+        .in("id", idList);
 
-      if (fileError || !file) {
+      if (filesError || !files || files.length === 0) {
         throw new Error("File not found");
       }
 
-      const previousStatus = file.review_status;
+      // All files must belong to the same quote
+      const quoteId = files[0].quote_id;
+      if (files.some(f => f.quote_id !== quoteId)) {
+        throw new Error("All files must belong to the same quote");
+      }
 
-      // Update file review status
+      // Optional batch note from the send modal — apply to each selected file
+      // so the existing email-builder (which reads quote_files.staff_notes)
+      // picks it up. Empty/whitespace input leaves prior notes untouched.
+      const batchNote = typeof staff_notes === "string" && staff_notes.trim().length > 0
+        ? staff_notes.trim()
+        : null;
+
+      const updatePayload: Record<string, unknown> = {
+        review_status: "pending_review",
+        review_comment: null,
+        reviewed_at: null,
+      };
+      if (batchNote !== null) updatePayload.staff_notes = batchNote;
+
       const { error: updateError } = await supabase
         .from("quote_files")
-        .update({
-          review_status: "pending_review",
-          review_comment: null,
-          reviewed_at: null,
-        })
-        .eq("id", file_id);
+        .update(updatePayload)
+        .in("id", idList);
 
       if (updateError) {
         console.error("File update error:", updateError);
         throw new Error("Failed to update file review status");
       }
 
-      // Log to review history
-      await supabase.from("file_review_history").insert({
-        file_id,
+      // Log to review history — one row per file
+      const historyRows = files.map(f => ({
+        file_id: f.id,
         action: "submit_for_review",
         actor_type,
         actor_id,
-        review_version: file.review_version,
-        previous_status: previousStatus,
+        review_version: f.review_version,
+        previous_status: f.review_status,
         new_status: "pending_review",
-      });
+      }));
+      await supabase.from("file_review_history").insert(historyRows);
 
       // Update order status to draft_review
       const { data: quote } = await supabase
         .from("quotes")
         .select("id")
-        .eq("id", file.quote_id)
+        .eq("id", quoteId)
         .single();
 
+      let filesInEmail = 0;
       if (quote) {
         const { data: orderData } = await supabase
           .from("orders")
@@ -181,22 +201,20 @@ serve(async (req: Request) => {
             .update({ status: "draft_review" })
             .eq("id", orderData.id);
 
-          // Send email notification to customer with download links
-          if (BREVO_API_KEY) {
-            // Fetch all pending_review draft files for this quote
+          // Send one email per batch with all pending_review files attached
+          if (BREVO_API_KEY && !skip_notification) {
             const { data: draftFiles } = await supabase
               .from("quote_files")
               .select("id, original_filename, file_size, storage_path, staff_notes")
-              .eq("quote_id", file.quote_id)
+              .eq("quote_id", quoteId)
               .eq("review_status", "pending_review")
               .is("deleted_at", null);
 
-            // Generate signed URLs (7 days) for each draft file
             const filesWithUrls: { name: string; size: number; url: string; staffNotes: string | null }[] = [];
             for (const df of draftFiles || []) {
               const { data: signedData } = await supabase.storage
                 .from("quote-files")
-                .createSignedUrl(df.storage_path, 7 * 24 * 60 * 60); // 7 days
+                .createSignedUrl(df.storage_path, 7 * 24 * 60 * 60);
 
               filesWithUrls.push({
                 name: df.original_filename,
@@ -206,8 +224,8 @@ serve(async (req: Request) => {
               });
             }
 
-            // Collect staff_notes from any file (same note applies to batch)
-            const staffNotes = filesWithUrls.find(f => f.staffNotes)?.staffNotes || null;
+            const emailNote = batchNote
+              ?? (filesWithUrls.find(f => f.staffNotes)?.staffNotes || null);
 
             await notifyCustomerDraftReady(
               supabase,
@@ -215,11 +233,13 @@ serve(async (req: Request) => {
               SITE_URL,
               orderData.customer_id,
               orderData.id,
-              file.original_filename,
+              files[0].original_filename,
               filesWithUrls,
-              staffNotes,
+              emailNote,
               recipient_override ?? null,
             );
+
+            filesInEmail = filesWithUrls.length;
           }
         }
       }
@@ -229,6 +249,7 @@ serve(async (req: Request) => {
         message: "Draft submitted for customer review",
         review_status: "pending_review",
         order_status: "draft_review",
+        files_in_email: filesInEmail,
       });
     }
 
@@ -717,6 +738,135 @@ serve(async (req: Request) => {
         invoice_number: invoice?.invoice_number || null,
         invoice_status: invoice?.status || null,
         balance_due: invoice?.balance_due || 0,
+      });
+    }
+
+    // ================================================================
+    // ACTION: send_delivery_email
+    // Re-send (or first-send) the delivery email to the customer with a
+    // selected subset of finalized files attached. Does NOT create an
+    // invoice — that is owned by deliver_final. This is the staff
+    // "Send delivery" button from the order page.
+    // ================================================================
+    if (action === "send_delivery_email") {
+      const resolvedOrderId = order_id;
+      if (!resolvedOrderId) throw new Error("Missing required field: order_id");
+      if (!actor_id) throw new Error("Missing required field: actor_id");
+
+      const { data: ord, error: ordErr } = await supabase
+        .from("orders")
+        .select("id, order_number, quote_id, customer_id")
+        .eq("id", resolvedOrderId)
+        .single();
+      if (ordErr || !ord) throw new Error("Order not found");
+
+      // Choose files: explicit file_ids if provided, otherwise all
+      // final_deliverable files for the quote.
+      const filterIds: string[] = Array.isArray(file_ids) && file_ids.length > 0
+        ? (file_ids as string[]).filter((v: any) => typeof v === "string" && v.length > 0)
+        : [];
+
+      let filesQuery = supabase
+        .from("quote_files")
+        .select("id, original_filename, storage_path, file_size, file_category_id, staff_notes")
+        .eq("quote_id", ord.quote_id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true });
+
+      if (filterIds.length > 0) {
+        filesQuery = filesQuery.in("id", filterIds);
+      } else {
+        // Fallback to final_deliverable category
+        const { data: finalCat } = await supabase
+          .from("file_categories")
+          .select("id")
+          .eq("slug", "final_deliverable")
+          .single();
+        if (finalCat) filesQuery = filesQuery.eq("file_category_id", finalCat.id);
+      }
+
+      const { data: rawFiles } = await filesQuery;
+      const files = (rawFiles ?? []) as Array<{
+        id: string;
+        original_filename: string;
+        storage_path: string;
+        file_size: number | null;
+        staff_notes: string | null;
+      }>;
+      if (files.length === 0) {
+        return jsonResponse({ success: false, error: "No deliverable files found" }, 400);
+      }
+
+      // Persist the batch note onto the selected rows so any subsequent
+      // re-send picks it up too (mirrors submit_for_review behavior).
+      const batchNote = typeof staff_notes === "string" && staff_notes.trim().length > 0
+        ? staff_notes.trim() : null;
+      if (batchNote !== null && files.length > 0) {
+        await supabase
+          .from("quote_files")
+          .update({ staff_notes: batchNote })
+          .in("id", files.map(f => f.id));
+      }
+
+      const deliveryFilesWithUrls: { name: string; size: number; url: string; staffNotes: string | null }[] = [];
+      for (const f of files) {
+        const { data: signed } = await supabase.storage
+          .from("quote-files")
+          .createSignedUrl(f.storage_path, 7 * 24 * 60 * 60);
+        deliveryFilesWithUrls.push({
+          name: f.original_filename,
+          size: f.file_size || 0,
+          url: signed?.signedUrl || "",
+          staffNotes: batchNote ?? f.staff_notes ?? null,
+        });
+      }
+
+      // Reuse the existing customer delivery notifier. invoice_number is
+      // best-effort: most-recent non-void invoice for this order, if any.
+      let invoiceNumber: string | null = null;
+      try {
+        const { data: inv } = await supabase
+          .from("customer_invoices")
+          .select("invoice_number, status, created_at")
+          .eq("order_id", ord.id)
+          .neq("status", "void")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        invoiceNumber = inv?.invoice_number ?? null;
+      } catch (_) { /* non-blocking */ }
+
+      const simpleFiles = deliveryFilesWithUrls.map(({ name, size, url }) => ({ name, size, url }));
+
+      if (BREVO_API_KEY && !skip_notification) {
+        await notifyCustomerDelivery(
+          supabase,
+          BREVO_API_KEY,
+          SITE_URL,
+          ord.customer_id,
+          ord.id,
+          ord.order_number,
+          invoiceNumber,
+          simpleFiles,
+        );
+      }
+
+      // History row per file
+      await supabase.from("file_review_history").insert(
+        files.map(f => ({
+          file_id: f.id,
+          action: "send_delivery_email",
+          actor_type,
+          actor_id,
+          metadata: { order_id: ord.id, batch_size: files.length, notes: batchNote },
+        })),
+      );
+
+      return jsonResponse({
+        success: true,
+        message: "Delivery email sent",
+        files_sent: files.length,
+        invoice_number: invoiceNumber,
       });
     }
 
