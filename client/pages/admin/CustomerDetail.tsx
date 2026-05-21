@@ -30,6 +30,7 @@ import {
   ChevronDown,
   ChevronUp,
   UserCheck,
+  Receipt,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -38,6 +39,7 @@ import CustomerARSummary from "@/components/admin/CustomerARSummary";
 import CustomerFilesTab from "@/components/admin/CustomerFilesTab";
 import CustomerCallsTab from "@/components/admin/CustomerCallsTab";
 import CustomerConversationTab from "@/components/admin/CustomerConversationTab";
+import CustomerInvoicesTab from "@/components/admin/CustomerInvoicesTab";
 import EmailLogAccordion from "@/components/admin/EmailLogAccordion";
 
 interface Customer {
@@ -74,6 +76,7 @@ interface Customer {
   accounting_contact_phone: string | null;
   credit_limit: number | null;
   ar_notes: string | null;
+  auto_invoice_reminders_enabled: boolean;
   // Enriched objects from edge function
   invoicing_branch?: Branch | null;
   preferred_payment_method?: PaymentMethodOption | null;
@@ -158,7 +161,7 @@ interface CustomerStats {
   lastOrderDate: string | null;
 }
 
-const TABS = ["profile", "quotes", "orders", "payments", "files", "calls", "messages", "stats"] as const;
+const TABS = ["profile", "quotes", "orders", "invoices", "payments", "files", "calls", "messages", "stats"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function CustomerDetail() {
@@ -656,6 +659,7 @@ export default function CustomerDetail() {
         "backup_payment_method_id", "preferred_currency", "payment_terms",
         "is_ar_customer", "ar_contact_email", "accounting_contact_name",
         "accounting_contact_phone", "credit_limit", "ar_notes",
+        "auto_invoice_reminders_enabled",
         "requires_po", "requires_po_mode", "requires_client_project_number",
         "default_tax_rate_id",
       ] as const;
@@ -866,6 +870,17 @@ export default function CustomerDetail() {
               <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
                 {orders.length}
               </span>
+            </button>
+            <button
+              onClick={() => setActiveTab("invoices")}
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "invoices"
+                  ? "border-teal-500 text-teal-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <Receipt className="w-4 h-4 inline mr-2" />
+              Invoices
             </button>
             <button
               onClick={() => setActiveTab("payments")}
@@ -1466,6 +1481,45 @@ export default function CustomerDetail() {
                           <p className="text-gray-900 whitespace-pre-wrap">{customer.ar_notes || "—"}</p>
                         )}
                       </div>
+                      <div className="md:col-span-2 border-t border-gray-100 pt-4">
+                        {editing ? (
+                          <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={!!formData.auto_invoice_reminders_enabled}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  auto_invoice_reminders_enabled: e.target.checked,
+                                }))
+                              }
+                              className="mt-0.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                            />
+                            <span>
+                              <span className="block text-sm font-medium text-gray-700">
+                                Send automatic invoice reminders
+                              </span>
+                              <span className="block text-xs text-gray-500 mt-0.5">
+                                When ON, the daily reminder cron will email this customer about
+                                overdue invoices (max once per 7 days per invoice). Default OFF.
+                              </span>
+                            </span>
+                          </label>
+                        ) : (
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-gray-600">Automatic invoice reminders:</span>
+                            {customer.auto_invoice_reminders_enabled ? (
+                              <span className="inline-flex px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
+                                Enabled
+                              </span>
+                            ) : (
+                              <span className="inline-flex px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+                                Disabled
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1867,6 +1921,11 @@ export default function CustomerDetail() {
                 </table>
               )}
             </div>
+          )}
+
+          {/* Invoices Tab */}
+          {activeTab === "invoices" && id && (
+            <CustomerInvoicesTab customerId={id} />
           )}
 
           {/* Payments Tab */}

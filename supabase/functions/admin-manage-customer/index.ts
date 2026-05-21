@@ -52,6 +52,7 @@ const UPDATABLE_FIELDS = new Set([
   "backup_payment_method_id", "preferred_currency", "payment_terms",
   "is_ar_customer", "ar_contact_email", "accounting_contact_name",
   "accounting_contact_phone", "credit_limit", "ar_notes",
+  "auto_invoice_reminders_enabled",
   "requires_po", "requires_po_mode", "requires_client_project_number",
   "default_tax_rate_id",
 ]);
