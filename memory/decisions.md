@@ -18,6 +18,22 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-21 — Affidavit pipeline: 3-flow model, fail-loud on missing template, code-slug lookup
+- **Decision:** Post-approval certification is driven by a single edge function `apply-affidavit-and-finalize` triggered from `review-draft-file`. Three terminal paths from "draft submitted to customer for review":
+  - Flow A (customer approve) and Flow C (staff `override_approve`) both fire the affidavit pipeline; Flow B (request_changes) loops via a new draft promotion. No round cap — count rows only.
+  - Flow C requires non-empty `override_reason`, attributed to the acting staff in `staff_activity_log` (activity_type `draft_override_approved`). Distinct from impersonation ("View as customer", #697) which acts under the customer's identity.
+- **Template lookup:** keyed on `certification_type_code TEXT` matching `certification_types.code` (slug, e.g. `oath_commissioner`) — NOT the human-readable name. The 2026-05-21 handover addendum was wrong on this; `orders.certification_type_id` is a UUID FK, and the canonical join key for templates is the `code` slug.
+- **Phase A scope:** English-target only. Non-English targets return HTTP 422 with `code: "AFFIDAVIT_TEMPLATE_MISSING"` — no silent fallback to English. Step 3 surfaces the error chip and offers a manual override path. Bilingual templates seed only when a real non-English order hits the fail-loud (decision was: don't pre-seed top-5).
+- **Phase A also defers** splicing the translated body into one .docx — customer receives the approved translation + a separate affidavit `.docx`. Splicing lands in Phase A.2 via JSZip section-merge.
+- **Storage:** `quote-files` bucket at `{order_id}/certified/{filename}`. Affidavit written to a new `quote_files` row (file_category `final_deliverable`) and to `step_deliveries` on the step-3 (PM Review & Certification) row. No new `step_deliveries.kind` column — discriminate by parent step + `actor_type='internal_work'`.
+- **Schema correctness notes (caught during impl, not in handover):**
+  - `step_deliveries.vendor_id` doesn't exist — translator lookup goes through `order_workflow_steps.vendor_id → vendors.full_name/email/phone` for step 1.
+  - `intended_uses.label` doesn't exist — it's `name`. `{{document_type}}` should resolve per-file via `document_types`, not from quote-level intended_use.
+  - `quote_files.review_status` is varchar — `override_approved` is just a new string value, no enum migration needed.
+- **Migrations applied + PRs merged 2026-05-21:** [#701](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/701) (table + 3 quote_files columns + seed), [#702](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/702) (apply-affidavit-and-finalize + docx helper), [#703](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/703) (override_approve + admin UI).
+- **Status:** active; not yet exercised end-to-end against a real order. ORD-2026-10215 (Laila Bouladraf, FR→EN) is the test target — currently has `certification_type_id = NULL` and all three workflow steps still pending; needs cert set + steps 1 + 2 walked through before the trigger fires.
+- **Affects:** `certification_affidavit_templates` table, 3 new columns on `quote_files`, new `apply-affidavit-and-finalize` edge function + `_shared/affidavit-docx.ts` helper, modified `review-draft-file` (v2.1) + `AdminOrderDetail.tsx` (Override button + modal).
+
 ### 2026-05-19 — Soft-deletable tables must use partial unique indexes
 - **Decision:** Any table that uses `deleted_at` for soft-deletes must express uniqueness as `CREATE UNIQUE INDEX … WHERE deleted_at IS NULL`. Plain `UNIQUE` constraints are not acceptable on soft-deletable tables.
 - **Rationale:** `update-quote-from-analysis` started returning 400 in prod on 2026-05-19 because `ai_analysis_results` had `UNIQUE (quote_file_id)` as a plain constraint. The function's "soft-delete history then insert fresh" pattern (which is correct for ISO 17100 auditability) fails 23505 because the unique index counts soft-deleted rows as live. Caught only after a live "Update Quote" failure from the OCR Pricing tab.

@@ -9,6 +9,14 @@ How the user wants you to approach work in this project. Add any time the user c
 
 ## Code & implementation
 
+- **Fail loud on missing template / lookup-table config; never silently fall back to a wrong locale or default** — when a feature picks a row by language / certification type / jurisdiction, missing rows must return a structured error (e.g. `code: "AFFIDAVIT_TEMPLATE_MISSING"`) with a remediation hint. Never substitute English content on a non-English target, or a default cert template on a different cert type.
+  - **Why:** ISO 17100 reproducibility + customer-trust — a silent fallback ships a wrong-language certification that the customer cannot easily detect until it's been submitted to a government agency. The "loud failure surfaces in the admin step card as a red chip" pattern (per 2026-05-21 affidavit) gives staff a clear remediation path.
+  - **How to apply:** Edge functions return 422 + `code`. Admin UI shows the error chip + an "Override manually" affordance. Don't add a `defaults_to_english=true` flag unless explicitly authorized.
+
+- **Verify handover-doc schema claims against prod before writing the migration** — a handover doc lists "current production schema" snapshots that can be stale. Spot-check `information_schema.columns` + sample rows for every table the migration / function will touch before authoring SQL or edge-function code.
+  - **Why:** The 2026-05-21 handover §10 said `orders.certification_type` was a human-readable string ("Oath Commissioner"); prod has `orders.certification_type_id UUID → certification_types(code/name)`. Three other §10 claims (step_deliveries.kind, step_deliveries.vendor_id, intended_uses.label) were also wrong. Building on the doc verbatim would have shipped broken queries.
+  - **How to apply:** Before drafting any migration or edge function, run quick `mcp__supabase__execute_sql` probes (`SELECT column_name FROM information_schema.columns ...`) on every referenced table. Bring corrections back to the user with the proposed defaults before writing SQL.
+
 - **AI-assisted features: deterministic core + Claude prose** — when an AI feature picks a value (rate, action, score), the value comes from a deterministic formula with documented inputs. Claude is allowed to write the human-readable reasoning paragraph, but never picks the number that bypasses the bounds.
   - **Why:** ISO 17100 auditability — every recommendation must be reproducible from logged inputs. Claude hallucination is unacceptable for billing-impacting decisions.
   - **How to apply:** Store inputs + multipliers + prompt_version in an audit table. Hard bounds enforced server-side regardless of model output. Fall back to template prose when Claude unavailable.
