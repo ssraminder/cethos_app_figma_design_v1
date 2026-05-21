@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { CreditCard, Loader2, Search, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
+import { CreditCard, Loader2, Search, RotateCcw, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { format } from "date-fns";
 import type { VendorPageData } from "./types";
+import RecordVendorPaymentModal from "@/components/admin/RecordVendorPaymentModal";
 
 interface PaymentRow {
   paymentId: string;
@@ -55,6 +56,7 @@ export default function VendorPaymentsTab({ vendorData }: Props) {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [showRecordModal, setShowRecordModal] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -166,6 +168,15 @@ export default function VendorPaymentsTab({ vendorData }: Props) {
 
   return (
     <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500">
+          Historical payments below are from XTRF. Portal-recorded payments will also appear here once posted.
+        </p>
+        <button onClick={() => setShowRecordModal(true)}
+          className="inline-flex items-center gap-2 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-md">
+          <Plus className="w-4 h-4" /> Record Payment
+        </button>
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div className="bg-white border border-gray-200 rounded-lg p-3">
           <div className="text-xs text-gray-500">Total payments</div>
@@ -268,6 +279,14 @@ export default function VendorPaymentsTab({ vendorData }: Props) {
           </div>
         )}
       </div>
+
+      <RecordVendorPaymentModal
+        isOpen={showRecordModal}
+        onClose={() => setShowRecordModal(false)}
+        onSuccess={() => { setShowRecordModal(false); load(); }}
+        vendorId={vendorData?.vendor?.id}
+        vendorName={vendorData?.vendor?.full_name}
+      />
     </div>
   );
 }

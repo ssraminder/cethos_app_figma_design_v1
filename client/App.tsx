@@ -98,6 +98,7 @@ import AdminQuickPayment from "./pages/admin/AdminQuickPayment";
 import AdminPaymentHistory from "./pages/admin/AdminPaymentHistory";
 import PaymentsList from "./pages/admin/PaymentsList";
 import PaymentDetail from "./pages/admin/PaymentDetail";
+import VendorPaymentsList from "./pages/admin/VendorPaymentsList";
 import ARAgingReport from "./pages/admin/ARAgingReport";
 import AdminVendorsList from "./pages/admin/AdminVendorsList";
 import AdminIsoQuizzes from "./pages/admin/AdminIsoQuizzes";
@@ -429,6 +430,7 @@ const App = () => (
                     <Route path="quick-payment" element={<AdminQuickPayment />} />
                     <Route path="quick-payment/history" element={<AdminPaymentHistory />} />
                     <Route path="payments" element={<PaymentsList />} />
+                    <Route path="vendor-payments" element={<VendorPaymentsList />} />
                     <Route path="payments/:id" element={<PaymentDetail />} />
                     <Route path="exchange-rates" element={<ExchangeRates />} />
                     <Route path="reports/aging" element={<ARAgingReport />} />
