@@ -229,7 +229,86 @@ export default function RecruitmentList() {
   const sortAsc = searchParams.get("asc") === "true";
   const page = parseInt(searchParams.get("page") || "1", 10);
 
+  // Filter state — all URL-driven. Status / tier are comma-separated lists,
+  // language and country are single values. Empty string = filter off.
+  const statusFilter = (searchParams.get("status") || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const tierFilter = (searchParams.get("tier") || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const srcLangFilter = searchParams.get("src_lang") || "";
+  const tgtLangFilter = searchParams.get("tgt_lang") || "";
+  const countryFilter = searchParams.get("country") || "";
+
+  const hasAnyFilter =
+    statusFilter.length > 0 ||
+    tierFilter.length > 0 ||
+    Boolean(srcLangFilter) ||
+    Boolean(tgtLangFilter) ||
+    Boolean(countryFilter);
+
   const [searchInput, setSearchInput] = useState(search);
+
+  // Filter options — fetched once. Languages are codes that actually exist
+  // on cvp_test_combinations for this org's applications (so the dropdown
+  // doesn't list every ISO code, just the ones with data).
+  const [availableLanguages, setAvailableLanguages] = useState<{ code: string; name: string }[]>([]);
+  const [availableCountries, setAvailableCountries] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Distinct (src, tgt) language ids that appear on any combo. Resolve
+      // to (code, name) via the languages table. Static-ish — load once.
+      const { data: comboLangs } = await supabase
+        .from("cvp_test_combinations")
+        .select("source_language_id, target_language_id");
+      const langIds = new Set<string>();
+      for (const r of (comboLangs ?? []) as { source_language_id: string | null; target_language_id: string | null }[]) {
+        if (r.source_language_id) langIds.add(r.source_language_id);
+        if (r.target_language_id) langIds.add(r.target_language_id);
+      }
+      if (langIds.size > 0) {
+        const { data: langs } = await supabase
+          .from("languages")
+          .select("code, name")
+          .in("id", Array.from(langIds));
+        if (!cancelled && langs) {
+          const seen = new Set<string>();
+          const opts: { code: string; name: string }[] = [];
+          for (const l of langs as { code: string; name: string }[]) {
+            const up = (l.code ?? "").toUpperCase();
+            if (!up || seen.has(up)) continue;
+            seen.add(up);
+            opts.push({ code: up, name: l.name ?? up });
+          }
+          opts.sort((a, b) => a.name.localeCompare(b.name));
+          setAvailableLanguages(opts);
+        }
+      }
+
+      // Distinct countries on cvp_applications. Capped at a reasonable
+      // ceiling — current data has ~30 countries.
+      const { data: countryRows } = await supabase
+        .from("cvp_applications")
+        .select("country")
+        .not("country", "is", null);
+      if (!cancelled && countryRows) {
+        const seen = new Set<string>();
+        for (const r of countryRows as { country: string | null }[]) {
+          const c = (r.country ?? "").trim();
+          if (c) seen.add(c);
+        }
+        setAvailableCountries(Array.from(seen).sort());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Fetch tab counts
   const fetchTabCounts = useCallback(async () => {
@@ -339,14 +418,91 @@ export default function RecruitmentList() {
           { count: "exact" }
         );
 
+      // ── Apply language filter first because it narrows the id set, which
+      //    we can then AND with the tab/status filter via .in("id", ...).
+      //    Resolve UPPER(code) → uuid(s) on languages, then pick applications
+      //    that have at least one cvp_test_combinations row matching the
+      //    requested pair. Empty src/tgt means "any" on that side.
+      let languageScopedIds: string[] | null = null;
+      if (srcLangFilter || tgtLangFilter) {
+        const codes = [srcLangFilter, tgtLangFilter].filter(Boolean);
+        const { data: langRows } = await supabase
+          .from("languages")
+          .select("id, code")
+          .in("code", codes.map((c) => c.toLowerCase()));
+        // languages.code is stored lowercase (e.g. "en", "es") so we matched
+        // case-insensitively. Build the id buckets per direction.
+        const srcIds = new Set<string>();
+        const tgtIds = new Set<string>();
+        for (const l of (langRows ?? []) as { id: string; code: string }[]) {
+          const up = (l.code ?? "").toUpperCase();
+          if (srcLangFilter && up === srcLangFilter) srcIds.add(l.id);
+          if (tgtLangFilter && up === tgtLangFilter) tgtIds.add(l.id);
+        }
+        let comboQ = supabase
+          .from("cvp_test_combinations")
+          .select("application_id");
+        if (srcLangFilter && srcIds.size > 0) {
+          comboQ = comboQ.in("source_language_id", Array.from(srcIds));
+        }
+        if (tgtLangFilter && tgtIds.size > 0) {
+          comboQ = comboQ.in("target_language_id", Array.from(tgtIds));
+        }
+        const { data: comboRows } = await comboQ;
+        languageScopedIds = Array.from(
+          new Set(
+            (comboRows ?? []).map((r) => (r as { application_id: string }).application_id),
+          ),
+        );
+        if (languageScopedIds.length === 0) {
+          // No applications match the language filter — short-circuit.
+          setApplications([]);
+          setCombosByApp({});
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
+      }
+
       if (appIds) {
-        query = query.in("id", appIds);
+        // Tests tab: intersect with language filter if present.
+        const intersected = languageScopedIds
+          ? appIds.filter((id) => languageScopedIds!.includes(id))
+          : appIds;
+        if (intersected.length === 0) {
+          setApplications([]);
+          setCombosByApp({});
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
+        query = query.in("id", intersected);
       } else if (!isSearching) {
-        const statuses = TAB_STATUSES[activeTab] || [];
+        // Status filter: intersection of explicit selection (if any) with
+        // the active tab's allowed statuses. If the explicit selection is
+        // disjoint from the tab — empty result.
+        const tabStatuses = TAB_STATUSES[activeTab] || [];
+        let statuses = tabStatuses;
+        if (statusFilter.length > 0) {
+          statuses = tabStatuses.filter((s) => statusFilter.includes(s));
+          if (statuses.length === 0) {
+            setApplications([]);
+            setCombosByApp({});
+            setTotalCount(0);
+            setLoading(false);
+            return;
+          }
+        }
         query = query.in("status", statuses);
         if (excludeIds.length > 0) {
           query = query.not("id", "in", `(${excludeIds.join(",")})`);
         }
+        if (languageScopedIds) {
+          query = query.in("id", languageScopedIds);
+        }
+      } else if (languageScopedIds) {
+        // Search mode + language filter: scope the search to matching ids.
+        query = query.in("id", languageScopedIds);
       }
 
       if (isSearching) {
@@ -354,6 +510,14 @@ export default function RecruitmentList() {
         query = query.or(
           `full_name.ilike.%${term}%,email.ilike.%${term}%,application_number.ilike.%${term}%`
         );
+      }
+
+      // Tier + country filters always apply on top.
+      if (tierFilter.length > 0) {
+        query = query.in("assigned_tier", tierFilter);
+      }
+      if (countryFilter) {
+        query = query.eq("country", countryFilter);
       }
 
       query = query.order(sortField, { ascending: sortAsc });
@@ -399,7 +563,21 @@ export default function RecruitmentList() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, search, sortField, sortAsc, page]);
+  }, [
+    activeTab,
+    search,
+    sortField,
+    sortAsc,
+    page,
+    // Stable string keys for the comma-separated filters so React reruns
+    // when the URL changes. Joining with a separator keeps the dep
+    // identity-stable when the array re-derives but the contents match.
+    statusFilter.join(","),
+    tierFilter.join(","),
+    srcLangFilter,
+    tgtLangFilter,
+    countryFilter,
+  ]);
 
   useEffect(() => {
     fetchTabCounts();
@@ -441,6 +619,33 @@ export default function RecruitmentList() {
         next.delete("search");
       }
       next.delete("page");
+      return next;
+    });
+  };
+
+  // When a filter changes, also drop page=N so we land on page 1 of the
+  // new result set instead of an out-of-range page.
+  const setFilterParam = (key: string, value: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      next.delete("page");
+      return next;
+    });
+  };
+
+  const toggleListFilter = (key: "status" | "tier", value: string) => {
+    const current = key === "status" ? statusFilter : tierFilter;
+    const has = current.includes(value);
+    const next = has ? current.filter((v) => v !== value) : [...current, value];
+    setFilterParam(key, next.join(","));
+  };
+
+  const clearAllFilters = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      ["status", "tier", "src_lang", "tgt_lang", "country", "page"].forEach((k) => next.delete(k));
       return next;
     });
   };
@@ -528,6 +733,108 @@ export default function RecruitmentList() {
             </span>
           </button>
         ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        {/* Status — multi-select within the active tab's allowed set. */}
+        <details className="relative">
+          <summary className="cursor-pointer list-none px-3 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700 hover:border-gray-400 select-none">
+            Status{statusFilter.length > 0 ? ` · ${statusFilter.length}` : ""}
+          </summary>
+          <div className="absolute z-10 mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-2 w-64 max-h-72 overflow-y-auto">
+            {(TAB_STATUSES[activeTab] ?? []).map((s) => (
+              <label key={s} className="flex items-center gap-2 px-1.5 py-1 hover:bg-gray-50 rounded text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statusFilter.includes(s)}
+                  onChange={() => toggleListFilter("status", s)}
+                  className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                />
+                <span className="text-gray-700">{STATUS_LABELS[s] ?? s}</span>
+              </label>
+            ))}
+            {statusFilter.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterParam("status", "")}
+                className="mt-1 w-full text-[11px] text-gray-500 hover:text-gray-700 text-left px-1.5 py-1"
+              >
+                Clear status
+              </button>
+            )}
+          </div>
+        </details>
+
+        {/* Source language — single-select. */}
+        <select
+          value={srcLangFilter}
+          onChange={(e) => setFilterParam("src_lang", e.target.value)}
+          className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700 hover:border-gray-400"
+        >
+          <option value="">Source language: any</option>
+          {availableLanguages.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.name} ({l.code})
+            </option>
+          ))}
+        </select>
+
+        {/* Target language — single-select. */}
+        <select
+          value={tgtLangFilter}
+          onChange={(e) => setFilterParam("tgt_lang", e.target.value)}
+          className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700 hover:border-gray-400"
+        >
+          <option value="">Target language: any</option>
+          {availableLanguages.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.name} ({l.code})
+            </option>
+          ))}
+        </select>
+
+        {/* Country — single-select. */}
+        <select
+          value={countryFilter}
+          onChange={(e) => setFilterParam("country", e.target.value)}
+          className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700 hover:border-gray-400"
+        >
+          <option value="">Country: any</option>
+          {availableCountries.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+
+        {/* Tier — multi-select. */}
+        <details className="relative">
+          <summary className="cursor-pointer list-none px-3 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700 hover:border-gray-400 select-none">
+            Tier{tierFilter.length > 0 ? ` · ${tierFilter.length}` : ""}
+          </summary>
+          <div className="absolute z-10 mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-2 w-44">
+            {Object.entries(TIER_LABELS).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 px-1.5 py-1 hover:bg-gray-50 rounded text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tierFilter.includes(key)}
+                  onChange={() => toggleListFilter("tier", key)}
+                  className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                />
+                <span className="text-gray-700">{label}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+
+        {hasAnyFilter && (
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700"
+          >
+            Clear all filters
+          </button>
+        )}
       </div>
 
       {/* Search */}
