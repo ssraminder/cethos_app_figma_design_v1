@@ -463,11 +463,26 @@ export default function CustomerOrderDetail() {
     return STATUS_TIMELINE.findIndex((s) => s.status === displayStatus);
   };
 
-  // File categorization
-  const draftFiles = orderFiles.filter(f => f.category === "draft_translation");
-  const currentDrafts = draftFiles.filter(f => f.review_status === "pending_review");
+  // File categorization. Defensive: only the highest-versioned
+  // pending_review draft is shown to the customer — even if multiple
+  // rows are pending (older data before the supersede-on-promote fix
+  // landed), the customer sees one. Older pending rows are silently
+  // dropped along with anything tombstoned (deleted_at set).
+  const draftFiles = orderFiles
+    .filter(f => f.category === "draft_translation")
+    .filter(f => !f.deleted_at);
 
-  const sortedDrafts = [...draftFiles].sort((a, b) => {
+  const latestPendingVersion = draftFiles
+    .filter(f => f.review_status === "pending_review")
+    .reduce((m, f) => Math.max(m, f.review_version || 0), 0);
+
+  const visibleDrafts = draftFiles.filter(f =>
+    f.review_status !== "pending_review" ||
+    (f.review_version || 0) === latestPendingVersion,
+  );
+  const currentDrafts = visibleDrafts.filter(f => f.review_status === "pending_review");
+
+  const sortedDrafts = [...visibleDrafts].sort((a, b) => {
     if (a.review_status === "pending_review" && b.review_status !== "pending_review") return -1;
     if (b.review_status === "pending_review" && a.review_status !== "pending_review") return 1;
     return (b.review_version || 0) - (a.review_version || 0);
