@@ -1,11 +1,18 @@
 // ============================================================================
-// review-draft-file v2.0
+// review-draft-file v2.1
 // Handles the full draft review lifecycle:
 //   - submit_for_review: Staff submits draft for customer review
 //   - approve: Customer approves the draft
 //   - request_changes: Customer requests changes on the draft
+//   - override_approve: Staff approves without customer (Flow C — requires
+//     override_reason; logs to staff_activity_log with actor_type='staff';
+//     same downstream affidavit trigger as Flow A)
 //   - deliver_final: Staff delivers final translation + creates invoice
-// Date: February 15, 2026
+//
+// On `approve` (Flow A) and `override_approve` (Flow C) the function fires
+// `apply-affidavit-and-finalize` for the just-approved file. Failure to fire
+// the affidavit does NOT roll back the approval — the staff override modal
+// can re-trigger from Step 3 if needed.
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
@@ -22,6 +29,40 @@ function jsonResponse(data: Record<string, unknown>, status = 200) {
     status,
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
+}
+
+// Fire-and-await the affidavit pipeline. Captures success/error so the caller
+// can include it in the response without rolling back the approval itself.
+async function triggerAffidavit(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  orderId: string,
+  fileId: string,
+  triggeredBy: "customer_approval" | "staff_override",
+): Promise<{ ok: boolean; status: number; body: any }> {
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/apply-affidavit-and-finalize`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+      },
+      body: JSON.stringify({
+        order_id: orderId,
+        quote_file_id: fileId,
+        triggered_by: triggeredBy,
+      }),
+    });
+    const parsed = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.warn("[review-draft-file] affidavit trigger non-2xx:", res.status, parsed);
+    }
+    return { ok: res.ok, status: res.status, body: parsed };
+  } catch (err: any) {
+    console.error("[review-draft-file] affidavit trigger threw:", err);
+    return { ok: false, status: 0, body: { error: err?.message || String(err) } };
+  }
 }
 
 serve(async (req: Request) => {
@@ -47,7 +88,18 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const body = await req.json();
-    const { file_id, order_id, action, actor_type, actor_id, comment, actingAsStaff, staffId, recipient_override } = body;
+    const {
+      file_id,
+      order_id,
+      action,
+      actor_type,
+      actor_id,
+      comment,
+      actingAsStaff,
+      staffId,
+      recipient_override,
+      override_reason,
+    } = body;
 
     console.log("review-draft-file v2 called:", {
       file_id,
@@ -271,12 +323,130 @@ serve(async (req: Request) => {
             actor_id,
           );
         }
+
+        // Flow A trigger: fire the affidavit pipeline. Failure here does NOT
+        // roll back the approval — staff can re-trigger from the step-3 card.
+        if (orderData?.id) {
+          const affidavit = await triggerAffidavit(
+            SUPABASE_URL!,
+            SUPABASE_SERVICE_ROLE_KEY!,
+            orderData.id,
+            file_id,
+            "customer_approval",
+          );
+          return jsonResponse({
+            success: true,
+            message: actingAsStaff ? "Draft approved on behalf of customer" : "Draft approved by customer",
+            review_status: "approved",
+            affidavit_triggered: affidavit.ok,
+            affidavit: affidavit.body,
+          });
+        }
       }
 
       return jsonResponse({
         success: true,
         message: actingAsStaff ? "Draft approved on behalf of customer" : "Draft approved by customer",
         review_status: "approved",
+      });
+    }
+
+    // ================================================================
+    // ACTION: override_approve (Flow C)
+    // Staff approves without customer — bypasses the customer review entirely.
+    // Distinct from `actingAsStaff` (which is impersonation under the
+    // customer's identity). Requires a non-empty override_reason and is
+    // attributed to the acting staff member in staff_activity_log.
+    // ================================================================
+    if (action === "override_approve") {
+      if (!file_id) throw new Error("Missing required field: file_id");
+      if (!staffId) throw new Error("Missing required field: staffId");
+      const reason = (override_reason ?? "").trim();
+      if (!reason) throw new Error("Missing required field: override_reason");
+
+      const { data: file, error: fileError } = await supabase
+        .from("quote_files")
+        .select("id, quote_id, review_status, review_version")
+        .eq("id", file_id)
+        .single();
+      if (fileError || !file) throw new Error("File not found");
+
+      const previousStatus = file.review_status;
+
+      const { error: updateError } = await supabase
+        .from("quote_files")
+        .update({
+          review_status: "override_approved",
+          review_comment: reason,
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", file_id);
+      if (updateError) throw new Error("Failed to update file review status");
+
+      await supabase.from("file_review_history").insert({
+        file_id,
+        action: "override_approve",
+        actor_type: "staff",
+        actor_id: staffId,
+        comment: reason,
+        review_version: file.review_version,
+        previous_status: previousStatus,
+        new_status: "override_approved",
+      });
+
+      const { data: quote } = await supabase
+        .from("quotes")
+        .select("id")
+        .eq("id", file.quote_id)
+        .single();
+
+      let orderId: string | null = null;
+      if (quote) {
+        const { data: orderData } = await supabase
+          .from("orders")
+          .select("id, status")
+          .eq("quote_id", quote.id)
+          .single();
+        orderId = orderData?.id ?? null;
+        if (orderData && orderData.status === "draft_review") {
+          await supabase
+            .from("orders")
+            .update({ status: "in_production" })
+            .eq("id", orderData.id);
+        }
+      }
+
+      // Staff-attributed audit row — distinguishable from `draft_approved_on_behalf`.
+      await supabase.from("staff_activity_log").insert({
+        staff_id: staffId,
+        activity_type: "draft_override_approved",
+        entity_type: "quote_file",
+        entity_id: file_id,
+        details: {
+          order_id: orderId,
+          file_id,
+          action: "override_approve",
+          override_reason: reason,
+        },
+      });
+
+      let affidavitResult: { ok: boolean; status: number; body: any } | null = null;
+      if (orderId) {
+        affidavitResult = await triggerAffidavit(
+          SUPABASE_URL!,
+          SUPABASE_SERVICE_ROLE_KEY!,
+          orderId,
+          file_id,
+          "staff_override",
+        );
+      }
+
+      return jsonResponse({
+        success: true,
+        message: "Draft override-approved by staff",
+        review_status: "override_approved",
+        affidavit_triggered: affidavitResult?.ok ?? false,
+        affidavit: affidavitResult?.body ?? null,
       });
     }
 
