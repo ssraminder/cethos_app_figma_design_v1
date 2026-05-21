@@ -60,7 +60,7 @@ import {
   Link2,
   ChevronDown,
   ChevronRight,
-  ExternalLink,
+  ShieldCheck,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -487,6 +487,10 @@ export default function AdminOrderDetail() {
   // Admin approve/request changes on behalf of customer
   const [showApproveOnBehalfModal, setShowApproveOnBehalfModal] = useState<string | null>(null);
   const [showChangesOnBehalfModal, setShowChangesOnBehalfModal] = useState<string | null>(null);
+  // Staff override approve (Flow C — distinct from impersonation; requires reason)
+  const [showOverrideApproveModal, setShowOverrideApproveModal] = useState<string | null>(null);
+  const [overrideApproveReason, setOverrideApproveReason] = useState("");
+  const [processingOverrideApprove, setProcessingOverrideApprove] = useState(false);
   const [onBehalfComment, setOnBehalfComment] = useState("");
   const [processingOnBehalf, setProcessingOnBehalf] = useState(false);
 
@@ -999,6 +1003,59 @@ export default function AdminOrderDetail() {
       toast.error("Failed to submit change request");
     } finally {
       setProcessingOnBehalf(false);
+    }
+  };
+
+  // Staff override approve — bypasses customer entirely (Flow C).
+  // Distinct from `handleApproveOnBehalf` which is impersonation under
+  // the customer's identity.
+  const handleOverrideApprove = async (fileId: string) => {
+    if (!currentStaff?.staffId) return;
+    const reason = overrideApproveReason.trim();
+    if (!reason) {
+      toast.error("Override reason is required");
+      return;
+    }
+    setProcessingOverrideApprove(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            file_id: fileId,
+            action: "override_approve",
+            staffId: currentStaff.staffId,
+            override_reason: reason,
+          }),
+        }
+      );
+      const data = await response.json();
+      if (data.success) {
+        if (data.affidavit_triggered) {
+          toast.success("Draft override-approved; affidavit generated");
+        } else if (data.affidavit?.code === "AFFIDAVIT_TEMPLATE_MISSING") {
+          toast.warning("Approved, but no affidavit template configured for this language");
+        } else if (data.affidavit?.code === "ORDER_MISSING_CERTIFICATION_TYPE") {
+          toast.warning("Approved, but the order has no certification type set");
+        } else {
+          toast.success("Draft override-approved");
+        }
+        setShowOverrideApproveModal(null);
+        setOverrideApproveReason("");
+        await fetchOrderFiles();
+      } else {
+        toast.error(data.error || "Failed to override-approve");
+      }
+    } catch (err) {
+      console.error("Override approve error:", err);
+      toast.error("Failed to override-approve draft");
+    } finally {
+      setProcessingOverrideApprove(false);
     }
   };
 
@@ -3850,6 +3907,14 @@ export default function AdminOrderDetail() {
                                     <Send className="w-3 h-3" />
                                     Remind
                                   </button>
+                                  <button
+                                    onClick={() => setShowOverrideApproveModal(file.id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-teal-700 bg-teal-100 rounded-md hover:bg-teal-200 transition-colors"
+                                    title="Staff override approve — bypasses customer review"
+                                  >
+                                    <ShieldCheck className="w-3 h-3" />
+                                    Override
+                                  </button>
                                 </>
                               )}
                               {file.is_staff_created && (
@@ -5528,6 +5593,52 @@ export default function AdminOrderDetail() {
                 className="px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50"
               >
                 {processingOnBehalf ? "Processing..." : "Confirm Approval"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Override Approve Modal (Flow C) */}
+      {showOverrideApproveModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
+          onClick={() => !processingOverrideApprove && (setShowOverrideApproveModal(null), setOverrideApproveReason(""))}
+        >
+          <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-[500px] max-w-[90vw] p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-teal-700" />
+              Staff Override Approve
+            </h3>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-teal-50 border border-teal-200 text-sm text-teal-900 mb-3">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold mb-1">This bypasses customer review entirely.</p>
+                <p>The action is attributed to <strong>you</strong> in the audit log (not the customer). Use this only when timeline forces a unilateral call — for impersonation, use "View as customer" instead.</p>
+              </div>
+            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Override reason (required)</label>
+            <textarea
+              value={overrideApproveReason}
+              onChange={e => setOverrideApproveReason(e.target.value)}
+              placeholder="e.g. Customer unreachable for 48h; deadline forces unilateral approval per PM..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none mb-4"
+              rows={3}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setShowOverrideApproveModal(null); setOverrideApproveReason(""); }}
+                disabled={processingOverrideApprove}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleOverrideApprove(showOverrideApproveModal)}
+                disabled={processingOverrideApprove || !overrideApproveReason.trim()}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-teal-600 text-white hover:bg-teal-700 transition-colors disabled:opacity-50"
+              >
+                {processingOverrideApprove ? "Processing..." : "Confirm Override"}
               </button>
             </div>
           </div>
