@@ -2226,6 +2226,10 @@ interface WorkflowPipelineProps {
     findings_rejected: number;
     findings_pending: number;
   }>;
+  // Opens the Upload Final Deliverable modal in the parent page. Surfaced
+  // on the last workflow step once it's in_progress, so the PM doesn't have
+  // to scroll up to the Documents section to upload the signed certified PDF.
+  onUploadFinalDeliverable?: () => void;
 }
 
 function WorkflowPipeline({
@@ -2258,6 +2262,7 @@ function WorkflowPipeline({
   onRefresh,
   minMarginPercent = 30,
   qmByStep = {},
+  onUploadFinalDeliverable,
 }: WorkflowPipelineProps) {
   const [editDeadlineStepId, setEditDeadlineStepId] = useState<string | null>(null);
 
@@ -3775,6 +3780,27 @@ function WorkflowPipeline({
                     </button>
                   )}
 
+                  {/* Deliver to Customer: shown on the last step once it's
+                      in_progress (after the affidavit is auto-generated,
+                      step 3 lands here so the PM can print, certify, scan,
+                      then upload the signed PDF as the final deliverable
+                      via the existing Upload Final Deliverable modal). */}
+                  {step.status === "in_progress"
+                    && onUploadFinalDeliverable
+                    && step.step_number === Math.max(...steps.map(s => s.step_number)) && (
+                    <button
+                      type="button"
+                      className="text-xs px-3 py-1 rounded bg-teal-600 text-white hover:bg-teal-700 font-semibold"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUploadFinalDeliverable();
+                      }}
+                      title="Upload the signed/scanned certified PDF and email it to the customer"
+                    >
+                      ✉️ Deliver to Customer
+                    </button>
+                  )}
+
                   {/* Skip Step: optional + not terminal */}
                   {step.is_optional && !["approved", "skipped", "cancelled"].includes(step.status) && (
                     <button
@@ -4742,7 +4768,7 @@ function UnassignVendorModal({ isOpen, onClose, step, onConfirm }: UnassignVendo
 
 // ── Main Exported Section Component ──
 
-export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refreshKey }: { orderId: string; onWorkflowLoaded?: (data: any) => void; refreshKey?: number }) {
+export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refreshKey, onUploadFinalDeliverable }: { orderId: string; onWorkflowLoaded?: (data: any) => void; refreshKey?: number; onUploadFinalDeliverable?: () => void }) {
   const [data, setData] = useState<WorkflowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -5148,6 +5174,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
             onExtendDeadline={handleExtendDeadline}
             onAdjustPayable={handleAdjustPayable}
             onRefresh={fetchWorkflow}
+            onUploadFinalDeliverable={onUploadFinalDeliverable}
           />
           {data.steps.some(s => s.has_pending_counter) && (
             <div className="text-xs text-orange-600 mt-1">

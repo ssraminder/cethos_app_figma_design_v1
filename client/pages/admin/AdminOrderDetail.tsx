@@ -4242,7 +4242,17 @@ export default function AdminOrderDetail() {
 
           {/* Tab Content: Workflow (also renders when other tabs are active but hidden, to keep data loaded) */}
           <div className={activeMainTab !== "workflow" ? "hidden" : ""}>
-            {id && <OrderWorkflowSection orderId={id} onWorkflowLoaded={setWorkflowData} refreshKey={workflowRefreshKey} />}
+            {id && (
+              <OrderWorkflowSection
+                orderId={id}
+                onWorkflowLoaded={setWorkflowData}
+                refreshKey={workflowRefreshKey}
+                onUploadFinalDeliverable={() => {
+                  setUploadType("final");
+                  setShowUploadModal(true);
+                }}
+              />
+            )}
           </div>
         </div>
 
