@@ -35,7 +35,44 @@ function json(d: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(d), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 }
 
-const BUCKET = "quote-files";
+const STAFF_BUCKET = "quote-files";
+const VENDOR_BUCKET = "vendor-deliveries";
+
+// step_deliveries.file_paths is text[] but two writers store different shapes:
+//   - staff-deliver-step (admin): array of plain path strings, all in quote-files
+//   - vendor-deliver-step (vendor portal): array of JSON-stringified objects
+//     {storage_path, original_filename, file_size, mime_type}, in vendor-deliveries
+// Normalize both before consuming.
+type NormalizedFile = { storage_path: string; filename: string };
+function normalizeFilePaths(raw: unknown): NormalizedFile[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  const out: NormalizedFile[] = [];
+  for (const entry of arr) {
+    if (typeof entry === "string") {
+      const trimmed = entry.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed && typeof parsed === "object" && typeof parsed.storage_path === "string") {
+            out.push({
+              storage_path: parsed.storage_path,
+              filename: parsed.original_filename ?? parsed.storage_path.split("/").pop() ?? "delivery",
+            });
+            continue;
+          }
+        } catch { /* fall through and treat as plain string */ }
+      }
+      out.push({ storage_path: trimmed, filename: trimmed.split("/").pop() ?? "delivery" });
+    } else if (entry && typeof entry === "object" && typeof (entry as any).storage_path === "string") {
+      const obj = entry as any;
+      out.push({
+        storage_path: obj.storage_path,
+        filename: obj.original_filename ?? obj.storage_path.split("/").pop() ?? "delivery",
+      });
+    }
+  }
+  return out;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -49,7 +86,7 @@ serve(async (req) => {
     // Step + workflow + order_id (the workflow row holds the order link).
     const { data: step } = await sb
       .from("order_workflow_steps")
-      .select("id, order_id, workflow_id, name, final_delivery_id, order_workflows!workflow_id(order_id)")
+      .select("id, order_id, workflow_id, name, actor_type, final_delivery_id, order_workflows!workflow_id(order_id)")
       .eq("id", step_id)
       .maybeSingle();
     if (!step) return json({ error: "step not found" }, 404);
@@ -58,11 +95,13 @@ serve(async (req) => {
     if (!order_id) return json({ error: "step has no linked order" }, 400);
 
     // Resolve the delivery we'll watermark.
-    let delivery: { id: string; version: number; file_paths: string[] | null } | null = null;
+    let delivery:
+      | { id: string; version: number; file_paths: unknown; actor_type?: string | null }
+      | null = null;
     if (step.final_delivery_id) {
       const { data } = await sb
         .from("step_deliveries")
-        .select("id, version, file_paths")
+        .select("id, version, file_paths, actor_type")
         .eq("id", step.final_delivery_id)
         .maybeSingle();
       delivery = data as typeof delivery;
@@ -70,7 +109,7 @@ serve(async (req) => {
     if (!delivery) {
       const { data } = await sb
         .from("step_deliveries")
-        .select("id, version, file_paths")
+        .select("id, version, file_paths, actor_type")
         .eq("step_id", step_id)
         .order("version", { ascending: false })
         .limit(1)
@@ -79,10 +118,9 @@ serve(async (req) => {
     }
     if (!delivery) return json({ error: "no delivery on this step yet" }, 404);
 
-    const paths = Array.isArray(delivery.file_paths) ? delivery.file_paths : [];
-    if (paths.length === 0) return json({ error: "delivery has no files" }, 400);
-    const sourcePath = paths[0];
-    const sourceFilename = sourcePath.split("/").pop() ?? "delivery";
+    const files = normalizeFilePaths(delivery.file_paths);
+    if (files.length === 0) return json({ error: "delivery has no files" }, 400);
+    const { storage_path: sourcePath, filename: sourceFilename } = files[0];
     const ext = sourceFilename.split(".").pop()?.toLowerCase() ?? "";
     const isPdf = ext === "pdf";
     const isWord = ext === "docx" || ext === "doc";
@@ -90,8 +128,28 @@ serve(async (req) => {
       return json({ error: `unsupported extension: ${ext}. Only PDF + DOCX are supported.` }, 415);
     }
 
-    // Download + convert + watermark.
-    const { data: blob, error: downloadErr } = await sb.storage.from(BUCKET).download(sourcePath);
+    // Pick the right source bucket based on who delivered. Vendor uploads land
+    // in vendor-deliveries; staff uploads land in quote-files. Fall back to the
+    // other bucket if the primary lookup fails, so a future writer that misroutes
+    // doesn't break the flow silently.
+    const deliveryActorType = delivery.actor_type ?? (step as any).actor_type ?? null;
+    const primaryBucket = deliveryActorType === "external_vendor" ? VENDOR_BUCKET : STAFF_BUCKET;
+    const fallbackBucket = primaryBucket === STAFF_BUCKET ? VENDOR_BUCKET : STAFF_BUCKET;
+
+    let blob: Blob | null = null;
+    let downloadErr: { message: string } | null = null;
+    {
+      const r = await sb.storage.from(primaryBucket).download(sourcePath);
+      blob = r.data ?? null;
+      downloadErr = r.error as any;
+    }
+    if (!blob) {
+      const r2 = await sb.storage.from(fallbackBucket).download(sourcePath);
+      if (r2.data) {
+        blob = r2.data;
+        downloadErr = null;
+      }
+    }
     if (downloadErr || !blob) return json({ error: `download failed: ${downloadErr?.message || "empty"}` }, 500);
     const sourceBytes = new Uint8Array(await blob.arrayBuffer());
 
@@ -110,7 +168,7 @@ serve(async (req) => {
     const pdfFilename = `${baseName}-DRAFT.pdf`;
     const pdfStoragePath = `workflows/${order_id}/${step.id}/drafts/${ts}-${pdfFilename}`;
 
-    const { error: uploadErr } = await sb.storage.from(BUCKET).upload(pdfStoragePath, watermarked, {
+    const { error: uploadErr } = await sb.storage.from(STAFF_BUCKET).upload(pdfStoragePath, watermarked, {
       contentType: "application/pdf",
       upsert: false,
     });
@@ -124,7 +182,7 @@ serve(async (req) => {
       .eq("id", order_id)
       .maybeSingle();
     if (!order?.quote_id) {
-      try { await sb.storage.from(BUCKET).remove([pdfStoragePath]); } catch { /* swallow */ }
+      try { await sb.storage.from(STAFF_BUCKET).remove([pdfStoragePath]); } catch { /* swallow */ }
       return json({ error: "order has no quote_id; cannot create draft file" }, 400);
     }
 
@@ -134,7 +192,7 @@ serve(async (req) => {
       .eq("slug", "draft_translation")
       .maybeSingle();
     if (!cat?.id) {
-      try { await sb.storage.from(BUCKET).remove([pdfStoragePath]); } catch { /* swallow */ }
+      try { await sb.storage.from(STAFF_BUCKET).remove([pdfStoragePath]); } catch { /* swallow */ }
       return json({ error: "draft_translation file_category not found" }, 500);
     }
 
@@ -184,7 +242,7 @@ serve(async (req) => {
       .single();
 
     if (insertErr || !row) {
-      try { await sb.storage.from(BUCKET).remove([pdfStoragePath]); } catch { /* swallow */ }
+      try { await sb.storage.from(STAFF_BUCKET).remove([pdfStoragePath]); } catch { /* swallow */ }
       return json({ error: insertErr?.message ?? "quote_files insert failed" }, 500);
     }
 
