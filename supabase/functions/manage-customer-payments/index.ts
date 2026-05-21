@@ -310,12 +310,25 @@ serve(async (req: Request) => {
         if (!customer_id || !amount || !payment_date) {
           return jr({ error: "customer_id, amount, payment_date required" }, 400);
         }
+        // payment_method is NOT NULL on customer_payments — derive from code / name / id lookup.
+        let pmCode = payment_method_code || payment_method || null;
+        let pmName = payment_method_name || null;
+        if (payment_method_id && (!pmCode || !pmName)) {
+          const { data: pm } = await sb
+            .from("payment_methods")
+            .select("code, name")
+            .eq("id", payment_method_id)
+            .maybeSingle();
+          if (pm) { pmCode = pmCode || pm.code; pmName = pmName || pm.name; }
+        }
+        const pmLegacy = pmCode || pmName || "manual";
+
         const insert: Record<string, unknown> = {
           customer_id, amount, currency, payment_date,
           payment_method_id: payment_method_id || null,
-          payment_method: payment_method || null,
-          payment_method_name: payment_method_name || null,
-          payment_method_code: payment_method_code || null,
+          payment_method: pmLegacy,
+          payment_method_name: pmName,
+          payment_method_code: pmCode,
           reference_number: reference_number || null,
           notes: notes || null,
           source,
