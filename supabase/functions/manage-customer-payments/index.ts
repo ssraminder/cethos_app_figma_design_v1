@@ -63,7 +63,8 @@ serve(async (req: Request) => {
           .order("sort_order", { ascending: true, nullsFirst: false })
           .order("name");
         if (error) throw error;
-        return jr({ payment_methods: data || [] });
+        const list = data || [];
+        return jr({ payment_methods: list, methods: list });
       }
 
       // ─────────────────────────────────────────────────────────────────

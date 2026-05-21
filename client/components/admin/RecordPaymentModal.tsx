@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   X,
   Loader2,
@@ -8,6 +8,9 @@ import {
   ChevronUp,
   Zap,
   Info,
+  Upload,
+  Sparkles,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -78,6 +81,10 @@ export default function RecordPaymentModal({
   const [loadingInvoices, setLoadingInvoices] = useState(false);
   const [checkedInvoices, setCheckedInvoices] = useState<Record<string, boolean>>({});
   const [allocationAmounts, setAllocationAmounts] = useState<Record<string, string>>({});
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [paystubAnalyzing, setPaystubAnalyzing] = useState(false);
+  const [paystubResult, setPaystubResult] = useState<{ matched: number; unmatched: string[]; total: number } | null>(null);
+  const paystubInputRef = useRef<HTMLInputElement | null>(null);
   const [showAllocations, setShowAllocations] = useState(!!preselectedInvoiceId);
 
   // UI
@@ -284,6 +291,16 @@ export default function RecordPaymentModal({
   const totalAllocated = Object.entries(checkedInvoices)
     .filter(([, checked]) => checked)
     .reduce((sum, [id]) => sum + (parseFloat(allocationAmounts[id]) || 0), 0);
+
+  const filteredInvoices = useMemo(() => {
+    if (!invoiceSearch.trim()) return unpaidInvoices;
+    const q = invoiceSearch.trim().toLowerCase();
+    return unpaidInvoices.filter((i) =>
+      (i.invoice_number || "").toLowerCase().includes(q) ||
+      (i.po_number || "").toLowerCase().includes(q) ||
+      String(i.balance_due).includes(q),
+    );
+  }, [unpaidInvoices, invoiceSearch]);
 
   // For cross-currency: the effective payment amount is the invoice currency amount
   const paymentAmount = isCrossCurrency
@@ -717,19 +734,158 @@ export default function RecordPaymentModal({
                     </p>
                   ) : (
                     <>
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-xs text-gray-500">
-                          {unpaidInvoices.length} unpaid invoice(s)
+                          {invoiceSearch
+                            ? `${filteredInvoices.length} of ${unpaidInvoices.length} match`
+                            : `${unpaidInvoices.length} unpaid invoice(s)`}
                         </span>
-                        <button
-                          onClick={autoFill}
-                          disabled={!paymentAmount}
-                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded disabled:opacity-40"
-                        >
-                          <Zap className="w-3 h-3" />
-                          Auto-fill
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => paystubInputRef.current?.click()}
+                            disabled={paystubAnalyzing || !paymentAmount || !customerId}
+                            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded disabled:opacity-40"
+                            title="Upload a paystub PDF/image — Haiku will match invoice numbers"
+                          >
+                            {paystubAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                            {paystubAnalyzing ? "Analyzing…" : "Match from paystub"}
+                          </button>
+                          <input
+                            ref={paystubInputRef}
+                            type="file"
+                            accept="application/pdf,image/png,image/jpeg,image/webp"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!file) return;
+                              if (file.size > 5 * 1024 * 1024) {
+                                toast.error("File too large (5 MB max).");
+                                return;
+                              }
+                              setPaystubAnalyzing(true);
+                              setPaystubResult(null);
+                              try {
+                                const buf = await file.arrayBuffer();
+                                let bin = "";
+                                const arr = new Uint8Array(buf);
+                                for (let i = 0; i < arr.byteLength; i++) bin += String.fromCharCode(arr[i]);
+                                const b64 = btoa(bin);
+                                const token =
+                                  localStorage.getItem("sb-access-token") ||
+                                  import.meta.env.VITE_SUPABASE_ANON_KEY;
+                                const res = await fetch(
+                                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-paystub-allocate`,
+                                  {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                      Authorization: `Bearer ${token}`,
+                                    },
+                                    body: JSON.stringify({
+                                      customer_id: customerId,
+                                      payment_amount: paymentAmount,
+                                      currency: invoiceCurrency,
+                                      paystub_base64: b64,
+                                      paystub_mime_type: file.type,
+                                    }),
+                                  },
+                                );
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                                // Apply matches: check each + populate allocation amount
+                                const nextChecked: Record<string, boolean> = { ...checkedInvoices };
+                                const nextAmounts: Record<string, string> = { ...allocationAmounts };
+                                const matched: string[] = [];
+                                for (const m of (data.matches || []) as { invoice_id: string; amount: number }[]) {
+                                  const inv = unpaidInvoices.find((u) => u.id === m.invoice_id);
+                                  if (!inv) continue;
+                                  nextChecked[inv.id] = true;
+                                  nextAmounts[inv.id] = Math.min(m.amount, inv.balance_due).toFixed(2);
+                                  matched.push(inv.invoice_number);
+                                }
+                                setCheckedInvoices(nextChecked);
+                                setAllocationAmounts(nextAmounts);
+                                setPaystubResult({
+                                  matched: matched.length,
+                                  unmatched: data.unmatched || [],
+                                  total: data.total_in_paystub ?? 0,
+                                });
+                                if (matched.length > 0) {
+                                  toast.success(`AI matched ${matched.length} invoice(s).`);
+                                } else {
+                                  toast.warning("AI couldn't match any invoices on the paystub.");
+                                }
+                              } catch (err: any) {
+                                toast.error(err.message || "Paystub analysis failed");
+                              } finally {
+                                setPaystubAnalyzing(false);
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={() => {
+                              const next: Record<string, boolean> = { ...checkedInvoices };
+                              const visibleIds = filteredInvoices.map((i) => i.id);
+                              const allChecked = visibleIds.every((id) => next[id]);
+                              for (const id of visibleIds) next[id] = !allChecked;
+                              setCheckedInvoices(next);
+                              if (!allChecked) {
+                                const nextAmts = { ...allocationAmounts };
+                                for (const inv of filteredInvoices) {
+                                  if (!nextAmts[inv.id]) nextAmts[inv.id] = inv.balance_due.toFixed(2);
+                                }
+                                setAllocationAmounts(nextAmts);
+                              }
+                            }}
+                            className="px-2 py-1 text-xs font-medium text-gray-700 border border-gray-300 hover:bg-gray-50 rounded"
+                          >
+                            {filteredInvoices.length > 0 && filteredInvoices.every((i) => checkedInvoices[i.id])
+                              ? "Deselect all"
+                              : "Select all"}
+                          </button>
+                          <button
+                            onClick={autoFill}
+                            disabled={!paymentAmount}
+                            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded disabled:opacity-40"
+                          >
+                            <Zap className="w-3 h-3" />
+                            Auto-fill
+                          </button>
+                        </div>
                       </div>
+
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                        <input
+                          type="text"
+                          value={invoiceSearch}
+                          onChange={(e) => setInvoiceSearch(e.target.value)}
+                          placeholder="Filter invoice #, PO, or amount"
+                          className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+
+                      {paystubResult && (
+                        <div className="flex items-start gap-2 text-xs bg-purple-50 border border-purple-200 rounded-md px-2 py-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-purple-600 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 text-purple-800">
+                            Paystub total: <strong>{formatCurrency(paystubResult.total)}</strong>.
+                            Matched <strong>{paystubResult.matched}</strong> invoice(s).
+                            {paystubResult.unmatched.length > 0 && (
+                              <span className="ml-1 text-purple-700">
+                                Unmatched: {paystubResult.unmatched.join(", ")}
+                              </span>
+                            )}
+                            {Math.abs(paystubResult.total - paymentAmount) > 0.01 && (
+                              <span className="ml-1 inline-flex items-center gap-1 text-amber-700">
+                                <AlertCircle className="w-3 h-3" />
+                                Total differs from payment amount.
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="border border-gray-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto">
                         <table className="w-full text-xs">
@@ -751,7 +907,7 @@ export default function RecordPaymentModal({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {unpaidInvoices.map((inv) => (
+                            {filteredInvoices.map((inv) => (
                               <tr
                                 key={inv.id}
                                 className="hover:bg-gray-50"
