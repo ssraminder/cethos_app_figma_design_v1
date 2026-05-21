@@ -40,6 +40,7 @@ import CustomerFilesTab from "@/components/admin/CustomerFilesTab";
 import CustomerCallsTab from "@/components/admin/CustomerCallsTab";
 import CustomerConversationTab from "@/components/admin/CustomerConversationTab";
 import CustomerInvoicesTab from "@/components/admin/CustomerInvoicesTab";
+import CustomerPaymentsTab from "@/components/admin/CustomerPaymentsTab";
 import EmailLogAccordion from "@/components/admin/EmailLogAccordion";
 
 interface Customer {
@@ -1929,93 +1930,8 @@ export default function CustomerDetail() {
           )}
 
           {/* Payments Tab */}
-          {activeTab === "payments" && (
-            <div className="overflow-x-auto">
-              {payments.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <CreditCard className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                  <p>No payments found for this customer</p>
-                </div>
-              ) : (
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Order
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                        Amount
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Type
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Status
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Date
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-16">
-                        Receipt
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {payments.map((payment) => (
-                      <tr key={payment.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <Link
-                            to={`/admin/orders/${payment.order_id}`}
-                            className="text-sm font-semibold text-gray-900 font-mono hover:text-teal-600"
-                          >
-                            {payment.order_number}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span
-                            className={`text-sm font-semibold tabular-nums ${
-                              payment.payment_type === "refund"
-                                ? "text-red-600"
-                                : "text-gray-900"
-                            }`}
-                          >
-                            {payment.payment_type === "refund" ? "-" : ""}$
-                            {payment.amount.toFixed(2)}
-                          </span>
-                          <p className="text-xs text-gray-500">{payment.currency}</p>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 capitalize">
-                          {payment.payment_type}
-                        </td>
-                        <td className="px-4 py-3">
-                          <PaymentStatusBadge status={payment.status} />
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="text-sm text-gray-700">
-                            {format(parseISO(payment.created_at), "MMM d, yyyy")}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {format(parseISO(payment.created_at), "h:mm a")}
-                          </p>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {payment.receipt_url && (
-                            <a
-                              href={payment.receipt_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-sm text-teal-600 hover:text-teal-700"
-                            >
-                              <ArrowUpRight className="w-4 h-4" />
-                            </a>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+          {activeTab === "payments" && id && (
+            <CustomerPaymentsTab customerId={id} />
           )}
 
           {/* Files Tab */}
