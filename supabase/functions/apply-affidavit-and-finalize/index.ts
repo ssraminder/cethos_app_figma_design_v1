@@ -359,9 +359,12 @@ serve(async (req: Request) => {
       step3DeliveryId = deliveryRow?.id ?? null;
       if (deliveryErr) console.error("[apply-affidavit] step_deliveries insert error:", deliveryErr);
 
-      // Advance step 3 → completed.
+      // Advance step 3 → approved (the terminal state per
+      // order_workflow_steps_status_check). Earlier draft used "completed"
+      // which the CHECK constraint rejects — caught during the 2026-05-21
+      // e2e smoke test.
       const updatePayload: Record<string, unknown> = {
-        status: "completed",
+        status: "approved",
         delivered_at: new Date().toISOString(),
         approved_at: new Date().toISOString(),
         delivered_file_paths: [storagePath],
@@ -370,31 +373,23 @@ serve(async (req: Request) => {
         updatePayload.final_delivery_id = step3DeliveryId;
         updatePayload.final_marked_at = new Date().toISOString();
       }
-      await sb.from("order_workflow_steps").update(updatePayload).eq("id", step3.id);
+      const { error: stepUpdateErr } = await sb
+        .from("order_workflow_steps")
+        .update(updatePayload)
+        .eq("id", step3.id);
+      if (stepUpdateErr) console.error("[apply-affidavit] step3 update error:", stepUpdateErr);
     }
 
-    // --------------------------------------------------------------------
-    // 9. Activity log
-    // --------------------------------------------------------------------
-    try {
-      await sb.from("staff_activity_log").insert({
-        activity_type: "affidavit_generated",
-        entity_type: "order",
-        entity_id: order_id,
-        details: {
-          quote_file_id: certifiedRow.id,
-          source_quote_file_id: quote_file_id,
-          step3_step_id: step3?.id ?? null,
-          step3_delivery_id: step3DeliveryId,
-          certification_code: cert.code,
-          language_mode: languageMode,
-          triggered_by,
-          override_used: !!override_affidavit_text || !!override_field_values,
-        },
-      });
-    } catch (e) {
-      console.error("[apply-affidavit] activity_log insert failed:", e);
-    }
+    // No staff_activity_log insert here. `staff_activity_log.staff_id` is
+    // NOT NULL and this function runs without staff context (it's invoked
+    // server-side from review-draft-file). The audit trail is already
+    // covered by:
+    //   - the affidavit `quote_files` row (rendered_affidavit_text,
+    //     document_holder_name, source_step_delivery_id, staff_notes)
+    //   - the `step_deliveries` row on step 3 (delivered_by_name +
+    //     triggered_by + cert code in notes)
+    //   - the staff-side row in review-draft-file (action_type=
+    //     'draft_override_approved' or, for Flow A, the customer file_review_history row)
 
     return json({
       success: true,
