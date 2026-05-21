@@ -60,6 +60,7 @@ import {
   Link2,
   ChevronDown,
   ChevronRight,
+  ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -347,6 +348,35 @@ export default function AdminOrderDetail() {
   // XTRF Invoice creation state
   const [creatingXtrfInvoice, setCreatingXtrfInvoice] = useState(false);
   const [xtrfInvoiceMessage, setXtrfInvoiceMessage] = useState<{ type: 'success' | 'warning' | 'error' | 'info'; text: string } | null>(null);
+
+  // "View as customer" — mints a 30-min customer_sessions row tagged
+  // is_impersonation=true, then opens /dashboard with the raw token
+  // in the URL. CustomerAuthContext picks it up and shows a red
+  // banner. Mirrors handleImpersonate on VendorDetailHeader.
+  const [impersonating, setImpersonating] = useState(false);
+  const handleViewAsCustomer = async () => {
+    if (!order?.customer_id) {
+      toast.error("This order has no linked customer.");
+      return;
+    }
+    setImpersonating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "admin-impersonate-customer",
+        { body: { action: "start", customer_id: order.customer_id } },
+      );
+      if (error) throw error;
+      if (!data?.token) throw new Error("No token returned");
+      const url = `/dashboard?impersonate_token=${encodeURIComponent(data.token)}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+      toast.success(
+        `Opened customer portal as ${order.customer?.full_name || order.customer?.email}`,
+      );
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to start impersonation");
+    }
+    setImpersonating(false);
+  };
   const [refreshingXtrfInvoice, setRefreshingXtrfInvoice] = useState(false);
   const [xtrfRefreshMessage, setXtrfRefreshMessage] = useState<string | null>(null);
 
@@ -3186,10 +3216,23 @@ export default function AdminOrderDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <User className="w-5 h-5 text-gray-400" />
-              Customer Information
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <User className="w-5 h-5 text-gray-400" />
+                Customer Information
+              </h2>
+              {order.customer_id && (
+                <button
+                  onClick={handleViewAsCustomer}
+                  disabled={impersonating}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-md transition-colors disabled:opacity-60"
+                  title="Open the customer portal as this customer (30 min)"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  {impersonating ? "Opening…" : "View as customer"}
+                </button>
+              )}
+            </div>
 
             {order.customer ? (
               <div className="grid grid-cols-2 gap-4">
