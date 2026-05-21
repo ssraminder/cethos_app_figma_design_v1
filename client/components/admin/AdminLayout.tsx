@@ -220,6 +220,13 @@ const NAV_ITEMS: NavItem[] = [
     isChild: true,
   },
   {
+    label: "Vendor Payments",
+    path: "/admin/vendor-payments",
+    icon: DollarSign,
+    section: "Finance",
+    isChild: true,
+  },
+  {
     label: "Vendor Invoices",
     path: "/admin/invoices/vendor",
     icon: FileSpreadsheet,
