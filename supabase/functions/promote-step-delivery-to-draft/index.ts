@@ -148,6 +148,17 @@ serve(async (req) => {
     const nextVersion =
       (existingDrafts ?? []).reduce((m: number, r: any) => Math.max(m, r.review_version ?? 0), 0) + 1;
 
+    // Supersede any prior pending_review draft on this quote — review-draft-file
+    // lists EVERY pending_review row on the quote when sending the customer email,
+    // so leaving older versions pending causes duplicate rows in the email.
+    await sb
+      .from("quote_files")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("quote_id", order.quote_id)
+      .eq("file_category_id", cat.id)
+      .eq("review_status", "pending_review")
+      .is("deleted_at", null);
+
     const { data: row, error: insertErr } = await sb
       .from("quote_files")
       .insert({
