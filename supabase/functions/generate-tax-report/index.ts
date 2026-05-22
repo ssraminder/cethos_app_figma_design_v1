@@ -358,7 +358,197 @@ serve(async (req: Request) => {
       });
     }
 
-    if (action === "vendor_summary" || action === "vendor_detail" || action === "gst_return") {
+    if (action === "vendor_summary" || action === "vendor_detail") {
+      if (!dateFrom || !dateTo) {
+        return jr({ error: "date_from and date_to are required" }, 400);
+      }
+
+      // Pull from v_vendor_invoices_tax view (combines XTRF cache + portal payables
+      // with proper CAD tax computation). Page through since view rows can exceed 1000.
+      const PAGE = 1000;
+      type VendorRow = {
+        source_id: string;
+        source: string;
+        invoice_number: string | null;
+        vendor_name: string | null;
+        invoice_date: string | null;
+        paid_at: string | null;
+        status: string | null;
+        payment_status: string | null;
+        branch_id: number | null;
+        branch_text: string | null;
+        subtotal_native: number | null;
+        tax_native: number | null;
+        gross_native: number | null;
+        subtotal_cad: number | null;
+        tax_cad: number | null;
+      };
+      const all: VendorRow[] = [];
+      let off = 0;
+      while (true) {
+        let q = sb
+          .from("v_vendor_invoices_tax")
+          .select(
+            "source_id, source, invoice_number, vendor_name, invoice_date, paid_at, status, payment_status, branch_id, branch_text, subtotal_native, tax_native, gross_native, subtotal_cad, tax_cad",
+          );
+        if (basis === "cash") {
+          q = q.gte("paid_at", dateFrom).lte("paid_at", dateTo);
+        } else {
+          q = q.gte("invoice_date", dateFrom).lte("invoice_date", dateTo);
+        }
+        if (branchIds && branchIds.length > 0) {
+          q = q.in("branch_id", branchIds);
+        }
+        q = q.order("invoice_date", { ascending: true }).range(off, off + PAGE - 1);
+        const { data, error } = await q;
+        if (error) throw error;
+        const rows = (data || []) as VendorRow[];
+        all.push(...rows);
+        if (rows.length < PAGE) break;
+        off += PAGE;
+      }
+
+      // Exclude cancelled invoices
+      const live = all.filter((r) => {
+        const s = (r.status || "").toUpperCase();
+        return s !== "CANCELLED" && s !== "CANCELED";
+      });
+
+      // Resolve branch names in one batched lookup
+      const branchIdSet = Array.from(
+        new Set(live.map((r) => r.branch_id).filter((x): x is number => x != null)),
+      );
+      let branches: Record<number, BranchLite> = {};
+      if (branchIdSet.length) {
+        const { data } = await sb
+          .from("branches")
+          .select("id, code, legal_name")
+          .in("id", branchIdSet);
+        for (const b of (data as BranchLite[] | null) || []) branches[b.id] = b;
+      }
+      const branchName = (id: number | null, fallback: string | null): string =>
+        (id != null && branches[id]?.legal_name) || fallback || "(unassigned)";
+
+      // Optional vendor-name search
+      const filtered = live.filter((r) => {
+        if (search) {
+          const name = (r.vendor_name || "").toLowerCase();
+          if (!name.includes(search)) return false;
+        }
+        return true;
+      });
+
+      if (action === "vendor_detail") {
+        const rows = filtered.map((r) => ({
+          source: r.source,
+          invoice_number: r.invoice_number,
+          invoice_date: r.invoice_date,
+          paid_at: r.paid_at,
+          status: r.status,
+          payment_status: r.payment_status,
+          branch_id: r.branch_id,
+          branch_name: branchName(r.branch_id, r.branch_text),
+          vendor_name: r.vendor_name || "(unknown)",
+          subtotal_native: num(r.subtotal_native),
+          tax_native: num(r.tax_native),
+          gross_native: num(r.gross_native),
+          subtotal_cad: num(r.subtotal_cad),
+          tax_cad: num(r.tax_cad),
+          gross_cad: num(r.subtotal_cad) + num(r.tax_cad),
+        }));
+        return jr({
+          rows,
+          total_count: rows.length,
+          filter_snapshot: { branch_ids: branchIds, date_from: dateFrom, date_to: dateTo, basis, search },
+        });
+      }
+
+      // vendor_summary — group by branch × vendor
+      type VBucket = {
+        branch_id: number | null;
+        branch_name: string;
+        vendor_name: string;
+        invoices: number;
+        subtotal_cad: number;
+        itc_cad: number;
+        gross_cad: number;
+      };
+      const vbuckets = new Map<string, VBucket>();
+      for (const r of filtered) {
+        const bname = branchName(r.branch_id, r.branch_text);
+        const vname = r.vendor_name || "(unknown)";
+        const key = `${r.branch_id ?? "x"}::${vname}`;
+        let b = vbuckets.get(key);
+        if (!b) {
+          b = {
+            branch_id: r.branch_id,
+            branch_name: bname,
+            vendor_name: vname,
+            invoices: 0,
+            subtotal_cad: 0,
+            itc_cad: 0,
+            gross_cad: 0,
+          };
+          vbuckets.set(key, b);
+        }
+        b.invoices += 1;
+        b.subtotal_cad += num(r.subtotal_cad);
+        b.itc_cad += num(r.tax_cad);
+        b.gross_cad += num(r.subtotal_cad) + num(r.tax_cad);
+      }
+      const vrows = Array.from(vbuckets.values()).map((b) => ({
+        ...b,
+        subtotal_cad: rnd2(b.subtotal_cad),
+        itc_cad: rnd2(b.itc_cad),
+        gross_cad: rnd2(b.gross_cad),
+      }));
+      vrows.sort((a, b) => {
+        const bn = a.branch_name.localeCompare(b.branch_name);
+        if (bn !== 0) return bn;
+        return b.itc_cad - a.itc_cad;
+      });
+
+      const vBranchTotals = new Map<number | string, { branch_name: string; invoices: number; subtotal_cad: number; itc_cad: number; gross_cad: number }>();
+      for (const r of vrows) {
+        const key = r.branch_id ?? "unassigned";
+        let t = vBranchTotals.get(key);
+        if (!t) t = { branch_name: r.branch_name, invoices: 0, subtotal_cad: 0, itc_cad: 0, gross_cad: 0 };
+        t.invoices += r.invoices;
+        t.subtotal_cad += r.subtotal_cad;
+        t.itc_cad += r.itc_cad;
+        t.gross_cad += r.gross_cad;
+        vBranchTotals.set(key, t);
+      }
+      const vTotalsByBranch = Array.from(vBranchTotals.values()).map((t) => ({
+        branch_name: t.branch_name,
+        invoices: t.invoices,
+        subtotal_cad: rnd2(t.subtotal_cad),
+        itc_cad: rnd2(t.itc_cad),
+        gross_cad: rnd2(t.gross_cad),
+      }));
+      const vGrand = vrows.reduce(
+        (acc, r) => ({
+          invoices: acc.invoices + r.invoices,
+          subtotal_cad: acc.subtotal_cad + r.subtotal_cad,
+          itc_cad: acc.itc_cad + r.itc_cad,
+          gross_cad: acc.gross_cad + r.gross_cad,
+        }),
+        { invoices: 0, subtotal_cad: 0, itc_cad: 0, gross_cad: 0 },
+      );
+      return jr({
+        rows: vrows,
+        totals_by_branch: vTotalsByBranch,
+        grand_total: {
+          invoices: vGrand.invoices,
+          subtotal_cad: rnd2(vGrand.subtotal_cad),
+          itc_cad: rnd2(vGrand.itc_cad),
+          gross_cad: rnd2(vGrand.gross_cad),
+        },
+        filter_snapshot: { branch_ids: branchIds, date_from: dateFrom, date_to: dateTo, basis, search },
+      });
+    }
+
+    if (action === "gst_return") {
       return jr({ error: `${action} not yet implemented — coming in next PR` }, 501);
     }
 
