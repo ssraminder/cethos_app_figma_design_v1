@@ -101,6 +101,7 @@ import PaymentDetail from "./pages/admin/PaymentDetail";
 import VendorPaymentsList from "./pages/admin/VendorPaymentsList";
 import AccountsPayable from "./pages/admin/AccountsPayable";
 import ARAgingReport from "./pages/admin/ARAgingReport";
+import AdminTaxReports from "./pages/admin/AdminTaxReports";
 import AdminVendorsList from "./pages/admin/AdminVendorsList";
 import AdminIsoQuizzes from "./pages/admin/AdminIsoQuizzes";
 import AdminVendorDetail from "./pages/admin/AdminVendorDetail";
@@ -436,6 +437,7 @@ const App = () => (
                     <Route path="payments/:id" element={<PaymentDetail />} />
                     <Route path="exchange-rates" element={<ExchangeRates />} />
                     <Route path="reports/aging" element={<ARAgingReport />} />
+                    <Route path="reports/tax" element={<AdminTaxReports />} />
                     <Route path="invoices/vendor" element={<VendorInvoices />} />
                     <Route path="invoices/customer" element={<CustomerInvoices />} />
                     <Route path="invoices/create" element={<CreateInvoice />} />
