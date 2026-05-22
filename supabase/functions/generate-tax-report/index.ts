@@ -185,12 +185,16 @@ serve(async (req: Request) => {
         new Set(invoices.map((r) => r.invoicing_branch_id).filter((x): x is number => x != null)),
       );
 
+      // Batch the customers lookup — PostgREST URL truncates silently past
+      // ~200 UUIDs. See feedback_postgrest_url_length_dedup.
       let customers: Record<string, CustomerLite> = {};
-      if (customerIds.length) {
+      const CHUNK = 200;
+      for (let i = 0; i < customerIds.length; i += CHUNK) {
+        const slice = customerIds.slice(i, i + CHUNK);
         const { data } = await sb
           .from("customers")
           .select("id, full_name, company_name, is_tax_exempt, billing_country")
-          .in("id", customerIds);
+          .in("id", slice);
         for (const c of (data as CustomerLite[] | null) || []) customers[c.id] = c;
       }
 
