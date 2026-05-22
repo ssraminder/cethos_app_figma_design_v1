@@ -280,6 +280,13 @@ const NAV_ITEMS: NavItem[] = [
     isChild: true,
   },
   {
+    label: "Tax Reports",
+    path: "/admin/reports/tax",
+    icon: BarChart3,
+    section: "Reports",
+    isChild: true,
+  },
+  {
     label: "Settings",
     path: "/admin/settings",
     icon: Settings,
