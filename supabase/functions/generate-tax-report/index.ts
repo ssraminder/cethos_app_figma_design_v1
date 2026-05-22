@@ -467,60 +467,76 @@ serve(async (req: Request) => {
         });
       }
 
-      // vendor_summary — group by branch × vendor
+      // vendor_summary — group by vendor (XTRF has no real per-vendor-per-branch
+      // attribution, so vendor is the primary axis). branch_breakdown carried as a
+      // nested object on each vendor for drill-down purposes only.
       type VBucket = {
-        branch_id: number | null;
-        branch_name: string;
         vendor_name: string;
         invoices: number;
         subtotal_cad: number;
         itc_cad: number;
         gross_cad: number;
+        branches: Record<string, { branch_name: string; itc_cad: number; subtotal_cad: number; invoices: number }>;
       };
       const vbuckets = new Map<string, VBucket>();
       for (const r of filtered) {
-        const bname = branchName(r.branch_id, r.branch_text);
         const vname = r.vendor_name || "(unknown)";
-        const key = `${r.branch_id ?? "x"}::${vname}`;
-        let b = vbuckets.get(key);
+        const bname = branchName(r.branch_id, r.branch_text);
+        let b = vbuckets.get(vname);
         if (!b) {
           b = {
-            branch_id: r.branch_id,
-            branch_name: bname,
             vendor_name: vname,
             invoices: 0,
             subtotal_cad: 0,
             itc_cad: 0,
             gross_cad: 0,
+            branches: {},
           };
-          vbuckets.set(key, b);
+          vbuckets.set(vname, b);
         }
         b.invoices += 1;
         b.subtotal_cad += num(r.subtotal_cad);
         b.itc_cad += num(r.tax_cad);
         b.gross_cad += num(r.subtotal_cad) + num(r.tax_cad);
+        const bb = b.branches[bname] || { branch_name: bname, itc_cad: 0, subtotal_cad: 0, invoices: 0 };
+        bb.itc_cad += num(r.tax_cad);
+        bb.subtotal_cad += num(r.subtotal_cad);
+        bb.invoices += 1;
+        b.branches[bname] = bb;
       }
       const vrows = Array.from(vbuckets.values()).map((b) => ({
-        ...b,
+        vendor_name: b.vendor_name,
+        invoices: b.invoices,
         subtotal_cad: rnd2(b.subtotal_cad),
         itc_cad: rnd2(b.itc_cad),
         gross_cad: rnd2(b.gross_cad),
+        branches: Object.values(b.branches).map((x) => ({
+          branch_name: x.branch_name,
+          invoices: x.invoices,
+          subtotal_cad: rnd2(x.subtotal_cad),
+          itc_cad: rnd2(x.itc_cad),
+        })).sort((a, b) => b.itc_cad - a.itc_cad),
       }));
+      // Sort: ITC-paying vendors first (descending ITC), then zero-GST vendors
+      // (descending subtotal). Frontend uses itc_cad === 0 to bucket into the
+      // collapsed accordion.
       vrows.sort((a, b) => {
-        const bn = a.branch_name.localeCompare(b.branch_name);
-        if (bn !== 0) return bn;
-        return b.itc_cad - a.itc_cad;
+        if ((a.itc_cad > 0) !== (b.itc_cad > 0)) return a.itc_cad > 0 ? -1 : 1;
+        if (a.itc_cad !== b.itc_cad) return b.itc_cad - a.itc_cad;
+        return b.subtotal_cad - a.subtotal_cad;
       });
 
+      // Also include a per-branch totals view for the rollup card.
       const vBranchTotals = new Map<number | string, { branch_name: string; invoices: number; subtotal_cad: number; itc_cad: number; gross_cad: number }>();
-      for (const r of vrows) {
-        const key = r.branch_id ?? "unassigned";
+      for (const r of filtered) {
+        const bname = branchName(r.branch_id, r.branch_text);
+        const key = r.branch_id ?? `__${bname}`;
         let t = vBranchTotals.get(key);
-        if (!t) t = { branch_name: r.branch_name, invoices: 0, subtotal_cad: 0, itc_cad: 0, gross_cad: 0 };
-        t.invoices += r.invoices;
-        t.subtotal_cad += r.subtotal_cad;
-        t.itc_cad += r.itc_cad;
-        t.gross_cad += r.gross_cad;
+        if (!t) t = { branch_name: bname, invoices: 0, subtotal_cad: 0, itc_cad: 0, gross_cad: 0 };
+        t.invoices += 1;
+        t.subtotal_cad += num(r.subtotal_cad);
+        t.itc_cad += num(r.tax_cad);
+        t.gross_cad += num(r.subtotal_cad) + num(r.tax_cad);
         vBranchTotals.set(key, t);
       }
       const vTotalsByBranch = Array.from(vBranchTotals.values()).map((t) => ({
@@ -529,15 +545,18 @@ serve(async (req: Request) => {
         subtotal_cad: rnd2(t.subtotal_cad),
         itc_cad: rnd2(t.itc_cad),
         gross_cad: rnd2(t.gross_cad),
-      }));
+      })).sort((a, b) => b.itc_cad - a.itc_cad);
+
       const vGrand = vrows.reduce(
         (acc, r) => ({
           invoices: acc.invoices + r.invoices,
           subtotal_cad: acc.subtotal_cad + r.subtotal_cad,
           itc_cad: acc.itc_cad + r.itc_cad,
           gross_cad: acc.gross_cad + r.gross_cad,
+          itc_vendors: acc.itc_vendors + (r.itc_cad > 0 ? 1 : 0),
+          zero_vendors: acc.zero_vendors + (r.itc_cad <= 0 ? 1 : 0),
         }),
-        { invoices: 0, subtotal_cad: 0, itc_cad: 0, gross_cad: 0 },
+        { invoices: 0, subtotal_cad: 0, itc_cad: 0, gross_cad: 0, itc_vendors: 0, zero_vendors: 0 },
       );
       return jr({
         rows: vrows,
@@ -547,6 +566,8 @@ serve(async (req: Request) => {
           subtotal_cad: rnd2(vGrand.subtotal_cad),
           itc_cad: rnd2(vGrand.itc_cad),
           gross_cad: rnd2(vGrand.gross_cad),
+          itc_vendor_count: vGrand.itc_vendors,
+          zero_vendor_count: vGrand.zero_vendors,
         },
         filter_snapshot: { branch_ids: branchIds, date_from: dateFrom, date_to: dateTo, basis, search },
       });

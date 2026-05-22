@@ -10,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { callPaymentApi, formatCurrency } from "@/lib/payment-api";
+import { downloadXlsx, filterSnapshotSheet } from "@/lib/xlsx-export";
 import GstReturnView from "@/components/admin/GstReturnView";
 
 type View = "customer" | "vendor" | "gst-return";
@@ -45,14 +46,20 @@ interface BranchTotal {
   gross_cad: number;
 }
 
-interface VendorRow {
-  branch_id: number | null;
+interface VendorBranchSplit {
   branch_name: string;
+  invoices: number;
+  subtotal_cad: number;
+  itc_cad: number;
+}
+
+interface VendorRow {
   vendor_name: string;
   invoices: number;
   subtotal_cad: number;
   itc_cad: number;
   gross_cad: number;
+  branches: VendorBranchSplit[];
 }
 
 interface VendorBranchTotal {
@@ -68,6 +75,8 @@ interface VendorGrand {
   subtotal_cad: number;
   itc_cad: number;
   gross_cad: number;
+  itc_vendor_count?: number;
+  zero_vendor_count?: number;
 }
 
 interface GrandTotal {
@@ -302,6 +311,16 @@ export default function AdminTaxReports() {
     );
   };
 
+  const filterCtx = (extra: Record<string, unknown> = {}) => ({
+    date_from: dateFrom,
+    date_to: dateTo,
+    basis,
+    branches: selectedBranchIds.join(","),
+    statuses: statuses.join(","),
+    search,
+    ...extra,
+  });
+
   const exportSummaryCsv = () => {
     const header = [
       "Branch",
@@ -322,41 +341,54 @@ export default function AdminTaxReports() {
       r.is_tax_exempt ? "Yes" : "No",
       r.currency,
       r.invoices,
-      r.subtotal_native.toFixed(2),
-      r.tax_native.toFixed(2),
-      r.gross_native.toFixed(2),
-      r.subtotal_cad.toFixed(2),
-      r.tax_cad.toFixed(2),
-      r.gross_cad.toFixed(2),
+      r.subtotal_native,
+      r.tax_native,
+      r.gross_native,
+      r.subtotal_cad,
+      r.tax_cad,
+      r.gross_cad,
     ]);
-    downloadCsv(
-      `customer-tax-${dateFrom}-to-${dateTo}.csv`,
-      [header, ...data],
-    );
+    downloadXlsx(`customer-tax-${dateFrom}-to-${dateTo}.xlsx`, [
+      { name: "Summary", rows: [header, ...data], colWidths: [26, 32, 10, 8, 10, 14, 14, 14, 14, 12, 14] },
+      filterSnapshotSheet(filterCtx()),
+    ]);
   };
 
   const exportVendorSummaryCsv = () => {
+    const filtered = !search
+      ? vendorRows
+      : vendorRows.filter((r) =>
+          r.vendor_name.toLowerCase().includes(search.toLowerCase()),
+        );
     const header = [
-      "Branch",
       "Vendor",
       "Invoices",
       "Subtotal CAD",
       "ITC CAD",
       "Gross CAD",
+      "Attributed branches",
     ];
-    const data = vendorRows
-      .filter((r) =>
-        !search ? true : r.vendor_name.toLowerCase().includes(search.toLowerCase()),
-      )
-      .map((r) => [
-        r.branch_name,
-        r.vendor_name,
-        r.invoices,
-        r.subtotal_cad.toFixed(2),
-        r.itc_cad.toFixed(2),
-        r.gross_cad.toFixed(2),
-      ]);
-    downloadCsv(`vendor-tax-${dateFrom}-to-${dateTo}.csv`, [header, ...data]);
+    const itcRows = filtered.filter((r) => r.itc_cad > 0).map((r) => [
+      r.vendor_name,
+      r.invoices,
+      r.subtotal_cad,
+      r.itc_cad,
+      r.gross_cad,
+      (r.branches || []).map((b) => `${b.branch_name} (${b.invoices})`).join("; "),
+    ]);
+    const zeroRows = filtered.filter((r) => r.itc_cad <= 0).map((r) => [
+      r.vendor_name,
+      r.invoices,
+      r.subtotal_cad,
+      r.itc_cad,
+      r.gross_cad,
+      (r.branches || []).map((b) => `${b.branch_name} (${b.invoices})`).join("; "),
+    ]);
+    downloadXlsx(`vendor-tax-${dateFrom}-to-${dateTo}.xlsx`, [
+      { name: "Vendors with GST", rows: [header, ...itcRows], colWidths: [40, 10, 14, 14, 14, 40] },
+      { name: "Zero-GST vendors", rows: [header, ...zeroRows], colWidths: [40, 10, 14, 14, 14, 40] },
+      filterSnapshotSheet(filterCtx()),
+    ]);
   };
 
   const exportVendorDetailCsv = async () => {
@@ -390,14 +422,14 @@ export default function AdminTaxReports() {
         x.invoice_date,
         x.status,
         x.payment_status,
-        Number(x.subtotal_cad ?? 0).toFixed(2),
-        Number(x.tax_cad ?? 0).toFixed(2),
-        Number(x.gross_cad ?? 0).toFixed(2),
+        Number(x.subtotal_cad ?? 0),
+        Number(x.tax_cad ?? 0),
+        Number(x.gross_cad ?? 0),
       ]);
-      downloadCsv(
-        `vendor-tax-detail-${dateFrom}-to-${dateTo}.csv`,
-        [header, ...data],
-      );
+      downloadXlsx(`vendor-tax-detail-${dateFrom}-to-${dateTo}.xlsx`, [
+        { name: "Vendor invoices", rows: [header, ...data], colWidths: [26, 32, 14, 18, 12, 12, 12, 14, 14, 14] },
+        filterSnapshotSheet(filterCtx()),
+      ]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -444,20 +476,20 @@ export default function AdminTaxReports() {
         x.customer_name,
         x.is_tax_exempt ? "Yes" : "No",
         x.currency,
-        Number(x.subtotal_native ?? 0).toFixed(2),
-        Number(x.tax_native ?? 0).toFixed(2),
-        Number(x.gross_native ?? 0).toFixed(2),
-        Number(x.subtotal_cad ?? 0).toFixed(2),
-        Number(x.tax_cad ?? 0).toFixed(2),
-        Number(x.gross_cad ?? 0).toFixed(2),
-        Number(x.paid_cad ?? 0).toFixed(2),
-        Number(x.balance_due_native ?? 0).toFixed(2),
+        Number(x.subtotal_native ?? 0),
+        Number(x.tax_native ?? 0),
+        Number(x.gross_native ?? 0),
+        Number(x.subtotal_cad ?? 0),
+        Number(x.tax_cad ?? 0),
+        Number(x.gross_cad ?? 0),
+        Number(x.paid_cad ?? 0),
+        Number(x.balance_due_native ?? 0),
         x.exchange_rate_to_cad ?? "",
       ]);
-      downloadCsv(
-        `customer-tax-detail-${dateFrom}-to-${dateTo}.csv`,
-        [header, ...data],
-      );
+      downloadXlsx(`customer-tax-detail-${dateFrom}-to-${dateTo}.xlsx`, [
+        { name: "Customer invoices", rows: [header, ...data], colWidths: [26, 18, 12, 10, 32, 10, 8, 14, 14, 14, 14, 12, 14, 12, 14, 12] },
+        filterSnapshotSheet(filterCtx()),
+      ]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -743,7 +775,7 @@ export default function AdminTaxReports() {
                 className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-1 disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5" />
-                Summary CSV
+                Summary Excel
               </button>
               <button
                 onClick={exportDetailCsv}
@@ -751,7 +783,7 @@ export default function AdminTaxReports() {
                 className="px-3 py-1.5 text-xs bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-1 disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5" />
-                Detail CSV (per-invoice)
+                Detail Excel (per-invoice)
               </button>
             </div>
           </div>
@@ -859,11 +891,15 @@ function VendorView({
   onExportSummary,
   onExportDetail,
 }: VendorViewProps) {
+  const [zeroOpen, setZeroOpen] = useState(false);
   const filteredRows = !search
     ? rows
     : rows.filter((r) =>
         r.vendor_name.toLowerCase().includes(search.toLowerCase()),
       );
+
+  const itcRows = filteredRows.filter((r) => r.itc_cad > 0);
+  const zeroRows = filteredRows.filter((r) => r.itc_cad <= 0);
 
   return (
     <>
@@ -871,10 +907,13 @@ function VendorView({
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="text-xs text-gray-500 uppercase tracking-wide">
-            Invoices
+            Vendors
           </div>
           <div className="text-2xl font-bold text-gray-900">
-            {grand.invoices.toLocaleString()}
+            {filteredRows.length.toLocaleString()}
+          </div>
+          <div className="text-[11px] text-gray-400 mt-0.5">
+            {itcRows.length} with GST · {zeroRows.length} zero
           </div>
         </div>
         <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -903,12 +942,15 @@ function VendorView({
         </div>
       </div>
 
-      {/* Branch totals */}
+      {/* Branch totals (informational — branch attribution is approximate for vendors) */}
       {totalsByBranch.length > 1 && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">
-            By branch
-          </h3>
+          <div className="flex items-baseline justify-between mb-2">
+            <h3 className="text-sm font-semibold text-gray-700">By branch</h3>
+            <span className="text-[11px] text-gray-400">
+              best-effort attribution from XTRF — vendors not split per branch in source
+            </span>
+          </div>
           <table className="w-full text-sm">
             <thead className="text-xs text-gray-500 uppercase">
               <tr>
@@ -916,7 +958,6 @@ function VendorView({
                 <th className="text-right py-1">Invoices</th>
                 <th className="text-right py-1">Subtotal CAD</th>
                 <th className="text-right py-1">ITC CAD</th>
-                <th className="text-right py-1">Gross CAD</th>
               </tr>
             </thead>
             <tbody>
@@ -930,9 +971,6 @@ function VendorView({
                   <td className="py-1 text-right text-teal-700 font-medium">
                     {formatCurrency(t.itc_cad, "CAD")}
                   </td>
-                  <td className="py-1 text-right">
-                    {formatCurrency(t.gross_cad, "CAD")}
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -942,7 +980,9 @@ function VendorView({
 
       {/* Export */}
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold text-gray-700">Vendor detail</h3>
+        <h3 className="text-sm font-semibold text-gray-700">
+          Vendors with GST/HST paid ({itcRows.length})
+        </h3>
         <div className="flex gap-2">
           <button
             onClick={onExportSummary}
@@ -950,7 +990,7 @@ function VendorView({
             className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-1 disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5" />
-            Summary CSV
+            Summary Excel
           </button>
           <button
             onClick={onExportDetail}
@@ -958,60 +998,114 @@ function VendorView({
             className="px-3 py-1.5 text-xs bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-1 disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5" />
-            Detail CSV (per-invoice)
+            Detail Excel (per-invoice)
           </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center">
-            <Loader2 className="w-6 h-6 animate-spin text-teal-600 mx-auto" />
-          </div>
-        ) : error ? (
-          <div className="p-6 text-sm text-red-600">{error}</div>
-        ) : filteredRows.length === 0 ? (
-          <div className="p-8 text-center text-gray-400 text-sm">
-            No vendor invoices for selected filters
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                <tr>
-                  <th className="text-left px-3 py-2">Branch</th>
-                  <th className="text-left px-3 py-2">Vendor</th>
-                  <th className="text-right px-3 py-2">Invoices</th>
-                  <th className="text-right px-3 py-2">Subtotal CAD</th>
-                  <th className="text-right px-3 py-2">ITC CAD</th>
-                  <th className="text-right px-3 py-2">Gross CAD</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {filteredRows.map((r, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-3 py-1.5 text-xs text-gray-500">
-                      {r.branch_name}
-                    </td>
-                    <td className="px-3 py-1.5">{r.vendor_name}</td>
-                    <td className="px-3 py-1.5 text-right">{r.invoices}</td>
-                    <td className="px-3 py-1.5 text-right">
-                      {r.subtotal_cad.toFixed(2)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right text-teal-700 font-medium">
-                      {r.itc_cad.toFixed(2)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right font-medium">
-                      {r.gross_cad.toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* Vendor list — ITC-paying first */}
+      <VendorTable
+        loading={loading}
+        error={error}
+        rows={itcRows}
+        emptyText="No vendors with GST/HST paid in this period"
+      />
+
+      {/* Collapsed accordion for $0-GST vendors */}
+      {zeroRows.length > 0 && (
+        <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setZeroOpen((v) => !v)}
+            className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 flex items-center justify-between text-left"
+          >
+            <div>
+              <div className="text-sm font-semibold text-gray-700">
+                Vendors with no GST/HST ({zeroRows.length})
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                Foreign vendors and zero-rated suppliers — not eligible for ITCs
+              </div>
+            </div>
+            <span className="text-gray-500 text-sm">
+              {zeroOpen ? "Hide" : "Show"}
+            </span>
+          </button>
+          {zeroOpen && (
+            <VendorTable
+              loading={false}
+              error={null}
+              rows={zeroRows}
+              emptyText="—"
+            />
+          )}
+        </div>
+      )}
     </>
+  );
+}
+
+function VendorTable({
+  loading,
+  error,
+  rows,
+  emptyText,
+}: {
+  loading: boolean;
+  error: string | null;
+  rows: VendorRow[];
+  emptyText: string;
+}) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      {loading ? (
+        <div className="p-8 text-center">
+          <Loader2 className="w-6 h-6 animate-spin text-teal-600 mx-auto" />
+        </div>
+      ) : error ? (
+        <div className="p-6 text-sm text-red-600">{error}</div>
+      ) : rows.length === 0 ? (
+        <div className="p-8 text-center text-gray-400 text-sm">{emptyText}</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+              <tr>
+                <th className="text-left px-3 py-2">Vendor</th>
+                <th className="text-right px-3 py-2">Invoices</th>
+                <th className="text-right px-3 py-2">Subtotal CAD</th>
+                <th className="text-right px-3 py-2">ITC CAD</th>
+                <th className="text-right px-3 py-2">Gross CAD</th>
+                <th className="text-left px-3 py-2">Attributed branches</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {rows.map((r) => (
+                <tr key={r.vendor_name} className="hover:bg-gray-50">
+                  <td className="px-3 py-1.5 font-medium">{r.vendor_name}</td>
+                  <td className="px-3 py-1.5 text-right">{r.invoices}</td>
+                  <td className="px-3 py-1.5 text-right">
+                    {r.subtotal_cad.toFixed(2)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right text-teal-700 font-medium">
+                    {r.itc_cad.toFixed(2)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right font-medium">
+                    {r.gross_cad.toFixed(2)}
+                  </td>
+                  <td className="px-3 py-1.5 text-xs text-gray-500">
+                    {(r.branches || [])
+                      .map(
+                        (b) =>
+                          `${b.branch_name} (${b.invoices})`,
+                      )
+                      .join(", ")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
