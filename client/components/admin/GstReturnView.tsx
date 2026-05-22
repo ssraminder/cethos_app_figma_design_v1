@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Loader2, Printer } from "lucide-react";
+import { Download, Loader2, Printer } from "lucide-react";
 import { callPaymentApi } from "@/lib/payment-api";
+import { downloadXlsx } from "@/lib/xlsx-export";
 
 export interface GstReturnRow {
   branch_id: number;
@@ -235,19 +236,101 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
 
   const printAll = () => window.print();
 
+  const exportExcel = () => {
+    const header = [
+      "Branch",
+      "Line 101 Sales",
+      "Line 103 GST collected",
+      "Line 104 Adjustments+",
+      "Line 105 Total GST+adj",
+      "Line 106a ITC vendor",
+      "Line 106b Additional ITC",
+      "Line 106 Total ITC",
+      "Line 107 Adjustments-",
+      "Line 108 Total ITC+adj",
+      "Line 109 Net tax",
+      "Line 110 Instalments",
+      "Line 111 Rebates",
+      "Line 112 Other credits",
+      "Line 113A Balance",
+      "Line 205 Real property",
+      "Line 405 Self-assessed",
+      "Line 113B Other debits",
+      "Line 113C Balance",
+      "Line 114 Refund",
+      "Line 115 Payment",
+      "Additional ITC notes",
+    ];
+    const rows = returns.map((row) => {
+      const c = computed(row);
+      return [
+        row.branch_name,
+        row.line_101,
+        row.line_103,
+        c.l_104,
+        c.l_105,
+        row.line_106_computed,
+        c.l_106_additional,
+        c.l_106,
+        c.l_107,
+        c.l_108,
+        c.l_109,
+        c.l_110,
+        c.l_111,
+        c.l_112,
+        c.l_113A,
+        c.l_205,
+        c.l_405,
+        c.l_113B,
+        c.l_113C,
+        c.l_113C < 0 ? -c.l_113C : 0,
+        c.l_113C >= 0 ? c.l_113C : 0,
+        row.additional_itc_notes || "",
+      ];
+    });
+    downloadXlsx(`gst-return-${dateFrom}-to-${dateTo}.xlsx`, [
+      {
+        name: "GST Return",
+        rows: [header, ...rows],
+        colWidths: [28, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 12, 12, 40],
+      },
+      {
+        name: "Filters",
+        rows: [
+          ["Filter", "Value"],
+          ["Period start", dateFrom],
+          ["Period end", dateTo],
+          ["Basis", basis],
+          ["Branches", branchIds.join(", ")],
+        ],
+        colWidths: [22, 60],
+      },
+    ]);
+  };
+
   return (
     <div className="space-y-6">
       <div className="gst-return-no-print flex items-center justify-between">
         <p className="text-xs text-gray-500">
           {returns.length} branch{returns.length === 1 ? "" : "es"} · Letter-size PDF output
         </p>
-        <button
-          onClick={printAll}
-          className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
-        >
-          <Printer className="w-4 h-4" />
-          Print / Save as PDF (all branches)
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportExcel}
+            className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
+            title="Download all branches as Excel"
+          >
+            <Download className="w-4 h-4" />
+            Export Excel
+          </button>
+          <button
+            onClick={printAll}
+            className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
+          >
+            <Printer className="w-4 h-4" />
+            Print / Save as PDF (all branches)
+          </button>
+        </div>
       </div>
 
       {returns.map((row) => {
