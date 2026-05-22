@@ -552,8 +552,205 @@ serve(async (req: Request) => {
       });
     }
 
+    if (action === "get_adjustments") {
+      const bid = Number(body.branch_id);
+      if (!bid || !dateFrom || !dateTo) {
+        return jr({ error: "branch_id, date_from, date_to required" }, 400);
+      }
+      const { data, error } = await sb
+        .from("tax_return_adjustments")
+        .select("*")
+        .eq("branch_id", bid)
+        .eq("period_start", dateFrom)
+        .eq("period_end", dateTo)
+        .maybeSingle();
+      if (error) throw error;
+      return jr({ adjustments: data });
+    }
+
+    if (action === "save_adjustments") {
+      const bid = Number(body.branch_id);
+      if (!bid || !dateFrom || !dateTo) {
+        return jr({ error: "branch_id, date_from, date_to required" }, 400);
+      }
+      const editable = [
+        "line_104", "line_104_notes",
+        "line_107", "line_107_notes",
+        "line_110", "line_110_notes",
+        "line_111", "line_111_notes",
+        "line_205", "line_205_notes",
+        "line_405", "line_405_notes",
+        "additional_itc_amount", "additional_itc_notes",
+      ];
+      const fields: Record<string, unknown> = {};
+      for (const k of editable) {
+        if (Object.prototype.hasOwnProperty.call(body, k)) {
+          fields[k] = (body as Record<string, unknown>)[k];
+        }
+      }
+      const payload = {
+        branch_id: bid,
+        period_start: dateFrom,
+        period_end: dateTo,
+        ...fields,
+        updated_at: new Date().toISOString(),
+        updated_by: body.staff_id ?? null,
+      };
+      const { data, error } = await sb
+        .from("tax_return_adjustments")
+        .upsert(payload, { onConflict: "branch_id,period_start,period_end" })
+        .select("*")
+        .single();
+      if (error) throw error;
+      return jr({ adjustments: data });
+    }
+
     if (action === "gst_return") {
-      return jr({ error: `${action} not yet implemented — coming in next PR` }, 501);
+      if (!dateFrom || !dateTo) {
+        return jr({ error: "date_from and date_to are required" }, 400);
+      }
+
+      // Selected branches (default to all active branches)
+      let targetBranchIds: number[] = branchIds && branchIds.length > 0 ? branchIds : [];
+      if (targetBranchIds.length === 0) {
+        const { data } = await sb
+          .from("branches")
+          .select("id")
+          .eq("is_active", true);
+        targetBranchIds = ((data as { id: number }[] | null) || []).map((b) => b.id);
+      }
+
+      // Branch metadata
+      const { data: branchRows } = await sb
+        .from("branches")
+        .select("id, code, legal_name, division")
+        .in("id", targetBranchIds);
+      const branchById: Record<number, BranchLite & { division?: string | null }> = {};
+      for (const b of (branchRows as (BranchLite & { division?: string | null })[] | null) || []) {
+        branchById[b.id] = b;
+      }
+
+      // Customer-side aggregates (Lines 101, 103) — issued/paid/sent/overdue in period.
+      const custInvoices = await fetchAllInvoices(sb, targetBranchIds, dateFrom, dateTo, basis, DEFAULT_STATUSES);
+      const custByBranch = new Map<number, { line_101: number; line_103: number }>();
+      for (const r of custInvoices) {
+        if (r.invoicing_branch_id == null) continue;
+        const cur = custByBranch.get(r.invoicing_branch_id) || { line_101: 0, line_103: 0 };
+        cur.line_101 += num(r.subtotal_cad);
+        cur.line_103 += num(r.tax_amount_cad);
+        custByBranch.set(r.invoicing_branch_id, cur);
+      }
+
+      // Vendor-side aggregates (Line 106 computed) — page through view.
+      const PAGE = 1000;
+      const vendorByBranch = new Map<number, { line_106_computed: number; vendor_invoice_count: number }>();
+      let off = 0;
+      while (true) {
+        let q = sb
+          .from("v_vendor_invoices_tax")
+          .select("branch_id, tax_cad, status");
+        if (basis === "cash") {
+          q = q.gte("paid_at", dateFrom).lte("paid_at", dateTo);
+        } else {
+          q = q.gte("invoice_date", dateFrom).lte("invoice_date", dateTo);
+        }
+        if (targetBranchIds.length > 0) {
+          q = q.in("branch_id", targetBranchIds);
+        }
+        q = q.range(off, off + PAGE - 1);
+        const { data, error } = await q;
+        if (error) throw error;
+        const rows = (data as { branch_id: number | null; tax_cad: number | null; status: string | null }[] | null) || [];
+        for (const r of rows) {
+          const s = (r.status || "").toUpperCase();
+          if (s === "CANCELLED" || s === "CANCELED") continue;
+          if (r.branch_id == null) continue;
+          const cur = vendorByBranch.get(r.branch_id) || { line_106_computed: 0, vendor_invoice_count: 0 };
+          cur.line_106_computed += num(r.tax_cad);
+          cur.vendor_invoice_count += 1;
+          vendorByBranch.set(r.branch_id, cur);
+        }
+        if (rows.length < PAGE) break;
+        off += PAGE;
+      }
+
+      // Adjustment rows
+      const { data: adjRows } = await sb
+        .from("tax_return_adjustments")
+        .select("*")
+        .in("branch_id", targetBranchIds)
+        .eq("period_start", dateFrom)
+        .eq("period_end", dateTo);
+      const adjByBranch: Record<number, Record<string, unknown>> = {};
+      for (const a of (adjRows as Record<string, unknown>[] | null) || []) {
+        adjByBranch[Number((a as { branch_id: number }).branch_id)] = a;
+      }
+
+      // Build per-branch return rows
+      const returns = targetBranchIds.map((bid) => {
+        const b = branchById[bid];
+        const cust = custByBranch.get(bid) || { line_101: 0, line_103: 0 };
+        const vend = vendorByBranch.get(bid) || { line_106_computed: 0, vendor_invoice_count: 0 };
+        const adj = adjByBranch[bid] || {};
+        const line_104 = num(adj.line_104);
+        const line_105 = cust.line_103 + line_104;
+        const line_106_additional = num(adj.additional_itc_amount);
+        const line_106 = vend.line_106_computed + line_106_additional;
+        const line_107 = num(adj.line_107);
+        const line_108 = line_106 + line_107;
+        const line_109 = line_105 - line_108;
+        const line_110 = num(adj.line_110);
+        const line_111 = num(adj.line_111);
+        const line_112 = line_110 + line_111;
+        const line_113A = line_109 - line_112;
+        const line_205 = num(adj.line_205);
+        const line_405 = num(adj.line_405);
+        const line_113B = line_205 + line_405;
+        const line_113C = line_113A + line_113B;
+        return {
+          branch_id: bid,
+          branch_name: b?.legal_name ?? `Branch ${bid}`,
+          branch_code: b?.code ?? null,
+          period_start: dateFrom,
+          period_end: dateTo,
+          line_101: rnd2(cust.line_101),
+          line_103: rnd2(cust.line_103),
+          line_104: rnd2(line_104),
+          line_104_notes: (adj.line_104_notes as string | null) ?? null,
+          line_105: rnd2(line_105),
+          line_106_computed: rnd2(vend.line_106_computed),
+          line_106_additional: rnd2(line_106_additional),
+          line_106: rnd2(line_106),
+          additional_itc_notes: (adj.additional_itc_notes as string | null) ?? null,
+          line_107: rnd2(line_107),
+          line_107_notes: (adj.line_107_notes as string | null) ?? null,
+          line_108: rnd2(line_108),
+          line_109: rnd2(line_109),
+          line_110: rnd2(line_110),
+          line_110_notes: (adj.line_110_notes as string | null) ?? null,
+          line_111: rnd2(line_111),
+          line_111_notes: (adj.line_111_notes as string | null) ?? null,
+          line_112: rnd2(line_112),
+          line_113A: rnd2(line_113A),
+          line_205: rnd2(line_205),
+          line_205_notes: (adj.line_205_notes as string | null) ?? null,
+          line_405: rnd2(line_405),
+          line_405_notes: (adj.line_405_notes as string | null) ?? null,
+          line_113B: rnd2(line_113B),
+          line_113C: rnd2(line_113C),
+          refund_or_payment: line_113C < 0
+            ? { kind: "refund", line: 114, amount: rnd2(-line_113C) }
+            : { kind: "payment", line: 115, amount: rnd2(line_113C) },
+          vendor_invoice_count: vend.vendor_invoice_count,
+          customer_invoice_count: custInvoices.filter((r) => r.invoicing_branch_id === bid).length,
+          filed_at: (adj.filed_at as string | null) ?? null,
+        };
+      });
+
+      return jr({
+        returns,
+        filter_snapshot: { branch_ids: targetBranchIds, date_from: dateFrom, date_to: dateTo, basis },
+      });
     }
 
     return jr({ error: `Unknown action: ${action || "(none)"}` }, 400);

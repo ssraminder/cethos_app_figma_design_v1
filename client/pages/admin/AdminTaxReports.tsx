@@ -10,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { callPaymentApi, formatCurrency } from "@/lib/payment-api";
+import GstReturnView from "@/components/admin/GstReturnView";
 
 type View = "customer" | "vendor" | "gst-return";
 
@@ -634,13 +635,12 @@ export default function AdminTaxReports() {
 
       {/* Body */}
       {view === "gst-return" ? (
-        <div className="bg-white border border-gray-200 rounded-lg p-10 text-center text-gray-500">
-          <p className="mb-1 font-medium">GST/HST Return tab coming in the next PR.</p>
-          <p className="text-xs text-gray-400">
-            Will combine Customer tax (Line 103) + Vendor ITCs (Line 106) + manual adjustments
-            into a CRA working-copy layout per branch.
-          </p>
-        </div>
+        <GstReturnView
+          branchIds={selectedBranchIds}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          basis={basis}
+        />
       ) : view === "vendor" ? (
         <VendorView
           loading={loading}
