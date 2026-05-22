@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Printer } from "lucide-react";
 import { callPaymentApi } from "@/lib/payment-api";
 
 export interface GstReturnRow {
@@ -233,17 +233,32 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
       maximumFractionDigits: 2,
     })}`;
 
+  const printAll = () => window.print();
+
   return (
     <div className="space-y-6">
+      <div className="gst-return-no-print flex items-center justify-between">
+        <p className="text-xs text-gray-500">
+          {returns.length} branch{returns.length === 1 ? "" : "es"} · Letter-size PDF output
+        </p>
+        <button
+          onClick={printAll}
+          className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
+        >
+          <Printer className="w-4 h-4" />
+          Print / Save as PDF (all branches)
+        </button>
+      </div>
+
       {returns.map((row) => {
         const c = computed(row);
         const dirty = !!edits[row.branch_id];
         return (
           <div
             key={row.branch_id}
-            className="bg-white border border-gray-200 rounded-lg overflow-hidden"
+            className="gst-return-printable bg-white border border-gray-200 rounded-lg overflow-hidden"
           >
-            <div className="bg-gray-50 px-5 py-3 border-b flex items-center justify-between">
+            <div className="gst-return-no-print bg-gray-50 px-5 py-3 border-b flex items-center justify-between">
               <div>
                 <h3 className="text-base font-semibold text-gray-900">
                   {row.branch_name}
@@ -254,13 +269,39 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
                   &nbsp;&middot;&nbsp;{row.vendor_invoice_count} vendor invoices
                 </p>
               </div>
-              <button
-                onClick={() => save(row)}
-                disabled={!dirty || savingBranchId === row.branch_id}
-                className="px-3 py-1.5 text-xs bg-teal-600 hover:bg-teal-700 text-white rounded disabled:opacity-50"
-              >
-                {savingBranchId === row.branch_id ? "Saving..." : "Save"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => save(row)}
+                  disabled={!dirty || savingBranchId === row.branch_id}
+                  className="px-3 py-1.5 text-xs bg-teal-600 hover:bg-teal-700 text-white rounded disabled:opacity-50"
+                >
+                  {savingBranchId === row.branch_id ? "Saving..." : "Save"}
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 rounded flex items-center gap-1"
+                  title="Print this branch's return"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Print
+                </button>
+              </div>
+            </div>
+
+            {/* Print-only header — minimal, accountant-ready */}
+            <div className="hidden print:block mb-3">
+              <div className="flex items-end justify-between border-b border-black pb-2 mb-3">
+                <div>
+                  <h2 className="text-lg font-bold">GST/HST Return Working Copy</h2>
+                  <p className="text-sm font-semibold mt-0.5">{row.branch_name}</p>
+                </div>
+                <div className="text-right text-sm">
+                  <div>Reporting period:</div>
+                  <div className="font-semibold">
+                    {row.period_start} &nbsp;to&nbsp; {row.period_end}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="px-5 py-3 text-sm">

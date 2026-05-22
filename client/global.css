@@ -235,3 +235,59 @@
 .admin-panel .font-medium {
   font-weight: 400 !important;
 }
+
+/* GST/HST Return print layout — Letter size, accountant-ready */
+@media print {
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  /* Hide all admin chrome */
+  .admin-panel aside,
+  .admin-panel nav,
+  .admin-panel header,
+  .gst-return-no-print,
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  /* Strip card padding/shadows that waste paper */
+  .gst-return-printable {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  .gst-return-printable + .gst-return-printable {
+    page-break-before: always;
+  }
+
+  /* Static-display version of editable inputs */
+  .gst-return-printable input {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    font-weight: 600;
+  }
+
+  /* Keep highlights visible on paper */
+  .gst-return-printable .bg-teal-50,
+  .gst-return-printable .bg-amber-50 {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Tighten line spacing for printing */
+  .gst-return-printable .py-1\.5 {
+    padding-top: 0.15rem !important;
+    padding-bottom: 0.15rem !important;
+  }
+}
