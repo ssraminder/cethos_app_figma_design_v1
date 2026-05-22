@@ -283,13 +283,12 @@ export default function AdminTaxReports() {
     }
   };
 
-  // Auto-fetch when filter inputs settle
+  // Auto-fetch when filter inputs settle (skip gst-return — Tab 3 has its own loader)
   useEffect(() => {
     if (
-      view === "customer" &&
+      view !== "gst-return" &&
       dateFrom &&
-      dateTo &&
-      selectedBranchIds.length >= 0 // even 0 = explicit none
+      dateTo
     ) {
       void run();
     }
