@@ -725,7 +725,7 @@ export default function AdminTaxReports() {
           </div>
 
           {/* Branch totals */}
-          {totalsByBranch.length > 1 && (
+          {totalsByBranch.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">
                 By branch
@@ -736,28 +736,37 @@ export default function AdminTaxReports() {
                     <th className="text-left py-1">Branch</th>
                     <th className="text-right py-1">Invoices</th>
                     <th className="text-right py-1">Subtotal CAD</th>
+                    <th className="text-right py-1">% of subtotal</th>
                     <th className="text-right py-1">Tax CAD</th>
+                    <th className="text-right py-1">% of tax</th>
                     <th className="text-right py-1">Gross CAD</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {totalsByBranch.map((t, i) => (
-                    <tr key={i} className="border-t">
-                      <td className="py-1">
-                        {t.branch_name || "(unassigned)"}
-                      </td>
-                      <td className="py-1 text-right">{t.invoices}</td>
-                      <td className="py-1 text-right">
-                        {formatCurrency(t.subtotal_cad, "CAD")}
-                      </td>
-                      <td className="py-1 text-right text-teal-700 font-medium">
-                        {formatCurrency(t.tax_cad, "CAD")}
-                      </td>
-                      <td className="py-1 text-right">
-                        {formatCurrency(t.gross_cad, "CAD")}
-                      </td>
-                    </tr>
-                  ))}
+                  {totalsByBranch.map((t, i) => {
+                    const subPct = grand.subtotal_cad > 0 ? (t.subtotal_cad / grand.subtotal_cad) * 100 : 0;
+                    const taxPct = grand.tax_cad > 0 ? (t.tax_cad / grand.tax_cad) * 100 : 0;
+                    return (
+                      <tr key={i} className="border-t">
+                        <td className="py-1">{t.branch_name || "(unassigned)"}</td>
+                        <td className="py-1 text-right">{t.invoices}</td>
+                        <td className="py-1 text-right">{formatCurrency(t.subtotal_cad, "CAD")}</td>
+                        <td className="py-1 text-right text-gray-500">{subPct.toFixed(1)}%</td>
+                        <td className="py-1 text-right text-teal-700 font-medium">{formatCurrency(t.tax_cad, "CAD")}</td>
+                        <td className="py-1 text-right text-gray-500">{taxPct.toFixed(1)}%</td>
+                        <td className="py-1 text-right">{formatCurrency(t.gross_cad, "CAD")}</td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50">
+                    <td className="py-1.5">Total</td>
+                    <td className="py-1.5 text-right">{grand.invoices}</td>
+                    <td className="py-1.5 text-right">{formatCurrency(grand.subtotal_cad, "CAD")}</td>
+                    <td className="py-1.5 text-right text-gray-500">100.0%</td>
+                    <td className="py-1.5 text-right text-teal-700">{formatCurrency(grand.tax_cad, "CAD")}</td>
+                    <td className="py-1.5 text-right text-gray-500">100.0%</td>
+                    <td className="py-1.5 text-right">{formatCurrency(grand.gross_cad, "CAD")}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -943,12 +952,14 @@ function VendorView({
       </div>
 
       {/* Branch totals (informational — branch attribution is approximate for vendors) */}
-      {totalsByBranch.length > 1 && (
+      {totalsByBranch.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
           <div className="flex items-baseline justify-between mb-2">
             <h3 className="text-sm font-semibold text-gray-700">By branch</h3>
             <span className="text-[11px] text-gray-400">
-              best-effort attribution from XTRF — vendors not split per branch in source
+              best-effort attribution from XTRF — vendors not split per branch
+              in source; portal-native invoices will use the order's customer
+              branch going forward
             </span>
           </div>
           <table className="w-full text-sm">
@@ -957,22 +968,34 @@ function VendorView({
                 <th className="text-left py-1">Branch</th>
                 <th className="text-right py-1">Invoices</th>
                 <th className="text-right py-1">Subtotal CAD</th>
+                <th className="text-right py-1">% of subtotal</th>
                 <th className="text-right py-1">ITC CAD</th>
+                <th className="text-right py-1">% of ITC</th>
               </tr>
             </thead>
             <tbody>
-              {totalsByBranch.map((t, i) => (
-                <tr key={i} className="border-t">
-                  <td className="py-1">{t.branch_name}</td>
-                  <td className="py-1 text-right">{t.invoices}</td>
-                  <td className="py-1 text-right">
-                    {formatCurrency(t.subtotal_cad, "CAD")}
-                  </td>
-                  <td className="py-1 text-right text-teal-700 font-medium">
-                    {formatCurrency(t.itc_cad, "CAD")}
-                  </td>
-                </tr>
-              ))}
+              {totalsByBranch.map((t, i) => {
+                const subPct = grand.subtotal_cad > 0 ? (t.subtotal_cad / grand.subtotal_cad) * 100 : 0;
+                const itcPct = grand.itc_cad > 0 ? (t.itc_cad / grand.itc_cad) * 100 : 0;
+                return (
+                  <tr key={i} className="border-t">
+                    <td className="py-1">{t.branch_name}</td>
+                    <td className="py-1 text-right">{t.invoices}</td>
+                    <td className="py-1 text-right">{formatCurrency(t.subtotal_cad, "CAD")}</td>
+                    <td className="py-1 text-right text-gray-500">{subPct.toFixed(1)}%</td>
+                    <td className="py-1 text-right text-teal-700 font-medium">{formatCurrency(t.itc_cad, "CAD")}</td>
+                    <td className="py-1 text-right text-gray-500">{itcPct.toFixed(1)}%</td>
+                  </tr>
+                );
+              })}
+              <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50">
+                <td className="py-1.5">Total</td>
+                <td className="py-1.5 text-right">{grand.invoices}</td>
+                <td className="py-1.5 text-right">{formatCurrency(grand.subtotal_cad, "CAD")}</td>
+                <td className="py-1.5 text-right text-gray-500">100.0%</td>
+                <td className="py-1.5 text-right text-teal-700">{formatCurrency(grand.itc_cad, "CAD")}</td>
+                <td className="py-1.5 text-right text-gray-500">100.0%</td>
+              </tr>
             </tbody>
           </table>
         </div>

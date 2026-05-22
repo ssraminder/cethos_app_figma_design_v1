@@ -333,6 +333,9 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
         </div>
       </div>
 
+      {/* Revenue + ITC share summary — basis for revenue-% ITC redistribution */}
+      <RevenueShareSummary returns={returns} />
+
       {returns.map((row) => {
         const c = computed(row);
         const dirty = !!edits[row.branch_id];
@@ -594,6 +597,77 @@ function LineEdit({
       <div className="flex items-center gap-2 flex-wrap justify-end">
         {children}
       </div>
+    </div>
+  );
+}
+
+
+function RevenueShareSummary({ returns }: { returns: GstReturnRow[] }) {
+  const totals = returns.reduce(
+    (a, r) => ({
+      line_101: a.line_101 + r.line_101,
+      line_103: a.line_103 + r.line_103,
+      line_106_computed: a.line_106_computed + r.line_106_computed,
+    }),
+    { line_101: 0, line_103: 0, line_106_computed: 0 },
+  );
+  const fmt = (n: number) =>
+    `$${n.toLocaleString("en-CA", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  const pct = (a: number, b: number) =>
+    b > 0 ? ((a / b) * 100).toFixed(1) + "%" : "—";
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-4 gst-return-no-print">
+      <div className="flex items-baseline justify-between mb-2">
+        <h3 className="text-sm font-semibold text-gray-700">
+          Revenue & ITC share by branch
+        </h3>
+        <span className="text-[11px] text-gray-400">
+          revenue % is the basis for proportional ITC redistribution
+        </span>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="text-xs text-gray-500 uppercase">
+          <tr>
+            <th className="text-left py-1">Branch</th>
+            <th className="text-right py-1">Revenue (Line 101)</th>
+            <th className="text-right py-1">% revenue</th>
+            <th className="text-right py-1">GST collected (103)</th>
+            <th className="text-right py-1">ITC vendor (106-a)</th>
+            <th className="text-right py-1">% ITC</th>
+          </tr>
+        </thead>
+        <tbody>
+          {returns.map((r) => (
+            <tr key={r.branch_id} className="border-t">
+              <td className="py-1">{r.branch_name}</td>
+              <td className="py-1 text-right">{fmt(r.line_101)}</td>
+              <td className="py-1 text-right text-gray-500">
+                {pct(r.line_101, totals.line_101)}
+              </td>
+              <td className="py-1 text-right">{fmt(r.line_103)}</td>
+              <td className="py-1 text-right text-teal-700 font-medium">
+                {fmt(r.line_106_computed)}
+              </td>
+              <td className="py-1 text-right text-gray-500">
+                {pct(r.line_106_computed, totals.line_106_computed)}
+              </td>
+            </tr>
+          ))}
+          <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+            <td className="py-1.5">Total (all selected branches)</td>
+            <td className="py-1.5 text-right">{fmt(totals.line_101)}</td>
+            <td className="py-1.5 text-right text-gray-500">100.0%</td>
+            <td className="py-1.5 text-right">{fmt(totals.line_103)}</td>
+            <td className="py-1.5 text-right text-teal-700">
+              {fmt(totals.line_106_computed)}
+            </td>
+            <td className="py-1.5 text-right text-gray-500">100.0%</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
