@@ -474,6 +474,18 @@ export default function AdminSettings() {
                 Manage legal entities for customer invoicing
               </p>
             </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/dropbox")}
+              className="text-left p-4 bg-white border border-blue-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Dropbox Integration
+              </h3>
+              <p className="text-sm text-gray-600">
+                Connect Dropbox for file storage and sharing
+              </p>
+            </button>
           </div>
         </div>
 

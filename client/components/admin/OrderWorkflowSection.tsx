@@ -1007,6 +1007,7 @@ interface VendorAssignModalProps {
   // deadline lands at/after the client expects delivery.
   clientDeadlineAt: string | null;
   clientDeadlineDate: string | null;
+  orderId: string;
 }
 
 function VendorAssignModal({
@@ -1025,6 +1026,7 @@ function VendorAssignModal({
   minMarginPercent,
   clientDeadlineAt,
   clientDeadlineDate,
+  orderId,
 }: VendorAssignModalProps) {
   const [pricingMode, setPricingMode] = useState<"per_unit" | "target">("per_unit");
   const [targetTotal, setTargetTotal] = useState<string>("");
@@ -1035,7 +1037,9 @@ function VendorAssignModal({
   const [deadline, setDeadline] = useState("");
   const [instructions, setInstructions] = useState("");
   const [expiresInHours, setExpiresInHours] = useState<string>("24");
-  const [suggestedRate, setSuggestedRate] = useState<{ rate: number; calculation_unit: string; currency: string } | null>(null);
+  const [suggestedRate, setSuggestedRate] = useState<{ rate: number; calculation_unit: string; currency: string; valid_until?: string; is_expired?: boolean } | null>(null);
+  const [allVendorRates, setAllVendorRates] = useState<any[]>([]);
+  const [showRatesModal, setShowRatesModal] = useState(false);
   const [lookingUpRate, setLookingUpRate] = useState(false);
   const [negotiationAllowed, setNegotiationAllowed] = useState(false);
   const [maxRate, setMaxRate] = useState('');
@@ -1056,6 +1060,8 @@ function VendorAssignModal({
       setInstructions("");
       setExpiresInHours("24");
       setSuggestedRate(null);
+      setAllVendorRates([]);
+      setShowRatesModal(false);
       setNegotiationAllowed(false);
       setMaxRate('');
       setMaxTotal('');
@@ -1079,6 +1085,9 @@ function VendorAssignModal({
             setVendorRateUnit(data.suggested_rate.calculation_unit);
             setVendorCurrency(data.suggested_rate.currency);
           }
+          if (data?.all_rates) {
+            setAllVendorRates(data.all_rates);
+          }
         } catch (err) {
           console.error("Rate lookup failed:", err);
         }
@@ -1095,6 +1104,28 @@ function VendorAssignModal({
       setVendorCurrency(vendor.rate_for_service.currency || "CAD");
     }
   }, [isOpen, vendor, suggestedRate]);
+
+  // Auto-load approved AI instructions for this order
+  useEffect(() => {
+    if (!isOpen || !orderId || instructions) return;
+    const loadInstructions = async () => {
+      try {
+        const { data } = await supabase
+          .from("order_ai_instructions")
+          .select("instructions_text")
+          .eq("order_id", orderId)
+          .eq("is_current", true)
+          .eq("is_approved", true)
+          .maybeSingle();
+        if (data?.instructions_text) {
+          setInstructions(data.instructions_text);
+        }
+      } catch (err) {
+        console.error("Failed to load AI instructions:", err);
+      }
+    };
+    loadInstructions();
+  }, [isOpen, orderId]);
 
   // Auto-set units to 1 for flat rate
   useEffect(() => {
@@ -1300,26 +1331,55 @@ function VendorAssignModal({
                 ))}
               </div>
             ) : vendor ? (
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium">
-                  {vendor.full_name}
-                  {vendor.rating != null && (
-                    <span className="flex items-center gap-0.5 ml-1">
-                      <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                      {vendor.rating}
-                    </span>
-                  )}
-                  {vendor.rate_for_service && (
-                    <span className="ml-1 text-xs text-indigo-400">
-                      ${vendor.rate_for_service.rate}/{vendor.rate_for_service.unit}
-                    </span>
-                  )}
-                </span>
-                {lookingUpRate && (
-                  <span className="flex items-center gap-1 text-xs text-gray-400">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    Looking up rate...
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium">
+                    {vendor.full_name}
+                    {vendor.rating != null && (
+                      <span className="flex items-center gap-0.5 ml-1">
+                        <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                        {vendor.rating}
+                      </span>
+                    )}
                   </span>
+                  {lookingUpRate && (
+                    <span className="flex items-center gap-1 text-xs text-gray-400">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Looking up rate...
+                    </span>
+                  )}
+                </div>
+                {/* Vendor rate with currency and validity */}
+                {suggestedRate && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-600">
+                      Profile rate: <span className="font-medium text-gray-900">${suggestedRate.rate}/{unitDisplayName(suggestedRate.calculation_unit)}</span>
+                      {" "}<span className="text-xs text-gray-500">({suggestedRate.currency})</span>
+                    </span>
+                    {suggestedRate.is_expired && (
+                      <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">Expired</span>
+                    )}
+                    {suggestedRate.valid_until && !suggestedRate.is_expired && (
+                      <span className="text-xs text-gray-400">valid until {new Date(suggestedRate.valid_until).toLocaleDateString()}</span>
+                    )}
+                    {allVendorRates.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowRatesModal(true)}
+                        className="text-xs text-blue-600 hover:text-blue-800 underline"
+                      >
+                        View all rates
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!suggestedRate && !lookingUpRate && vendor.rate_for_service && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-600">
+                      Profile rate: <span className="font-medium text-gray-900">${vendor.rate_for_service.rate}/{vendor.rate_for_service.unit}</span>
+                      {" "}<span className="text-xs text-gray-500">({vendor.rate_for_service.currency || "CAD"})</span>
+                    </span>
+                  </div>
                 )}
               </div>
             ) : null}
@@ -1442,6 +1502,7 @@ function VendorAssignModal({
                 {suggestedRate && (
                   <p className="text-xs text-gray-400">
                     Vendor&apos;s rate: ${suggestedRate.rate} {unitDisplayName(suggestedRate.calculation_unit)} ({suggestedRate.currency})
+                    {suggestedRate.is_expired && <span className="ml-1 text-red-500 font-medium">· Expired</span>}
                   </p>
                 )}
                 {/* Row 2: Units, Total */}
@@ -1707,6 +1768,65 @@ function VendorAssignModal({
           </button>
         </div>
       </div>
+
+      {/* Vendor Rates Modal */}
+      {showRatesModal && (
+        <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center" onClick={() => setShowRatesModal(false)}>
+          <div className="bg-white rounded-lg shadow-lg max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-base font-semibold text-gray-900">
+                {vendor?.full_name} — All Rates
+              </h3>
+              <button onClick={() => setShowRatesModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4">
+              {allVendorRates.length === 0 ? (
+                <p className="text-sm text-gray-500">No rates configured for this vendor.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-gray-500 uppercase">
+                      <th className="pb-2 pr-2">Service</th>
+                      <th className="pb-2 pr-2">Rate</th>
+                      <th className="pb-2 pr-2">Currency</th>
+                      <th className="pb-2 pr-2">Valid Until</th>
+                      <th className="pb-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allVendorRates.map((r: any) => {
+                      const isExpired = r.valid_until && new Date(r.valid_until) < new Date();
+                      return (
+                        <tr key={r.id} className="border-b last:border-0">
+                          <td className="py-2 pr-2 text-gray-900">{r.services?.name || "—"}</td>
+                          <td className="py-2 pr-2 font-medium text-gray-900">
+                            ${r.rate}/{unitDisplayName(r.calculation_unit)}
+                          </td>
+                          <td className="py-2 pr-2 text-gray-600">{r.currency}</td>
+                          <td className="py-2 pr-2 text-gray-600">
+                            {r.valid_until ? new Date(r.valid_until).toLocaleDateString() : "—"}
+                          </td>
+                          <td className="py-2">
+                            {!r.is_active ? (
+                              <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">Inactive</span>
+                            ) : isExpired ? (
+                              <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-xs">Expired</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs">Active</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5259,6 +5379,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
           minMarginPercent={minMarginPercent}
           clientDeadlineAt={clientDeadlineAt}
           clientDeadlineDate={clientDeadlineDate}
+          orderId={orderId}
         />
       )}
 

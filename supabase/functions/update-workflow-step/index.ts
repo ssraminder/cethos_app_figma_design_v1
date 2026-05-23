@@ -227,10 +227,17 @@ serve(async (req: Request) => {
       case "lookup_vendor_rate": {
         const { vendor_id } = body;
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
-        const { data: rates } = await supabase.from("vendor_rates").select("rate, calculation_unit, currency").eq("vendor_id", vendor_id).eq("is_active", true);
+        const { data: rates } = await supabase.from("vendor_rates").select("rate, calculation_unit, currency, service_id, valid_from, valid_until").eq("vendor_id", vendor_id).eq("is_active", true);
         let match = rates?.find((r: any) => step.service_id && r.service_id === step.service_id);
         if (!match && rates?.length) match = rates[0];
-        return json({ success: true, suggested_rate: match ? { rate: match.rate, calculation_unit: match.calculation_unit, currency: match.currency } : null });
+        // Also fetch all vendor rates for the "View Rates" modal
+        const { data: allRates } = await supabase.from("vendor_rates").select("id, rate, calculation_unit, currency, service_id, valid_from, valid_until, is_active, notes, services:service_id(name)").eq("vendor_id", vendor_id).order("is_active", { ascending: false }).order("created_at", { ascending: false });
+        const isExpired = match?.valid_until && new Date(match.valid_until) < new Date();
+        return json({
+          success: true,
+          suggested_rate: match ? { rate: match.rate, calculation_unit: match.calculation_unit, currency: match.currency, valid_until: match.valid_until, is_expired: isExpired } : null,
+          all_rates: allRates || [],
+        });
       }
       case "assign_staff": {
         const { staff_id, deadline, instructions } = body;
