@@ -137,8 +137,8 @@ export default function AdminCallsList() {
   const [syncing, setSyncing] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
 
-  const fetch = useCallback(async () => {
-    setIsLoading(true);
+  const fetchCalls = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     const { data, error } = await supabase.rpc("comms_list_call_logs", {
       p_limit: PAGE_SIZE,
       p_offset: page * PAGE_SIZE,
@@ -149,7 +149,7 @@ export default function AdminCallsList() {
       p_from_date: null,
       p_to_date: null,
     });
-    setIsLoading(false);
+    if (!silent) setIsLoading(false);
     if (error) {
       console.error("comms_list_call_logs failed", error);
       return;
@@ -159,7 +159,14 @@ export default function AdminCallsList() {
     setTotal(rows[0]?.total_count ?? 0);
   }, [page, direction, search]);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  // Initial load + re-fetch on filter change
+  useEffect(() => { fetchCalls(); }, [fetchCalls]);
+
+  // Auto-poll every 30s so new calls from cron appear without manual refresh
+  useEffect(() => {
+    const interval = setInterval(() => fetchCalls(true), 30_000);
+    return () => clearInterval(interval);
+  }, [fetchCalls]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -170,7 +177,7 @@ export default function AdminCallsList() {
       alert("Sync failed: " + error.message);
       return;
     }
-    await fetch();
+    await fetchCalls();
   };
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -338,7 +345,7 @@ export default function AdminCallsList() {
           callId={selected}
           staffUserId={staffUser?.id ?? null}
           onClose={() => setSelected(null)}
-          onChanged={() => fetch()}
+          onChanged={() => fetchCalls()}
         />
       )}
     </div>
