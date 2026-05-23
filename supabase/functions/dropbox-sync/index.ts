@@ -1,4 +1,4 @@
-/**
+﻿/**
  * dropbox-sync — Syncs files from Supabase Storage to Dropbox
  *
  * Called by other edge functions at lifecycle stage completion points.
@@ -30,6 +30,25 @@ function jsonResponse(data: Record<string, unknown>, status = 200) {
     status,
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
+}
+
+/**
+ * Encode a JSON object so the resulting string is HTTP-header-safe (ASCII only).
+ * Dropbox-API-Arg header values must be valid ByteStrings — any non-ASCII
+ * characters (e.g. em-dashes in folder names) must be \uXXXX escaped.
+ */
+function headerSafeJson(obj: Record<string, unknown>): string {
+  const raw = JSON.stringify(obj);
+  let safe = "";
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i);
+    if (code > 127) {
+      safe += "\\u" + ("0000" + code.toString(16)).slice(-4);
+    } else {
+      safe += raw[i];
+    }
+  }
+  return safe;
 }
 
 // Static folders always created for every order (regardless of workflow)
@@ -199,12 +218,16 @@ async function handleSyncFile(
     const sha256Hash = encodeHex(new Uint8Array(hashBuffer));
 
     // Upload to Dropbox
+    // Use headerSafeJson for the Dropbox-API-Arg header — folder names may
+    // contain non-ASCII characters (e.g. em-dashes) which are invalid in
+    // HTTP headers (ByteString requirement). headerSafeJson escapes them
+    // to \\uXXXX sequences that Dropbox accepts.
     const uploadRes = await fetch("https://content.dropboxapi.com/2/files/upload", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/octet-stream",
-        "Dropbox-API-Arg": JSON.stringify({
+        "Dropbox-API-Arg": headerSafeJson({
           path: dropbox_path,
           mode: "overwrite",
           autorename: false,

@@ -18,6 +18,17 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-23 — Dropbox sync ByteString fix + scoped app re-authorization
+- **Decision:** Two bugs fixed in `dropbox-sync/index.ts` to unblock file uploads to Dropbox when order folder names contain non-ASCII characters (em-dashes, accented names, etc.).
+- **Bug 1 — ByteString header encoding:** `Dropbox-API-Arg` HTTP header was built via `JSON.stringify()`, which preserves raw Unicode. HTTP headers must be ASCII-only (ByteString). When the Dropbox folder path contained em-dashes (U+2014) from the order naming convention (`ORD-XXXX — Customer — Language`), the `fetch()` call threw `Failed to construct 'Request': 'headers' of 'RequestInit' is not a valid ByteString`. Folder creation was unaffected because it uses a JSON body, not a header.
+  - **Fix:** Added `headerSafeJson()` utility that iterates the JSON string char-by-char and escapes any `charCode > 127` to `\uXXXX` format. Dropbox API accepts these Unicode escapes in the `Dropbox-API-Arg` header. Applied to the upload endpoint's header construction.
+- **Bug 2 — Missing Dropbox scopes after permission update:** After fixing Bug 1, uploads failed with `missing_scope` for `files.content.write`. The Dropbox App Console permissions had been updated to include all needed scopes (`files.metadata.write/read`, `files.content.write/read`, `sharing.write/read`), but the existing OAuth token still carried the old (narrower) scope set.
+  - **Fix:** Dropbox scoped apps embed granted scopes into the access token at authorization time. Refreshing the token does NOT pick up newly-added app-level scopes — a full OAuth re-authorization is required. Disconnected and reconnected via the portal's Dropbox settings page (`/admin/settings/dropbox`) to obtain a new token with all scopes.
+- **E2E verification:** 3 test files synced successfully to correct subfolders (`Drafts/`, `Final Deliverable/`, `Reference Materials/`) on order `ORD-2026-354733`. Verified in both `dropbox_file_syncs` table (all status `synced`) and Dropbox web UI (files present with correct sizes).
+- **Key lesson for future:** Any HTTP header value that may contain user-generated text (names, titles, paths) must be ASCII-escaped. And any Dropbox permission changes require full re-authorization, not just token refresh.
+- **Status:** active. Fix deployed to `lmzoyezvsjgsxveoakdr`.
+- **Affects:** `supabase/functions/dropbox-sync/index.ts` (new `headerSafeJson()` function + usage in upload header).
+
 ### 2026-05-23 — Admin portal bug reporting + automated issue checking
 - **Decision:** Replicated the vendor portal's bug reporting feature (BugReportFab + BugReportModal + console ring buffer) for the admin portal. Extended `bug_reports` table with `source` ('vendor'|'admin'), `staff_id`, `reporter_name`, `resolved_at`, `resolved_by` columns. Created two new edge functions: `staff-submit-bug-report` (writes admin bug reports with staff JWT auth) and `check-open-issues` (combined view of open bug reports + unresolved Sentry issues from both `cethos-portal-client` and `cethos-vendor-portal` projects).
 - **Session-start automation:** CLAUDE.md now instructs Claude Code to call `check-open-issues` at session start and surface any new bug reports or Sentry errors before starting other work. This replaces the ad-hoc "check the DB manually" pattern.
