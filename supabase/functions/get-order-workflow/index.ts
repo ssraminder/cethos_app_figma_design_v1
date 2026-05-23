@@ -117,6 +117,7 @@ serve(async (req: Request) => {
         unassigned_vendor_id,
         unassign_reason, unassign_notes, unassigned_at,
         approval_depends_on_step,
+        use_cethos_tm, tm_job_id, tm_job_reference, tm_provisioned_at,
         created_at, updated_at
       `)
       .eq("order_id", order_id)

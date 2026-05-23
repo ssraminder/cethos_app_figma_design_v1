@@ -117,6 +117,10 @@ interface WorkflowStep {
   unassign_notes: string | null;
   unassigned_at: string | null;
   approval_depends_on_step: number | null;
+  use_cethos_tm: boolean;
+  tm_job_id: string | null;
+  tm_job_reference: string | null;
+  tm_provisioned_at: string | null;
   final_delivery_id?: string | null;
   final_marked_at?: string | null;
   created_at: string;
@@ -2458,6 +2462,7 @@ function WorkflowPipeline({
   const [brevoLogVendorId, setBrevoLogVendorId] = useState<string | null>(null);
   const [brevoLogVendorName, setBrevoLogVendorName] = useState<string | null>(null);
   const [resendingStepId, setResendingStepId] = useState<string | null>(null);
+  const [tmProvisioningStepId, setTmProvisioningStepId] = useState<string | null>(null);
 
   // Approve/Revise modal state
   const [approveModalStep, setApproveModalStep] = useState<WorkflowStep | null>(null);
@@ -4053,6 +4058,37 @@ function WorkflowPipeline({
                 {/* Expanded section */}
                 {isExpanded && (
                   <div className="mt-3 pt-3 border-t border-gray-200 space-y-2 text-sm">
+                    {/* Cethos TM toggle */}
+                    {(step.actor_type === "external_vendor") && (
+                      <div className="flex items-center justify-between bg-gray-50 rounded p-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-medium text-gray-600 cursor-pointer" htmlFor={`tm-toggle-${step.id}`}>
+                            Use Cethos TM
+                          </label>
+                          {step.tm_job_reference && (
+                            <span className="text-xs text-teal-600">
+                              Job: {step.tm_job_reference}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          id={`tm-toggle-${step.id}`}
+                          type="button"
+                          disabled={tmProvisioningStepId === step.id}
+                          onClick={(e) => { e.stopPropagation(); handleToggleCethosTm(step); }}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                            step.use_cethos_tm ? "bg-teal-500" : "bg-gray-300"
+                          } ${tmProvisioningStepId === step.id ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                        >
+                          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                            step.use_cethos_tm ? "translate-x-4" : "translate-x-0.5"
+                          }`} />
+                          {tmProvisioningStepId === step.id && (
+                            <Loader2 className="absolute -right-6 w-4 h-4 animate-spin text-teal-500" />
+                          )}
+                        </button>
+                      </div>
+                    )}
                     {step.instructions && (
                       <div>
                         <span className="font-medium text-gray-600">Instructions:</span>
@@ -5320,6 +5356,42 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
       toast.error(message);
     }
     setActionLoading(null);
+  };
+
+  const handleToggleCethosTm = async (step: any) => {
+    const newVal = !step.use_cethos_tm;
+    if (newVal && !step.tm_job_id) {
+      setTmProvisioningStepId(step.id);
+      try {
+        const { data: result, error } = await supabase.functions.invoke("provision-tm-job", {
+          body: { step_id: step.id },
+        });
+        if (error) {
+          let msg = "Failed to provision TM job";
+          try {
+            const resp = (error as any)?.context?.response as Response | undefined;
+            if (resp) { const b = await resp.clone().json().catch(() => null); if (b?.error) msg = b.error; }
+          } catch {}
+          throw new Error(msg);
+        }
+        if (result?.error) throw new Error(result.error);
+        toast.success(result.already_provisioned
+          ? "TM job already exists"
+          : `TM job created (${result.words} words, ${result.segments} segments)`);
+        await fetchWorkflow();
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to provision TM job");
+      } finally {
+        setTmProvisioningStepId(null);
+      }
+    } else {
+      await supabase
+        .from("order_workflow_steps")
+        .update({ use_cethos_tm: newVal })
+        .eq("id", step.id);
+      toast.success(newVal ? "Cethos TM enabled" : "Cethos TM disabled");
+      await fetchWorkflow();
+    }
   };
 
   const handleRetractSingleOffer = async (stepId: string, offerId: string, vendorName: string) => {
