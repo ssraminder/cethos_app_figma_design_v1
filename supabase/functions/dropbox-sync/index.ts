@@ -32,25 +32,23 @@ function jsonResponse(data: Record<string, unknown>, status = 200) {
   });
 }
 
-// Folder structure per order
-const ORDER_SUBFOLDERS = [
-  "01-Source-Documents",
-  "02-Reference-Materials",
-  "03-Vendor-Deliveries",
-  "04-Drafts",
-  "05-Affidavits",
-  "06-Certified-Final",
+// Static folders always created for every order (regardless of workflow)
+const STATIC_FOLDERS = [
+  "Source Documents",
+  "Reference Materials",
+  "Drafts",
+  "Certified",
+  "Final Deliverable",
 ];
 
-// Map sync triggers to Dropbox subfolders
-const TRIGGER_TO_SUBFOLDER: Record<string, string> = {
-  client_upload: "01-Source-Documents",
-  reference_upload: "02-Reference-Materials",
-  vendor_delivery: "03-Vendor-Deliveries",
-  staff_delivery: "03-Vendor-Deliveries",
-  draft_promoted: "04-Drafts",
-  affidavit_generated: "05-Affidavits",
-  certified_final: "06-Certified-Final",
+// Map sync triggers to static folders (for files not tied to a specific step)
+const TRIGGER_TO_STATIC_FOLDER: Record<string, string> = {
+  client_upload: "Source Documents",
+  reference_upload: "Reference Materials",
+  draft_promoted: "Drafts",
+  affidavit_generated: "Certified",
+  certified_final: "Final Deliverable",
+  final_delivery: "Final Deliverable",
 };
 
 serve(async (req: Request) => {
@@ -287,9 +285,14 @@ async function handleSyncBatch(
 
 async function handleCreateOrderFolder(
   accessToken: string,
-  body: { project_number: string; customer_name: string; target_language: string },
+  body: {
+    project_number: string;
+    customer_name: string;
+    target_language: string;
+    step_folders?: string[];
+  },
 ) {
-  const { project_number, customer_name, target_language } = body;
+  const { project_number, customer_name, target_language, step_folders } = body;
   if (!project_number) {
     return jsonResponse({ error: "project_number is required" }, 400);
   }
@@ -300,9 +303,12 @@ async function handleCreateOrderFolder(
 
   const basePath = `/Cethos/Orders/${folderName}`;
 
+  // Build the full list: static folders + dynamic step folders
+  const allFolders = [...STATIC_FOLDERS, ...(step_folders ?? [])];
+
   // Create base folder + subfolders
   const created = [];
-  for (const sub of ORDER_SUBFOLDERS) {
+  for (const sub of allFolders) {
     const path = `${basePath}/${sub}`;
     try {
       const res = await fetch("https://api.dropboxapi.com/2/files/create_folder_v2", {
@@ -502,17 +508,29 @@ async function handleSyncOrderFile(
     quote_id?: string;
     quote_file_id?: string;
     step_delivery_id?: string;
+    step_id?: string;
   },
 ) {
-  const { order_id, source_bucket, source_path, sync_trigger, quote_id, quote_file_id, step_delivery_id } = body;
+  const { order_id, source_bucket, source_path, sync_trigger, quote_id, quote_file_id, step_delivery_id, step_id } = body;
 
   if (!order_id || !source_bucket || !source_path || !sync_trigger) {
     return jsonResponse({ error: "order_id, source_bucket, source_path, sync_trigger are required" }, 400);
   }
 
-  const subfolder = TRIGGER_TO_SUBFOLDER[sync_trigger];
+  // Determine the subfolder: if a step_id is provided, resolve it to
+  // "Step NN — StepName"; otherwise fall back to static folder by trigger.
+  let subfolder: string | null = null;
+
+  if (step_id) {
+    subfolder = await resolveStepFolder(supabase, step_id);
+  }
+
   if (!subfolder) {
-    return jsonResponse({ error: `Unknown sync_trigger: ${sync_trigger}` }, 400);
+    subfolder = TRIGGER_TO_STATIC_FOLDER[sync_trigger] ?? null;
+  }
+
+  if (!subfolder) {
+    return jsonResponse({ error: `Cannot resolve folder for sync_trigger: ${sync_trigger}` }, 400);
   }
 
   const resolved = await resolveOrderDropboxPath(supabase, order_id);
@@ -523,8 +541,8 @@ async function handleSyncOrderFile(
   // Extract filename from source_path or use provided filename
   const filename = body.filename ?? source_path.split("/").pop() ?? "file";
 
-  // Ensure folder exists (creates if needed, no-ops if already there)
-  await ensureOrderFolders(accessToken, resolved.basePath);
+  // Ensure target folder exists
+  await createSingleFolder(accessToken, `${resolved.basePath}/${subfolder}`);
 
   const dropbox_path = `${resolved.basePath}/${subfolder}/${filename}`;
 
@@ -539,6 +557,44 @@ async function handleSyncOrderFile(
     quote_file_id,
     step_delivery_id,
   });
+}
+
+/**
+ * Resolve a workflow step ID to its Dropbox folder name: "Step NN — StepName"
+ */
+async function resolveStepFolder(supabase: any, step_id: string): Promise<string | null> {
+  const { data: step } = await supabase
+    .from("order_workflow_steps")
+    .select("step_number, name")
+    .eq("id", step_id)
+    .maybeSingle();
+
+  if (!step) return null;
+
+  const num = String(step.step_number).padStart(2, "0");
+  return `Step ${num} — ${step.name}`;
+}
+
+/**
+ * Create a single Dropbox folder (idempotent — conflict = already exists = ok).
+ */
+async function createSingleFolder(accessToken: string, path: string): Promise<void> {
+  try {
+    const res = await fetch("https://api.dropboxapi.com/2/files/create_folder_v2", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path, autorename: false }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      if (err?.error?.[".tag"] !== "path" || err.error.path?.[".tag"] !== "conflict") {
+        console.warn(`[createSingleFolder] unexpected error for ${path}:`, err);
+      }
+    }
+  } catch { /* folder creation failure is non-fatal */ }
 }
 
 // --- setup_order: create folders + batch-sync existing source files ---
@@ -558,11 +614,24 @@ async function handleSetupOrder(
     return jsonResponse({ skipped: true, reason: "Could not resolve order Dropbox path" });
   }
 
-  // Create the full folder structure
+  // Query workflow steps for this order to build dynamic folder names
+  const { data: workflowSteps } = await supabase
+    .from("order_workflow_steps")
+    .select("step_number, name")
+    .eq("order_id", order_id)
+    .order("step_number");
+
+  const stepFolders = (workflowSteps ?? []).map((s: any) => {
+    const num = String(s.step_number).padStart(2, "0");
+    return `Step ${num} — ${s.name}`;
+  });
+
+  // Create the full folder structure (static + dynamic step folders)
   await handleCreateOrderFolder(accessToken, {
     project_number: resolved.projectNumber,
     customer_name: resolved.customerName,
     target_language: resolved.targetLanguage,
+    step_folders: stepFolders,
   });
 
   // Find the quote_id from the order if not provided
@@ -603,7 +672,7 @@ async function handleSetupOrder(
         continue; // Skip draft_translation, final_deliverable, etc.
       }
 
-      const subfolder = TRIGGER_TO_SUBFOLDER[trigger]!;
+      const subfolder = TRIGGER_TO_STATIC_FOLDER[trigger]!;
       const filename = qf.original_filename ?? qf.storage_path.split("/").pop() ?? "file";
       const dropbox_path = `${resolved.basePath}/${subfolder}/${filename}`;
 
@@ -628,31 +697,17 @@ async function handleSetupOrder(
   return jsonResponse({
     success: true,
     base_path: resolved.basePath,
+    step_folders: stepFolders.length,
     source_files_synced: synced.length,
   });
 }
 
-// Ensure the order subfolder structure exists (idempotent)
+// Ensure the static order subfolder structure exists (idempotent).
+// Step-specific folders are created on-demand by createSingleFolder()
+// when files are synced to a step.
 async function ensureOrderFolders(accessToken: string, basePath: string): Promise<void> {
-  for (const sub of ORDER_SUBFOLDERS) {
-    const path = `${basePath}/${sub}`;
-    try {
-      const res = await fetch("https://api.dropboxapi.com/2/files/create_folder_v2", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ path, autorename: false }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        // Conflict = already exists = fine
-        if (err?.error?.[".tag"] !== "path" || err.error.path?.[".tag"] !== "conflict") {
-          console.warn(`[ensureOrderFolders] unexpected error for ${path}:`, err);
-        }
-      }
-    } catch { /* swallow — folder creation failure is non-fatal */ }
+  for (const sub of STATIC_FOLDERS) {
+    await createSingleFolder(accessToken, `${basePath}/${sub}`);
   }
 }
 
@@ -671,7 +726,7 @@ async function getValidAccessToken(
 
   if (!isExpired) return connection.access_token;
 
-  const res = await fetch("https://api.dropboxapi.com/2/oauth2/token", {
+  const res = await fetch("https://api.dropboxapi.com/oauth2/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

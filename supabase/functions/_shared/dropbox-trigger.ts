@@ -26,6 +26,7 @@ interface SyncOrderFileParams {
   quote_id?: string;
   quote_file_id?: string;
   step_delivery_id?: string;
+  step_id?: string; // routes file to the step's Dropbox folder
 }
 
 /**

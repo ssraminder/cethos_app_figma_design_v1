@@ -40,6 +40,7 @@ serve(async (req: Request) => {
     const stepId = formData.get("step_id") as string;
     const notes = formData.get("notes") as string | null;
     const staffId = formData.get("staff_id") as string | null;
+    const deliveredByEmail = formData.get("delivered_by_email") === "true";
     const files = formData.getAll("files") as File[];
 
     if (!stepId) return json({ success: false, error: "Missing step_id" }, 400);
@@ -140,19 +141,33 @@ serve(async (req: Request) => {
 
     // Dropbox sync — fire-and-forget for each uploaded file
     for (const path of uploadedPaths) {
+      // Sync to the step's folder
       triggerDropboxSync({
         order_id: step.order_id,
         source_bucket: "quote-files",
         source_path: path,
         sync_trigger: "staff_delivery",
         filename: path.split("/").pop() ?? undefined,
+        step_id: stepId,
       });
+
+      // When delivered by email, also sync a copy to the Final Deliverable folder
+      if (deliveredByEmail) {
+        triggerDropboxSync({
+          order_id: step.order_id,
+          source_bucket: "quote-files",
+          source_path: path,
+          sync_trigger: "final_delivery",
+          filename: path.split("/").pop() ?? undefined,
+        });
+      }
     }
 
     return json({
       success: true,
       delivery_version: deliveryVersion,
       file_count: files.length,
+      delivered_by_email: deliveredByEmail,
     });
   } catch (err) {
     console.error("staff-deliver-step error:", err);

@@ -2468,6 +2468,13 @@ function WorkflowPipeline({
   const [uploadModalFiles, setUploadModalFiles] = useState<File[]>([]);
   const [uploadModalNotes, setUploadModalNotes] = useState("");
   const [uploadModalLoading, setUploadModalLoading] = useState(false);
+  // "Delivered by email" mode: admin uploads files that were delivered outside
+  // the portal (e.g. via email). Files go to Supabase Storage + Dropbox in
+  // the step's folder AND the Final Deliverable folder.
+  const [emailDeliveryStep, setEmailDeliveryStep] = useState<WorkflowStep | null>(null);
+  const [emailDeliveryFiles, setEmailDeliveryFiles] = useState<File[]>([]);
+  const [emailDeliveryNotes, setEmailDeliveryNotes] = useState("");
+  const [emailDeliveryLoading, setEmailDeliveryLoading] = useState(false);
 
   // Tracks which step is being promoted to a customer draft file so the
   // button can spin while the watermarked PDF is generated server-side
@@ -2517,6 +2524,52 @@ function WorkflowPipeline({
       setUploadModalLoading(false);
     }
   };
+
+  // "Delivered by email" handler: uploads files via staff-deliver-step (same
+  // as the normal admin upload), but also copies them into the Final Deliverable
+  // Dropbox folder via a second fire-and-forget sync.
+  const handleEmailDelivery = async () => {
+    if (!emailDeliveryStep) return;
+    if (emailDeliveryFiles.length === 0) {
+      toast.error("Pick at least one file to upload");
+      return;
+    }
+    setEmailDeliveryLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("step_id", emailDeliveryStep.id);
+      formData.append("notes", emailDeliveryNotes || "Delivered by email");
+      formData.append("delivered_by_email", "true");
+      emailDeliveryFiles.forEach((f) => formData.append("files", f));
+      if (currentStaff?.staffId) formData.append("staff_id", currentStaff.staffId);
+
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/staff-deliver-step`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: formData,
+        },
+      );
+      const data = await res.json().catch(() => null as any);
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || `Failed to upload files (HTTP ${res.status})`);
+        return;
+      }
+      toast.success(`Email delivery recorded — v${data.delivery_version} (${emailDeliveryFiles.length} file${emailDeliveryFiles.length !== 1 ? "s" : ""})`);
+      setEmailDeliveryStep(null);
+      setEmailDeliveryFiles([]);
+      setEmailDeliveryNotes("");
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      toast.error("Failed to upload email delivery");
+    } finally {
+      setEmailDeliveryLoading(false);
+    }
+  };
+
   const [reviseFeedback, setReviseFeedback] = useState('');
 
   // Generates a watermarked DRAFT PDF on the server and inserts it as a
@@ -3821,6 +3874,26 @@ function WorkflowPipeline({
                       </button>
                     )}
 
+                  {/* Delivered by Email: available on any step that is
+                      in an active or delivered state. Opens a file picker
+                      so admin can record files that were delivered outside
+                      the portal. Files stored in Supabase Storage + synced
+                      to Dropbox in both the step folder and Final Deliverable. */}
+                  {["accepted", "in_progress", "revision_requested", "delivered", "approved"].includes(step.status) && (
+                    <button
+                      className="text-xs px-3 py-1 border border-teal-400 text-teal-700 rounded hover:bg-teal-50 flex items-center gap-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEmailDeliveryStep(step);
+                        setEmailDeliveryFiles([]);
+                        setEmailDeliveryNotes("");
+                      }}
+                      title="Record files that were delivered via email (stores in Supabase Storage + Dropbox)"
+                    >
+                      <Mail className="w-3 h-3" /> Delivered by email
+                    </button>
+                  )}
+
                   {/* Approve + Request Revision: delivered */}
                   {step.status === "delivered" && (() => {
                     // Check if approval is gated by another step
@@ -4461,6 +4534,141 @@ function WorkflowPipeline({
                   <Loader2 className="w-4 h-4 animate-spin" />
                 )}
                 Upload {uploadModalFiles.length > 0 ? `(${uploadModalFiles.length})` : ""}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delivered by Email modal */}
+      {emailDeliveryStep && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => !emailDeliveryLoading && setEmailDeliveryStep(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <Mail className="w-5 h-5 text-teal-600" />
+                Delivered by email — Step {emailDeliveryStep.step_number}:{" "}
+                {emailDeliveryStep.name}
+              </h3>
+              <button
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => !emailDeliveryLoading && setEmailDeliveryStep(null)}
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-gray-500">
+                Upload files that were delivered outside the portal (e.g. via email).
+                They will be stored in <strong>Supabase Storage</strong> and synced to{" "}
+                <strong>Dropbox</strong> in the step folder and Final Deliverable folder.
+              </p>
+
+              <label className="block border-2 border-dashed border-teal-300 rounded p-4 text-center cursor-pointer hover:border-teal-400 hover:bg-teal-50 transition-colors">
+                <Mail className="w-5 h-5 mx-auto text-teal-500 mb-1" />
+                <div className="text-sm text-teal-700">
+                  Click to pick files — or drag-drop below
+                </div>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const picked = e.target.files
+                      ? Array.from(e.target.files)
+                      : [];
+                    if (picked.length > 0) {
+                      setEmailDeliveryFiles((prev) => [...prev, ...picked]);
+                    }
+                    try { e.target.value = ""; } catch {}
+                  }}
+                />
+              </label>
+
+              <div
+                className="border border-gray-200 rounded p-3 min-h-[60px] text-xs"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const files = Array.from(e.dataTransfer.files);
+                  if (files.length)
+                    setEmailDeliveryFiles((prev) => [...prev, ...files]);
+                }}
+              >
+                {emailDeliveryFiles.length === 0 ? (
+                  <span className="text-gray-400">No files selected</span>
+                ) : (
+                  <ul className="space-y-1">
+                    {emailDeliveryFiles.map((f, i) => (
+                      <li
+                        key={`${f.name}-${i}`}
+                        className="flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1 text-gray-800 truncate">
+                          <FileText className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{f.name}</span>
+                          <span className="text-gray-400">
+                            ({(f.size / 1024).toFixed(1)} KB)
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEmailDeliveryFiles((prev) =>
+                              prev.filter((_, idx) => idx !== i),
+                            )
+                          }
+                          className="text-gray-400 hover:text-red-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <textarea
+                className="w-full text-sm border border-gray-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                rows={2}
+                placeholder="Notes (optional — e.g. email subject, sender)…"
+                value={emailDeliveryNotes}
+                onChange={(e) => setEmailDeliveryNotes(e.target.value)}
+              />
+            </div>
+            <div className="p-4 border-t flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                onClick={() => setEmailDeliveryStep(null)}
+                disabled={emailDeliveryLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-4 py-1.5 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded disabled:opacity-50 flex items-center gap-2"
+                disabled={
+                  emailDeliveryLoading || emailDeliveryFiles.length === 0
+                }
+                onClick={handleEmailDelivery}
+              >
+                {emailDeliveryLoading && (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                )}
+                <Mail className="w-4 h-4" />
+                Record Delivery {emailDeliveryFiles.length > 0 ? `(${emailDeliveryFiles.length})` : ""}
               </button>
             </div>
           </div>

@@ -18,9 +18,27 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-23 — Dropbox Phase 2b: dynamic folder structure + "Delivered by email" button
+- **Decision:** Replaced the hardcoded 6-folder Dropbox structure with a dynamic approach: folders are generated from the order's actual workflow steps (`order_workflow_steps`) plus a set of always-present static folders. Added "Delivered by email" button to every workflow step in the admin portal.
+- **Dynamic folder structure:**
+  - Static (always present): `Source Documents/`, `Reference Materials/`, `Drafts/`, `Certified/`, `Final Deliverable/`
+  - Dynamic (per step): `Step 01 — Translation/`, `Step 02 — QM Review/`, `Step 03 — Final Eye/`, etc. — queried from `order_workflow_steps` at folder creation time
+  - `setup_order` action queries the order's workflow steps and passes step folder names to `handleCreateOrderFolder`
+  - File sync routes to step folders via `step_id` parameter (resolves step_number + name into folder name)
+  - Files without a `step_id` fall back to static folders by `sync_trigger` key
+- **"Delivered by email" button:**
+  - Visible on every workflow step in states: `accepted`, `in_progress`, `revision_requested`, `delivered`, `approved`
+  - Opens a modal (teal-themed) where admin uploads files delivered outside the portal
+  - Calls `staff-deliver-step` with `delivered_by_email=true` flag
+  - When `delivered_by_email`, triggers TWO Dropbox syncs: one to the step's folder (`staff_delivery` trigger + `step_id`) and one to `Final Deliverable/` (`final_delivery` trigger)
+- **Token refresh bug fixed:** `dropbox-sync/index.ts` line 674 had wrong URL `https://api.dropboxapi.com/2/oauth2/token` — changed to `https://api.dropboxapi.com/oauth2/token` (same fix as the OAuth exchange bug from 2026-05-22)
+- **Functions redeployed (all 2026-05-23):** `dropbox-sync`, `staff-deliver-step`, `promote-step-delivery-to-draft`, `apply-affidavit-and-finalize`, `assign-order-workflow`
+- **Status:** active
+- **Affects:** `dropbox-sync/index.ts`, `_shared/dropbox-trigger.ts` (added `step_id` param), `staff-deliver-step/index.ts` (added `delivered_by_email` + dual Dropbox sync), `OrderWorkflowSection.tsx` (new button + modal)
+
 ### 2026-05-22 — Dropbox integration Phase 2: automatic sync triggers wired into file lifecycle
 - **Decision:** Wired fire-and-forget Dropbox sync triggers into 4 existing edge functions so files are automatically mirrored to Dropbox when lifecycle events occur. A new shared helper `_shared/dropbox-trigger.ts` provides `triggerDropboxSync()` and `triggerDropboxOrderSetup()` — both silently no-op if Dropbox is not connected or if the sync fails.
-- **Trigger → subfolder mapping:** `staff_delivery` → `03-Deliveries`, `draft_promoted` → `04-Drafts`, `affidavit_generated` → `05-Certified`, `client_upload` → `01-Source`, `reference_upload` → `02-Reference`. `setup_order` creates the full 6-subfolder structure and batch-syncs existing source+reference docs.
+- **Trigger → subfolder mapping:** `staff_delivery` → `03-Deliveries`, `draft_promoted` → `04-Drafts`, `affidavit_generated` → `05-Certified`, `client_upload` → `01-Source`, `reference_upload` → `02-Reference`. `setup_order` creates the full 6-subfolder structure and batch-syncs existing source+reference docs. **Superseded by 2026-05-23 dynamic folders — triggers now route through `TRIGGER_TO_STATIC_FOLDER` + `step_id` resolution.**
 - **Functions modified (all deployed 2026-05-22):**
   - `staff-deliver-step` v35 — fires `triggerDropboxSync` per uploaded file after delivery record created
   - `promote-step-delivery-to-draft` v7 — fires after watermarked PDF inserted into `quote_files`
@@ -30,7 +48,7 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 - **Path resolution:** centralized in `dropbox-sync` — callers pass `order_id` + `sync_trigger`, the sync function resolves the Dropbox folder path from the order's project number, customer name, and target language. Format: `/Cethos/Orders/{PRJ-number} — {Customer} — {Language}/{subfolder}/`
 - **Deferred:** `vendor-deliver-step` lives in vendor repo (`D:\cethos-vendor`) — wire separately. `customer-quote-finalize-files` covered by batch sync at workflow assignment.
 - **Pending setup (not code):** Set `DROPBOX_APP_KEY` + `DROPBOX_APP_SECRET` Supabase secrets, `VITE_DROPBOX_APP_KEY` Netlify env var, redirect URI in Dropbox console → `https://portal.cethos.com/admin/settings/dropbox`.
-- **Status:** active. All code deployed. Sync will silently no-op until Dropbox OAuth is completed by an admin user.
+- **Status:** active (subfolder mapping superseded by 2026-05-23). All code deployed.
 - **Affects:** `_shared/dropbox-trigger.ts` (new), `dropbox-sync/index.ts`, `staff-deliver-step/index.ts`, `promote-step-delivery-to-draft/index.ts`, `apply-affidavit-and-finalize/index.ts`, `assign-order-workflow/index.ts`.
 
 ### 2026-05-21 — Affidavit pipeline: 3-flow model, fail-loud on missing template, code-slug lookup
