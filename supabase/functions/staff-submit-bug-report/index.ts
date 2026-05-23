@@ -36,12 +36,13 @@ serve(async (req: Request) => {
   );
 
   // Resolve staff from JWT
+  const jwt = authHeader.replace(/^Bearer\s+/i, "");
+  if (!jwt) return json({ success: false, error: "unauthorized" }, 401);
   const anonClient = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-    { global: { headers: { Authorization: authHeader } } },
   );
-  const { data: { user } } = await anonClient.auth.getUser();
+  const { data: { user } } = await anonClient.auth.getUser(jwt);
   if (!user) return json({ success: false, error: "unauthorized" }, 401);
 
   const { data: staff } = await supabase

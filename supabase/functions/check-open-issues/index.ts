@@ -71,12 +71,13 @@ serve(async (req: Request) => {
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
 
   const authHeader = req.headers.get("Authorization") ?? "";
+  const jwt = authHeader.replace(/^Bearer\s+/i, "");
+  if (!jwt) return json({ success: false, error: "unauthorized" }, 401);
   const anonClient = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-    { global: { headers: { Authorization: authHeader } } },
   );
-  const { data: { user } } = await anonClient.auth.getUser();
+  const { data: { user } } = await anonClient.auth.getUser(jwt);
   if (!user) return json({ success: false, error: "unauthorized" }, 401);
 
   const supabase = createClient(
