@@ -64,7 +64,7 @@ async function handleExchange(
     return jsonResponse({ error: "code and redirect_uri are required" }, 400);
   }
 
-  const tokenRes = await fetch("https://api.dropboxapi.com/2/oauth2/token", {
+  const tokenRes = await fetch("https://api.dropboxapi.com/oauth2/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
