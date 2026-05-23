@@ -78,8 +78,20 @@ async function handleExchange(
 
   if (!tokenRes.ok) {
     const errText = await tokenRes.text();
-    console.error("Dropbox token exchange failed:", errText);
-    return jsonResponse({ error: "Token exchange failed" }, 400);
+    console.error("Dropbox token exchange failed:", tokenRes.status, errText);
+    // Surface the actual Dropbox error so admin can diagnose (redirect_uri
+    // mismatch, bad secret, expired code, etc.)
+    let detail = "";
+    try {
+      const parsed = JSON.parse(errText);
+      detail = parsed.error_description || parsed.error || errText;
+    } catch {
+      detail = errText;
+    }
+    return jsonResponse({
+      error: `Token exchange failed: ${detail}`,
+      dropbox_status: tokenRes.status,
+    }, 400);
   }
 
   const tokens = await tokenRes.json();

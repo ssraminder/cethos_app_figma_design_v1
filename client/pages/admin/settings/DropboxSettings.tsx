@@ -61,7 +61,14 @@ export default function DropboxSettings() {
       }
     } catch (err: any) {
       console.error("Exchange error:", err);
-      setMessage({ type: "error", text: "Failed to exchange authorization code" });
+      // supabase.functions.invoke wraps non-2xx in FunctionsHttpError with
+      // the response body available via err.context?.json() or err.message.
+      let detail = "Failed to exchange authorization code";
+      try {
+        const body = err?.context ? await err.context.json() : null;
+        if (body?.error) detail = body.error;
+      } catch { /* use default */ }
+      setMessage({ type: "error", text: detail });
     } finally {
       setActing(false);
       setLoading(false);
