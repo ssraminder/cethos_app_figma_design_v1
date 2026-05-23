@@ -207,6 +207,7 @@ const UNASSIGN_REASON_LABELS: Record<string, string> = {
 const STEP_STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   pending: { bg: "bg-gray-100", text: "text-gray-600", label: "Pending" },
   offered: { bg: "bg-yellow-100", text: "text-yellow-700", label: "Offered" },
+  assigned: { bg: "bg-indigo-100", text: "text-indigo-700", label: "Assigned" },
   accepted: { bg: "bg-blue-100", text: "text-blue-700", label: "Accepted" },
   in_progress: { bg: "bg-blue-100", text: "text-blue-700", label: "In Progress" },
   delivered: { bg: "bg-orange-100", text: "text-orange-700", label: "Delivered" },
@@ -3879,7 +3880,7 @@ function WorkflowPipeline({
                       so admin can record files that were delivered outside
                       the portal. Files stored in Supabase Storage + synced
                       to Dropbox in both the step folder and Final Deliverable. */}
-                  {["accepted", "in_progress", "revision_requested", "delivered", "approved"].includes(step.status) && (
+                  {["assigned", "accepted", "in_progress", "revision_requested", "delivered", "approved"].includes(step.status) && (
                     <button
                       className="text-xs px-3 py-1 border border-teal-400 text-teal-700 rounded hover:bg-teal-50 flex items-center gap-1"
                       onClick={(e) => {

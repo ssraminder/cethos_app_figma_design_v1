@@ -18,6 +18,28 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-23 — Client rate cards: per-customer + global default pricing
+- **Decision:** New `client_rate_cards` table with global defaults (customer_id IS NULL) and per-customer overrides. Rate cards keyed by (service, source_lang, target_lang, domain, unit_of_measure). Per-customer wins over global via `lookup_client_rate()` SQL function. "Rates" tab on CustomerDetail.tsx for CRUD. Auto-lookup in AdminCreateOrder.tsx pre-fills first line item's rate when customer + service + languages are set.
+- **Schema:** `client_rate_cards` with partial unique index (NULLS NOT DISTINCT) on `(customer_id, service_id, source_language_id, target_language_id, domain, unit_of_measure) WHERE is_active = true`. Soft-delete via `is_active = false`. RLS: authenticated CRUD, service_role full access.
+- **Lookup priority:** Customer-specific > global default. Domain-specific > domain=NULL (any domain).
+- **Auto-fill UX:** When all four fields (customer, service, source, target) are set, a `supabase.rpc("lookup_client_rate")` call fires. If a match is found AND the first line's rate is empty, it's pre-filled. A teal hint shows "Customer rate: CAD $X.XXXX/word" or "Global default: ...".
+- **Status:** active. Migration applied, UI wired.
+- **Affects:** `client_rate_cards` table + `lookup_client_rate()` function, new `CustomerRatesTab.tsx`, modified `CustomerDetail.tsx` (new "Rates" tab), modified `AdminCreateOrder.tsx` (rate auto-lookup).
+
+### 2026-05-23 — Vendor manual acceptance: direct_assign → "assigned" status
+- **Decision:** `direct_assign` in `update-workflow-step` now sets status to "assigned" instead of "accepted". Vendor must manually accept via a new "Accept Assignment" button in the vendor portal. Escalating email reminders fire via pg_cron every 15 minutes:
+  - 1 hour after assignment: reminder email to vendor
+  - 2 hours after assignment: urgent email to vendor + pm@cethoscorp.com
+- **Admin notification:** When vendor accepts, a Brevo email is sent to pm@cethoscorp.com confirming the acceptance.
+- **Vendor portal changes:** New `accept-direct-assign` Netlify function handles acceptance (moves step to "accepted", sets accepted_at). `get-jobs` active tab now includes "assigned" status. JobBoard shows indigo "Assigned" badge and "Accept Assignment" button. New `AcceptDirectAssignModal` in JobActionModals.tsx.
+- **Email template:** `notify-vendor-assignment.ts` updated for direct_assign — CTA changed from "View assignment" to "Accept assignment", lead text asks vendor to accept in portal.
+- **Deadline reminders:** `vendor-deadline-reminders` sweep now includes "assigned" status so vendors get deadline warnings even before accepting.
+- **DB migration:** Added `assigned_at` column to `order_workflow_steps`. Backfilled for existing direct-assigned steps.
+- **Functions deployed:** `update-workflow-step`, `get-order-workflow`, `vendor-acceptance-reminders`, `vendor-deadline-reminders`.
+- **pg_cron schedule:** `vendor-acceptance-reminders` runs every 15 minutes (job 904).
+- **Status:** active.
+- **Affects:** `order_workflow_steps.assigned_at` column, `update-workflow-step` (status "assigned"), `get-order-workflow` (includes assigned_at, "assigned" in progress count), `_shared/notify-vendor-assignment.ts` (email text), `vendor-acceptance-reminders` (new cron function), `vendor-deadline-reminders` (includes "assigned"), `OrderWorkflowSection.tsx` (badge + email delivery button for assigned), vendor portal: `accept-direct-assign.ts`, `get-jobs.ts`, `JobBoard.tsx`, `JobActionModals.tsx`, `vendorJobs.ts`.
+
 ### 2026-05-23 — Dropbox Phase 2b: dynamic folder structure + "Delivered by email" button
 - **Decision:** Replaced the hardcoded 6-folder Dropbox structure with a dynamic approach: folders are generated from the order's actual workflow steps (`order_workflow_steps`) plus a set of always-present static folders. Added "Delivered by email" button to every workflow step in the admin portal.
 - **Dynamic folder structure:**
