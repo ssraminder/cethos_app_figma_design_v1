@@ -195,8 +195,8 @@ export default function KioskStaffForm({
               .order("name"),
             supabase
               .from("app_settings")
-              .select("key,value")
-              .in("key", ["base_rate"]),
+              .select("setting_key,setting_value")
+              .in("setting_key", ["base_rate"]),
           ]);
         if (langRes.error) throw new Error("Failed to load languages");
         setLanguages(langRes.data || []);
@@ -205,7 +205,7 @@ export default function KioskStaffForm({
         setTaxRates(taxRes.data || []);
         setIntendedUses(usesRes.data || []);
         for (const s of settingsRes.data || []) {
-          if (s.key === "base_rate") setBaseRate(parseFloat(s.value) || 65);
+          if (s.setting_key === "base_rate") setBaseRate(parseFloat(s.setting_value) || 65);
         }
         // Defaults
         const ab = (taxRes.data || []).find((t) => t.region_code === "AB");

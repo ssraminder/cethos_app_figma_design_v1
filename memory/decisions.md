@@ -18,6 +18,12 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-23 — Production hotfix: customer payment blocker + app_settings column mismatch
+- **Decision:** Emergency fix for three production errors: (1) `customer-quote-update` returning 403 for quote QT-2026-25261 because `awaiting_payment` was missing from `ALLOWED_STATUS_TRANSITIONS` — customer couldn't pay. (2) `app_settings` queries in FastQuoteCreate and KioskStaffForm using wrong column names (`key`/`value` instead of `setting_key`/`setting_value`), returning 400. (3) `rc-sync-sms` boot-crashing (502) on every cron — resolved by v5 redeploy (deployment artifact, not code bug).
+- **Rationale:** `awaiting_payment` is a staff-set status meaning "approved for payment" — it was simply omitted from the edge function's transition map. The `app_settings` column names were a legacy mismatch from a schema rename. The SMS sync crash was a transient bundling issue.
+- **Status:** active
+- **Affects:** `_shared/customer-quote.ts` (awaiting_payment transition), `FastQuoteCreate.tsx`, `KioskStaffForm.tsx` (setting_key/setting_value), `rc-sync-sms` (redeployed)
+
 ### 2026-05-23 — Weekly call intelligence report
 - **Decision:** Built weekly AI-powered call intelligence report. Claude Haiku 4.5 analyzes all transcribed calls for a date period and produces structured JSON: quality scores, sentiment breakdown, top topics, training highlights, staff performance, action items, customer patterns.
 - **Rationale:** User wants to leverage transcripts/summaries for quality analysis, training, and customer service improvement. Weekly cadence gives actionable insights without overwhelming.

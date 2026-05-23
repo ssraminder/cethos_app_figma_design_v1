@@ -311,8 +311,8 @@ export default function FastQuoteCreate() {
             .order("sort_order"),
           supabase
             .from("app_settings")
-            .select("key,value")
-            .in("key", ["base_rate", "words_per_page"]),
+            .select("setting_key,setting_value")
+            .in("setting_key", ["base_rate", "words_per_page"]),
         ]);
 
         if (langRes.error) throw new Error("Failed to load languages");
@@ -340,11 +340,11 @@ export default function FastQuoteCreate() {
         // Parse app settings
         if (settingsRes.data) {
           for (const setting of settingsRes.data) {
-            if (setting.key === "base_rate") {
-              setBaseRate(parseFloat(setting.value) || 65.0);
+            if (setting.setting_key === "base_rate") {
+              setBaseRate(parseFloat(setting.setting_value) || 65.0);
             }
-            if (setting.key === "words_per_page") {
-              setWordsPerPage(parseInt(setting.value) || 225);
+            if (setting.setting_key === "words_per_page") {
+              setWordsPerPage(parseInt(setting.setting_value) || 225);
             }
           }
         }

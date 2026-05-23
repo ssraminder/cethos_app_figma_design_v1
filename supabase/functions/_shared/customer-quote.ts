@@ -81,6 +81,7 @@ export const ALLOWED_STATUS_TRANSITIONS: Record<string, Set<string>> = {
   processing: new Set(["pending_payment", "in_review", "lead"]),
   analyzing: new Set(["pending_payment", "in_review", "lead"]),
   in_review: new Set(["pending_payment"]),
+  awaiting_payment: new Set(["pending_payment", "in_review"]),
   pending_payment: new Set(["pending_payment", "in_review"]),
   checkout_started: new Set(["pending_payment", "in_review", "lead"]),
   revision_needed: new Set(["processing"]),
