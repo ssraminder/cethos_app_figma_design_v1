@@ -338,6 +338,7 @@ function CallDetailDrawer({
   const [templates, setTemplates] = useState<SmsTemplate[]>([]);
   const [smsTemplateKey, setSmsTemplateKey] = useState("");
   const [smsVars, setSmsVars] = useState<Record<string, string>>({});
+  const [customSmsBody, setCustomSmsBody] = useState("");
   const [sendingSms, setSendingSms] = useState(false);
   const [smsResult, setSmsResult] = useState<string | null>(null);
 
@@ -382,7 +383,8 @@ function CallDetailDrawer({
     : "";
 
   const sendSms = async () => {
-    if (!detail || !selectedTemplate) return;
+    const isCustom = !selectedTemplate && customSmsBody.trim();
+    if (!detail || (!selectedTemplate && !isCustom)) return;
     const caller = detail.call.direction === "Inbound" ? detail.call.from_number_e164 : detail.call.to_number_e164;
     if (!caller) {
       alert("No phone number on this call");
@@ -390,15 +392,20 @@ function CallDetailDrawer({
     }
     setSendingSms(true);
     setSmsResult(null);
+    const payload: Record<string, unknown> = {
+      to_number: caller,
+      staff_user_id: staffUserId,
+      customer_id: detail.call.customer_id,
+      call_log_id: callId,
+    };
+    if (selectedTemplate) {
+      payload.template_key = selectedTemplate.key;
+      payload.variables = smsVars;
+    } else {
+      payload.custom_body = customSmsBody.trim();
+    }
     const { data, error } = await supabase.functions.invoke("rc-send-sms", {
-      body: {
-        template_key: selectedTemplate.key,
-        to_number: caller,
-        variables: smsVars,
-        staff_user_id: staffUserId,
-        customer_id: detail.call.customer_id,
-        call_log_id: callId,
-      },
+      body: payload,
     });
     setSendingSms(false);
     if (error || !data?.ok) {
@@ -408,6 +415,7 @@ function CallDetailDrawer({
     setSmsResult("✓ SMS sent");
     setSmsTemplateKey("");
     setSmsVars({});
+    setCustomSmsBody("");
     await load();
   };
 
@@ -537,7 +545,7 @@ function CallDetailDrawer({
               </h3>
               <select
                 value={smsTemplateKey}
-                onChange={(e) => { setSmsTemplateKey(e.target.value); setSmsVars({}); setSmsResult(null); }}
+                onChange={(e) => { setSmsTemplateKey(e.target.value); setCustomSmsBody(""); setSmsVars({}); setSmsResult(null); }}
                 className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm mb-3"
               >
                 <option value="">Pick a preset…</option>
@@ -563,6 +571,26 @@ function CallDetailDrawer({
                   <div className="bg-gray-50 rounded p-3 text-sm whitespace-pre-wrap text-gray-700 mb-3">
                     {previewBody}
                   </div>
+                </>
+              )}
+
+              {/* Custom message textarea — shown when no preset is selected */}
+              {!selectedTemplate && (
+                <>
+                  <div className="text-xs text-gray-400 text-center mb-2">— or type a custom message —</div>
+                  <textarea
+                    value={customSmsBody}
+                    onChange={(e) => { setCustomSmsBody(e.target.value); setSmsResult(null); }}
+                    placeholder="Type your message…"
+                    rows={3}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm mb-3 resize-y"
+                  />
+                </>
+              )}
+
+              {/* Send button — visible when a preset is selected OR custom text is typed */}
+              {(selectedTemplate || customSmsBody.trim()) && (
+                <>
                   <button
                     onClick={sendSms}
                     disabled={sendingSms}
