@@ -574,25 +574,37 @@ serve(async (req: Request) => {
     }
 
     if (action === "get_adjustments") {
-      const bid = Number(body.branch_id);
-      if (!bid || !dateFrom || !dateTo) {
-        return jr({ error: "branch_id, date_from, date_to required" }, 400);
+      const bid =
+        body.branch_id === null || body.branch_id === undefined
+          ? null
+          : Number(body.branch_id);
+      if (!dateFrom || !dateTo) {
+        return jr({ error: "date_from, date_to required" }, 400);
       }
-      const { data, error } = await sb
+      let q = sb
         .from("tax_return_adjustments")
         .select("*")
-        .eq("branch_id", bid)
         .eq("period_start", dateFrom)
-        .eq("period_end", dateTo)
-        .maybeSingle();
+        .eq("period_end", dateTo);
+      q = bid === null ? q.is("branch_id", null) : q.eq("branch_id", bid);
+      const { data, error } = await q.maybeSingle();
       if (error) throw error;
       return jr({ adjustments: data });
     }
 
     if (action === "save_adjustments") {
-      const bid = Number(body.branch_id);
-      if (!bid || !dateFrom || !dateTo) {
-        return jr({ error: "branch_id, date_from, date_to required" }, 400);
+      // branch_id is optional — when omitted, this is a consolidated-return row
+      // stored with branch_id IS NULL (see migration tax_return_adjustments
+      // _nullable_branch).
+      const bid =
+        body.branch_id === null || body.branch_id === undefined
+          ? null
+          : Number(body.branch_id);
+      if (bid !== null && !bid) {
+        return jr({ error: "invalid branch_id" }, 400);
+      }
+      if (!dateFrom || !dateTo) {
+        return jr({ error: "date_from, date_to required" }, 400);
       }
       const editable = [
         "line_104", "line_104_notes",
@@ -617,13 +629,39 @@ serve(async (req: Request) => {
         updated_at: new Date().toISOString(),
         updated_by: body.staff_id ?? null,
       };
-      const { data, error } = await sb
-        .from("tax_return_adjustments")
-        .upsert(payload, { onConflict: "branch_id,period_start,period_end" })
-        .select("*")
-        .single();
-      if (error) throw error;
-      return jr({ adjustments: data });
+      // Upsert manually since the partial-unique indexes don't work with
+      // onConflict (PostgREST limitation). Look up existing row first.
+      let existing: { id: string } | null = null;
+      {
+        let q = sb
+          .from("tax_return_adjustments")
+          .select("id")
+          .eq("period_start", dateFrom)
+          .eq("period_end", dateTo);
+        q = bid === null ? q.is("branch_id", null) : q.eq("branch_id", bid);
+        const { data } = await q.maybeSingle();
+        existing = (data as { id: string } | null) ?? null;
+      }
+      let result;
+      if (existing) {
+        const { data, error } = await sb
+          .from("tax_return_adjustments")
+          .update(payload)
+          .eq("id", existing.id)
+          .select("*")
+          .single();
+        if (error) throw error;
+        result = data;
+      } else {
+        const { data, error } = await sb
+          .from("tax_return_adjustments")
+          .insert(payload)
+          .select("*")
+          .single();
+        if (error) throw error;
+        result = data;
+      }
+      return jr({ adjustments: result });
     }
 
     if (action === "gst_return") {
@@ -768,8 +806,81 @@ serve(async (req: Request) => {
         };
       });
 
+      // Consolidated row — sum across all targetBranchIds + read adjustments
+      // saved with branch_id IS NULL for this period.
+      let consolidatedAdj: Record<string, unknown> = {};
+      {
+        const { data } = await sb
+          .from("tax_return_adjustments")
+          .select("*")
+          .is("branch_id", null)
+          .eq("period_start", dateFrom)
+          .eq("period_end", dateTo)
+          .maybeSingle();
+        consolidatedAdj = (data as Record<string, unknown> | null) || {};
+      }
+      const sumLine101 = returns.reduce((a, r) => a + r.line_101, 0);
+      const sumLine103 = returns.reduce((a, r) => a + r.line_103, 0);
+      const sumLine106Computed = returns.reduce((a, r) => a + r.line_106_computed, 0);
+      const c_104 = num(consolidatedAdj.line_104);
+      const c_107 = num(consolidatedAdj.line_107);
+      const c_110 = num(consolidatedAdj.line_110);
+      const c_111 = num(consolidatedAdj.line_111);
+      const c_205 = num(consolidatedAdj.line_205);
+      const c_405 = num(consolidatedAdj.line_405);
+      const c_106_additional = num(consolidatedAdj.additional_itc_amount);
+      const c_106 = sumLine106Computed + c_106_additional;
+      const c_105 = sumLine103 + c_104;
+      const c_108 = c_106 + c_107;
+      const c_109 = c_105 - c_108;
+      const c_112 = c_110 + c_111;
+      const c_113A = c_109 - c_112;
+      const c_113B = c_205 + c_405;
+      const c_113C = c_113A + c_113B;
+      const consolidated = {
+        branch_id: null as number | null,
+        branch_name: returns.length === 1
+          ? returns[0].branch_name
+          : `Consolidated (${returns.length} branches)`,
+        included_branches: returns.map((r) => ({ id: r.branch_id, name: r.branch_name })),
+        period_start: dateFrom,
+        period_end: dateTo,
+        line_101: rnd2(sumLine101),
+        line_103: rnd2(sumLine103),
+        line_104: rnd2(c_104),
+        line_104_notes: (consolidatedAdj.line_104_notes as string | null) ?? null,
+        line_105: rnd2(c_105),
+        line_106_computed: rnd2(sumLine106Computed),
+        line_106_additional: rnd2(c_106_additional),
+        line_106: rnd2(c_106),
+        additional_itc_notes: (consolidatedAdj.additional_itc_notes as string | null) ?? null,
+        line_107: rnd2(c_107),
+        line_107_notes: (consolidatedAdj.line_107_notes as string | null) ?? null,
+        line_108: rnd2(c_108),
+        line_109: rnd2(c_109),
+        line_110: rnd2(c_110),
+        line_110_notes: (consolidatedAdj.line_110_notes as string | null) ?? null,
+        line_111: rnd2(c_111),
+        line_111_notes: (consolidatedAdj.line_111_notes as string | null) ?? null,
+        line_112: rnd2(c_112),
+        line_113A: rnd2(c_113A),
+        line_205: rnd2(c_205),
+        line_205_notes: (consolidatedAdj.line_205_notes as string | null) ?? null,
+        line_405: rnd2(c_405),
+        line_405_notes: (consolidatedAdj.line_405_notes as string | null) ?? null,
+        line_113B: rnd2(c_113B),
+        line_113C: rnd2(c_113C),
+        refund_or_payment: c_113C < 0
+          ? { kind: "refund", line: 114, amount: rnd2(-c_113C) }
+          : { kind: "payment", line: 115, amount: rnd2(c_113C) },
+        vendor_invoice_count: returns.reduce((a, r) => a + r.vendor_invoice_count, 0),
+        customer_invoice_count: returns.reduce((a, r) => a + r.customer_invoice_count, 0),
+        filed_at: (consolidatedAdj.filed_at as string | null) ?? null,
+      };
+
       return jr({
         returns,
+        consolidated,
         filter_snapshot: { branch_ids: targetBranchIds, date_from: dateFrom, date_to: dateTo, basis },
       });
     }

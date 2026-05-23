@@ -4,9 +4,10 @@ import { callPaymentApi } from "@/lib/payment-api";
 import { downloadXlsx } from "@/lib/xlsx-export";
 
 export interface GstReturnRow {
-  branch_id: number;
+  branch_id: number | null;
   branch_name: string;
-  branch_code: string | null;
+  branch_code?: string | null;
+  included_branches?: { id: number; name: string }[];
   period_start: string;
   period_end: string;
   line_101: number;
@@ -53,8 +54,13 @@ interface Props {
 
 type EditState = Record<number, Partial<GstReturnRow>>;
 
+// Consolidated row uses key 0 in the EditState since branch_id IS null on
+// the server but a TS Map needs a non-null key.
+const CONSOLIDATED_KEY = 0;
+
 export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Props) {
   const [returns, setReturns] = useState<GstReturnRow[]>([]);
+  const [consolidated, setConsolidated] = useState<GstReturnRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [edits, setEdits] = useState<EditState>({});
@@ -63,6 +69,7 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
   const load = async () => {
     if (!dateFrom || !dateTo || branchIds.length === 0) {
       setReturns([]);
+      setConsolidated(null);
       return;
     }
     setLoading(true);
@@ -76,10 +83,12 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
         basis,
       });
       setReturns(r.returns || []);
+      setConsolidated(r.consolidated || null);
       setEdits({});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setReturns([]);
+      setConsolidated(null);
     } finally {
       setLoading(false);
     }
@@ -90,19 +99,23 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo, basis, branchIds.join(",")]);
 
+  const editKey = (row: GstReturnRow): number =>
+    row.branch_id ?? CONSOLIDATED_KEY;
+
   const editField = (
-    branchId: number,
+    row: GstReturnRow,
     field: keyof GstReturnRow,
     value: number | string,
   ) => {
+    const key = editKey(row);
     setEdits((prev) => ({
       ...prev,
-      [branchId]: { ...prev[branchId], [field]: value },
+      [key]: { ...prev[key], [field]: value },
     }));
   };
 
   const val = (row: GstReturnRow, field: keyof GstReturnRow): number | string => {
-    const e = edits[row.branch_id];
+    const e = edits[editKey(row)];
     if (e && Object.prototype.hasOwnProperty.call(e, field)) {
       const v = e[field];
       return (v as number | string) ?? "";
@@ -137,9 +150,10 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
   };
 
   const save = async (row: GstReturnRow) => {
-    setSavingBranchId(row.branch_id);
+    const key = editKey(row);
+    setSavingBranchId(key);
     try {
-      const e = edits[row.branch_id] || {};
+      const e = edits[key] || {};
       await callPaymentApi("generate-tax-report", {
         action: "save_adjustments",
         branch_id: row.branch_id,
@@ -205,7 +219,7 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
       value={val(row, field)}
       onChange={(e) =>
         editField(
-          row.branch_id,
+          row,
           field,
           e.target.value === "" ? "" : Number(e.target.value),
         )
@@ -223,7 +237,7 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
       type="text"
       placeholder={placeholder}
       value={(val(row, field) as string) || ""}
-      onChange={(e) => editField(row.branch_id, field, e.target.value)}
+      onChange={(e) => editField(row, field, e.target.value)}
       className="w-72 px-2 py-1 text-xs border rounded focus:ring-1 focus:ring-teal-500"
     />
   );
@@ -236,105 +250,61 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
 
   const printAll = () => window.print();
 
-  // Distribute the total vendor ITCs across branches in proportion to revenue.
-  // For each branch: target_itc = total_itc_pool * (branch_revenue / total_revenue).
-  // Pre-fill line_106_additional with the delta (target - line_106_computed) so
-  // Line 106 ends up equal to the target. Existing additional_itc values are
-  // overwritten — user can fine-tune per branch before saving.
-  const distributeByRevenue = () => {
-    const totalRevenue = returns.reduce((a, r) => a + r.line_101, 0);
-    const totalItcPool = returns.reduce((a, r) => a + r.line_106_computed, 0);
-    if (totalRevenue <= 0) {
-      setError("Total revenue is zero — cannot distribute by revenue share.");
-      return;
-    }
-    const ok = window.confirm(
-      `Distribute total vendor ITCs (\$${totalItcPool.toFixed(2)}) across ${returns.length} branches in proportion to revenue?\n\nThis overwrites the 'Additional ITCs' input on each branch. You can adjust per-branch and then click Save.`,
-    );
-    if (!ok) return;
-    const next: EditState = { ...edits };
-    for (const r of returns) {
-      const targetItc = totalItcPool * (r.line_101 / totalRevenue);
-      const delta = Math.round((targetItc - r.line_106_computed) * 100) / 100;
-      const note = `Auto-split by revenue % (target Line 106 = \$${targetItc.toFixed(2)}, revenue share = ${((r.line_101 / totalRevenue) * 100).toFixed(2)}%)`;
-      next[r.branch_id] = {
-        ...next[r.branch_id],
-        line_106_additional: delta,
-        additional_itc_notes: note,
-      };
-    }
-    setEdits(next);
-  };
-
-  // Save all branches that have unsaved edits in sequence.
-  const saveAll = async () => {
-    const dirtyBranches = returns.filter((r) => edits[r.branch_id]);
-    if (dirtyBranches.length === 0) return;
-    for (const r of dirtyBranches) {
-      await save(r);
-    }
-  };
-
-  const dirtyCount = returns.filter((r) => edits[r.branch_id]).length;
+  const dirty = !!edits[CONSOLIDATED_KEY];
 
   const exportExcel = () => {
-    const header = [
+    if (!consolidated) return;
+    const c = computed(consolidated);
+    const oneReturnSheet: (string | number)[][] = [
+      ["Field", "Value"],
+      ["Branches", (consolidated.included_branches || []).map((b) => b.name).join(", ")],
+      ["Period start", consolidated.period_start],
+      ["Period end", consolidated.period_end],
+      ["Line 101 Total sales", consolidated.line_101],
+      ["Line 103 GST collected", consolidated.line_103],
+      ["Line 104 Adjustments+", c.l_104],
+      ["Line 105 Total GST+adj", c.l_105],
+      ["Line 106-a ITC vendor (computed)", consolidated.line_106_computed],
+      ["Line 106-b Additional ITC", c.l_106_additional],
+      ["Line 106 Total ITC", c.l_106],
+      ["Line 107 Adjustments-", c.l_107],
+      ["Line 108 Total ITC+adj", c.l_108],
+      ["Line 109 Net tax", c.l_109],
+      ["Line 110 Instalments", c.l_110],
+      ["Line 111 Rebates", c.l_111],
+      ["Line 112 Other credits", c.l_112],
+      ["Line 113A Balance", c.l_113A],
+      ["Line 205 Real property", c.l_205],
+      ["Line 405 Self-assessed", c.l_405],
+      ["Line 113B Other debits", c.l_113B],
+      ["Line 113C Balance", c.l_113C],
+      [
+        c.l_113C < 0 ? "Line 114 Refund claimed" : "Line 115 Payment enclosed",
+        Math.abs(c.l_113C),
+      ],
+      ["Additional ITC notes", consolidated.additional_itc_notes || ""],
+    ];
+    const perBranchHeader = [
       "Branch",
       "Line 101 Sales",
+      "% revenue",
       "Line 103 GST collected",
-      "Line 104 Adjustments+",
-      "Line 105 Total GST+adj",
-      "Line 106a ITC vendor",
-      "Line 106b Additional ITC",
-      "Line 106 Total ITC",
-      "Line 107 Adjustments-",
-      "Line 108 Total ITC+adj",
-      "Line 109 Net tax",
-      "Line 110 Instalments",
-      "Line 111 Rebates",
-      "Line 112 Other credits",
-      "Line 113A Balance",
-      "Line 205 Real property",
-      "Line 405 Self-assessed",
-      "Line 113B Other debits",
-      "Line 113C Balance",
-      "Line 114 Refund",
-      "Line 115 Payment",
-      "Additional ITC notes",
+      "Line 106-a ITC vendor",
+      "% ITC",
     ];
-    const rows = returns.map((row) => {
-      const c = computed(row);
-      return [
-        row.branch_name,
-        row.line_101,
-        row.line_103,
-        c.l_104,
-        c.l_105,
-        row.line_106_computed,
-        c.l_106_additional,
-        c.l_106,
-        c.l_107,
-        c.l_108,
-        c.l_109,
-        c.l_110,
-        c.l_111,
-        c.l_112,
-        c.l_113A,
-        c.l_205,
-        c.l_405,
-        c.l_113B,
-        c.l_113C,
-        c.l_113C < 0 ? -c.l_113C : 0,
-        c.l_113C >= 0 ? c.l_113C : 0,
-        row.additional_itc_notes || "",
-      ];
-    });
+    const totalRev = returns.reduce((a, r) => a + r.line_101, 0);
+    const totalItc = returns.reduce((a, r) => a + r.line_106_computed, 0);
+    const perBranchRows: (string | number)[][] = returns.map((r) => [
+      r.branch_name,
+      r.line_101,
+      totalRev > 0 ? Number(((r.line_101 / totalRev) * 100).toFixed(2)) : 0,
+      r.line_103,
+      r.line_106_computed,
+      totalItc > 0 ? Number(((r.line_106_computed / totalItc) * 100).toFixed(2)) : 0,
+    ]);
     downloadXlsx(`gst-return-${dateFrom}-to-${dateTo}.xlsx`, [
-      {
-        name: "GST Return",
-        rows: [header, ...rows],
-        colWidths: [28, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 12, 12, 40],
-      },
+      { name: "Consolidated Return", rows: oneReturnSheet, colWidths: [38, 30] },
+      { name: "By branch", rows: [perBranchHeader, ...perBranchRows], colWidths: [30, 16, 12, 18, 16, 10] },
       {
         name: "Filters",
         rows: [
@@ -342,46 +312,49 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
           ["Period start", dateFrom],
           ["Period end", dateTo],
           ["Basis", basis],
-          ["Branches", branchIds.join(", ")],
+          ["Branch IDs included", branchIds.join(", ")],
         ],
         colWidths: [22, 60],
       },
     ]);
   };
 
+  if (!consolidated) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-lg text-sm">
+        Pick a period and at least one branch from the filter bar to see the return.
+      </div>
+    );
+  }
+
+  const row = consolidated;
+  const c = computed(row);
+
   return (
     <div className="space-y-6">
       <div className="gst-return-no-print flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs text-gray-500">
-          {returns.length} branch{returns.length === 1 ? "" : "es"} · Letter-size PDF output
-          {dirtyCount > 0 && (
+          Consolidated across {returns.length} branch{returns.length === 1 ? "" : "es"} · Letter-size PDF output
+          {dirty && (
             <span className="ml-2 px-1.5 py-0.5 text-[11px] font-medium rounded bg-amber-100 text-amber-700">
-              {dirtyCount} unsaved
+              unsaved
             </span>
           )}
         </p>
         <div className="flex items-center gap-2">
           <button
-            onClick={distributeByRevenue}
-            className="px-3 py-1.5 text-sm bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 rounded flex items-center gap-1"
-            title="Allocate total vendor ITC across branches proportionally to revenue"
-          >
-            <Calculator className="w-4 h-4" />
-            Distribute ITCs by revenue %
-          </button>
-          <button
-            onClick={saveAll}
-            disabled={dirtyCount === 0 || savingBranchId !== null}
+            onClick={() => save(row)}
+            disabled={!dirty || savingBranchId !== null}
             className="px-3 py-1.5 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded flex items-center gap-1 disabled:opacity-50"
-            title="Save all unsaved branches"
+            title="Save adjustments for this period"
           >
             <Save className="w-4 h-4" />
-            Save all ({dirtyCount})
+            {savingBranchId !== null ? "Saving..." : "Save adjustments"}
           </button>
           <button
             onClick={exportExcel}
             className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
-            title="Download all branches as Excel"
+            title="Download return as Excel"
           >
             <Download className="w-4 h-4" />
             Export Excel
@@ -391,67 +364,52 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
             className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
           >
             <Printer className="w-4 h-4" />
-            Print / Save as PDF (all branches)
+            Print / Save as PDF
           </button>
         </div>
       </div>
 
-      {/* Revenue + ITC share summary — basis for revenue-% ITC redistribution */}
+      {/* Revenue + ITC share summary across the included branches */}
       <RevenueShareSummary returns={returns} />
 
-      {returns.map((row) => {
-        const c = computed(row);
-        const dirty = !!edits[row.branch_id];
-        return (
-          <div
-            key={row.branch_id}
-            className="gst-return-printable bg-white border border-gray-200 rounded-lg overflow-hidden"
-          >
-            <div className="gst-return-no-print bg-gray-50 px-5 py-3 border-b flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-gray-900">
-                  {row.branch_name}
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Reporting period: {row.period_start} to {row.period_end}
-                  &nbsp;&middot;&nbsp;{row.customer_invoice_count} customer invoices
-                  &nbsp;&middot;&nbsp;{row.vendor_invoice_count} vendor invoices
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => save(row)}
-                  disabled={!dirty || savingBranchId === row.branch_id}
-                  className="px-3 py-1.5 text-xs bg-teal-600 hover:bg-teal-700 text-white rounded disabled:opacity-50"
-                >
-                  {savingBranchId === row.branch_id ? "Saving..." : "Save"}
-                </button>
-                <button
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 rounded flex items-center gap-1"
-                  title="Print this branch's return"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Print
-                </button>
-              </div>
-            </div>
+      <div className="gst-return-printable bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="gst-return-no-print bg-gray-50 px-5 py-3 border-b">
+          <h3 className="text-base font-semibold text-gray-900">
+            {row.branch_name}
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Reporting period: {row.period_start} to {row.period_end}
+            &nbsp;&middot;&nbsp;{row.customer_invoice_count} customer invoices
+            &nbsp;&middot;&nbsp;{row.vendor_invoice_count} vendor invoices
+            {(row.included_branches || []).length > 0 && (
+              <>
+                <br />
+                Includes: {(row.included_branches || []).map((b) => b.name).join(", ")}
+              </>
+            )}
+          </p>
+        </div>
 
-            {/* Print-only header — minimal, accountant-ready */}
-            <div className="hidden print:block mb-3">
-              <div className="flex items-end justify-between border-b border-black pb-2 mb-3">
-                <div>
-                  <h2 className="text-lg font-bold">GST/HST Return Working Copy</h2>
-                  <p className="text-sm font-semibold mt-0.5">{row.branch_name}</p>
-                </div>
-                <div className="text-right text-sm">
-                  <div>Reporting period:</div>
-                  <div className="font-semibold">
-                    {row.period_start} &nbsp;to&nbsp; {row.period_end}
-                  </div>
-                </div>
+        {/* Print-only header */}
+        <div className="hidden print:block mb-3">
+          <div className="flex items-end justify-between border-b border-black pb-2 mb-3">
+            <div>
+              <h2 className="text-lg font-bold">GST/HST Return Working Copy</h2>
+              <p className="text-sm font-semibold mt-0.5">{row.branch_name}</p>
+              {(row.included_branches || []).length > 0 && (
+                <p className="text-xs mt-0.5">
+                  {(row.included_branches || []).map((b) => b.name).join(", ")}
+                </p>
+              )}
+            </div>
+            <div className="text-right text-sm">
+              <div>Reporting period:</div>
+              <div className="font-semibold">
+                {row.period_start} &nbsp;to&nbsp; {row.period_end}
               </div>
             </div>
+          </div>
+        </div>
 
             <div className="px-5 py-3 text-sm">
               <Line
@@ -591,16 +549,14 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
                   highlight
                 />
               )}
-
-              {row.filed_at && (
-                <div className="mt-3 text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded px-3 py-2">
-                  Filed at {row.filed_at}
-                </div>
-              )}
             </div>
+
+        {row.filed_at && (
+          <div className="mx-5 mb-3 text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded px-3 py-2">
+            Filed at {row.filed_at}
           </div>
-        );
-      })}
+        )}
+      </div>
     </div>
   );
 }
