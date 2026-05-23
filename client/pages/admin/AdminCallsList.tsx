@@ -20,6 +20,7 @@ import {
   Pause,
   FileText,
   Sparkles,
+  Tag,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useStaffAuth } from "@/context/StaffAuthContext";
@@ -68,6 +69,13 @@ interface CallNote {
   updated_at: string;
 }
 
+interface CallLabel {
+  id: string;
+  name: string;
+  color: string;
+  transcription_mode: string;
+}
+
 interface CallDetail {
   call: CallRow & {
     matched_source: string | null;
@@ -79,6 +87,7 @@ interface CallDetail {
     transcript_at: string | null;
     summary: string | null;
     summary_at: string | null;
+    label_id: string | null;
   };
   notes: CallNote[];
   recent_sms: Array<{
@@ -351,6 +360,10 @@ function CallDetailDrawer({
   const [sendingSms, setSendingSms] = useState(false);
   const [smsResult, setSmsResult] = useState<string | null>(null);
 
+  // Labels
+  const [labels, setLabels] = useState<CallLabel[]>([]);
+  const [currentLabelId, setCurrentLabelId] = useState<string | null>(null);
+
   // Recording / Transcription / Summary state
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -363,17 +376,21 @@ function CallDetailDrawer({
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [detailRes, tplRes] = await Promise.all([
+    const [detailRes, tplRes, labelsRes] = await Promise.all([
       supabase.rpc("comms_get_call_detail", { p_call_id: callId }),
       supabase.rpc("comms_list_sms_templates"),
+      supabase.rpc("comms_list_call_labels"),
     ]);
     setLoading(false);
     if (detailRes.error) {
       console.error("comms_get_call_detail failed", detailRes.error);
       return;
     }
-    setDetail(detailRes.data as CallDetail);
+    const d = detailRes.data as CallDetail;
+    setDetail(d);
+    setCurrentLabelId(d.call.label_id || null);
     setTemplates((tplRes.data || []) as SmsTemplate[]);
+    setLabels((labelsRes.data || []) as CallLabel[]);
   }, [callId]);
 
   useEffect(() => { load(); }, [load]);
@@ -436,6 +453,19 @@ function CallDetailDrawer({
     setSmsVars({});
     setCustomSmsBody("");
     await load();
+  };
+
+  const handleLabelChange = async (labelId: string) => {
+    const newLabelId = labelId || null;
+    setCurrentLabelId(newLabelId);
+    try {
+      await supabase.rpc("comms_set_call_label", {
+        p_call_id: callId,
+        p_label_id: newLabelId,
+      });
+    } catch (e) {
+      console.error("Failed to set label:", e);
+    }
   };
 
   // Sync transcript/summary from detail when it loads
@@ -589,6 +619,36 @@ function CallDetailDrawer({
                   </span>
                 )}
               </div>
+              {/* Label selector */}
+              <div className="col-span-2">
+                <div className="text-xs text-gray-500 flex items-center gap-1 mb-1">
+                  <Tag className="w-3 h-3" /> Label
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={currentLabelId || ""}
+                    onChange={e => handleLabelChange(e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm flex-1"
+                  >
+                    <option value="">No label</option>
+                    {labels.map(l => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                  {currentLabelId && (() => {
+                    const lbl = labels.find(l => l.id === currentLabelId);
+                    return lbl ? (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white font-medium"
+                        style={{ backgroundColor: lbl.color }}
+                      >
+                        {lbl.name}
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
+              </div>
+
               {detail.call.has_recording && (
                 <div className="col-span-2">
                   <div className="text-xs text-gray-500 flex items-center gap-1 mb-2">
