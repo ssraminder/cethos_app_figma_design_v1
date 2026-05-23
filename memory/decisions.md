@@ -18,6 +18,15 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-23 — Admin portal bug reporting + automated issue checking
+- **Decision:** Replicated the vendor portal's bug reporting feature (BugReportFab + BugReportModal + console ring buffer) for the admin portal. Extended `bug_reports` table with `source` ('vendor'|'admin'), `staff_id`, `reporter_name`, `resolved_at`, `resolved_by` columns. Created two new edge functions: `staff-submit-bug-report` (writes admin bug reports with staff JWT auth) and `check-open-issues` (combined view of open bug reports + unresolved Sentry issues from both `cethos-portal-client` and `cethos-vendor-portal` projects).
+- **Session-start automation:** CLAUDE.md now instructs Claude Code to call `check-open-issues` at session start and surface any new bug reports or Sentry errors before starting other work. This replaces the ad-hoc "check the DB manually" pattern.
+- **Sentry project slugs:** Admin portal = `cethos-portal-client`, Vendor portal = `cethos-vendor-portal`, Main web = `cethos-main`. Org = `cethos-solutions-inc`, region = `https://us.sentry.io`. `SENTRY_AUTH_TOKEN` Supabase secret not yet configured — Sentry integration in `check-open-issues` gracefully degrades when missing.
+- **Admin BugReportModal auth:** Uses `supabase.functions.invoke` (staff JWT) instead of the vendor pattern (session_token in FormData). Screenshot uploads handled client-side via `supabase.storage.from("bug-report-screenshots").upload()` after the report is created.
+- **Console capture:** `installConsoleCapture()` called at App.tsx module scope (before Sentry init completes), same ring buffer pattern as vendor portal (100 entries, fetch wrapper, error/rejection listeners).
+- **Status:** active. Migration applied, edge functions deployed, FAB wired into AdminLayout.
+- **Affects:** `bug_reports` table (5 new columns), new `client/lib/consoleCapture.ts`, new `client/components/admin/BugReportFab.tsx` + `BugReportModal.tsx`, modified `client/App.tsx` (console capture install), modified `client/components/admin/AdminLayout.tsx` (FAB), new `supabase/functions/staff-submit-bug-report/`, new `supabase/functions/check-open-issues/`, modified `CLAUDE.md` (session-start check).
+
 ### 2026-05-23 — Client rate cards: per-customer + global default pricing
 - **Decision:** New `client_rate_cards` table with global defaults (customer_id IS NULL) and per-customer overrides. Rate cards keyed by (service, source_lang, target_lang, domain, unit_of_measure). Per-customer wins over global via `lookup_client_rate()` SQL function. "Rates" tab on CustomerDetail.tsx for CRUD. Auto-lookup in AdminCreateOrder.tsx pre-fills first line item's rate when customer + service + languages are set.
 - **Schema:** `client_rate_cards` with partial unique index (NULLS NOT DISTINCT) on `(customer_id, service_id, source_language_id, target_language_id, domain, unit_of_measure) WHERE is_active = true`. Soft-delete via `is_active = false`. RLS: authenticated CRUD, service_role full access.

@@ -42,6 +42,7 @@ import { StaffNotificationProvider, useStaffNotifications } from "../../context/
 import NotificationProvider from "./NotificationProvider";
 import { countIncompleteAssignments } from "../../lib/trainings";
 import { supabase } from "../../lib/supabase";
+import { BugReportFab } from "./BugReportFab";
 
 interface NavItem {
   label: string;
@@ -700,6 +701,7 @@ function AdminLayoutInner() {
         <main className="flex-1 lg:pt-0 pt-16 min-h-screen">
           <Outlet />
         </main>
+        <BugReportFab />
       </div>
     </NotificationProvider>
   );

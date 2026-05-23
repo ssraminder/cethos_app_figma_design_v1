@@ -13,6 +13,8 @@ This repository has a project-local memory system at `/memory/`:
 
 **At the start of every session:** read all four files before doing substantive work. They carry context from prior sessions that won't be in your conversation history.
 
+**Bug reports & Sentry check (session start):** After reading memory files, check for open bug reports and Sentry errors by calling the `check-open-issues` edge function via `supabase.functions.invoke("check-open-issues", { body: {} })`. If there are new bug reports or unresolved Sentry issues, summarize them for the user before starting other work. Bug reports live in the `bug_reports` table (NOT GitHub Issues or Sentry) — both vendor and admin staff file them in-app. Sentry captures unhandled exceptions separately. The edge function queries both sources and returns a combined report.
+
 **Before every `git commit`:** update the relevant memory file(s) with anything new from this session — new decisions, preferences confirmed, people introduced, or shifts in the user's context. Stage the memory updates as part of the same commit so context is version-controlled with the code.
 
 If a memory file is stale or contradicts current reality, fix it rather than just appending.

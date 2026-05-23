@@ -2,6 +2,8 @@
 // Updated with admin routes for staff portal
 
 import "./lib/sentry";
+import { installConsoleCapture } from "./lib/consoleCapture";
+installConsoleCapture();
 import * as Sentry from "@sentry/react";
 import "./global.css";
 import { Toaster } from "@/components/ui/toaster";
