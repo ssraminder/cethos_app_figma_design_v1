@@ -152,7 +152,7 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
       : `Assigned: ${order?.order_number ?? "Order"} — ${step?.name ?? "step"}`;
 
     const portalLink = `${VENDOR_PORTAL_URL}/jobs`;
-    const ctaLabel = isOffer ? "Review offer" : "View assignment";
+    const ctaLabel = isOffer ? "Review offer" : "Accept assignment";
 
     const detailRows: Array<[string, string]> = [
       ["Order", order?.order_number ?? "—"],
@@ -182,7 +182,7 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
 
     const lead = isOffer
       ? `You have a new offer for <strong>${escapeHtml(order?.order_number ?? "an order")}</strong>. Please respond before the offer expires.`
-      : `You have been assigned to <strong>${escapeHtml(order?.order_number ?? "an order")}</strong>. The job is ready to start.`;
+      : `You have been assigned to <strong>${escapeHtml(order?.order_number ?? "an order")}</strong>. Please accept the assignment in the vendor portal to get started.`;
 
     const htmlContent = `
 <!doctype html>

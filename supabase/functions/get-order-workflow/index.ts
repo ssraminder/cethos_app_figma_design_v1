@@ -107,7 +107,7 @@ serve(async (req: Request) => {
         allowed_actor_types,
         vendor_id, assigned_staff_id, assigned_by,
         preferred_vendor_id,
-        offered_at, accepted_at, started_at, deadline,
+        offered_at, assigned_at, accepted_at, started_at, deadline,
         delivered_at, approved_at,
         vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, pricing_mode,
         source_file_paths, delivered_file_paths,
@@ -288,6 +288,7 @@ serve(async (req: Request) => {
         assigned_by: s.assigned_by,
         preferred_vendor_id: s.preferred_vendor_id,
         offered_at: s.offered_at,
+        assigned_at: s.assigned_at,
         accepted_at: s.accepted_at,
         started_at: s.started_at,
         deadline: s.deadline,
@@ -332,7 +333,7 @@ serve(async (req: Request) => {
     const total = steps.length;
     const completed = steps.filter((s: any) => s.status === "approved" || s.status === "skipped").length;
     const inProgress = steps.filter((s: any) =>
-      ["offered", "accepted", "in_progress", "delivered", "revision_requested"].includes(s.status),
+      ["offered", "assigned", "accepted", "in_progress", "delivered", "revision_requested"].includes(s.status),
     ).length;
     const pending = total - completed - inProgress;
 

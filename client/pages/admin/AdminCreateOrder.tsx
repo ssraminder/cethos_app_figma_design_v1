@@ -840,6 +840,53 @@ export default function AdminCreateOrder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceId, workflowTemplates]);
 
+  // ── Rate card auto-lookup ──
+  // When customer + service + source + target are all set, look up the
+  // best-match rate card and pre-fill the first line item's rate.
+  const [rateLookupHint, setRateLookupHint] = useState<string>("");
+  useEffect(() => {
+    if (!customer?.id || !serviceId || !sourceLanguageId || !targetLanguageId) {
+      setRateLookupHint("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const unit = lineItems[0]?.calculationUnit ?? "per_word";
+        const { data, error } = await supabase.rpc("lookup_client_rate", {
+          p_customer_id: customer.id,
+          p_service_id: serviceId,
+          p_source_language_id: sourceLanguageId,
+          p_target_language_id: targetLanguageId,
+          p_unit_of_measure: unit,
+        });
+        if (cancelled || error) return;
+        if (data && data.length > 0) {
+          const row = data[0];
+          const rate = Number(row.rate_per_unit);
+          // Only auto-fill if the first line's rate is currently empty
+          setLineItems((prev) => {
+            if (prev.length === 0) return prev;
+            const first = prev[0];
+            if (first.baseRate && first.baseRate !== "0") return prev;
+            return [{ ...first, baseRate: String(rate) }, ...prev.slice(1)];
+          });
+          setRateLookupHint(
+            row.is_global
+              ? `Global default: ${row.currency} $${rate.toFixed(4)}/${unit.replace("per_", "")}`
+              : `Customer rate: ${row.currency} $${rate.toFixed(4)}/${unit.replace("per_", "")}`,
+          );
+        } else {
+          setRateLookupHint("");
+        }
+      } catch {
+        // silent — rate lookup is convenience, not critical
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer?.id, serviceId, sourceLanguageId, targetLanguageId]);
+
   // Templates to display in the dropdown: service-matched first, then others
   const workflowTemplateOptions = useMemo(() => {
     const matching = workflowTemplates.filter(
@@ -1804,6 +1851,11 @@ export default function AdminCreateOrder() {
                         placeholder="0.00"
                         className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                       />
+                      {idx === 0 && rateLookupHint && (
+                        <p className="text-[10px] text-teal-600 mt-0.5 truncate" title={rateLookupHint}>
+                          {rateLookupHint}
+                        </p>
+                      )}
                     </div>
                     <div className="col-span-8 md:col-span-1 flex flex-col justify-end">
                       <label className="block text-[11px] text-gray-500 mb-1">

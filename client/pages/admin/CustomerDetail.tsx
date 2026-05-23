@@ -41,6 +41,7 @@ import CustomerCallsTab from "@/components/admin/CustomerCallsTab";
 import CustomerConversationTab from "@/components/admin/CustomerConversationTab";
 import CustomerInvoicesTab from "@/components/admin/CustomerInvoicesTab";
 import CustomerPaymentsTab from "@/components/admin/CustomerPaymentsTab";
+import CustomerRatesTab from "@/components/admin/CustomerRatesTab";
 import EmailLogAccordion from "@/components/admin/EmailLogAccordion";
 
 interface Customer {
@@ -163,7 +164,7 @@ interface CustomerStats {
   lastOrderDate: string | null;
 }
 
-const TABS = ["profile", "quotes", "orders", "invoices", "payments", "files", "calls", "messages", "stats"] as const;
+const TABS = ["profile", "quotes", "orders", "invoices", "payments", "rates", "files", "calls", "messages", "stats"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function CustomerDetail() {
@@ -928,6 +929,17 @@ export default function CustomerDetail() {
               <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
                 {payments.length}
               </span>
+            </button>
+            <button
+              onClick={() => setActiveTab("rates")}
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "rates"
+                  ? "border-teal-500 text-teal-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <DollarSign className="w-4 h-4 inline mr-2" />
+              Rates
             </button>
             <button
               onClick={() => setActiveTab("files")}
@@ -2003,6 +2015,14 @@ export default function CustomerDetail() {
           {/* Payments Tab */}
           {activeTab === "payments" && id && (
             <CustomerPaymentsTab customerId={id} />
+          )}
+
+          {/* Rates Tab */}
+          {activeTab === "rates" && customer?.id && (
+            <CustomerRatesTab
+              customerId={customer.id}
+              customerName={customer.full_name}
+            />
           )}
 
           {/* Files Tab */}

@@ -301,7 +301,7 @@ serve(async (req: Request) => {
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
         const gate = await gateAssignment(supabase, "direct_assign", vendor_id, step, workflow);
         if (gate?.should_block) return json({ success: false, error: `QMS gating: ${gate.reason}`, qms_gating: gate }, 403);
-        await supabase.from("order_workflow_steps").update({ vendor_id, status: "accepted", pricing_mode: pricing_mode || "per_unit", vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null, vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD", deadline: deadline || null, instructions: instructions || null, accepted_at: new Date().toISOString(), assigned_by: body.staff_id || null }).eq("id", step_id);
+        await supabase.from("order_workflow_steps").update({ vendor_id, status: "assigned", pricing_mode: pricing_mode || "per_unit", vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null, vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD", deadline: deadline || null, instructions: instructions || null, assigned_at: new Date().toISOString(), assigned_by: body.staff_id || null }).eq("id", step_id);
         if (pricing_mode !== "target" && vendor_rate && vendor_total) {
           const units = vendor_rate > 0 ? vendor_total / vendor_rate : 1;
           // Cancel any existing pending payable for this step to prevent duplicates

@@ -218,7 +218,7 @@ serve(async (req: Request) => {
         "id, name, step_number, status, deadline, vendor_id, order_id, " +
           "orders!order_id(id, order_number), vendors!vendor_id(id, full_name, email)",
       )
-      .in("status", ["accepted", "in_progress", "revision_requested"])
+      .in("status", ["assigned", "accepted", "in_progress", "revision_requested"])
       .not("vendor_id", "is", null)
       .not("deadline", "is", null)
       .lt("deadline", in24h.toISOString());
